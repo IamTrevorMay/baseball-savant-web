@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary, colName, colDesc } from '@/lib/glossary'
+import VizPanel from "@/components/VizPanel"
 import { SidebarCheckboxes, Chips, RangeInput } from '@/components/FilterComponents'
 
 interface RangeFilter { min: string; max: string }
@@ -433,6 +434,7 @@ export default function Home() {
               </div>
             )}
           </div>
+        <VizPanel data={results} />
         </main>
       </div>
     </div>
