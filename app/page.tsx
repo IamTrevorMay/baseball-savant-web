@@ -32,7 +32,7 @@ export default function Home() {
   const [recentPlayers, setRecentPlayers] = useState<PlayerResult[]>([])
   const [dbInfo, setDbInfo] = useState({ total: 0, pitchers: 0, lastDate: '' })
   const router = useRouter()
-  const debounceRef = useRef<NodeJS.Timeout>()
+  const debounceRef = useRef<NodeJS.Timeout>(null)
 
   useEffect(() => {
     loadDbInfo()
