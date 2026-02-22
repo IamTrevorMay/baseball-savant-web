@@ -35,8 +35,6 @@ const FILTER_CATALOG: FilterDef[] = [
   { key: 'effective_speed', label: 'Effective Speed', category: 'Pitch', type: 'range' },
   { key: 'release_spin_rate', label: 'Spin Rate', category: 'Pitch', type: 'range' },
   { key: 'spin_axis', label: 'Spin Axis', category: 'Pitch', type: 'range' },
-  { key: 'pfx_x', label: 'H Break', category: 'Movement', type: 'range' },
-  { key: 'pfx_z', label: 'V Break (IVB)', category: 'Movement', type: 'range' },
   { key: 'release_extension', label: 'Extension', category: 'Release', type: 'range' },
   { key: 'arm_angle', label: 'Arm Angle', category: 'Release', type: 'range' },
   { key: 'release_pos_x', label: 'Release X', category: 'Release', type: 'range' },
@@ -68,6 +66,12 @@ const FILTER_CATALOG: FilterDef[] = [
   // Alignment
   { key: 'if_fielding_alignment', label: 'IF Alignment', category: 'Alignment', type: 'multi' },
   { key: 'of_fielding_alignment', label: 'OF Alignment', category: 'Alignment', type: 'multi' },
+  { key: "pfx_x_in", label: "Horizontal Movement (in)", category: "Movement", type: "range" },
+  { key: "pfx_z_in", label: "Induced Vertical Break (in)", category: "Movement", type: "range" },
+  { key: "vaa", label: "Vertical Approach Angle", category: "Pitch", type: "range" },
+  { key: "haa", label: "Horizontal Approach Angle", category: "Pitch", type: "range" },
+  { key: "batter_name", label: "vs Batter", category: "Matchup", type: "multi" },
+  { key: "vs_team", label: "vs Team", category: "Matchup", type: "multi" },
 ]
 
 // ── Active Filter State ──────────────────────────────────────────────────────
@@ -91,6 +95,7 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
   const [query, setQuery] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [expandedChip, setExpandedChip] = useState<string | null>(null)
+  const [chipSearch, setChipSearch] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -106,15 +111,15 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
 
   // Filter catalog by search query, exclude already-active filters
   const activeKeys = new Set(activeFilters.map(f => f.def.key))
+  const [showAll, setShowAll] = useState(false)
+  const available = FILTER_CATALOG.filter(f => !activeKeys.has(f.key))
   const suggestions = query.trim()
-    ? FILTER_CATALOG.filter(f =>
-        !activeKeys.has(f.key) &&
-        (f.label.toLowerCase().includes(query.toLowerCase()) ||
-         f.category.toLowerCase().includes(query.toLowerCase()) ||
-         f.key.toLowerCase().includes(query.toLowerCase()))
+    ? available.filter(f =>
+        f.label.toLowerCase().includes(query.toLowerCase()) ||
+        f.category.toLowerCase().includes(query.toLowerCase()) ||
+        f.key.toLowerCase().includes(query.toLowerCase())
       )
-    : FILTER_CATALOG.filter(f => !activeKeys.has(f.key)).slice(0, 15)
-
+    : showAll ? available : []
   // Group suggestions by category
   const grouped: Record<string, FilterDef[]> = {}
   suggestions.forEach(s => { if (!grouped[s.category]) grouped[s.category] = []; grouped[s.category].push(s) })
@@ -195,7 +200,7 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
             return (
               <div key={f.def.key} className="relative">
                 <button
-                  onClick={() => setExpandedChip(isExpanded ? null : f.def.key)}
+                  onClick={() => { setExpandedChip(isExpanded ? null : f.def.key); setChipSearch("") }}
                   className={`flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-[11px] font-medium border transition ${
                     hasValue
                       ? 'bg-emerald-900/30 border-emerald-700/50 text-emerald-300'
@@ -213,21 +218,49 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
                 {isExpanded && (
                   <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 min-w-[200px] max-w-[300px] p-2"
                     onClick={e => e.stopPropagation()}>
-                    {f.def.type === 'multi' && (
-                      <div className="max-h-48 overflow-y-auto space-y-px">
-                        {(optionsCache[f.def.key] || []).map(opt => (
-                          <label key={opt} className="flex items-center gap-2 px-2 py-1 hover:bg-zinc-700 rounded cursor-pointer text-[11px]">
-                            <input type="checkbox" checked={f.values?.includes(opt) || false}
-                              onChange={() => toggleValue(f.def.key, opt)}
-                              className="rounded border-zinc-600 bg-zinc-900 text-emerald-500 w-3 h-3" />
-                            <span className={f.values?.includes(opt) ? 'text-white' : 'text-zinc-400'}>{opt}</span>
-                          </label>
-                        ))}
-                        {!(optionsCache[f.def.key]?.length) && (
-                          <div className="text-[11px] text-zinc-500 px-2 py-1">Loading options...</div>
-                        )}
-                      </div>
-                    )}
+                    {f.def.type === "multi" && (() => {
+                      const opts = optionsCache[f.def.key] || []
+                      const needsSearch = opts.length > 15
+                      const filtered = needsSearch && chipSearch
+                        ? opts.filter(o => o.toLowerCase().includes(chipSearch.toLowerCase()))
+                        : opts
+                      return (
+                        <div>
+                          {needsSearch && (
+                            <input type="text" value={expandedChip === f.def.key ? chipSearch : ""}
+                              onChange={e => setChipSearch(e.target.value)}
+                              placeholder="Search..."
+                              className="w-full px-2 py-1.5 mb-1 bg-zinc-900 border border-zinc-600 rounded text-[11px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
+                          )}
+                          {f.values && f.values.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1.5">
+                              {f.values.map(v => (
+                                <span key={v} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-900/40 border border-emerald-700/50 rounded text-[10px] text-emerald-300">
+                                  {v}
+                                  <span onClick={() => toggleValue(f.def.key, v)} className="cursor-pointer hover:text-red-400">&times;</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="max-h-48 overflow-y-auto space-y-px">
+                            {filtered.slice(0, 50).map(opt => (
+                              <label key={opt} className="flex items-center gap-2 px-2 py-1 hover:bg-zinc-700 rounded cursor-pointer text-[11px]">
+                                <input type="checkbox" checked={f.values?.includes(opt) || false}
+                                  onChange={() => toggleValue(f.def.key, opt)}
+                                  className="rounded border-zinc-600 bg-zinc-900 text-emerald-500 w-3 h-3" />
+                                <span className={f.values?.includes(opt) ? "text-white" : "text-zinc-400"}>{opt}</span>
+                              </label>
+                            ))}
+                            {filtered.length > 50 && (
+                              <div className="text-[10px] text-zinc-500 px-2 py-1">+{filtered.length - 50} more — type to search</div>
+                            )}
+                            {opts.length === 0 && (
+                              <div className="text-[11px] text-zinc-500 px-2 py-1">Loading options...</div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
                     {f.def.type === 'range' && (
                       <div className="flex gap-2">
                         <input type="number" value={f.min || ''} onChange={e => updateFilter(f.def.key, { min: e.target.value })}
@@ -257,15 +290,18 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
           })}
 
           {/* Search input */}
-          <div className="relative" ref={dropdownRef}>
+          <div className="relative flex items-center gap-0" ref={dropdownRef}>
             <input ref={inputRef} type="text" value={query}
-              onChange={e => { setQuery(e.target.value); setShowDropdown(true) }}
-              onFocus={() => setShowDropdown(true)}
-              placeholder={activeFilters.length ? '+ Add filter...' : 'Search filters...'}
-              className="w-44 px-2.5 py-1 bg-transparent border border-zinc-700 rounded-lg text-[11px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:w-56 transition-all" />
+              onChange={e => { setQuery(e.target.value); setShowDropdown(true); setShowAll(false) }}
+              placeholder={activeFilters.length ? "+ Add filter..." : "Search filters..."}
+              className="w-44 px-2.5 py-1 bg-transparent border border-zinc-700 rounded-l-lg text-[11px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:w-56 transition-all" />
+            <button onClick={() => { setShowDropdown(!showDropdown); setShowAll(!showAll); setQuery("") }}
+              className="px-1.5 py-1 border border-l-0 border-zinc-700 rounded-r-lg text-zinc-500 hover:text-zinc-300 transition">
+              <svg className={`w-3.5 h-3.5 transition-transform ${showDropdown && showAll ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
 
-            {showDropdown && Object.keys(grouped).length > 0 && (
-              <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-64 max-h-72 overflow-y-auto">
+            {showDropdown && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-72 max-h-80 overflow-y-auto">
                 {Object.entries(grouped).map(([cat, defs]) => (
                   <div key={cat}>
                     <div className="px-3 py-1 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold bg-zinc-800/80 sticky top-0">{cat}</div>
@@ -273,7 +309,7 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
                       <button key={d.key} onClick={() => addFilter(d)}
                         className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition flex items-center justify-between">
                         <span>{d.label}</span>
-                        <span className="text-[10px] text-zinc-600">{d.type === 'multi' ? 'select' : d.type === 'range' ? 'min/max' : 'date'}</span>
+                        <span className="text-[10px] text-zinc-600">{d.type === "multi" ? "select" : d.type === "range" ? "min/max" : "date"}</span>
                       </button>
                     ))}
                   </div>
@@ -321,7 +357,7 @@ export function applyFiltersToQuery(q: any, filters: ActiveFilter[]) {
 export function applyFiltersToData(data: any[], filters: ActiveFilter[]): any[] {
   return data.filter(d => {
     for (const f of filters) {
-      const col = f.def.dbColumn || f.def.key
+      const col = f.def.key
       if (f.def.type === 'multi' && f.values && f.values.length > 0) {
         const val = f.def.numberCast ? Number(d[col]) : String(d[col])
         const check = f.def.numberCast ? f.values.map(Number) : f.values

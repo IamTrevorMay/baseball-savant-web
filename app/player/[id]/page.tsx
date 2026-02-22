@@ -129,6 +129,41 @@ export default function PlayerDashboard() {
         if (allRows.length >= 50000) break
       }
 
+
+
+      // Load batter names from players table
+      const batterIds = [...new Set(allRows.map((r: any) => r.batter).filter(Boolean))]
+      const batterNames: Record<number, string> = {}
+      for (let i = 0; i < batterIds.length; i += 500) {
+        const batch = batterIds.slice(i, i + 500)
+        const { data: players } = await supabase.from("players").select("id, name").in("id", batch)
+        if (players) players.forEach((p: any) => { batterNames[p.id] = p.name })
+      }
+      // Enrich with derived fields
+      allRows.forEach((p: any) => {
+        // Vertical Approach Angle (degrees)
+        if (p.vz0 != null && p.vy0 != null && p.az != null && p.ay != null && p.release_extension != null) {
+          const t = (-p.vy0 - Math.sqrt(p.vy0*p.vy0 - 2*p.ay*(50-p.release_extension))) / p.ay
+          const vzf = p.vz0 + p.az * t
+          const vyf = p.vy0 + p.ay * t
+          p.vaa = Math.atan2(vzf, -vyf) * (180 / Math.PI)
+        }
+        // Horizontal Approach Angle (degrees)
+        if (p.vx0 != null && p.vy0 != null && p.ax != null && p.ay != null && p.release_extension != null) {
+          const t = (-p.vy0 - Math.sqrt(p.vy0*p.vy0 - 2*p.ay*(50-p.release_extension))) / p.ay
+          const vxf = p.vx0 + p.ax * t
+          const vyf = p.vy0 + p.ay * t
+          p.haa = Math.atan2(vxf, -vyf) * (180 / Math.PI)
+        }
+        // Movement in inches
+        if (p.pfx_x != null) p.pfx_x_in = +(p.pfx_x * 12).toFixed(1)
+        if (p.pfx_z != null) p.pfx_z_in = +(p.pfx_z * 12).toFixed(1)
+        // vs Team (batting team)
+        if (p.inning_topbot === "Top") p.vs_team = p.away_team
+        else if (p.inning_topbot === "Bot") p.vs_team = p.home_team
+        // Batter name
+        if (p.batter && batterNames[p.batter]) p.batter_name = batterNames[p.batter]
+      })
       setAllData(allRows)
       setData(allRows)
       setResultCount(allRows.length)
@@ -156,6 +191,8 @@ export default function PlayerDashboard() {
         zone: Array.from({length:14},(_,i)=>String(i+1)),
         if_fielding_alignment: buildOpts("if_fielding_alignment"),
         of_fielding_alignment: buildOpts("of_fielding_alignment"),
+        vs_team: buildOpts("vs_team"),
+        batter_name: buildOpts("batter_name"),
       })
     } catch (e) {
       console.error("fetchData error:", e)
