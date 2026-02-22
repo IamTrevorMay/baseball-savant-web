@@ -139,6 +139,7 @@ export default function PlayerDashboard() {
     }
     setDataLoading(false)
   }
+  function applyFilters() { fetchData(filters); setFilterOpen(false) }
   function clearFilters() { setFilters({ ...defaultFilters }); fetchData(defaultFilters) }
 
   function toggleFilter(key: keyof Filters, value: string) {
