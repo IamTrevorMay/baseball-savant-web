@@ -325,7 +325,7 @@ export function applyFiltersToData(data: any[], filters: ActiveFilter[]): any[] 
       if (f.def.type === 'multi' && f.values && f.values.length > 0) {
         const val = f.def.numberCast ? Number(d[col]) : String(d[col])
         const check = f.def.numberCast ? f.values.map(Number) : f.values
-        if (!check.includes(val as any)) return false
+        if (!(check as any[]).includes(val)) return false
       }
       if (f.def.type === 'range') {
         if (f.min && (d[col] == null || d[col] < parseFloat(f.min))) return false
