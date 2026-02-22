@@ -97,36 +97,48 @@ export default function PlayerDashboard() {
 
   async function fetchData(f: Filters) {
     setDataLoading(true)
-    let q = supabase.from('pitches').select('*', { count: 'exact' }).eq('pitcher', pitcherId)
-    if (f.game_year?.length) q = q.in('game_year', f.game_year.map(Number))
-    if (f.pitch_name?.length) q = q.in('pitch_name', f.pitch_name)
-    if (f.stand?.length) q = q.in('stand', f.stand)
-    if (f.balls?.length) q = q.in('balls', f.balls.map(Number))
-    if (f.strikes?.length) q = q.in('strikes', f.strikes.map(Number))
-    if (f.game_date_start) q = q.gte('game_date', f.game_date_start)
-    if (f.game_date_end) q = q.lte('game_date', f.game_date_end)
-    q = q.order("game_date", { ascending: false })
+    try {
+      // Get total count first
+      let countQ = supabase.from("pitches").select("*", { count: "exact", head: true }).eq("pitcher", pitcherId)
+      if (f.game_year?.length) countQ = countQ.in("game_year", f.game_year.map(Number))
+      if (f.pitch_name?.length) countQ = countQ.in("pitch_name", f.pitch_name)
+      if (f.stand?.length) countQ = countQ.in("stand", f.stand)
+      if (f.balls?.length) countQ = countQ.in("balls", f.balls.map(Number))
+      if (f.strikes?.length) countQ = countQ.in("strikes", f.strikes.map(Number))
+      if (f.game_date_start) countQ = countQ.gte("game_date", f.game_date_start)
+      if (f.game_date_end) countQ = countQ.lte("game_date", f.game_date_end)
+      const { count } = await countQ
+      setResultCount(count || 0)
 
-    // Paginate to get all rows (Supabase caps at 1000 per request)
-    let allRows: any[] = []
-    let from = 0
-    const pageSize = 1000
-    let totalCount = 0
-    while (true) {
-      const { data: rows, count } = await q.range(from, from + pageSize - 1)
-      if (count && totalCount === 0) totalCount = count
-      if (!rows || rows.length === 0) break
-      allRows = allRows.concat(rows)
-      if (rows.length < pageSize) break
-      from += pageSize
-      if (allRows.length >= 50000) break
+      // Paginate data
+      let allRows: any[] = []
+      let from = 0
+      const pageSize = 1000
+
+      while (true) {
+        let q = supabase.from("pitches").select("*").eq("pitcher", pitcherId)
+        if (f.game_year?.length) q = q.in("game_year", f.game_year.map(Number))
+        if (f.pitch_name?.length) q = q.in("pitch_name", f.pitch_name)
+        if (f.stand?.length) q = q.in("stand", f.stand)
+        if (f.balls?.length) q = q.in("balls", f.balls.map(Number))
+        if (f.strikes?.length) q = q.in("strikes", f.strikes.map(Number))
+        if (f.game_date_start) q = q.gte("game_date", f.game_date_start)
+        if (f.game_date_end) q = q.lte("game_date", f.game_date_end)
+        const { data: rows, error } = await q.order("game_date", { ascending: false }).range(from, from + pageSize - 1)
+        if (error) { console.error("Fetch error:", error.message); break }
+        if (!rows || rows.length === 0) break
+        allRows = allRows.concat(rows)
+        if (rows.length < pageSize) break
+        from += pageSize
+        if (allRows.length >= 50000) break
+      }
+
+      setData(allRows)
+    } catch (e) {
+      console.error("fetchData error:", e)
     }
-    setData(allRows)
-    setResultCount(totalCount || allRows.length)
     setDataLoading(false)
   }
-
-  function applyFilters() { fetchData(filters); setFilterOpen(false) }
   function clearFilters() { setFilters({ ...defaultFilters }); fetchData(defaultFilters) }
 
   function toggleFilter(key: keyof Filters, value: string) {
@@ -190,7 +202,7 @@ export default function PlayerDashboard() {
             )}
           </div>
         </div>
-        <div className="flex gap-4"><a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Explorer</a><a href="/analyst" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Analyst</a></div>
+        <div className="flex gap-4"><a href="/standings" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Standings</a><a href="/" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Pitchers</a><a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Explorer</a><a href="/analyst" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Analyst</a></div>
       </nav>
 
       {/* Player Header */}

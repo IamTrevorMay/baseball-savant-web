@@ -72,7 +72,8 @@ export default function Home() {
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-6">
         <span className="font-bold text-emerald-400 tracking-wide text-sm">Triton</span>
         <div className="flex gap-6 text-xs text-zinc-500">
-          <a href="/" className="text-emerald-400">Home</a>
+          <a href="/standings" className="text-emerald-400">Standings</a>
+            <a href="/" className="hover:text-zinc-300 transition">Pitchers</a>
           <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
           <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
         </div>
