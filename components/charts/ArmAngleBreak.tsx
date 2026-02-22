@@ -11,7 +11,7 @@ export default function ArmAngleBreak({ data }: { data: any[] }) {
   const hTraces = pitchTypes.map(pt => {
     const pts = f.filter(d => d.pitch_name === pt)
     return {
-      x: pts.map(d => d.arm_angle), y: pts.map(d => d.pfx_x),
+      x: pts.map(d => d.arm_angle), y: pts.map(d => d.pfx_x * 12),
       type: 'scatter' as any, mode: 'markers' as any,
       name: pt, legendgroup: pt,
       marker: { color: getPitchColor(pt), size: 4, opacity: 0.4 },
@@ -23,7 +23,7 @@ export default function ArmAngleBreak({ data }: { data: any[] }) {
   const vTraces = pitchTypes.map(pt => {
     const pts = f.filter(d => d.pitch_name === pt)
     return {
-      x: pts.map(d => d.arm_angle), y: pts.map(d => d.pfx_z),
+      x: pts.map(d => d.arm_angle), y: pts.map(d => d.pfx_z * 12),
       type: 'scatter' as any, mode: 'markers' as any,
       name: pt, legendgroup: pt, showlegend: false,
       marker: { color: getPitchColor(pt), size: 4, opacity: 0.4 },

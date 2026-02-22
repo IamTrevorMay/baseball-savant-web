@@ -25,6 +25,6 @@ export const BASE_LAYOUT: any = {
   margin: { t: 40, r: 20, b: 45, l: 50 },
   xaxis: { gridcolor: COLORS.grid, zerolinecolor: COLORS.grid, tickfont: { size: 10 } },
   yaxis: { gridcolor: COLORS.grid, zerolinecolor: COLORS.grid, tickfont: { size: 10 } },
-  legend: { font: { size: 10, color: COLORS.textLight }, bgcolor: 'rgba(0,0,0,0)' },
+  autosize: true, legend: { font: { size: 10, color: COLORS.textLight }, bgcolor: 'rgba(0,0,0,0)' },
   hoverlabel: { bgcolor: '#27272a', bordercolor: '#3f3f46', font: { color: '#e4e4e7', size: 11 } },
 }

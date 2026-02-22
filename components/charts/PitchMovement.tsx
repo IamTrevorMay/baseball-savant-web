@@ -11,7 +11,7 @@ export default function PitchMovement({ data }: { data: any[] }) {
   const traces = pitchTypes.map(pt => {
     const pts = f.filter(d => d.pitch_name === pt)
     return {
-      x: pts.map(d => d.pfx_x), y: pts.map(d => d.pfx_z),
+      x: pts.map(d => d.pfx_x * 12), y: pts.map(d => d.pfx_z * 12),
       type: 'scatter' as any, mode: 'markers' as any,
       name: pt,
       marker: { color: getPitchColor(pt), size: 5, opacity: 0.6 },

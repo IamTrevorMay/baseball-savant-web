@@ -98,6 +98,8 @@ export default function ExplorePage() {
   const [resCount, setResCount] = useState(0)
   const [status, setStatus] = useState('')
   const [sideOpen, setSideOpen] = useState(true)
+  const [updating, setUpdating] = useState(false)
+  const [updateMsg, setUpdateMsg] = useState("")
   const [openSec, setOpenSec] = useState<Set<string>>(new Set(['players']))
   const [sortCol, setSortCol] = useState('')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc')
@@ -192,6 +194,19 @@ export default function ExplorePage() {
     let c=selPlayers.length; if(filters.game_date_start)c++; if(filters.game_date_end)c++
     Object.entries(filters).forEach(([k,v])=>{ if(k.startsWith('game_date'))return; if(Array.isArray(v)&&v.length>0)c+=v.length; if(v&&typeof v==='object'&&'min' in v){if(v.min)c++;if(v.max)c++} })
     return c
+  }
+  async function runUpdate() {
+    setUpdating(true); setUpdateMsg("Fetching from Baseball Savant...")
+    try {
+      const end = new Date().toISOString().split("T")[0]
+      const start = new Date(Date.now() - 7*24*60*60*1000).toISOString().split("T")[0]
+      const res = await fetch("/api/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ start_date: start, end_date: end }) })
+      const data = await res.json()
+      if (data.error) setUpdateMsg("Error: " + data.error)
+      else setUpdateMsg(data.message)
+    } catch (e: any) { setUpdateMsg("Error: " + e.message) }
+    setTimeout(() => setUpdateMsg(""), 5000)
+    setUpdating(false)
   }
   function handleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -381,6 +396,8 @@ export default function ExplorePage() {
         <div className="flex items-center gap-4">
           <span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches · through {dbInfo.lastDate}</span>
           <a href="/analyst" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Analyst</a>
+          <button onClick={runUpdate} disabled={updating} className="text-[11px] text-zinc-500 hover:text-emerald-400 transition disabled:text-zinc-700">{updating ? "Updating..." : "Update Data"}</button>
+          {updateMsg && <span className="text-[11px] text-emerald-400">{updateMsg}</span>}
         </div>
       </header>
 

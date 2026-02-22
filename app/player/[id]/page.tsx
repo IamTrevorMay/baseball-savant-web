@@ -61,6 +61,7 @@ export default function PlayerDashboard() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [dataLoading, setDataLoading] = useState(false)
+  const [mlbStats, setMlbStats] = useState<any[]>([])
   const [tab, setTab] = useState('overview')
   const [filters, setFilters] = useState<Filters>({ ...defaultFilters })
   const [filterOpen, setFilterOpen] = useState(false)
@@ -84,6 +85,13 @@ export default function PlayerDashboard() {
 
     // Load pitches
     await fetchData(defaultFilters)
+
+    // Fetch MLB official stats (W/L/ERA etc)
+    try {
+      const mlbRes = await fetch(`/api/mlbstats?pitcher=${pitcherId}`)
+      const mlbData = await mlbRes.json()
+      if (mlbData.seasons) setMlbStats(mlbData.seasons)
+    } catch (e) { console.error("MLB stats fetch failed:", e) }
     setLoading(false)
   }
 
@@ -97,11 +105,24 @@ export default function PlayerDashboard() {
     if (f.strikes?.length) q = q.in('strikes', f.strikes.map(Number))
     if (f.game_date_start) q = q.gte('game_date', f.game_date_start)
     if (f.game_date_end) q = q.lte('game_date', f.game_date_end)
-    q = q.order('game_date', { ascending: false }).limit(2000)
+    q = q.order("game_date", { ascending: false })
 
-    const { data: rows, count } = await q
-    setData(rows || [])
-    setResultCount(count || 0)
+    // Paginate to get all rows (Supabase caps at 1000 per request)
+    let allRows: any[] = []
+    let from = 0
+    const pageSize = 1000
+    let totalCount = 0
+    while (true) {
+      const { data: rows, count } = await q.range(from, from + pageSize - 1)
+      if (count && totalCount === 0) totalCount = count
+      if (!rows || rows.length === 0) break
+      allRows = allRows.concat(rows)
+      if (rows.length < pageSize) break
+      from += pageSize
+      if (allRows.length >= 50000) break
+    }
+    setData(allRows)
+    setResultCount(totalCount || allRows.length)
     setDataLoading(false)
   }
 
@@ -189,18 +210,6 @@ export default function PlayerDashboard() {
               </div>
             </div>
           </div>
-          <div className="flex gap-6">
-            {[
-              { label: 'Avg Velo', value: `${info.avg_velo} mph` },
-              { label: 'Avg Spin', value: `${info.avg_spin} rpm` },
-              { label: 'Pitches', value: info.pitch_types?.length?.toString() || '0' },
-            ].map(s => (
-              <div key={s.label} className="text-center">
-                <div className="text-lg font-bold text-white">{s.value}</div>
-                <div className="text-[11px] text-zinc-500 uppercase tracking-wider">{s.label}</div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -262,7 +271,7 @@ export default function PlayerDashboard() {
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          {tab === 'overview' && <OverviewTab data={data} info={info} />}
+          {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} />}
           {tab === 'movement' && <MovementTab data={data} />}
           {tab === 'location' && <LocationTab data={data} />}
           {tab === 'velocity' && <VelocityTab data={data} />}
