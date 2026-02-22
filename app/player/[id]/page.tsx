@@ -169,7 +169,7 @@ export default function PlayerDashboard() {
             )}
           </div>
         </div>
-        <a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Data Explorer</a>
+        <div className="flex gap-4"><a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Explorer</a><a href="/analyst" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Analyst</a></div>
       </nav>
 
       {/* Player Header */}

@@ -74,6 +74,7 @@ export default function Home() {
         <div className="flex gap-6 text-xs text-zinc-500">
           <a href="/" className="text-emerald-400">Home</a>
           <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
+          <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
         </div>
         <span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches</span>
       </nav>
