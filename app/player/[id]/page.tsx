@@ -1,10 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
 import VizPanel from '@/components/VizPanel'
-import { SidebarCheckboxes, Chips, RangeInput } from '@/components/FilterComponents'
+import FilterEngine, { ActiveFilter, applyFiltersToData } from '@/components/FilterEngine'
 import OverviewTab from '@/components/dashboard/OverviewTab'
 import MovementTab from '@/components/dashboard/MovementTab'
 import LocationTab from '@/components/dashboard/LocationTab'
@@ -20,21 +20,11 @@ interface PlayerInfo {
   team: string; pitch_types: string[]; latest_season: number; first_date: string
 }
 
-interface Filters {
-  game_year: string[] | null; pitch_name: string[] | null
-  stand: string[] | null; balls: string[] | null; strikes: string[] | null
-  game_date_start: string; game_date_end: string
-}
-
-const defaultFilters: Filters = {
-  game_year: null, pitch_name: null, stand: null,
-  balls: null, strikes: null, game_date_start: '', game_date_end: ''
-}
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'movement', label: 'Movement' },
-  { id: 'location', label: 'Location' },
+  { id: 'viz', label: 'Visualizations' },
   { id: 'velocity', label: 'Velocity' },
   { id: 'results', label: 'Results' },
   { id: 'pitchlog', label: 'Pitch Log' },
@@ -63,8 +53,9 @@ export default function PlayerDashboard() {
   const [dataLoading, setDataLoading] = useState(false)
   const [mlbStats, setMlbStats] = useState<any[]>([])
   const [tab, setTab] = useState('overview')
-  const [filters, setFilters] = useState<Filters>({ ...defaultFilters })
-  const [filterOpen, setFilterOpen] = useState(false)
+  const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([])
+  const [allData, setAllData] = useState<any[]>([])
+  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
 
   // Search bar state
@@ -73,6 +64,21 @@ export default function PlayerDashboard() {
   const [showSearch, setShowSearch] = useState(false)
 
   useEffect(() => { loadPlayer() }, [pitcherId])
+
+  // Client-side filtered data
+  const filteredData = useMemo(() => {
+    if (activeFilters.length === 0) return allData
+    return applyFiltersToData(allData, activeFilters)
+  }, [allData, activeFilters])
+
+  // Debounced filter application
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setData(filteredData)
+      setResultCount(filteredData.length)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [filteredData])
 
   async function loadPlayer() {
     setLoading(true)
@@ -84,7 +90,7 @@ export default function PlayerDashboard() {
     if (pData) setInfo(pData as PlayerInfo)
 
     // Load pitches
-    await fetchData(defaultFilters)
+    await fetchData()
 
     // Fetch MLB official stats (W/L/ERA etc)
     try {
@@ -95,36 +101,18 @@ export default function PlayerDashboard() {
     setLoading(false)
   }
 
-  async function fetchData(f: Filters) {
+  async function fetchData() {
     setDataLoading(true)
     try {
-      // Get total count first
-      let countQ = supabase.from("pitches").select("*", { count: "exact", head: true }).eq("pitcher", pitcherId)
-      if (f.game_year?.length) countQ = countQ.in("game_year", f.game_year.map(Number))
-      if (f.pitch_name?.length) countQ = countQ.in("pitch_name", f.pitch_name)
-      if (f.stand?.length) countQ = countQ.in("stand", f.stand)
-      if (f.balls?.length) countQ = countQ.in("balls", f.balls.map(Number))
-      if (f.strikes?.length) countQ = countQ.in("strikes", f.strikes.map(Number))
-      if (f.game_date_start) countQ = countQ.gte("game_date", f.game_date_start)
-      if (f.game_date_end) countQ = countQ.lte("game_date", f.game_date_end)
-      const { count } = await countQ
-      setResultCount(count || 0)
-
-      // Paginate data
       let allRows: any[] = []
       let from = 0
       const pageSize = 1000
 
       while (true) {
-        let q = supabase.from("pitches").select("*").eq("pitcher", pitcherId)
-        if (f.game_year?.length) q = q.in("game_year", f.game_year.map(Number))
-        if (f.pitch_name?.length) q = q.in("pitch_name", f.pitch_name)
-        if (f.stand?.length) q = q.in("stand", f.stand)
-        if (f.balls?.length) q = q.in("balls", f.balls.map(Number))
-        if (f.strikes?.length) q = q.in("strikes", f.strikes.map(Number))
-        if (f.game_date_start) q = q.gte("game_date", f.game_date_start)
-        if (f.game_date_end) q = q.lte("game_date", f.game_date_end)
-        const { data: rows, error } = await q.order("game_date", { ascending: false }).range(from, from + pageSize - 1)
+        const { data: rows, error } = await supabase
+          .from("pitches").select("*").eq("pitcher", pitcherId)
+          .order("game_date", { ascending: false })
+          .range(from, from + pageSize - 1)
         if (error) { console.error("Fetch error:", error.message); break }
         if (!rows || rows.length === 0) break
         allRows = allRows.concat(rows)
@@ -133,41 +121,38 @@ export default function PlayerDashboard() {
         if (allRows.length >= 50000) break
       }
 
+      setAllData(allRows)
       setData(allRows)
+      setResultCount(allRows.length)
+
+      // Build filter options from loaded data
+      const buildOpts = (col: string) => [...new Set(allRows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
+      setOptionsCache({
+        game_year: buildOpts("game_year").sort().reverse(),
+        pitch_name: buildOpts("pitch_name"),
+        pitch_type: buildOpts("pitch_type"),
+        stand: buildOpts("stand"),
+        p_throws: buildOpts("p_throws"),
+        balls: ["0","1","2","3"],
+        strikes: ["0","1","2"],
+        outs_when_up: ["0","1","2"],
+        inning: Array.from({length:18},(_,i)=>String(i+1)),
+        inning_topbot: ["Top","Bot"],
+        type: buildOpts("type"),
+        events: buildOpts("events"),
+        description: buildOpts("description"),
+        bb_type: buildOpts("bb_type"),
+        game_type: buildOpts("game_type"),
+        home_team: buildOpts("home_team"),
+        away_team: buildOpts("away_team"),
+        zone: Array.from({length:14},(_,i)=>String(i+1)),
+        if_fielding_alignment: buildOpts("if_fielding_alignment"),
+        of_fielding_alignment: buildOpts("of_fielding_alignment"),
+      })
     } catch (e) {
       console.error("fetchData error:", e)
     }
     setDataLoading(false)
-  }
-  function applyFilters() { fetchData(filters); setFilterOpen(false) }
-  function clearFilters() { setFilters({ ...defaultFilters }); fetchData(defaultFilters) }
-
-  function toggleFilter(key: keyof Filters, value: string) {
-    setFilters(prev => {
-      const current = (prev[key] as string[] | null) || []
-      const updated = current.includes(value) ? current.filter(v => v !== value) : [...current, value]
-      return { ...prev, [key]: updated.length > 0 ? updated : null }
-    })
-  }
-
-  async function handleSearch(value: string) {
-    setSearchQuery(value)
-    if (!value.trim()) { setSearchResults([]); return }
-    const { data } = await supabase.rpc('search_players', { search_term: value.trim(), result_limit: 6 })
-    setSearchResults(data || [])
-    setShowSearch(true)
-  }
-
-  function getActiveCount(): number {
-    let c = 0
-    if (filters.game_year?.length) c += filters.game_year.length
-    if (filters.pitch_name?.length) c += filters.pitch_name.length
-    if (filters.stand?.length) c += filters.stand.length
-    if (filters.balls?.length) c += filters.balls.length
-    if (filters.strikes?.length) c += filters.strikes.length
-    if (filters.game_date_start) c++
-    if (filters.game_date_end) c++
-    return c
   }
 
   if (loading || !info) return (
@@ -226,14 +211,17 @@ export default function PlayerDashboard() {
         </div>
       </div>
 
-      {/* Filter Bar + Tabs */}
+      {/* Filter Engine */}
+      <FilterEngine activeFilters={activeFilters} onFiltersChange={setActiveFilters} optionsCache={optionsCache} />
+
+      {/* Tabs */}
       <div className="bg-zinc-900/50 border-b border-zinc-800 px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
-                  tab === t.id ? 'text-emerald-400 border-emerald-400' : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                  tab === t.id ? "text-emerald-400 border-emerald-400" : "text-zinc-500 border-transparent hover:text-zinc-300"
                 }`}>
                 {t.label}
               </button>
@@ -241,52 +229,16 @@ export default function PlayerDashboard() {
           </div>
           <div className="flex items-center gap-3">
             {dataLoading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
-            <span className="text-[11px] text-zinc-500">{resultCount.toLocaleString()} pitches loaded</span>
-            <button onClick={() => setFilterOpen(!filterOpen)}
-              className={`px-3 py-1.5 rounded text-xs font-medium border transition ${
-                getActiveCount() > 0 ? 'bg-emerald-700/30 border-emerald-600/50 text-emerald-300' : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-300'
-              }`}>
-              Filters {getActiveCount() > 0 ? `(${getActiveCount()})` : ''}
-            </button>
+            <span className="text-[11px] text-zinc-500">{resultCount.toLocaleString()} pitches{activeFilters.length > 0 ? " (filtered)" : ""}</span>
           </div>
         </div>
       </div>
-
-      {/* Filter Panel (collapsible) */}
-      {filterOpen && (
-        <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-              <Chips label="Season" items={info.pitch_types ? [...new Set(data.map(d => String(d.game_year)).filter(Boolean))].sort().reverse() : []} selected={filters.game_year} onToggle={v => toggleFilter('game_year', v)} />
-              <SidebarCheckboxes label="Pitch Type" items={info.pitch_types || []} selected={filters.pitch_name} onToggle={v => toggleFilter('pitch_name', v)} />
-              <Chips label="Batter Side" items={['L','R']} selected={filters.stand} onToggle={v => toggleFilter('stand', v)} />
-              <Chips label="Balls" items={['0','1','2','3']} selected={filters.balls} onToggle={v => toggleFilter('balls', v)} />
-              <Chips label="Strikes" items={['0','1','2']} selected={filters.strikes} onToggle={v => toggleFilter('strikes', v)} />
-              <div>
-                <label className="text-[11px] text-zinc-500 mb-1 block">From</label>
-                <input type="date" value={filters.game_date_start} onChange={e => setFilters(p => ({...p, game_date_start: e.target.value}))}
-                  className="w-full p-1.5 bg-zinc-950 border border-zinc-700 rounded text-[12px] text-white focus:border-emerald-600 focus:outline-none" />
-              </div>
-              <div>
-                <label className="text-[11px] text-zinc-500 mb-1 block">To</label>
-                <input type="date" value={filters.game_date_end} onChange={e => setFilters(p => ({...p, game_date_end: e.target.value}))}
-                  className="w-full p-1.5 bg-zinc-950 border border-zinc-700 rounded text-[12px] text-white focus:border-emerald-600 focus:outline-none" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-3">
-              <button onClick={applyFilters} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded text-sm font-medium transition">Apply</button>
-              <button onClick={clearFilters} className="text-zinc-500 hover:text-zinc-300 text-sm transition">Reset</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
           {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} />}
           {tab === 'movement' && <MovementTab data={data} />}
-          {tab === 'location' && <LocationTab data={data} />}
+          {tab === 'viz' && <LocationTab data={data} />}
           {tab === 'velocity' && <VelocityTab data={data} />}
           {tab === 'results' && <ResultsTab data={data} />}
           {tab === 'pitchlog' && <PitchLogTab data={data} />}
