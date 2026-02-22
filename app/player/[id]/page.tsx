@@ -101,6 +101,14 @@ export default function PlayerDashboard() {
     setLoading(false)
   }
 
+
+  async function handleSearch(value: string) {
+    setSearchQuery(value)
+    if (!value.trim()) { setSearchResults([]); return }
+    const { data } = await supabase.rpc("search_players", { search_term: value.trim(), result_limit: 6 })
+    setSearchResults(data || [])
+    setShowSearch(true)
+  }
   async function fetchData() {
     setDataLoading(true)
     try {
