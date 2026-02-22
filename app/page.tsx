@@ -70,7 +70,7 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
       {/* Nav */}
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-6">
-        <span className="font-bold text-emerald-400 tracking-wide text-sm">BSA</span>
+        <span className="font-bold text-emerald-400 tracking-wide text-sm">Triton</span>
         <div className="flex gap-6 text-xs text-zinc-500">
           <a href="/" className="text-emerald-400">Home</a>
           <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
@@ -81,7 +81,7 @@ export default function Home() {
 
       {/* Hero */}
       <div className="flex flex-col items-center justify-center pt-24 pb-16 px-4">
-        <h1 className="text-4xl font-bold text-white mb-2">Baseball Savant Analytics</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">Triton</h1>
         <p className="text-zinc-500 mb-10 text-sm">Search any pitcher to view their complete Statcast dashboard</p>
 
         {/* Search */}

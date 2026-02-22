@@ -183,7 +183,7 @@ export default function AnalystPage() {
       {/* Nav */}
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-6">
-          <a href="/" className="font-bold text-emerald-400 text-sm hover:text-emerald-300 transition">BSA</a>
+          <a href="/" className="font-bold text-emerald-400 text-sm hover:text-emerald-300 transition">Triton</a>
           <div className="flex gap-4 text-xs text-zinc-500">
             <a href="/" className="hover:text-zinc-300 transition">Home</a>
             <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
@@ -198,7 +198,7 @@ export default function AnalystPage() {
           {messages.length === 0 && (
             <div className="py-16 text-center">
               <div className="text-4xl mb-4">⚾</div>
-              <h1 className="text-2xl font-bold text-white mb-2">BSA Analyst</h1>
+              <h1 className="text-2xl font-bold text-white mb-2">Triton Analyst</h1>
               <p className="text-zinc-500 mb-8 max-w-md mx-auto">
                 Ask anything about the Statcast database. I can query 7.4M+ pitches, build reports, compare players, and find trends.
               </p>

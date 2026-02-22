@@ -150,7 +150,7 @@ export default function PlayerDashboard() {
       {/* Top Nav */}
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
-          <a href="/" className="font-bold text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">BSA</a>
+          <a href="/" className="font-bold text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Triton</a>
           <div className="relative">
             <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
               onFocus={() => searchQuery && setShowSearch(true)}

@@ -78,7 +78,7 @@ export default function ChatPanel() {
           {/* Header */}
           <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between shrink-0">
             <div>
-              <h3 className="text-sm font-semibold text-white">BSA Analyst</h3>
+              <h3 className="text-sm font-semibold text-white">Triton Analyst</h3>
               <p className="text-[11px] text-zinc-500">Ask anything about the data</p>
             </div>
             <button onClick={() => { setMessages([]); }}

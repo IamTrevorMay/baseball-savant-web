@@ -6,7 +6,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Baseball Savant Analytics',
+  title: 'Triton',
   description: 'Statcast pitch data analysis platform',
 }
 
