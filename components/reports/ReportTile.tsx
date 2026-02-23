@@ -1,6 +1,6 @@
 'use client'
-import { useState } from 'react'
-import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable } from './TileViz'
+import { useState, useRef, useEffect } from 'react'
+import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, CUSTOM_COL_CATALOG, GROUP_BY_OPTIONS } from './TileViz'
 import type { MetricKey, ScatterMode, BarMetric, TableMode } from './TileViz'
 import { applyFiltersToData, FILTER_CATALOG, type ActiveFilter, type FilterDef } from '../FilterEngine'
 
@@ -13,6 +13,8 @@ export interface TileConfig {
   scatterMode?: ScatterMode
   barMetric?: BarMetric
   tableMode?: TableMode
+  tableColumns?: string[]
+  tableGroupBy?: string
   title?: string
   subtitle?: string
   filters: ActiveFilter[]
@@ -30,10 +32,22 @@ interface Props {
   onRemove: () => void
 }
 
+const DEFAULT_CUSTOM_COLS = ['n', 'pct', 'velo', 'spin', 'whiff', 'ev']
+
 export default function ReportTile({ config, data, optionsCache, onUpdate, onRemove }: Props) {
   const [showConfig, setShowConfig] = useState(config.viz === 'empty')
   const [filterSearch, setFilterSearch] = useState('')
   const [showTileFilters, setShowTileFilters] = useState(false)
+  const [showColPicker, setShowColPicker] = useState(false)
+  const colPickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) setShowColPicker(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   // Apply tile-level filters
   const filtered = config.filters.length > 0 ? applyFiltersToData(data, config.filters) : data
@@ -129,14 +143,56 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
           )}
 
           {config.viz === 'table' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-zinc-500">View:</span>
-              {(['arsenal','results','splits'] as TableMode[]).map(m => (
-                <button key={m} onClick={() => onUpdate({ ...config, tableMode: m })}
+              {(['arsenal','results','splits','custom'] as TableMode[]).map(m => (
+                <button key={m} onClick={() => onUpdate({ ...config, tableMode: m, tableColumns: m === 'custom' ? (config.tableColumns || DEFAULT_CUSTOM_COLS) : config.tableColumns })}
                   className={`px-1.5 py-0.5 rounded text-[10px] transition ${(config.tableMode||'arsenal')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
                   {m}
                 </button>
               ))}
+              {(config.tableMode === 'custom') && (<>
+                <select value={config.tableGroupBy || 'pitch_name'}
+                  onChange={e => onUpdate({ ...config, tableGroupBy: e.target.value })}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+                  {GROUP_BY_OPTIONS.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
+                  ))}
+                </select>
+                <div className="relative" ref={colPickerRef}>
+                  <button onClick={() => setShowColPicker(!showColPicker)}
+                    className="px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition">
+                    Columns ({(config.tableColumns || DEFAULT_CUSTOM_COLS).length})
+                  </button>
+                  {showColPicker && (
+                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-48 max-h-56 overflow-y-auto">
+                      {(() => {
+                        const cats = [...new Set(CUSTOM_COL_CATALOG.map(c => c.category))]
+                        const selected = new Set(config.tableColumns || DEFAULT_CUSTOM_COLS)
+                        return cats.map(cat => (
+                          <div key={cat}>
+                            <div className="px-2 py-1 text-[9px] text-zinc-500 font-medium uppercase tracking-wider bg-zinc-900/50 sticky top-0">{cat}</div>
+                            {CUSTOM_COL_CATALOG.filter(c => c.category === cat).map(c => (
+                              <label key={c.key} className="flex items-center gap-2 px-2 py-1 hover:bg-zinc-700 cursor-pointer">
+                                <input type="checkbox" checked={selected.has(c.key)}
+                                  onChange={() => {
+                                    const cols = [...(config.tableColumns || DEFAULT_CUSTOM_COLS)]
+                                    const idx = cols.indexOf(c.key)
+                                    if (idx >= 0) cols.splice(idx, 1)
+                                    else cols.push(c.key)
+                                    onUpdate({ ...config, tableColumns: cols })
+                                  }}
+                                  className="accent-emerald-500 w-3 h-3" />
+                                <span className="text-[10px] text-zinc-300">{c.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ))
+                      })()}
+                    </div>
+                  )}
+                </div>
+              </>)}
             </div>
           )}
 
@@ -214,7 +270,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
         {config.viz === 'scatter' && <TileScatter data={filtered} mode={config.scatterMode || 'location'} />}
         {config.viz === 'bar' && <TileBar data={filtered} metric={config.barMetric || 'usage'} />}
         {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} />}
-        {config.viz === 'table' && <TileTable data={filtered} mode={config.tableMode || 'arsenal'} />}
+        {config.viz === 'table' && <TileTable data={filtered} mode={config.tableMode || 'arsenal'} columns={config.tableColumns} groupBy={config.tableGroupBy} />}
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Plot from '../PlotWrapper'
 import { COLORS, getPitchColor } from '../chartConfig'
 
@@ -171,76 +171,211 @@ export function TileStrikeZone({data}:{data:any[]}) {
   return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-2.2,2.2],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[-0.2,4.5],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
+// ── CUSTOM COLUMN DEFINITIONS ────────────────────────────────────────────────
+function avg(pitches: any[], field: string): number | null {
+  const v = pitches.map(d => d[field]).filter((x: any) => x != null)
+  return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : null
+}
+function swings(p: any[]) {
+  return p.filter(d => { const s = (d.description || '').toLowerCase(); return s.includes('swinging_strike') || s.includes('foul') || s.includes('hit_into_play') || s.includes('foul_tip') })
+}
+function whiffs(p: any[]) {
+  return p.filter(d => (d.description || '').toLowerCase().includes('swinging_strike'))
+}
+
+export interface CustomColDef {
+  key: string
+  label: string
+  category: string
+  compute: (pitches: any[], allData: any[]) => any
+  fmt: (v: any) => string
+}
+
+export const CUSTOM_COL_CATALOG: CustomColDef[] = [
+  // Counting
+  { key: 'n', label: '#', category: 'Counting', compute: p => p.length, fmt: v => String(v) },
+  { key: 'pct', label: 'Usage%', category: 'Counting', compute: (p, all) => 100 * p.length / all.length, fmt: v => v.toFixed(1) },
+  // Velocity / Movement
+  { key: 'velo', label: 'Velo', category: 'Velocity', compute: p => avg(p, 'release_speed'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'max_velo', label: 'Max Velo', category: 'Velocity', compute: p => { const v = p.map((d: any) => d.release_speed).filter(Boolean); return v.length ? Math.max(...v) : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'spin', label: 'Spin', category: 'Velocity', compute: p => avg(p, 'release_spin_rate'), fmt: v => v === null ? '\u2014' : String(Math.round(v)) },
+  { key: 'hb', label: 'HB"', category: 'Velocity', compute: p => { const v = avg(p, 'pfx_x'); return v !== null ? v * 12 : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'ivb', label: 'IVB"', category: 'Velocity', compute: p => { const v = avg(p, 'pfx_z'); return v !== null ? v * 12 : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'ext', label: 'Ext', category: 'Velocity', compute: p => avg(p, 'release_extension'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  // Rates
+  { key: 'whiff', label: 'Whiff%', category: 'Rates', compute: p => { const sw = swings(p); const wh = whiffs(p); return sw.length ? 100 * wh.length / sw.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'csw', label: 'CSW%', category: 'Rates', compute: p => { const cs = p.filter((d: any) => { const s = (d.description || '').toLowerCase(); return s.includes('swinging_strike') || s === 'called_strike' }); return p.length ? 100 * cs.length / p.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'zone', label: 'Zone%', category: 'Rates', compute: p => { const iz = p.filter((d: any) => d.zone >= 1 && d.zone <= 9); const hz = p.filter((d: any) => d.zone != null); return hz.length ? 100 * iz.length / hz.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'chase', label: 'Chase%', category: 'Rates', compute: p => { const oz = p.filter((d: any) => d.zone > 9); const sw = oz.filter((d: any) => { const s = (d.description || '').toLowerCase(); return s.includes('swinging_strike') || s.includes('foul') || s.includes('hit_into_play') }); return oz.length ? 100 * sw.length / oz.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  // Batting
+  { key: 'ba', label: 'BA', category: 'Batting', compute: p => { const ab = p.filter((d: any) => d.events && !['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt'].includes(d.events)); const h = ab.filter((d: any) => ['single', 'double', 'triple', 'home_run'].includes(d.events)); return ab.length ? h.length / ab.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(3) },
+  { key: 'slg', label: 'SLG', category: 'Batting', compute: p => { const ab = p.filter((d: any) => d.events && !['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt'].includes(d.events)); if (!ab.length) return null; const tb = ab.reduce((s: number, d: any) => s + (d.events === 'single' ? 1 : d.events === 'double' ? 2 : d.events === 'triple' ? 3 : d.events === 'home_run' ? 4 : 0), 0); return tb / ab.length }, fmt: v => v === null ? '\u2014' : v.toFixed(3) },
+  { key: 'xba', label: 'xBA', category: 'Batting', compute: p => avg(p, 'estimated_ba_using_speedangle'), fmt: v => v === null ? '\u2014' : v.toFixed(3) },
+  { key: 'xwoba', label: 'xwOBA', category: 'Batting', compute: p => avg(p, 'estimated_woba_using_speedangle'), fmt: v => v === null ? '\u2014' : v.toFixed(3) },
+  // Batted Ball
+  { key: 'ev', label: 'EV', category: 'Batted Ball', compute: p => avg(p, 'launch_speed'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'max_ev', label: 'Max EV', category: 'Batted Ball', compute: p => { const v = p.map((d: any) => d.launch_speed).filter(Boolean); return v.length ? Math.max(...v) : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'la', label: 'LA', category: 'Batted Ball', compute: p => avg(p, 'launch_angle'), fmt: v => v === null ? '\u2014' : v.toFixed(1) + '\u00b0' },
+  { key: 'gb_pct', label: 'GB%', category: 'Batted Ball', compute: p => { const bbe = p.filter((d: any) => d.bb_type); const gb = bbe.filter((d: any) => d.bb_type === 'ground_ball'); return bbe.length ? 100 * gb.length / bbe.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+]
+
+const COL_MAP = Object.fromEntries(CUSTOM_COL_CATALOG.map(c => [c.key, c]))
+
+export const GROUP_BY_OPTIONS = [
+  { key: 'pitch_name', label: 'Pitch Type' },
+  { key: 'game_year', label: 'Season' },
+  { key: 'stand', label: 'Batter Side' },
+  { key: 'count', label: 'Count' },
+  { key: 'base_situation', label: 'Situation' },
+]
+
 // ── DATA TABLE ───────────────────────────────────────────────────────────────
-export type TableMode = 'arsenal'|'results'|'splits'|'custom'
-export function TileTable({data,mode='arsenal'}:{data:any[];mode?:TableMode}) {
-  const rows = useMemo(()=>{
-    const types=[...new Set(data.map(d=>d.pitch_name).filter(Boolean))].sort((a,b)=>{
-      return data.filter(d=>d.pitch_name===b).length - data.filter(d=>d.pitch_name===a).length
+export type TableMode = 'arsenal' | 'results' | 'splits' | 'custom'
+type SortDir = 'asc' | 'desc'
+
+export function TileTable({ data, mode = 'arsenal', columns, groupBy }: { data: any[]; mode?: TableMode; columns?: string[]; groupBy?: string }) {
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+
+  function handleSort(col: string) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('desc') }
+  }
+
+  const { rows, cols } = useMemo(() => {
+    const types = [...new Set(data.map(d => d.pitch_name).filter(Boolean))].sort((a, b) => {
+      return data.filter(d => d.pitch_name === b).length - data.filter(d => d.pitch_name === a).length
     })
-    if(mode==='arsenal') {
-      return types.map(pt=>{
-        const p=data.filter(d=>d.pitch_name===pt)
-        const velos=p.map(d=>d.release_speed).filter(Boolean)
-        const spins=p.map(d=>d.release_spin_rate).filter(Boolean)
-        const hb=p.map(d=>d.pfx_x).filter((v:any)=>v!=null)
-        const vb=p.map(d=>d.pfx_z).filter((v:any)=>v!=null)
-        const sw=p.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')||s.includes('foul_tip')})
-        const wh=p.filter(d=>(d.description||'').toLowerCase().includes('swinging_strike'))
-        const evs=p.map(d=>d.launch_speed).filter(Boolean)
+
+    if (mode === 'custom') {
+      const gbField = groupBy || 'pitch_name'
+      const gbLabel = GROUP_BY_OPTIONS.find(o => o.key === gbField)?.label || gbField
+      const groups = [...new Set(data.map(d => d[gbField]).filter(Boolean))].map(String).sort((a, b) => {
+        return data.filter(d => String(d[gbField]) === b).length - data.filter(d => String(d[gbField]) === a).length
+      })
+      const selectedKeys = columns && columns.length ? columns : ['n', 'pct', 'velo', 'whiff', 'ev']
+      const colDefs: [string, string][] = [['_group', gbLabel], ...selectedKeys.map(k => [k, COL_MAP[k]?.label || k] as [string, string])]
+      const computedRows = groups.map(g => {
+        const p = data.filter(d => String(d[gbField]) === g)
+        const row: Record<string, any> = { _group: g }
+        selectedKeys.forEach(k => {
+          const def = COL_MAP[k]
+          row[k] = def ? def.compute(p, data) : null
+        })
+        return row
+      })
+      return { rows: computedRows, cols: colDefs }
+    }
+
+    if (mode === 'arsenal') {
+      const computedRows = types.map(pt => {
+        const p = data.filter(d => d.pitch_name === pt)
+        const velos = p.map(d => d.release_speed).filter(Boolean)
+        const spins = p.map(d => d.release_spin_rate).filter(Boolean)
+        const hb = p.map(d => d.pfx_x).filter((v: any) => v != null)
+        const vb = p.map(d => d.pfx_z).filter((v: any) => v != null)
+        const sw = swings(p)
+        const wh = whiffs(p)
+        const evs = p.map(d => d.launch_speed).filter(Boolean)
         return {
-          pitch:pt, n:p.length, pct:(100*p.length/data.length).toFixed(1),
-          velo:velos.length?(velos.reduce((a:number,b:number)=>a+b,0)/velos.length).toFixed(1):'—',
-          spin:spins.length?Math.round(spins.reduce((a:number,b:number)=>a+b,0)/spins.length):'—',
-          hb:hb.length?(hb.reduce((a:number,b:number)=>a+b,0)/hb.length*12).toFixed(1):'—',
-          ivb:vb.length?(vb.reduce((a:number,b:number)=>a+b,0)/vb.length*12).toFixed(1):'—',
-          whiff:sw.length?(100*wh.length/sw.length).toFixed(1):'—',
-          ev:evs.length?(evs.reduce((a:number,b:number)=>a+b,0)/evs.length).toFixed(1):'—',
+          pitch: pt, n: p.length, pct: 100 * p.length / data.length,
+          velo: velos.length ? velos.reduce((a: number, b: number) => a + b, 0) / velos.length : null,
+          spin: spins.length ? Math.round(spins.reduce((a: number, b: number) => a + b, 0) / spins.length) : null,
+          hb: hb.length ? hb.reduce((a: number, b: number) => a + b, 0) / hb.length * 12 : null,
+          ivb: vb.length ? vb.reduce((a: number, b: number) => a + b, 0) / vb.length * 12 : null,
+          whiff: sw.length ? 100 * wh.length / sw.length : null,
+          ev: evs.length ? evs.reduce((a: number, b: number) => a + b, 0) / evs.length : null,
         }
       })
+      return { rows: computedRows, cols: [['pitch', 'Pitch'], ['n', '#'], ['pct', '%'], ['velo', 'Velo'], ['spin', 'Spin'], ['hb', 'HB'], ['ivb', 'IVB'], ['whiff', 'Whiff%'], ['ev', 'EV']] as [string, string][] }
     }
-    if(mode==='results') {
-      return types.map(pt=>{
-        const p=data.filter(d=>d.pitch_name===pt)
-        const ab=p.filter(d=>d.events&&!['walk','hit_by_pitch','sac_fly','sac_bunt'].includes(d.events))
-        const h=ab.filter(d=>['single','double','triple','home_run'].includes(d.events))
-        const xba=p.map(d=>d.estimated_ba_using_speedangle).filter((v:any)=>v!=null)
-        const xw=p.map(d=>d.estimated_woba_using_speedangle).filter((v:any)=>v!=null)
+
+    if (mode === 'results') {
+      const computedRows = types.map(pt => {
+        const p = data.filter(d => d.pitch_name === pt)
+        const ab = p.filter(d => d.events && !['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt'].includes(d.events))
+        const h = ab.filter(d => ['single', 'double', 'triple', 'home_run'].includes(d.events))
+        const xba = p.map(d => d.estimated_ba_using_speedangle).filter((v: any) => v != null)
+        const xw = p.map(d => d.estimated_woba_using_speedangle).filter((v: any) => v != null)
         return {
-          pitch:pt, n:p.length, ba:ab.length?(h.length/ab.length).toFixed(3):'—',
-          xba:xba.length?(xba.reduce((a:number,b:number)=>a+b,0)/xba.length).toFixed(3):'—',
-          xwoba:xw.length?(xw.reduce((a:number,b:number)=>a+b,0)/xw.length).toFixed(3):'—',
+          pitch: pt, n: p.length,
+          ba: ab.length ? h.length / ab.length : null,
+          xba: xba.length ? xba.reduce((a: number, b: number) => a + b, 0) / xba.length : null,
+          xwoba: xw.length ? xw.reduce((a: number, b: number) => a + b, 0) / xw.length : null,
         }
       })
+      return { rows: computedRows, cols: [['pitch', 'Pitch'], ['n', '#'], ['ba', 'BA'], ['xba', 'xBA'], ['xwoba', 'xwOBA']] as [string, string][] }
     }
-    if(mode==='splits') {
-      return ['L','R'].map(side=>{
-        const p=data.filter(d=>d.stand===side)
-        const ab=p.filter(d=>d.events&&!['walk','hit_by_pitch','sac_fly','sac_bunt'].includes(d.events))
-        const h=ab.filter(d=>['single','double','triple','home_run'].includes(d.events))
-        const sw=p.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')||s.includes('foul_tip')})
-        const wh=p.filter(d=>(d.description||'').toLowerCase().includes('swinging_strike'))
-        return { side:'vs '+side+'HH', n:p.length, ba:ab.length?(h.length/ab.length).toFixed(3):'—', whiff:sw.length?(100*wh.length/sw.length).toFixed(1):'—' }
+
+    if (mode === 'splits') {
+      const computedRows = ['L', 'R'].map(side => {
+        const p = data.filter(d => d.stand === side)
+        const ab = p.filter(d => d.events && !['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt'].includes(d.events))
+        const h = ab.filter(d => ['single', 'double', 'triple', 'home_run'].includes(d.events))
+        const sw = swings(p)
+        const wh = whiffs(p)
+        return { side: 'vs ' + side + 'HH', n: p.length, ba: ab.length ? h.length / ab.length : null, whiff: sw.length ? 100 * wh.length / sw.length : null }
       })
+      return { rows: computedRows, cols: [['side', 'Split'], ['n', '#'], ['ba', 'BA'], ['whiff', 'Whiff%']] as [string, string][] }
     }
-    return []
-  },[data,mode])
 
-  if(!rows.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
+    return { rows: [], cols: [] }
+  }, [data, mode, columns, groupBy])
 
-  const cols = mode==='arsenal' ? [['pitch','Pitch'],['n','#'],['pct','%'],['velo','Velo'],['spin','Spin'],['hb','HB'],['ivb','IVB'],['whiff','Whiff%'],['ev','EV']]
-    : mode==='results' ? [['pitch','Pitch'],['n','#'],['ba','BA'],['xba','xBA'],['xwoba','xwOBA']]
-    : [['side','Split'],['n','#'],['ba','BA'],['whiff','Whiff%']]
+  // Sort rows
+  const sortedRows = useMemo(() => {
+    if (!sortCol) return rows
+    return [...rows].sort((a: any, b: any) => {
+      let av = a[sortCol], bv = b[sortCol]
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+      return sortDir === 'asc' ? av - bv : bv - av
+    })
+  }, [rows, sortCol, sortDir])
+
+  if (!sortedRows.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
+
+  // Format cell values
+  function fmtCell(key: string, val: any): string {
+    if (val === null || val === undefined) return '\u2014'
+    // Custom mode: use column def formatter
+    if (mode === 'custom' && COL_MAP[key]) return COL_MAP[key].fmt(val)
+    // Arsenal/results/splits formatting
+    if (key === 'pitch' || key === 'side') return val
+    if (key === 'n') return String(val)
+    if (key === 'pct') return typeof val === 'number' ? val.toFixed(1) : val
+    if (['ba', 'xba', 'xwoba'].includes(key)) return typeof val === 'number' ? val.toFixed(3) : val
+    if (['velo', 'hb', 'ivb', 'ev', 'whiff'].includes(key)) return typeof val === 'number' ? val.toFixed(1) : val
+    if (key === 'spin') return typeof val === 'number' ? String(Math.round(val)) : val
+    return typeof val === 'number' && !Number.isInteger(val) ? val.toFixed(2) : String(val)
+  }
 
   return (
     <div className="flex-1 overflow-auto">
       <table className="w-full text-[10px]">
-        <thead><tr className="bg-zinc-800/50">{cols.map(([k,l])=><th key={k} className="px-2 py-1 text-zinc-400 font-medium text-right first:text-left">{l}</th>)}</tr></thead>
-        <tbody>{rows.map((r:any,i:number)=>(
-          <tr key={i} className="border-t border-zinc-800/30 hover:bg-zinc-800/20">
-            {cols.map(([k])=><td key={k} className="px-2 py-1 font-mono text-zinc-300 text-right first:text-left first:font-sans first:text-white">{r[k]}</td>)}
+        <thead>
+          <tr className="bg-zinc-800/50">
+            {cols.map(([k, l]) => (
+              <th key={k} onClick={() => handleSort(k)}
+                className={`px-2 py-1 font-medium text-right first:text-left cursor-pointer hover:text-zinc-200 transition whitespace-nowrap ${sortCol === k ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                {l} {sortCol === k ? (sortDir === 'desc' ? '\u2193' : '\u2191') : ''}
+              </th>
+            ))}
           </tr>
-        ))}</tbody>
+        </thead>
+        <tbody>
+          {sortedRows.map((r: any, i: number) => (
+            <tr key={i} className="border-t border-zinc-800/30 hover:bg-zinc-800/20">
+              {cols.map(([k]) => (
+                <td key={k} className="px-2 py-1 font-mono text-zinc-300 text-right first:text-left first:font-sans first:text-white">
+                  {fmtCell(k, r[k])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
       </table>
     </div>
   )

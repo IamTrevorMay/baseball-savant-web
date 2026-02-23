@@ -57,13 +57,16 @@ export default function ReportsPage() {
     setStep('choose_subject')
   }
 
-  // Search players
+  // Search players (min 2 chars to avoid timeout on broad queries)
   async function handlePlayerSearch(q: string) {
     setPlayerSearch(q)
-    if (!q.trim()) { setPlayerResults([]); return }
+    if (q.trim().length < 2) { setPlayerResults([]); return }
     const ptype = subjectType === 'hitting' ? 'hitter' : 'pitcher'
-    const { data } = await supabase.rpc('search_all_players', { search_term: q.trim(), player_type: ptype, result_limit: 8 })
-    setPlayerResults(data || [])
+    try {
+      const { data, error } = await supabase.rpc('search_all_players', { search_term: q.trim(), player_type: ptype, result_limit: 8 })
+      if (error) { console.warn('Player search error:', error.message); setPlayerResults([]); return }
+      setPlayerResults(data || [])
+    } catch (e) { console.warn('Player search failed:', e); setPlayerResults([]) }
   }
 
   function selectPlayer(p: any) {
@@ -133,6 +136,18 @@ export default function ReportsPage() {
       if (p.pfx_z != null) p.pfx_z_in = +(p.pfx_z * 12).toFixed(1)
       if (p.inning_topbot === 'Top') p.vs_team = p.away_team
       else if (p.inning_topbot === 'Bot') p.vs_team = p.home_team
+      // Derived: count
+      if (p.balls != null && p.strikes != null) p.count = `${p.balls}-${p.strikes}`
+      // Derived: base situation
+      const r1 = p.on_1b != null, r2 = p.on_2b != null, r3 = p.on_3b != null
+      if (!r1 && !r2 && !r3) p.base_situation = 'Bases Empty'
+      else if (r1 && !r2 && !r3) p.base_situation = 'Runner on 1st'
+      else if (!r1 && r2 && !r3) p.base_situation = 'Runner on 2nd'
+      else if (!r1 && !r2 && r3) p.base_situation = 'Runner on 3rd'
+      else if (r1 && r2 && !r3) p.base_situation = 'Runners 1st & 2nd'
+      else if (r1 && !r2 && r3) p.base_situation = 'Runners 1st & 3rd'
+      else if (!r1 && r2 && r3) p.base_situation = 'Runners 2nd & 3rd'
+      else if (r1 && r2 && r3) p.base_situation = 'Bases Loaded'
     })
   }
 
