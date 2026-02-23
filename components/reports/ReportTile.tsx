@@ -39,6 +39,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   const [filterSearch, setFilterSearch] = useState('')
   const [showTileFilters, setShowTileFilters] = useState(false)
   const [showColPicker, setShowColPicker] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const colPickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -77,9 +78,27 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col h-full min-h-[200px] overflow-hidden">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col h-full min-h-[200px] overflow-hidden relative group/tile">
+      {/* Delete Confirmation Overlay */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 bg-zinc-950/80 z-50 flex flex-col items-center justify-center rounded-lg backdrop-blur-sm">
+          <p className="text-sm text-white font-medium mb-4">Delete this tile?</p>
+          <div className="flex gap-3">
+            <button onClick={() => { onRemove(); setShowDeleteConfirm(false) }}
+              className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-medium rounded transition">Delete</button>
+            <button onClick={() => setShowDeleteConfirm(false)}
+              className="px-4 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded transition">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* Tile Header */}
       <div className="flex items-center px-2 py-1 border-b border-zinc-800 bg-zinc-800/30 flex-shrink-0 relative">
+        {/* Delete X button */}
+        <button onClick={() => setShowDeleteConfirm(true)}
+          className="absolute left-1 top-1 w-4 h-4 flex items-center justify-center rounded-full bg-zinc-700/80 text-zinc-400 hover:bg-red-600 hover:text-white opacity-0 group-hover/tile:opacity-100 transition-all text-[10px] leading-none z-10">
+          &times;
+        </button>
         <div className="flex-1 flex flex-col items-center">
           <input type="text" value={config.title || ""} onChange={e => onUpdate({ ...config, title: e.target.value })}
             placeholder={config.viz.replace("_", " ")} className="bg-transparent text-[11px] text-white font-medium text-center w-full focus:outline-none placeholder-zinc-500" />

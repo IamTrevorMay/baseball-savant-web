@@ -1,5 +1,6 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import FilterEngine, { ActiveFilter, applyFiltersToData } from '@/components/FilterEngine'
 import ReportTile, { TileConfig, defaultTile } from '@/components/reports/ReportTile'
@@ -21,7 +22,7 @@ function defaultTiles(): TileConfig[] {
   ]
 }
 
-export default function ReportsPage() {
+function ReportsPageInner() {
   // Wizard state
   const [step, setStep] = useState<Step>('choose_scope')
   const [scope, setScope] = useState<Scope | null>(null)
@@ -45,6 +46,15 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false)
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [columns, setColumns] = useState(4)
+  const [exporting, setExporting] = useState(false)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const searchParams = useSearchParams()
+
+  // Save/Load template state
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [templateName, setTemplateName] = useState('')
+  const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
+  const [saving, setSaving] = useState(false)
 
   // Scope selection
   function chooseScope(s: Scope) {
@@ -179,6 +189,93 @@ export default function ReportsPage() {
   function updateTile(id: string, config: TileConfig) { setTiles(t => t.map(tile => tile.id === id ? config : tile)) }
   function removeTile(id: string) { setTiles(t => t.filter(tile => tile.id !== id)) }
   function addTile() { if (tiles.length < 16) setTiles(t => [...t, defaultTile('t' + Date.now())]) }
+
+  // PDF Export
+  async function exportPDF() {
+    if (!gridRef.current || exporting) return
+    setExporting(true)
+    try {
+      const html2canvas = (await import('html2canvas-pro')).default
+      const { jsPDF } = await import('jspdf')
+      const canvas = await html2canvas(gridRef.current, { backgroundColor: '#09090b', scale: 2 })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      // Header
+      pdf.setFontSize(14)
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFillColor(9, 9, 11)
+      pdf.rect(0, 0, pageW, pageH, 'F')
+      pdf.text(currentPlayerName || 'Report', 10, 12)
+      pdf.setFontSize(8)
+      pdf.setTextColor(150, 150, 150)
+      pdf.text(`${subjectType || ''} · ${filteredData.length.toLocaleString()} pitches · Triton`, 10, 18)
+      // Tile grid image
+      const marginTop = 22
+      const availH = pageH - marginTop - 5
+      const ratio = canvas.width / canvas.height
+      let imgW = pageW - 10
+      let imgH = imgW / ratio
+      if (imgH > availH) { imgH = availH; imgW = imgH * ratio }
+      pdf.addImage(imgData, 'PNG', 5, marginTop, imgW, imgH)
+      pdf.save(`${(currentPlayerName || 'report').replace(/\s+/g, '_')}_report.pdf`)
+    } catch (e) { console.error('PDF export failed:', e) }
+    setExporting(false)
+  }
+
+  // Load templates list
+  async function loadTemplates() {
+    const { data } = await supabase.from('report_templates').select('id, name').order('created_at', { ascending: false })
+    if (data) setTemplates(data)
+  }
+
+  // Save template
+  async function saveTemplate() {
+    if (!templateName.trim() || saving) return
+    setSaving(true)
+    await supabase.from('report_templates').upsert({
+      name: templateName.trim(),
+      scope: scope || 'player',
+      subject_type: subjectType || 'pitching',
+      tiles_config: tiles,
+      global_filters: globalFilters,
+      columns,
+    }, { onConflict: 'name' })
+    setShowSaveModal(false)
+    setTemplateName('')
+    setSaving(false)
+    loadTemplates()
+  }
+
+  // Load template
+  async function loadTemplate(id: string) {
+    const { data } = await supabase.from('report_templates').select('*').eq('id', id).single()
+    if (data) {
+      setTiles(data.tiles_config || defaultTiles())
+      setGlobalFilters(data.global_filters || [])
+      setColumns(data.columns || 4)
+    }
+  }
+
+  // Handle query params for "Generate Report" from player page
+  useEffect(() => {
+    const playerId = searchParams.get('playerId')
+    const playerName = searchParams.get('playerName')
+    const type = searchParams.get('type') as SubjectType | null
+    if (playerId && playerName) {
+      setScope('player')
+      setSubjectType(type || 'pitching')
+      setSelectedPlayer({ id: Number(playerId), name: playerName })
+      setTiles(defaultTiles())
+      setGlobalFilters([])
+      loadPlayerData(Number(playerId))
+      setStep('report')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load templates on mount
+  useEffect(() => { loadTemplates() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function goBack() {
     if (step === 'report') setStep('choose_subject')
@@ -333,6 +430,23 @@ export default function ReportsPage() {
                 ))}
               </div>
 
+              {/* Save/Load/Export */}
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setShowSaveModal(true)}
+                  className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition">Save</button>
+                {templates.length > 0 && (
+                  <select defaultValue="" onChange={e => { if (e.target.value) loadTemplate(e.target.value); e.target.value = '' }}
+                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-400 focus:outline-none">
+                    <option value="" disabled>Load...</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                )}
+                <button onClick={exportPDF} disabled={exporting}
+                  className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded text-[11px] text-white font-medium transition disabled:opacity-50">
+                  {exporting ? 'Exporting...' : 'Export PDF'}
+                </button>
+              </div>
+
               {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
               <span className="text-[11px] text-zinc-600">{filteredData.length.toLocaleString()} pitches</span>
             </div>
@@ -341,9 +455,30 @@ export default function ReportsPage() {
           {/* Global Filters */}
           <FilterEngine activeFilters={globalFilters} onFiltersChange={setGlobalFilters} optionsCache={optionsCache} />
 
+          {/* Save Template Modal */}
+          {showSaveModal && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowSaveModal(false)}>
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80" onClick={e => e.stopPropagation()}>
+                <h3 className="text-sm font-semibold text-white mb-3">Save Report Template</h3>
+                <input type="text" value={templateName} onChange={e => setTemplateName(e.target.value)}
+                  placeholder="Template name..." autoFocus
+                  onKeyDown={e => e.key === 'Enter' && saveTemplate()}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-zinc-500 focus:border-emerald-600 focus:outline-none mb-4" />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowSaveModal(false)}
+                    className="px-3 py-1.5 bg-zinc-800 text-zinc-400 rounded text-xs hover:text-white transition">Cancel</button>
+                  <button onClick={saveTemplate} disabled={!templateName.trim() || saving}
+                    className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-500 transition disabled:opacity-50">
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Tile Grid */}
           <div className="max-w-[95vw] mx-auto px-6 py-4">
-            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+            <div ref={gridRef} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
               {tiles.map(tile => (
                 <div key={tile.id} style={{ minHeight: columns === 1 ? 350 : columns === 2 ? 300 : 250 }}>
                   <ReportTile
@@ -366,5 +501,13 @@ export default function ReportsPage() {
         </>
       )}
     </div>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950" />}>
+      <ReportsPageInner />
+    </Suspense>
   )
 }
