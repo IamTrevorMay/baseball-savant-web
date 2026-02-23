@@ -104,7 +104,7 @@ export default function HitterDashboard() {
 
       while (true) {
         const { data: rows, error } = await supabase
-          .from("pitches").select("*").eq("batter", batterId)
+          .from("pitches").select("game_pk,game_date,game_year,game_type,pitcher,batter,player_name,stand,p_throws,pitch_name,pitch_type,release_speed,effective_speed,release_spin_rate,spin_axis,pfx_x,pfx_z,plate_x,plate_z,zone,type,events,description,bb_type,balls,strikes,outs_when_up,inning,inning_topbot,home_team,away_team,launch_speed,launch_angle,hit_distance_sc,release_extension,arm_angle,release_pos_x,release_pos_z,vx0,vy0,vz0,ax,ay,az,bat_speed,swing_length,estimated_ba_using_speedangle,estimated_woba_using_speedangle,estimated_slg_using_speedangle,woba_value,delta_run_exp,at_bat_number,home_score,away_score,n_thruorder_pitcher,if_fielding_alignment,of_fielding_alignment,on_1b,on_2b,on_3b,hc_x,hc_y").eq("batter", batterId)
           .order("game_date", { ascending: false })
           .range(from, from + pageSize - 1)
         if (error) { console.error("Fetch error:", error.message); break }
