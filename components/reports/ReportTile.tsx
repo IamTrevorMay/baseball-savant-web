@@ -1,0 +1,220 @@
+'use client'
+import { useState } from 'react'
+import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable } from './TileViz'
+import type { MetricKey, ScatterMode, BarMetric, TableMode } from './TileViz'
+import { applyFiltersToData, FILTER_CATALOG, type ActiveFilter, type FilterDef } from '../FilterEngine'
+
+export type VizType = 'heatmap'|'scatter'|'bar'|'strike_zone'|'table'|'empty'
+
+export interface TileConfig {
+  id: string
+  viz: VizType
+  metric?: MetricKey
+  scatterMode?: ScatterMode
+  barMetric?: BarMetric
+  tableMode?: TableMode
+  title?: string
+  filters: ActiveFilter[]
+}
+
+export function defaultTile(id: string): TileConfig {
+  return { id, viz: 'empty', filters: [] }
+}
+
+interface Props {
+  config: TileConfig
+  data: any[]
+  optionsCache: Record<string, string[]>
+  onUpdate: (config: TileConfig) => void
+  onRemove: () => void
+}
+
+export default function ReportTile({ config, data, optionsCache, onUpdate, onRemove }: Props) {
+  const [showConfig, setShowConfig] = useState(config.viz === 'empty')
+  const [filterSearch, setFilterSearch] = useState('')
+  const [showTileFilters, setShowTileFilters] = useState(false)
+
+  // Apply tile-level filters
+  const filtered = config.filters.length > 0 ? applyFiltersToData(data, config.filters) : data
+
+  function setViz(viz: VizType) { onUpdate({ ...config, viz }) }
+
+  if (config.viz === 'empty') {
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col items-center justify-center p-4 h-full min-h-[200px]">
+        <p className="text-[11px] text-zinc-500 mb-3">Choose a visualization</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ['heatmap', 'Heatmap'],
+            ['scatter', 'Scatter'],
+            ['bar', 'Bar Chart'],
+            ['strike_zone', 'Strike Zone'],
+            ['table', 'Data Table'],
+          ].map(([k, l]) => (
+            <button key={k} onClick={() => setViz(k as VizType)}
+              className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col h-full min-h-[200px] overflow-hidden">
+      {/* Tile Header */}
+      <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800 bg-zinc-800/30 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <input type="text" value={config.title || ''} onChange={e => onUpdate({ ...config, title: e.target.value })}
+            placeholder={config.viz.replace('_', ' ')} className="bg-transparent text-[11px] text-white font-medium w-24 focus:outline-none placeholder-zinc-500" />
+          <span className="text-[9px] text-zinc-600">({filtered.length})</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowConfig(!showConfig)} className="text-zinc-500 hover:text-zinc-300 transition">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v1m0 16v1m-7.07-2.93l.71.71M5.64 5.64l-.71-.71M3 12h1m16 0h1m-2.93 7.07l-.71-.71M18.36 5.64l.71-.71M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          </button>
+          <button onClick={onRemove} className="text-zinc-600 hover:text-red-400 transition text-sm">&times;</button>
+        </div>
+      </div>
+
+      {/* Config Panel */}
+      {showConfig && (
+        <div className="px-2 py-1.5 border-b border-zinc-800 bg-zinc-800/20 space-y-1.5 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-zinc-500">Viz:</span>
+            {['heatmap','scatter','bar','strike_zone','table'].map(v => (
+              <button key={v} onClick={() => setViz(v as VizType)}
+                className={`px-1.5 py-0.5 rounded text-[10px] transition ${config.viz === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                {v.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+
+          {config.viz === 'heatmap' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500">Metric:</span>
+              <select value={config.metric || 'frequency'} onChange={e => onUpdate({ ...config, metric: e.target.value as MetricKey })}
+                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+                {(['frequency','ba','slg','woba','xba','xwoba','xslg','ev','la','whiff_pct'] as MetricKey[]).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {config.viz === 'scatter' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500">Mode:</span>
+              {(['location','movement','ev_la'] as ScatterMode[]).map(m => (
+                <button key={m} onClick={() => onUpdate({ ...config, scatterMode: m })}
+                  className={`px-1.5 py-0.5 rounded text-[10px] transition ${(config.scatterMode||'location')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
+                  {m === 'ev_la' ? 'EV/LA' : m}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {config.viz === 'bar' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500">Metric:</span>
+              <select value={config.barMetric || 'usage'} onChange={e => onUpdate({ ...config, barMetric: e.target.value as BarMetric })}
+                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+                {(['usage','whiff','velo','spin','csw','zone','chase','ev','xwoba'] as BarMetric[]).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {config.viz === 'table' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-zinc-500">View:</span>
+              {(['arsenal','results','splits'] as TableMode[]).map(m => (
+                <button key={m} onClick={() => onUpdate({ ...config, tableMode: m })}
+                  className={`px-1.5 py-0.5 rounded text-[10px] transition ${(config.tableMode||'arsenal')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Tile Filters */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-zinc-500">Filters:</span>
+            {config.filters.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded text-[9px] text-emerald-300">
+                {f.def.label}: {f.values?.join(", ") || `${f.min||""}u2013${f.max||""}`}
+                <span onClick={() => onUpdate({ ...config, filters: config.filters.filter((_, idx) => idx !== i) })} className="cursor-pointer hover:text-red-400">u00d7</span>
+              </span>
+            ))}
+            <div className="relative">
+              <input type="text" value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
+                onFocus={() => setShowTileFilters(true)}
+                placeholder="+ filter" className="w-16 px-1 py-0.5 bg-transparent border border-zinc-700 rounded text-[9px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:w-28 transition-all" />
+              {showTileFilters && (() => {
+                const activeKeys = new Set(config.filters.map(f => f.def.key))
+                const matches = filterSearch.trim()
+                  ? FILTER_CATALOG.filter(f => !activeKeys.has(f.key) && (f.label.toLowerCase().includes(filterSearch.toLowerCase()) || f.category.toLowerCase().includes(filterSearch.toLowerCase())))
+                  : FILTER_CATALOG.filter(f => !activeKeys.has(f.key)).slice(0, 12)
+                if (!matches.length) return null
+                return (
+                  <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-48 max-h-40 overflow-y-auto">
+                    {matches.map(d => (
+                      <button key={d.key} onClick={() => {
+                        const nf: ActiveFilter = { def: d }
+                        if (d.type === "multi") nf.values = []
+                        if (d.type === "range") { nf.min = ""; nf.max = "" }
+                        onUpdate({ ...config, filters: [...config.filters, nf] })
+                        setFilterSearch(""); setShowTileFilters(false)
+                      }}
+                        className="w-full text-left px-2 py-1 text-[10px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+                        {d.label} <span className="text-zinc-600">{d.type === "multi" ? "select" : "range"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+
+          {/* Expanded tile filter editors */}
+          {config.filters.map((f, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="text-[9px] text-zinc-500 w-14 truncate">{f.def.label}:</span>
+              {f.def.type === "multi" && (
+                <div className="flex flex-wrap gap-0.5 flex-1">
+                  {(optionsCache[f.def.key] || []).slice(0, 20).map(opt => (
+                    <button key={opt} onClick={() => {
+                      const vals = f.values || []
+                      const nv = vals.includes(opt) ? vals.filter(v => v !== opt) : [...vals, opt]
+                      const nf = [...config.filters]; nf[i] = { ...f, values: nv }; onUpdate({ ...config, filters: nf })
+                    }}
+                      className={`px-1 py-0 rounded text-[9px] transition ${f.values?.includes(opt) ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"}`}>{opt}</button>
+                  ))}
+                </div>
+              )}
+              {f.def.type === "range" && (
+                <div className="flex gap-1">
+                  <input type="number" value={f.min||""} onChange={e => { const nf=[...config.filters]; nf[i]={...f, min:e.target.value}; onUpdate({...config, filters:nf}) }}
+                    placeholder="Min" className="w-14 px-1 py-0.5 bg-zinc-900 border border-zinc-600 rounded text-[9px] text-white placeholder-zinc-600 focus:outline-none" />
+                  <input type="number" value={f.max||""} onChange={e => { const nf=[...config.filters]; nf[i]={...f, max:e.target.value}; onUpdate({...config, filters:nf}) }}
+                    placeholder="Max" className="w-14 px-1 py-0.5 bg-zinc-900 border border-zinc-600 rounded text-[9px] text-white placeholder-zinc-600 focus:outline-none" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Visualization */}
+      <div className="flex-1 p-1 min-h-0">
+        {config.viz === 'heatmap' && <TileHeatmap data={filtered} metric={config.metric || 'frequency'} />}
+        {config.viz === 'scatter' && <TileScatter data={filtered} mode={config.scatterMode || 'location'} />}
+        {config.viz === 'bar' && <TileBar data={filtered} metric={config.barMetric || 'usage'} />}
+        {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} />}
+        {config.viz === 'table' && <TileTable data={filtered} mode={config.tableMode || 'arsenal'} />}
+      </div>
+    </div>
+  )
+}

@@ -12,7 +12,7 @@ export interface FilterDef {
   dbColumn?: string            // if different from key
 }
 
-const FILTER_CATALOG: FilterDef[] = [
+export const FILTER_CATALOG: FilterDef[] = [
   // Situational
   { key: 'game_year', label: 'Season', category: 'Situational', type: 'multi', numberCast: true },
   { key: 'pitch_name', label: 'Pitch Type', category: 'Pitch', type: 'multi' },
