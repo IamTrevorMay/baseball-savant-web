@@ -62,8 +62,8 @@ export default function HittersPage() {
     }, 200)
   }
 
-  function goToHitter(batter: number, name: string) {
-    router.push(`/reports?playerId=${batter}&playerName=${encodeURIComponent(name)}&type=hitting`)
+  function goToHitter(batter: number) {
+    router.push(`/hitter/${batter}`)
   }
 
   return (
@@ -108,7 +108,7 @@ export default function HittersPage() {
           {results.length > 0 && query && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl z-50">
               {results.map(p => (
-                <div key={p.batter} onClick={() => goToHitter(p.batter, p.player_name)}
+                <div key={p.batter} onClick={() => goToHitter(p.batter)}
                   className="px-4 py-3 flex items-center justify-between hover:bg-zinc-800 cursor-pointer transition border-b border-zinc-800 last:border-0">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
@@ -136,7 +136,7 @@ export default function HittersPage() {
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">Most Data Available</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {topHitters.map(p => (
-            <div key={p.batter} onClick={() => goToHitter(p.batter, p.player_name)}
+            <div key={p.batter} onClick={() => goToHitter(p.batter)}
               className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer transition group">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
