@@ -3,15 +3,15 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
-interface PlayerResult {
+interface HitterResult {
   player_name: string
-  pitcher: number
+  batter: number
   total_pitches: number
   games: number
   last_date: string
-  avg_velo: number
+  avg_exit_velo: number
   team: string
-  pitch_types: string[]
+  bats: string
   latest_season: number
 }
 
@@ -25,29 +25,29 @@ const TEAM_COLORS: Record<string, string> = {
   WSH:'#AB0003',
 }
 
-export default function PitchersPage() {
+export default function HittersPage() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<PlayerResult[]>([])
+  const [results, setResults] = useState<HitterResult[]>([])
   const [loading, setLoading] = useState(false)
-  const [recentPlayers, setRecentPlayers] = useState<PlayerResult[]>([])
-  const [dbInfo, setDbInfo] = useState({ total: 0, pitchers: 0, lastDate: '' })
+  const [topHitters, setTopHitters] = useState<HitterResult[]>([])
+  const [dbInfo, setDbInfo] = useState({ total: 0, lastDate: '' })
   const router = useRouter()
   const debounceRef = useRef<NodeJS.Timeout>(null)
 
   useEffect(() => {
     loadDbInfo()
-    loadTopPitchers()
+    loadTopHitters()
   }, [])
 
   async function loadDbInfo() {
     const { count } = await supabase.from('pitches').select('*', { count: 'exact', head: true })
     const { data: ld } = await supabase.from('pitches').select('game_date').order('game_date', { ascending: false }).limit(1)
-    setDbInfo({ total: count || 0, pitchers: 0, lastDate: ld?.[0]?.game_date || '' })
+    setDbInfo({ total: count || 0, lastDate: ld?.[0]?.game_date || '' })
   }
 
-  async function loadTopPitchers() {
-    const { data } = await supabase.rpc('search_players', { search_term: '', result_limit: 12 })
-    if (data) setRecentPlayers(data)
+  async function loadTopHitters() {
+    const { data } = await supabase.rpc('search_batters', { search_term: '', result_limit: 12 })
+    if (data) setTopHitters(data)
   }
 
   function handleSearch(value: string) {
@@ -56,14 +56,14 @@ export default function PitchersPage() {
     if (!value.trim()) { setResults([]); return }
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
-      const { data } = await supabase.rpc('search_players', { search_term: value.trim(), result_limit: 8 })
+      const { data } = await supabase.rpc('search_batters', { search_term: value.trim(), result_limit: 8 })
       setResults(data || [])
       setLoading(false)
     }, 200)
   }
 
-  function goToPlayer(pitcher: number) {
-    router.push(`/player/${pitcher}`)
+  function goToHitter(batter: number, name: string) {
+    router.push(`/reports?playerId=${batter}&playerName=${encodeURIComponent(name)}&type=hitting`)
   }
 
   return (
@@ -74,8 +74,8 @@ export default function PitchersPage() {
           <a href="/" className="font-bold text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Triton</a>
           <div className="flex gap-4 text-xs text-zinc-500">
             <a href="/" className="hover:text-zinc-300 transition">Home</a>
-            <a href="/pitchers" className="text-emerald-400">Pitchers</a>
-            <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
+            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
+            <a href="/hitters" className="text-emerald-400">Hitters</a>
             <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
             <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
             <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
@@ -86,8 +86,8 @@ export default function PitchersPage() {
 
       {/* Hero */}
       <div className="flex flex-col items-center justify-center pt-24 pb-16 px-4">
-        <h1 className="text-4xl font-bold text-white mb-2">Pitcher Search</h1>
-        <p className="text-zinc-500 mb-10 text-sm">Search any pitcher to view their complete Statcast dashboard</p>
+        <h1 className="text-4xl font-bold text-white mb-2">Hitter Search</h1>
+        <p className="text-zinc-500 mb-10 text-sm">Search any hitter to view their complete Statcast dashboard</p>
 
         {/* Search */}
         <div className="w-full max-w-xl relative">
@@ -97,7 +97,7 @@ export default function PitchersPage() {
             </svg>
             <input
               type="text" value={query} onChange={e => handleSearch(e.target.value)}
-              placeholder="Search for a pitcher..."
+              placeholder="Search for a hitter..."
               autoFocus
               className="w-full pl-12 pr-4 py-4 bg-zinc-900 border border-zinc-700 rounded-xl text-white text-lg placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600/50 transition"
             />
@@ -108,7 +108,7 @@ export default function PitchersPage() {
           {results.length > 0 && query && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl z-50">
               {results.map(p => (
-                <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher)}
+                <div key={p.batter} onClick={() => goToHitter(p.batter, p.player_name)}
                   className="px-4 py-3 flex items-center justify-between hover:bg-zinc-800 cursor-pointer transition border-b border-zinc-800 last:border-0">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
@@ -117,12 +117,12 @@ export default function PitchersPage() {
                     </div>
                     <div>
                       <div className="text-white font-medium text-sm">{p.player_name}</div>
-                      <div className="text-zinc-500 text-xs">{p.pitch_types?.slice(0, 4).join(', ')}{p.pitch_types?.length > 4 ? ` +${p.pitch_types.length - 4}` : ''}</div>
+                      <div className="text-zinc-500 text-xs">Bats {p.bats}</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-zinc-400">{p.avg_velo} mph avg</div>
-                    <div className="text-[11px] text-zinc-600">{p.total_pitches.toLocaleString()} pitches</div>
+                    <div className="text-xs text-zinc-400">{p.avg_exit_velo} mph EV</div>
+                    <div className="text-[11px] text-zinc-600">{p.total_pitches.toLocaleString()} pitches seen</div>
                   </div>
                 </div>
               ))}
@@ -131,12 +131,12 @@ export default function PitchersPage() {
         </div>
       </div>
 
-      {/* Top Pitchers Grid */}
+      {/* Top Hitters Grid */}
       <div className="max-w-5xl mx-auto px-6 pb-20">
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">Most Data Available</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {recentPlayers.map(p => (
-            <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher)}
+          {topHitters.map(p => (
+            <div key={p.batter} onClick={() => goToHitter(p.batter, p.player_name)}
               className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer transition group">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
@@ -146,10 +146,10 @@ export default function PitchersPage() {
                 <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition">{p.player_name}</span>
               </div>
               <div className="flex justify-between text-[11px] text-zinc-500">
-                <span>{p.avg_velo} mph</span>
+                <span>{p.avg_exit_velo} mph EV</span>
                 <span>{p.games.toLocaleString()} G</span>
               </div>
-              <div className="text-[11px] text-zinc-600 mt-1">{p.total_pitches.toLocaleString()} pitches</div>
+              <div className="text-[11px] text-zinc-600 mt-1">{p.total_pitches.toLocaleString()} pitches seen</div>
             </div>
           ))}
         </div>
