@@ -395,8 +395,9 @@ export default function ExplorePage() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches · through {dbInfo.lastDate}</span>
-          <a href="/standings" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Standings</a>
-          <a href="/" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Pitchers</a>
+          <a href="/" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Home</a>
+          <a href="/pitchers" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Pitchers</a>
+          <a href="/reports" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Reports</a>
           <a href="/analyst" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Analyst</a>
           <button onClick={runUpdate} disabled={updating} className="text-[11px] text-zinc-500 hover:text-emerald-400 transition disabled:text-zinc-700">{updating ? "Updating..." : "Update Data"}</button>
           {updateMsg && <span className="text-[11px] text-emerald-400">{updateMsg}</span>}

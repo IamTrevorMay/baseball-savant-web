@@ -195,8 +195,8 @@ export default function ReportsPage() {
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6 gap-6">
         <a href="/" className="font-bold text-emerald-400 text-sm hover:text-emerald-300 transition">Triton</a>
         <div className="flex gap-4 text-xs text-zinc-500">
-          <a href="/standings" className="hover:text-zinc-300 transition">Standings</a>
-          <a href="/" className="hover:text-zinc-300 transition">Pitchers</a>
+          <a href="/" className="hover:text-zinc-300 transition">Home</a>
+          <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
           <a href="/reports" className="text-emerald-400">Reports</a>
           <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
           <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>

@@ -186,6 +186,8 @@ export default function AnalystPage() {
           <a href="/" className="font-bold text-emerald-400 text-sm hover:text-emerald-300 transition">Triton</a>
           <div className="flex gap-4 text-xs text-zinc-500">
             <a href="/" className="hover:text-zinc-300 transition">Home</a>
+            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
+            <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
             <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
             <a href="/analyst" className="text-emerald-400">Analyst</a>
           </div>

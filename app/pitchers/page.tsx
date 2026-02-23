@@ -1,0 +1,158 @@
+'use client'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+
+interface PlayerResult {
+  player_name: string
+  pitcher: number
+  total_pitches: number
+  games: number
+  last_date: string
+  avg_velo: number
+  team: string
+  pitch_types: string[]
+  latest_season: number
+}
+
+const TEAM_COLORS: Record<string, string> = {
+  ARI:'#A71930',ATH:'#003831',ATL:'#CE1141',BAL:'#DF4601',BOS:'#BD3039',
+  CHC:'#0E3386',CIN:'#C6011F',CLE:'#00385D',COL:'#333366',CWS:'#27251F',
+  DET:'#0C2340',HOU:'#002D62',KC:'#004687',LAA:'#BA0021',LAD:'#005A9C',
+  MIA:'#00A3E0',MIL:'#FFC52F',MIN:'#002B5C',NYM:'#002D72',NYY:'#003087',
+  OAK:'#003831',PHI:'#E81828',PIT:'#27251F',SD:'#2F241D',SEA:'#0C2C56',
+  SF:'#FD5A1E',STL:'#C41E3A',TB:'#092C5C',TEX:'#003278',TOR:'#134A8E',
+  WSH:'#AB0003',
+}
+
+export default function PitchersPage() {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<PlayerResult[]>([])
+  const [loading, setLoading] = useState(false)
+  const [recentPlayers, setRecentPlayers] = useState<PlayerResult[]>([])
+  const [dbInfo, setDbInfo] = useState({ total: 0, pitchers: 0, lastDate: '' })
+  const router = useRouter()
+  const debounceRef = useRef<NodeJS.Timeout>(null)
+
+  useEffect(() => {
+    loadDbInfo()
+    loadTopPitchers()
+  }, [])
+
+  async function loadDbInfo() {
+    const { count } = await supabase.from('pitches').select('*', { count: 'exact', head: true })
+    const { data: ld } = await supabase.from('pitches').select('game_date').order('game_date', { ascending: false }).limit(1)
+    setDbInfo({ total: count || 0, pitchers: 0, lastDate: ld?.[0]?.game_date || '' })
+  }
+
+  async function loadTopPitchers() {
+    const { data } = await supabase.rpc('search_players', { search_term: '', result_limit: 12 })
+    if (data) setRecentPlayers(data)
+  }
+
+  function handleSearch(value: string) {
+    setQuery(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!value.trim()) { setResults([]); return }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true)
+      const { data } = await supabase.rpc('search_players', { search_term: value.trim(), result_limit: 8 })
+      setResults(data || [])
+      setLoading(false)
+    }, 200)
+  }
+
+  function goToPlayer(pitcher: number) {
+    router.push(`/player/${pitcher}`)
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-200">
+      {/* Nav */}
+      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-6">
+        <div className="flex items-center gap-6">
+          <a href="/" className="font-bold text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Triton</a>
+          <div className="flex gap-4 text-xs text-zinc-500">
+            <a href="/" className="hover:text-zinc-300 transition">Home</a>
+            <a href="/pitchers" className="text-emerald-400">Pitchers</a>
+            <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
+            <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
+            <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
+          </div>
+        </div>
+        <span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches</span>
+      </nav>
+
+      {/* Hero */}
+      <div className="flex flex-col items-center justify-center pt-24 pb-16 px-4">
+        <h1 className="text-4xl font-bold text-white mb-2">Pitcher Search</h1>
+        <p className="text-zinc-500 mb-10 text-sm">Search any pitcher to view their complete Statcast dashboard</p>
+
+        {/* Search */}
+        <div className="w-full max-w-xl relative">
+          <div className="relative">
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text" value={query} onChange={e => handleSearch(e.target.value)}
+              placeholder="Search for a pitcher..."
+              autoFocus
+              className="w-full pl-12 pr-4 py-4 bg-zinc-900 border border-zinc-700 rounded-xl text-white text-lg placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600/50 transition"
+            />
+            {loading && <div className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
+          </div>
+
+          {/* Search Results Dropdown */}
+          {results.length > 0 && query && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl z-50">
+              {results.map(p => (
+                <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher)}
+                  className="px-4 py-3 flex items-center justify-between hover:bg-zinc-800 cursor-pointer transition border-b border-zinc-800 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
+                      style={{ backgroundColor: TEAM_COLORS[p.team] || '#52525b' }}>
+                      {p.team}
+                    </div>
+                    <div>
+                      <div className="text-white font-medium text-sm">{p.player_name}</div>
+                      <div className="text-zinc-500 text-xs">{p.pitch_types?.slice(0, 4).join(', ')}{p.pitch_types?.length > 4 ? ` +${p.pitch_types.length - 4}` : ''}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-zinc-400">{p.avg_velo} mph avg</div>
+                    <div className="text-[11px] text-zinc-600">{p.total_pitches.toLocaleString()} pitches</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Top Pitchers Grid */}
+      <div className="max-w-5xl mx-auto px-6 pb-20">
+        <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">Most Data Available</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {recentPlayers.map(p => (
+            <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher)}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer transition group">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                  style={{ backgroundColor: TEAM_COLORS[p.team] || '#52525b' }}>
+                  {p.team}
+                </div>
+                <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition">{p.player_name}</span>
+              </div>
+              <div className="flex justify-between text-[11px] text-zinc-500">
+                <span>{p.avg_velo} mph</span>
+                <span>{p.games.toLocaleString()} G</span>
+              </div>
+              <div className="text-[11px] text-zinc-600 mt-1">{p.total_pitches.toLocaleString()} pitches</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
