@@ -68,15 +68,32 @@ export function TileHeatmap({data,metric='frequency'}:{data:any[];metric?:Metric
   const f = data.filter(d=>d.plate_x!=null&&d.plate_z!=null)
   if(f.length<5) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">Not enough data</div>
   let trace: any
-  if(metric==='frequency') {
-    trace = {x:f.map(d=>d.plate_x),y:f.map(d=>d.plate_z),type:'histogram2dcontour',colorscale:SPECTRUM,ncontours:20,contours:{coloring:'heatmap'},line:{width:0},showscale:false,hovertemplate:'%{z:.0f} pitches<extra></extra>'}
+  if(metric==="frequency") {
+    trace = {x:f.map(d=>d.plate_x),y:f.map(d=>d.plate_z),type:"histogram2dcontour",colorscale:SPECTRUM,ncontours:25,contours:{coloring:"heatmap"},line:{width:0},showscale:false,hovertemplate:"%{z:.0f} pitches<extra></extra>"}
   } else {
-    const nb=12,xR=[-2.2,2.2],yR=[-0.2,4.5],xS=(xR[1]-xR[0])/nb,yS=(yR[1]-yR[0])/nb
+    const nb=16,xR=[-2.2,2.2],yR=[-0.2,4.5],xS=(xR[1]-xR[0])/nb,yS=(yR[1]-yR[0])/nb
     const bins:any[][][]=Array.from({length:nb},()=>Array.from({length:nb},()=>[]))
-    f.forEach(d=>{const xi=Math.min(Math.floor((d.plate_x-xR[0])/xS),nb-1),yi=Math.min(Math.floor((d.plate_z-yR[0])/yS),nb-1);if(xi>=0&&yi>=0) bins[yi][xi].push(d)})
-    trace={x:Array.from({length:nb},(_,i)=>xR[0]+(i+.5)*xS),y:Array.from({length:nb},(_,i)=>yR[0]+(i+.5)*yS),z:bins.map(row=>row.map(cell=>calcMetric(cell,metric))),type:'heatmap',colorscale:SPECTRUM,showscale:false,zsmooth:'best',hoverongaps:false,hovertemplate:`${METRIC_LABELS[metric]}: %{z:.3f}<extra></extra>`}
+    f.forEach(d=>{const xi=Math.min(Math.max(Math.floor((d.plate_x-xR[0])/xS),0),nb-1),yi=Math.min(Math.max(Math.floor((d.plate_z-yR[0])/yS),0),nb-1);bins[yi][xi].push(d)})
+    const z=bins.map(row=>row.map(cell=>calcMetric(cell,metric)))
+    for(let pass=0;pass<2;pass++){for(let r=0;r<nb;r++){for(let c=0;c<nb;c++){if(z[r][c]===null){const neighbors:number[]=[];for(let dr=-1;dr<=1;dr++){for(let dc=-1;dc<=1;dc++){if(dr===0&&dc===0)continue;const nr=r+dr,nc=c+dc;if(nr>=0&&nr<nb&&nc>=0&&nc<nb&&z[nr][nc]!==null)neighbors.push(z[nr][nc]!)}};if(neighbors.length>=2)z[r][c]=neighbors.reduce((a,b)=>a+b,0)/neighbors.length}}}}
+    trace={x:Array.from({length:nb},(_,i)=>xR[0]+(i+.5)*xS),y:Array.from({length:nb},(_,i)=>yR[0]+(i+.5)*yS),z,type:"heatmap",colorscale:SPECTRUM,showscale:false,zsmooth:"best",connectgaps:true,hoverongaps:false,hovertemplate:`${METRIC_LABELS[metric]}: %{z:.3f}<extra></extra>`}
   }
-  return <Plot data={[trace]} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-2.2,2.2],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[-0.2,4.5],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,autosize:true}} style={{width:'100%',height:'100%'}} />
+  const zVals = metric==="frequency" ? null : (trace.z as (number|null)[][])?.flat().filter((v:any):v is number=>v!==null)
+  const zMin = zVals?.length ? Math.min(...zVals) : 0
+  const zMax = zVals?.length ? Math.max(...zVals) : 1
+  const fmtZ = (v:number) => metric==="frequency" ? String(Math.round(v)) : ["ba","slg","woba","xba","xwoba","xslg"].includes(metric) ? v.toFixed(3) : v.toFixed(1)
+  return (
+    <div className="relative w-full h-full">
+      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-2.2,2.2],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[-0.2,4.5],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:ZONE_SHAPES,autosize:true}} style={{width:"100%",height:"100%"}} />
+      {zVals && zVals.length > 0 && (
+        <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
+          <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMin)}</span>
+          <div className="w-12 h-1.5 rounded-full" style={{background:"linear-gradient(to right, #2166ac, #4ba8c4, #6cc4a0, #c8e64a, #f0e830, #f09015, #9e0000)"}} />
+          <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMax)}</span>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── SCATTER ───────────────────────────────────────────────────────────────────
@@ -94,11 +111,19 @@ export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode
   const yKey = mode==='location'?'plate_z':mode==='movement'?'pfx_z':'launch_angle'
   const xMul = mode==='movement'?12:1
   const yMul = mode==='movement'?12:1
-  const traces = Object.entries(groups).map(([name,pts])=>({
-    x:pts.map(d=>d[xKey]*xMul),y:pts.map(d=>d[yKey]*yMul),
-    type:'scatter' as any,mode:'markers',marker:{size:3,color:getPitchColor(name),opacity:.5},
-    name,hovertemplate:`${name}<br>%{x:.1f}, %{y:.1f}<extra></extra>`,
-  }))
+  const traces = Object.entries(groups).map(([name,pts])=>{
+    const customdata = pts.map(d => [d.player_name || "", d.release_speed ? d.release_speed.toFixed(1) : ""])
+    const hoverTpl = mode==="location"
+      ? `${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>X: %{x:.1f}\"<br>Z: %{y:.1f}\"<extra></extra>`
+      : mode==="movement"
+      ? `${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>HB: %{x:.1f}\"<br>IVB: %{y:.1f}\"<extra></extra>`
+      : `${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>EV: %{x:.1f}<br>LA: %{y:.1f}u00b0<extra></extra>`
+    return {
+      x:pts.map(d=>d[xKey]*xMul),y:pts.map(d=>d[yKey]*yMul),customdata,
+      type:"scatter" as any,mode:"markers",marker:{size:3,color:getPitchColor(name),opacity:.5},
+      name,hovertemplate:hoverTpl,
+    }
+  })
   const xTitle = mode==='location'?'':mode==='movement'?'H Break (in)':'Exit Velo'
   const yTitle = mode==='location'?'':mode==='movement'?'IVB (in)':'Launch Angle'
   const shapes = mode==='location'?ZONE_SHAPES:[]
@@ -141,7 +166,7 @@ export function TileStrikeZone({data}:{data:any[]}) {
     x:pts.map(d=>d.plate_x),y:pts.map(d=>d.plate_z),
     type:'scatter' as any,mode:'markers',
     marker:{size:5,color:getPitchColor(name),opacity:.7,line:{width:.5,color:'rgba(0,0,0,0.3)'}},
-    name,hovertemplate:`${name}<br>X:%{x:.2f} Z:%{y:.2f}<extra></extra>`,
+    name,customdata:pts.map(d=>[d.player_name||"",d.release_speed?d.release_speed.toFixed(1):""]),hovertemplate:`${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>X: %{x:.1f}\"<br>Z: %{y:.1f}\"<extra></extra>`,
   }))
   return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-2.2,2.2],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[-0.2,4.5],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
 }

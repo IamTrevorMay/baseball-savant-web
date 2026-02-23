@@ -98,16 +98,25 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
   const [chipSearch, setChipSearch] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const chipsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false)
       }
+      if (expandedChip) {
+        const target = e.target as HTMLElement
+        const isInsideChip = target.closest("[data-chip-dropdown]")
+        if (!isInsideChip) {
+          setExpandedChip(null)
+          setChipSearch("")
+        }
+      }
     }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [expandedChip])
 
   // Filter catalog by search query, exclude already-active filters
   const activeKeys = new Set(activeFilters.map(f => f.def.key))
@@ -189,7 +198,7 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
     <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-2">
       <div className="max-w-7xl mx-auto">
         {/* Search + Active Chips Row */}
-        <div className="flex items-center gap-2 flex-wrap min-h-[36px]">
+        <div ref={chipsRef} className="flex items-center gap-2 flex-wrap min-h-[36px]">
           {/* Active filter chips */}
           {activeFilters.map(f => {
             const isExpanded = expandedChip === f.def.key
@@ -199,7 +208,7 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
 
             return (
               <div key={f.def.key} className="relative">
-                <button
+                <button data-chip-dropdown
                   onClick={() => { setExpandedChip(isExpanded ? null : f.def.key); setChipSearch("") }}
                   className={`flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-[11px] font-medium border transition ${
                     hasValue
@@ -216,7 +225,7 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
 
                 {/* Expanded chip editor */}
                 {isExpanded && (
-                  <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 min-w-[200px] max-w-[300px] p-2"
+                  <div data-chip-dropdown className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 min-w-[200px] max-w-[300px] p-2"
                     onClick={e => e.stopPropagation()}>
                     {f.def.type === "multi" && (() => {
                       const opts = optionsCache[f.def.key] || []

@@ -74,6 +74,7 @@ export default function StandingsPage() {
           <div className="flex gap-4 text-xs text-zinc-500">
             <a href="/standings" className="text-emerald-400">Standings</a>
             <a href="/" className="hover:text-zinc-300 transition">Pitchers</a>
+            <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
             <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
             <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
           </div>

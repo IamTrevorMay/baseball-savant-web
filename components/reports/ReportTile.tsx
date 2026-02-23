@@ -14,6 +14,7 @@ export interface TileConfig {
   barMetric?: BarMetric
   tableMode?: TableMode
   title?: string
+  subtitle?: string
   filters: ActiveFilter[]
 }
 
@@ -64,17 +65,17 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col h-full min-h-[200px] overflow-hidden">
       {/* Tile Header */}
-      <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800 bg-zinc-800/30 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <input type="text" value={config.title || ''} onChange={e => onUpdate({ ...config, title: e.target.value })}
-            placeholder={config.viz.replace('_', ' ')} className="bg-transparent text-[11px] text-white font-medium w-24 focus:outline-none placeholder-zinc-500" />
-          <span className="text-[9px] text-zinc-600">({filtered.length})</span>
+      <div className="flex items-center px-2 py-1 border-b border-zinc-800 bg-zinc-800/30 flex-shrink-0 relative">
+        <div className="flex-1 flex flex-col items-center">
+          <input type="text" value={config.title || ""} onChange={e => onUpdate({ ...config, title: e.target.value })}
+            placeholder={config.viz.replace("_", " ")} className="bg-transparent text-[11px] text-white font-medium text-center w-full focus:outline-none placeholder-zinc-500" />
+          <input type="text" value={config.subtitle || ""} onChange={e => onUpdate({ ...config, subtitle: e.target.value })}
+            placeholder="subtitle" className="bg-transparent text-[9px] text-zinc-500 text-center w-full focus:outline-none placeholder-zinc-700" />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="absolute right-1 top-1 flex items-center gap-1">
           <button onClick={() => setShowConfig(!showConfig)} className="text-zinc-500 hover:text-zinc-300 transition">
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v1m0 16v1m-7.07-2.93l.71.71M5.64 5.64l-.71-.71M3 12h1m16 0h1m-2.93 7.07l-.71-.71M18.36 5.64l.71-.71M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
           </button>
-          <button onClick={onRemove} className="text-zinc-600 hover:text-red-400 transition text-sm">&times;</button>
         </div>
       </div>
 
@@ -96,8 +97,8 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
               <span className="text-[10px] text-zinc-500">Metric:</span>
               <select value={config.metric || 'frequency'} onChange={e => onUpdate({ ...config, metric: e.target.value as MetricKey })}
                 className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
-                {(['frequency','ba','slg','woba','xba','xwoba','xslg','ev','la','whiff_pct'] as MetricKey[]).map(m => (
-                  <option key={m} value={m}>{m}</option>
+                {([['frequency','Frequency'],['ba','BA'],['slg','SLG'],['woba','wOBA'],['xba','xBA'],['xwoba','xwOBA'],['xslg','xSLG'],['ev','Exit Velo'],['la','Launch Angle'],['whiff_pct','Whiff%']] as [MetricKey,string][]).map(([m,label]) => (
+                  <option key={m} value={m}>{label}</option>
                 ))}
               </select>
             </div>
@@ -120,8 +121,8 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
               <span className="text-[10px] text-zinc-500">Metric:</span>
               <select value={config.barMetric || 'usage'} onChange={e => onUpdate({ ...config, barMetric: e.target.value as BarMetric })}
                 className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
-                {(['usage','whiff','velo','spin','csw','zone','chase','ev','xwoba'] as BarMetric[]).map(m => (
-                  <option key={m} value={m}>{m}</option>
+                {([['usage','Usage%'],['whiff','Whiff%'],['velo','Avg Velo'],['spin','Avg Spin'],['csw','CSW%'],['zone','Zone%'],['chase','Chase%'],['ev','Avg EV'],['xwoba','xwOBA']] as [BarMetric,string][]).map(([m,label]) => (
+                  <option key={m} value={m}>{label}</option>
                 ))}
               </select>
             </div>

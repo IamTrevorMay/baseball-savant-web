@@ -10,36 +10,24 @@ const COLUMNS = 'game_pk,game_date,game_year,game_type,pitcher,batter,player_nam
 
 export async function GET(req: NextRequest) {
   const playerId = req.nextUrl.searchParams.get('id')
-  const col = req.nextUrl.searchParams.get('col') || 'pitcher' // 'pitcher' or 'batter'
-  
+  const col = req.nextUrl.searchParams.get('col') || 'pitcher'
+
   if (!playerId) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   if (col !== 'pitcher' && col !== 'batter') return NextResponse.json({ error: 'Invalid col' }, { status: 400 })
 
-  try {
-    let allRows: any[] = []
-    let from = 0
-    const pageSize = 1000
+  const safeId = parseInt(playerId)
+  if (isNaN(safeId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
 
-    while (true) {
-      const { data: rows, error } = await supabase
-        .from('pitches')
-        .select(COLUMNS)
-        .eq(col, Number(playerId))
-        .order('game_date', { ascending: false })
-        .range(from, from + pageSize - 1)
-      
-      if (error) {
-        console.error('Query error:', error.message)
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-      if (!rows || rows.length === 0) break
-      allRows = allRows.concat(rows)
-      if (rows.length < pageSize) break
-      from += pageSize
-      if (allRows.length >= 50000) break
+  try {
+    const sql = `SELECT ${COLUMNS} FROM pitches WHERE ${col} = ${safeId} ORDER BY game_date DESC LIMIT 50000`
+    const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+
+    if (error) {
+      console.error('Query error:', error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ rows: allRows, count: allRows.length })
+    return NextResponse.json({ rows: data || [], count: data?.length || 0 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

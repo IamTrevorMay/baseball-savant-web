@@ -44,7 +44,7 @@ export default function ReportsPage() {
   const [rawData, setRawData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
-  const [columns, setColumns] = useState(2)
+  const [columns, setColumns] = useState(4)
 
   // Scope selection
   function chooseScope(s: Scope) {
