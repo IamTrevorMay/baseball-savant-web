@@ -4,6 +4,7 @@ import PitchUsage from '../charts/PitchUsage'
 import PitchMovement from '../charts/PitchMovement'
 import VelocityDistribution from '../charts/VelocityDistribution'
 import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
+import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
 
 interface Props { data: any[]; info: any; mlbStats?: any[] }
 
@@ -63,6 +64,8 @@ function calcAdvancedByYear(data: any[]) {
     const pas = pitches.filter(p => p.events).length
     const ks = pitches.filter(p => p.events?.includes('strikeout')).length
     const bbs = pitches.filter(p => p.events?.includes('walk')).length
+    const hrs = pitches.filter(p => p.events === 'home_run').length
+    const hbps = pitches.filter(p => p.events === 'hit_by_pitch').length
 
     const battedBalls = pitches.filter(p => p.launch_speed != null)
     const evs = battedBalls.map(p => p.launch_speed)
@@ -92,6 +95,23 @@ function calcAdvancedByYear(data: any[]) {
 
     const dres = pitches.map(p => p.delta_run_exp).filter((v: any) => v != null)
 
+    // Compute IP from outs (same logic as traditional tab)
+    const outsEvents = pitches.filter(p => p.events && !['walk','hit_by_pitch','single','double','triple','home_run','catcher_interf','sac_bunt','sac_fly_double_play'].includes(p.events) && !p.events.includes('error'))
+    const outsCount = outsEvents.length
+    const ipDecimal = outsCount / 3
+    const ipDisplay = `${Math.floor(outsCount / 3)}.${outsCount % 3}`
+
+    // Expected stats models
+    const seasonStats = {
+      year: Number(year), k: ks, bb: bbs, hbp: hbps, hr: hrs,
+      ip: ipDecimal, fb: fbs, gb: gbs, ld: lds, pu: pus, pa: pas,
+      xwOBA: avg(xwobas),
+    }
+    const fip = calcFIP(seasonStats)
+    const xfip = calcXFIP(seasonStats)
+    const xera = calcXERA(seasonStats)
+    const siera = calcSIERA(seasonStats)
+
     return {
       year: Number(year), pitches: pitches.length,
       kPct: pct(ks, pas), bbPct: pct(bbs, pas), kbbPct: pas > 0 ? ((ks - bbs) / pas * 100).toFixed(1) : '—',
@@ -102,6 +122,8 @@ function calcAdvancedByYear(data: any[]) {
       gbPct: pct(gbs, bbT), fbPct: pct(fbs, bbT), ldPct: pct(lds, bbT), puPct: pct(pus, bbT),
       xBA: f(avg(xbas), 3), xwOBA: f(avg(xwobas), 3), xSLG: f(avg(xslgs), 3),
       wOBA: f(avg(wobas), 3),
+      ip: ipDisplay,
+      fip: f(fip, 2), xfip: f(xfip, 2), xera: f(xera, 2), siera: f(siera, 2),
       totalRE: f(dres.length ? dres.reduce((a: number, b: number) => a + b, 0) : null, 1),
     }
   })
@@ -147,13 +169,17 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","k9","bb9","hr9"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Total"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
     if (vals.length === 0) { totals[c.k] = "—"; return }
     if (pctFields.includes(c.k)) {
-      totals[c.k] = (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(c.k === "ba" || c.k === "obp" || c.k === "slg" || c.k === "xBA" || c.k === "xwOBA" || c.k === "xSLG" || c.k === "wOBA" ? 3 : 1)
+      totals[c.k] = (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(
+        ["ba","obp","slg","xBA","xwOBA","xSLG","wOBA"].includes(c.k) ? 3
+        : ["fip","xfip","xera","siera"].includes(c.k) ? 2
+        : 1
+      )
     } else if (c.k === "ip") {
       const outs = rows.reduce((sum, r) => { const parts = String(r.ip).split("."); return sum + parseInt(parts[0])*3 + parseInt(parts[1]||"0") }, 0)
       totals[c.k] = Math.floor(outs/3) + "." + (outs%3)
@@ -182,7 +208,7 @@ export default function OverviewTab({ data, info, mlbStats = [] }: Props) {
   })
   const mergedAdvRows = advRows.map(r => {
     const mlb = mlbStats.find((s: any) => Number(s.year) === r.year)
-    return { ...r, fip: mlb?.fip ?? "—", k9: mlb?.k9 ?? "—", bb9: mlb?.bb9 ?? "—", hr9: mlb?.hr9 ?? "—" }
+    return { ...r, k9: mlb?.k9 ?? "—", bb9: mlb?.bb9 ?? "—", hr9: mlb?.hr9 ?? "—" }
   })
 
 
@@ -196,15 +222,17 @@ export default function OverviewTab({ data, info, mlbStats = [] }: Props) {
     { k:"pitches", l:"Pitches" },
   ]
   const advCols = [
-    { k:"year", l:"Year" }, { k:"pitches", l:"Pitches" },
+    { k:"year", l:"Year" }, { k:"pitches", l:"Pitches" }, { k:"ip", l:"IP" },
     { k:"kPct", l:"K%" }, { k:"bbPct", l:"BB%" }, { k:"kbbPct", l:"K-BB%" },
     { k:"whiffPct", l:"Whiff%" }, { k:"swStrPct", l:"SwStr%" },
     { k:"csPct", l:"CSt%" }, { k:"zonePct", l:"Zone%" },
     { k:"avgEV", l:"Avg EV" }, { k:"maxEV", l:"Max EV" }, { k:"avgLA", l:"Avg LA" },
     { k:"gbPct", l:"GB%" }, { k:"fbPct", l:"FB%" }, { k:"ldPct", l:"LD%" },
     { k:"xBA", l:"xBA" }, { k:"xwOBA", l:"xwOBA" }, { k:"xSLG", l:"xSLG" },
-    { k:"wOBA", l:"wOBA" }, { k:"fip", l:"FIP" }, { k:"k9", l:"K/9" },
-    { k:"bb9", l:"BB/9" }, { k:"hr9", l:"HR/9" }, { k:"totalRE", l:"RE24" },
+    { k:"wOBA", l:"wOBA" },
+    { k:"fip", l:"FIP" }, { k:"xfip", l:"xFIP" }, { k:"xera", l:"xERA" }, { k:"siera", l:"SIERA" },
+    { k:"k9", l:"K/9" }, { k:"bb9", l:"BB/9" }, { k:"hr9", l:"HR/9" },
+    { k:"totalRE", l:"RE24" },
   ]
   const arsenalCols = [
     { k:'name', l:'Pitch' }, { k:'count', l:'#' }, { k:'usagePct', l:'Usage%' },
@@ -230,6 +258,7 @@ export default function OverviewTab({ data, info, mlbStats = [] }: Props) {
     if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
     if (['avgEV','maxEV','avgLA','gbPct','fbPct','ldPct','puPct'].includes(k)) return 'text-orange-400'
     if (['zonePct'].includes(k)) return 'text-sky-400'
+    if (['fip','xfip','xera','siera'].includes(k)) return 'text-cyan-400'
     if (['totalRE'].includes(k)) return Number(v) < 0 ? 'text-emerald-400' : 'text-red-400'
     return 'text-zinc-300'
   }
