@@ -397,7 +397,7 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
   }, [targetX, targetZ])
 
   return (
-    <div className="flex w-full h-full" style={{ background: '#09090b' }}>
+    <div className="absolute inset-0 flex" style={{ background: '#09090b' }}>
       {/* Left panel: pitch builder */}
       <div className="w-64 shrink-0 border-r border-zinc-800 flex flex-col overflow-hidden bg-zinc-900/50">
         <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between shrink-0">
