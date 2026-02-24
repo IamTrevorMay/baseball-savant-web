@@ -399,6 +399,7 @@ export default function ExplorePage() {
           <a href="/pitchers" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Pitchers</a>
           <a href="/hitters" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Hitters</a>
           <a href="/reports" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Reports</a>
+          <a href="/umpire" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Umpires</a>
           <a href="/analyst" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Analyst</a>
           <button onClick={runUpdate} disabled={updating} className="text-[11px] text-zinc-500 hover:text-emerald-400 transition disabled:text-zinc-700">{updating ? "Updating..." : "Update Data"}</button>
           {updateMsg && <span className="text-[11px] text-emerald-400">{updateMsg}</span>}

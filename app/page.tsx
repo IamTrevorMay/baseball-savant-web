@@ -92,6 +92,7 @@ export default function HomePage() {
             <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
             <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
             <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
+            <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
             <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
             <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
           </div>

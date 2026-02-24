@@ -219,7 +219,7 @@ export default function HitterDashboard() {
             )}
           </div>
         </div>
-        <div className="flex gap-4"><a href="/" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Home</a><a href="/pitchers" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Pitchers</a><a href="/hitters" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Hitters</a><a href="/reports" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Reports</a><a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Explorer</a><a href="/analyst" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Analyst</a></div>
+        <div className="flex gap-4"><a href="/" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Home</a><a href="/pitchers" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Pitchers</a><a href="/hitters" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Hitters</a><a href="/reports" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Reports</a><a href="/umpire" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Umpires</a><a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Explorer</a><a href="/analyst" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Analyst</a></div>
       </nav>
 
       {/* Player Header */}
