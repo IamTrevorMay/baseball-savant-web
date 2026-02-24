@@ -63,9 +63,8 @@ export default function MatchupPage() {
   useEffect(() => {
     if (!batterQuery.trim()) { setBatterResults([]); return }
     const t = setTimeout(async () => {
-      const { data } = await supabase.rpc('search_all_players', {
+      const { data } = await supabase.rpc('search_batters', {
         search_term: batterQuery.trim(),
-        player_type: 'hitter',
         result_limit: 8,
       })
       if (data) setBatterResults(data)
