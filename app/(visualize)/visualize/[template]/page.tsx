@@ -4,8 +4,11 @@ import { useParams, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { TEMPLATE_REGISTRY } from '@/components/visualize/TemplateRegistry'
 import { QualityProvider, useQuality } from '@/components/visualize/QualityContext'
+import { StyleProvider } from '@/components/visualize/StyleContext'
 import QualitySelector from '@/components/visualize/QualitySelector'
+import StylePanel from '@/components/visualize/StylePanel'
 import ExportToolbar from '@/components/visualize/ExportToolbar'
+import AnnotationLayer from '@/components/visualize/AnnotationLayer'
 import FilterEngine, { ActiveFilter, applyFiltersToData } from '@/components/FilterEngine'
 import { enrichData } from '@/lib/enrichData'
 import { QualityPreset } from '@/lib/qualityPresets'
@@ -18,6 +21,12 @@ const TEMPLATE_COMPONENTS: Record<string, any> = {
   'pitch-characteristics': dynamic(() => import('@/components/visualize/templates/PitchCharacteristics')),
   'incoming-pitch-view': dynamic(() => import('@/components/visualize/templates/IncomingPitchView')),
   'arsenal-overlay': dynamic(() => import('@/components/visualize/templates/ArsenalOverlay')),
+  'pitch-tunneling': dynamic(() => import('@/components/visualize/templates/PitchTunneling')),
+  'rolling-averages': dynamic(() => import('@/components/visualize/templates/RollingAverages')),
+  'spray-chart': dynamic(() => import('@/components/visualize/templates/SprayChartViz')),
+  'release-point': dynamic(() => import('@/components/visualize/templates/ReleasePoint')),
+  'percentile-rankings': dynamic(() => import('@/components/visualize/templates/PercentileRankings')),
+  'pitch-simulation': dynamic(() => import('@/components/visualize/templates/PitchSimulation')),
 }
 
 // ── TemplateProps interface ───────────────────────────────────────────────────
@@ -46,13 +55,19 @@ function TemplateWorkspaceInner() {
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([])
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [frameInfo, setFrameInfo] = useState<{ frame: number; total: number } | null>(null)
+  const [stylePanelOpen, setStylePanelOpen] = useState(false)
 
   // Resolve template entry
   const entry = TEMPLATE_REGISTRY.find(t => t.slug === templateSlug)
   const TemplateComponent = templateSlug ? TEMPLATE_COMPONENTS[templateSlug] : null
+  const requiresData = entry?.requiresData !== false
 
-  // Fetch pitch data
+  // Fetch pitch data (skip if template doesn't require data)
   useEffect(() => {
+    if (!requiresData) {
+      setLoading(false)
+      return
+    }
     if (!playerId) return
 
     async function load() {
@@ -102,7 +117,7 @@ function TemplateWorkspaceInner() {
     }
 
     load()
-  }, [playerId])
+  }, [playerId, requiresData])
 
   // Client-side filter application
   const filteredData = useMemo(() => {
@@ -172,6 +187,23 @@ function TemplateWorkspaceInner() {
 
         <div className="flex items-center gap-3 ml-auto flex-wrap">
           <QualitySelector />
+
+          {/* Style panel toggle */}
+          <button
+            onClick={() => setStylePanelOpen(!stylePanelOpen)}
+            className={`px-2.5 py-1 rounded text-[11px] font-medium border transition flex items-center gap-1.5 select-none
+              ${stylePanelOpen
+                ? 'bg-cyan-600/20 border-cyan-600/50 text-cyan-300'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:border-cyan-600/60 hover:text-cyan-300'
+              }`}
+            title="Customize style"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            Style
+          </button>
+
           <ExportToolbar
             containerRef={containerRef}
             isCanvas={entry.isCanvas}
@@ -181,16 +213,18 @@ function TemplateWorkspaceInner() {
         </div>
       </div>
 
-      {/* Filter Engine */}
-      <FilterEngine
-        activeFilters={activeFilters}
-        onFiltersChange={setActiveFilters}
-        optionsCache={optionsCache}
-      />
+      {/* Filter Engine (hide for templates that don't use data) */}
+      {requiresData && (
+        <FilterEngine
+          activeFilters={activeFilters}
+          onFiltersChange={setActiveFilters}
+          optionsCache={optionsCache}
+        />
+      )}
 
       {/* Visualization area */}
-      <div className="flex-1 overflow-auto px-6 py-6">
-        <div ref={containerRef} className="relative">
+      <div className="flex-1 min-h-0 flex flex-col px-6 py-6">
+        <div ref={containerRef} className="relative flex-1 min-h-0">
           <TemplateComponent
             data={filteredData}
             playerName={playerName}
@@ -198,6 +232,7 @@ function TemplateWorkspaceInner() {
             containerRef={containerRef}
             onFrameUpdate={(frame: number, total: number) => setFrameInfo({ frame, total })}
           />
+          <AnnotationLayer containerRef={containerRef} />
         </div>
       </div>
 
@@ -213,6 +248,9 @@ function TemplateWorkspaceInner() {
           </span>
         )}
       </div>
+
+      {/* Style panel */}
+      <StylePanel open={stylePanelOpen} onClose={() => setStylePanelOpen(false)} />
     </div>
   )
 }
@@ -221,7 +259,9 @@ function TemplateWorkspaceInner() {
 function TemplateWorkspacePage() {
   return (
     <QualityProvider>
-      <TemplateWorkspaceInner />
+      <StyleProvider>
+        <TemplateWorkspaceInner />
+      </StyleProvider>
     </QualityProvider>
   )
 }

@@ -57,6 +57,14 @@ export default function VisualizePage() {
   }
 
   function handleTemplateSelect(entry: TemplateEntry) {
+    // Templates that don't require data can open without a player
+    if (entry.requiresData === false) {
+      const params = selected
+        ? `?playerId=${selected.id}&playerName=${encodeURIComponent(selected.name)}`
+        : ''
+      router.push(`/visualize/${entry.slug}${params}`)
+      return
+    }
     if (!selected) return
     router.push(`/visualize/${entry.slug}?playerId=${selected.id}&playerName=${encodeURIComponent(selected.name)}`)
   }
@@ -101,18 +109,41 @@ export default function VisualizePage() {
           </div>
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-14 h-14 rounded-full bg-cyan-500/10 text-cyan-400/60 flex items-center justify-center mb-4">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <path d="M21 21l-4.35-4.35" />
-            </svg>
+        <>
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-14 h-14 rounded-full bg-cyan-500/10 text-cyan-400/60 flex items-center justify-center mb-4">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+            </div>
+            <p className="text-zinc-400 text-sm font-medium mb-1">Search for a player to get started</p>
+            <p className="text-zinc-600 text-xs max-w-xs">
+              Select a pitcher above to browse the available visualization templates
+            </p>
           </div>
-          <p className="text-zinc-400 text-sm font-medium mb-1">Search for a player to get started</p>
-          <p className="text-zinc-600 text-xs max-w-xs">
-            Select a pitcher above to browse the available visualization templates
-          </p>
-        </div>
+
+          {/* Show no-data-required tools even without a player */}
+          {TEMPLATE_REGISTRY.some(e => e.requiresData === false) && (
+            <div className="mt-4">
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+                  Design Tools
+                </h2>
+                <p className="text-[11px] text-zinc-600 mt-0.5">No player selection required</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {TEMPLATE_REGISTRY.filter(e => e.requiresData === false).map(entry => (
+                  <TemplateCard
+                    key={entry.slug}
+                    entry={entry}
+                    onSelect={() => handleTemplateSelect(entry)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

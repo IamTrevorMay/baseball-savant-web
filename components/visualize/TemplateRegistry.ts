@@ -4,6 +4,7 @@ export interface TemplateEntry {
   description: string
   isCanvas: boolean
   isAnimated: boolean
+  requiresData?: boolean  // default true; false for tools like pitch simulation
 }
 
 export const TEMPLATE_REGISTRY: TemplateEntry[] = [
@@ -48,5 +49,48 @@ export const TEMPLATE_REGISTRY: TemplateEntry[] = [
     description: 'Compare pitch types with movement spread ellipses',
     isCanvas: false,
     isAnimated: false,
+  },
+  {
+    slug: 'pitch-tunneling',
+    name: 'Pitch Tunneling',
+    description: "Batter's-eye view of average pitch trajectories showing tunnel divergence",
+    isCanvas: true,
+    isAnimated: true,
+  },
+  {
+    slug: 'rolling-averages',
+    name: 'Rolling Averages',
+    description: 'Line charts of rolling pitch metric averages over game dates',
+    isCanvas: false,
+    isAnimated: false,
+  },
+  {
+    slug: 'spray-chart',
+    name: 'Spray Chart',
+    description: 'Batted ball locations on a field diagram colored by outcome or exit velo',
+    isCanvas: true,
+    isAnimated: false,
+  },
+  {
+    slug: 'release-point',
+    name: 'Release Point',
+    description: 'Release point consistency scatter with spread ellipses per pitch type',
+    isCanvas: false,
+    isAnimated: false,
+  },
+  {
+    slug: 'percentile-rankings',
+    name: 'Percentile Rankings',
+    description: 'Horizontal bar chart of player metrics vs 2024 league percentiles',
+    isCanvas: false,
+    isAnimated: false,
+  },
+  {
+    slug: 'pitch-simulation',
+    name: 'Pitch Simulation',
+    description: 'Design custom pitches and simulate trajectories with a drag target',
+    isCanvas: true,
+    isAnimated: true,
+    requiresData: false,
   },
 ]

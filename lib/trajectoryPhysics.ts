@@ -150,3 +150,87 @@ export function projectToScreen(
 
   return { x: screenX, y: screenY, scale }
 }
+
+// ---------------------------------------------------------------------------
+// SimulatedPitch support
+// ---------------------------------------------------------------------------
+
+export interface SimulatedPitch {
+  id: string
+  name: string
+  color: string
+  velocity: number        // mph
+  spinRate: number        // rpm
+  spinAxis: number        // degrees (gyro angle)
+  hBreak: number          // inches (horizontal movement)
+  iVBreak: number         // inches (induced vertical break)
+  releasePosX: number     // feet
+  releasePosZ: number     // feet
+}
+
+/**
+ * Convert a user-designed simulated pitch into PitchKinematics
+ * suitable for computeTrajectory().
+ *
+ * The model uses:
+ *  - velocity → initial vy0 (toward plate)
+ *  - hBreak/iVBreak → lateral and vertical accelerations
+ *  - Gravity is included in az
+ *
+ * @param pitch   The simulated pitch definition
+ * @param targetX Horizontal target in feet (0 = center of plate)
+ * @param targetZ Vertical target in feet (2.5 = mid strike zone)
+ */
+export function simulatedPitchToKinematics(
+  pitch: SimulatedPitch,
+  targetX = 0,
+  targetZ = 2.5,
+): PitchKinematics {
+  const releaseExtension = 6.0 // typical pitcher extension in feet
+  const releaseY = 50 - releaseExtension
+
+  // Convert velocity from mph to ft/s
+  const speedFtPerS = pitch.velocity * 5280 / 3600
+
+  // Flight time estimate: distance / speed (approximate)
+  const flightDist = releaseY - PLATE_FRONT_Y
+  const flightTime = flightDist / speedFtPerS
+
+  // Convert movement from inches to feet
+  const hBreakFt = pitch.hBreak / 12
+  const iVBreakFt = pitch.iVBreak / 12
+
+  // Movement = 0.5 * a * t^2 → a = 2 * movement / t^2
+  const ax = (2 * hBreakFt) / (flightTime * flightTime)
+  const gravity = -32.174 // ft/s²
+  // IVB is movement *above* gravity, so total az = gravity + (2 * iVBreak / t^2)
+  const az = gravity + (2 * iVBreakFt) / (flightTime * flightTime)
+
+  // vy0: ball must travel from releaseY to plate in flightTime
+  // y(t) = releaseY + vy0*t + 0.5*ay*t^2 = PLATE_FRONT_Y
+  // We need ay — approximate drag deceleration (~-28 ft/s²)
+  const ay = -28
+
+  // vy0 = (PLATE_FRONT_Y - releaseY - 0.5*ay*t^2) / t
+  const vy0 = (PLATE_FRONT_Y - releaseY - 0.5 * ay * flightTime * flightTime) / flightTime
+
+  // vx0: aim for target, compensating for horizontal acceleration
+  // x(t) = releasePosX + vx0*t + 0.5*ax*t^2 = targetX
+  const vx0 = (targetX - pitch.releasePosX - 0.5 * ax * flightTime * flightTime) / flightTime
+
+  // vz0: aim for target Z, compensating for vertical acceleration
+  // z(t) = releasePosZ + vz0*t + 0.5*az*t^2 = targetZ
+  const vz0 = (targetZ - pitch.releasePosZ - 0.5 * az * flightTime * flightTime) / flightTime
+
+  return {
+    vx0,
+    vy0,
+    vz0,
+    ax,
+    ay,
+    az,
+    release_pos_x: pitch.releasePosX,
+    release_pos_z: pitch.releasePosZ,
+    release_extension: releaseExtension,
+  }
+}
