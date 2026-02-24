@@ -172,3 +172,86 @@ export interface MatchupData {
   pitcherName: string
   batterName: string
 }
+
+// ── PURI (Pitcher Usage Risk Intelligence) ──────────────────────────────────
+
+// Raw from API
+export interface GameLogRow {
+  game_date: string
+  game_pk: number
+  pitches: number
+  avg_fb_velo: number | null
+  max_fb_velo: number | null
+  avg_spin: number | null
+  innings: number
+  batters_faced: number
+  csw: number
+  late_inning: number
+  had_runners: number
+  close_game: number
+}
+
+export interface InningVeloRow {
+  game_date: string
+  inning: number
+  avg_velo: number
+  pitches: number
+}
+
+export interface PURIInput {
+  gameLog: GameLogRow[]
+  inningVelo: InningVeloRow[]
+  currentDate: string  // YYYY-MM-DD
+}
+
+// Computed per-game (enriched)
+export interface GameLogEntry {
+  game_date: string
+  game_pk: number
+  pitches: number
+  avg_fb_velo: number | null
+  max_fb_velo: number | null
+  avg_spin: number | null
+  innings: number
+  batters_faced: number
+  rest_days: number | null  // null for first game
+  velo_fade: number | null  // first inning - last inning velo
+  high_leverage: boolean
+  pitch_flag: boolean  // exceeded threshold
+}
+
+export interface RiskAlert {
+  level: 'info' | 'warning' | 'danger'
+  title: string
+  message: string
+}
+
+export interface WorkloadMetrics {
+  acuteLoad: number
+  chronicLoad: number
+  acwr: number
+  acwrLabel: 'underwork' | 'sweet-spot' | 'caution' | 'spike'
+  role: 'starter' | 'reliever'
+  seasonBaselineVelo: number | null
+  recentVelo: number | null
+  veloDrop: number | null
+  avgVeloFade: number | null
+  highLevCount7d: number
+  lastRestDays: number | null
+}
+
+export interface PURIOutput {
+  riskScore: number
+  riskLevel: 'low' | 'moderate' | 'elevated' | 'high'
+  alerts: RiskAlert[]
+  workload: WorkloadMetrics
+  enrichedLog: GameLogEntry[]
+  adjustments: { rule: string; delta: number }[]
+}
+
+// API response
+export interface RiskData {
+  gameLog: GameLogRow[]
+  inningVelo: InningVeloRow[]
+  pitcherName: string
+}
