@@ -154,15 +154,10 @@ export async function POST(req: NextRequest) {
       LIMIT 2
     `
 
-    // Run all queries in parallel
+    // Run all queries in parallel (trim to ensure run_query's SELECT check passes)
+    const q = (sql: string) => supabaseAdmin.rpc('run_query', { query_text: sql.trim() })
     const [arsenalRes, veloRes, damageRes, chaseRes, countRes, h2hRes, namesRes] = await Promise.all([
-      supabaseAdmin.rpc('run_query', { query_text: arsenalSQL }),
-      supabaseAdmin.rpc('run_query', { query_text: veloSQL }),
-      supabaseAdmin.rpc('run_query', { query_text: damageSQL }),
-      supabaseAdmin.rpc('run_query', { query_text: chaseSQL }),
-      supabaseAdmin.rpc('run_query', { query_text: countSQL }),
-      supabaseAdmin.rpc('run_query', { query_text: h2hSQL }),
-      supabaseAdmin.rpc('run_query', { query_text: namesSQL }),
+      q(arsenalSQL), q(veloSQL), q(damageSQL), q(chaseSQL), q(countSQL), q(h2hSQL), q(namesSQL),
     ])
 
     // Check for errors
