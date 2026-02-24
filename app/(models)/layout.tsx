@@ -21,7 +21,17 @@ export default async function ModelsLayout({ children }: { children: React.React
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6 gap-4">
         <a href="/" className="text-zinc-500 hover:text-zinc-300 text-xs transition">Triton Apex</a>
         <span className="text-zinc-700">/</span>
-        <span className="font-bold text-purple-400 tracking-wide text-sm">Models</span>
+        <a href="/models" className="font-bold text-purple-400 hover:text-purple-300 tracking-wide text-sm transition">Models</a>
+        <span className="text-zinc-700">/</span>
+        <div className="flex items-center gap-3 ml-1">
+          <a href="/models/matchup" className="text-xs text-zinc-400 hover:text-purple-400 transition">Matchup</a>
+          <span className="text-zinc-800 text-[10px]">&#x2022;</span>
+          <span className="text-xs text-zinc-600 cursor-default" title="Coming soon">Risk</span>
+          <span className="text-zinc-800 text-[10px]">&#x2022;</span>
+          <span className="text-xs text-zinc-600 cursor-default" title="Coming soon">Hitter</span>
+          <span className="text-zinc-800 text-[10px]">&#x2022;</span>
+          <span className="text-xs text-zinc-600 cursor-default" title="Coming soon">Game Call</span>
+        </div>
       </nav>
       {children}
     </div>
