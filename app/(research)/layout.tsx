@@ -8,16 +8,14 @@ export default async function ResearchLayout({ children }: { children: React.Rea
   if (!user) redirect('/login')
 
   // Check permission
-  const { data: profile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
+  // Check permission — profile role OR explicit tool_permissions
+  const [{ data: profile }, { data: perm }] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', user.id).single(),
+    supabase.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'research').single(),
+  ])
 
-  if (profile?.role !== 'owner' && profile?.role !== 'admin') {
-    const { data: perm } = await supabase
-      .from('tool_permissions').select('id')
-      .eq('user_id', user.id).eq('tool', 'research').single()
-
-    if (!perm) redirect('/?denied=research')
-  }
+  const isPrivileged = profile?.role === 'owner' || profile?.role === 'admin'
+  if (!isPrivileged && !perm) redirect('/?denied=research')
 
   return <>{children}</>
 }
