@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
 export default async function CompeteLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -8,8 +9,8 @@ export default async function CompeteLayout({ children }: { children: React.Reac
   if (!user) redirect('/login')
 
   const [{ data: profile }, { data: perm }] = await Promise.all([
-    supabase.from('profiles').select('role').eq('id', user.id).single(),
-    supabase.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'compete').single(),
+    supabaseAdmin.from('profiles').select('role').eq('id', user.id).single(),
+    supabaseAdmin.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'compete').single(),
   ])
 
   const isPrivileged = profile?.role === 'owner' || profile?.role === 'admin'

@@ -36,7 +36,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user)
-      if (user) loadProfile(user.id)
+      if (user) loadProfile()
       else setLoading(false)
     })
 
@@ -55,17 +55,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     return () => subscription.unsubscribe()
   }, [])
 
-  async function loadProfile(userId: string) {
-    const [{ data: prof }, { data: perms }] = await Promise.all([
-      supabase.from('profiles').select('full_name, display_name, role').eq('id', userId).single(),
-      supabase.from('tool_permissions').select('tool').eq('user_id', userId),
-    ])
+  async function loadProfile() {
+    const res = await fetch('/api/me')
+    const { profile: prof, permissions: perms } = await res.json()
     setProfile(prof)
-    if (prof?.role === 'owner' || prof?.role === 'admin') {
-      setPermissions(['research', 'mechanics', 'models', 'compete'])
-    } else {
-      setPermissions(perms?.map((p: any) => p.tool) ?? [])
-    }
+    setPermissions(perms ?? [])
     setLoading(false)
   }
 
