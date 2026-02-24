@@ -255,3 +255,75 @@ export interface RiskData {
   inningVelo: InningVeloRow[]
   pitcherName: string
 }
+
+// ── CGCIE (Catcher Game Calling Intelligence Engine) ────────────────────────
+
+export interface TransitionRow {
+  from_pitch: string
+  to_pitch: string
+  freq: number
+  whiff_pct: number | null
+  xwoba: number | null
+}
+
+export interface RecentABRow {
+  game_date: string
+  game_pk: number
+  at_bat_number: number
+  pitch_number: number
+  pitch_name: string
+  description: string
+  balls: number
+  strikes: number
+  release_speed: number | null
+}
+
+export interface CGCIEInput {
+  arsenal: PitchArsenal[]
+  batterZones: BatterZone[]
+  h2h: H2HRecord[]
+  transitions: TransitionRow[]
+  currentSequence: string[]
+  count: { balls: number; strikes: number }
+  recentABs: RecentABRow[]
+}
+
+export interface SequenceRecommendation {
+  pitch_name: string
+  confidence: number
+  target: string
+  rationale: string[]
+  adjustments: { rule: string; delta: number }[]
+}
+
+export interface SequenceInsight {
+  type: 'repetition' | 'tunnel' | 'speed-diff' | 'pattern' | 'transition'
+  level: 'info' | 'warning'
+  message: string
+}
+
+export interface CGCIEOutput {
+  recommended: SequenceRecommendation
+  secondary: SequenceRecommendation
+  allPitches: SequenceRecommendation[]
+  insights: SequenceInsight[]
+  adjustments: { rule: string; delta: number }[]
+}
+
+export interface AtBatSequence {
+  game_date: string
+  game_pk: number
+  at_bat_number: number
+  pitches: { pitch_name: string; description: string; count: string; velo: number | null }[]
+  result: string
+}
+
+export interface GameCallData {
+  arsenal: PitchArsenal[]
+  batterZones: BatterZone[]
+  h2h: H2HRecord[]
+  transitions: TransitionRow[]
+  recentABs: RecentABRow[]
+  pitcherName: string
+  batterName: string
+}

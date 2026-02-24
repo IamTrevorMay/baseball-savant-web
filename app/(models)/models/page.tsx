@@ -46,7 +46,7 @@ const MODULES = [
     code: 'CGCIE',
     description: 'Sequence-aware pitch selection — repetition detection, hitter expectation disruption.',
     href: '/models/gamecall',
-    active: false,
+    active: true,
     icon: (
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
