@@ -234,3 +234,54 @@ export function simulatedPitchToKinematics(
     release_extension: releaseExtension,
   }
 }
+
+/**
+ * Compute kinematics for a pitch tunneled with a reference pitch.
+ *
+ * The tunneled pitch shares the same initial trajectory direction
+ * (vx0/vy0 and vz0/vy0 launch-angle ratios) as the reference pitch
+ * but uses its own speed and movement profile. This causes the ball
+ * to start on the same visual path then deviate naturally.
+ *
+ * @param pitch         The pitch to tunnel
+ * @param referenceKin  Kinematics of the reference pitch (usually a fastball aimed at the target)
+ */
+export function tunnelPitchKinematics(
+  pitch: SimulatedPitch,
+  referenceKin: PitchKinematics,
+): PitchKinematics {
+  const releaseExtension = 6.0
+  const releaseY = 50 - releaseExtension
+
+  // Reference pitch launch-angle ratios (direction the ball leaves the hand)
+  const dirRatioX = referenceKin.vx0 / referenceKin.vy0
+  const dirRatioZ = referenceKin.vz0 / referenceKin.vy0
+
+  // This pitch's own speed
+  const speedFtPerS = pitch.velocity * 5280 / 3600
+  const flightDist = releaseY - PLATE_FRONT_Y
+  const flightTime = flightDist / speedFtPerS
+
+  // Compute vy0 from this pitch's speed (accounting for drag)
+  const ay = -28
+  const vy0 = (PLATE_FRONT_Y - releaseY - 0.5 * ay * flightTime * flightTime) / flightTime
+
+  // Same angular direction as reference pitch
+  const vx0 = dirRatioX * vy0
+  const vz0 = dirRatioZ * vy0
+
+  // This pitch's own accelerations (from its movement profile)
+  const hBreakFt = pitch.hBreak / 12
+  const iVBreakFt = pitch.iVBreak / 12
+  const ax = (2 * hBreakFt) / (flightTime * flightTime)
+  const gravity = -32.174
+  const az = gravity + (2 * iVBreakFt) / (flightTime * flightTime)
+
+  return {
+    vx0, vy0, vz0,
+    ax, ay, az,
+    release_pos_x: pitch.releasePosX,
+    release_pos_z: pitch.releasePosZ,
+    release_extension: releaseExtension,
+  }
+}

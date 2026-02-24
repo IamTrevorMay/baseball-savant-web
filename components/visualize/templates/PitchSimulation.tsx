@@ -4,8 +4,10 @@ import { QualityPreset } from '@/lib/qualityPresets'
 import {
   SimulatedPitch,
   simulatedPitchToKinematics,
+  tunnelPitchKinematics,
   computeTrajectory,
   TrajectoryPoint,
+  PitchKinematics,
 } from '@/lib/trajectoryPhysics'
 import { getPitchColor } from '@/components/chartConfig'
 
@@ -17,25 +19,129 @@ interface TemplateProps {
   onFrameUpdate?: (frame: number, total: number) => void
 }
 
-// Camera constants (catcher's-eye)
-const CAMERA_FOV_DEG = 50
-const CAMERA_Y = 0
-const CAMERA_Z = 2.5
+// ── Types ──────────────────────────────────────────────────────────────────
+
+type ViewMode = 'catcher' | 'pitcher' | '3d'
+
+interface Camera3D {
+  pos: { x: number; y: number; z: number }
+  lookAt: { x: number; y: number; z: number }
+  fov: number
+  flipX?: boolean  // mirror horizontal axis (pitcher = flipped catcher)
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
 const SZ_LEFT = -17 / 24
 const SZ_RIGHT = 17 / 24
 const SZ_BOTTOM = 1.5
 const SZ_TOP = 3.5
 const SZ_Y = 17 / 12
 
-function worldToCanvas(wx: number, wy: number, wz: number, f: number, cx: number, cy: number) {
-  const dy = Math.max(wy - CAMERA_Y, 0.01)
-  return { x: cx + (wx / dy) * f, y: cy - ((wz - CAMERA_Z) / dy) * f }
+const CAMERAS: Record<string, Camera3D> = {
+  catcher: { pos: { x: 0, y: -4, z: 2.5 }, lookAt: { x: 0, y: 30, z: 2.5 }, fov: 50, flipX: true },
+  pitcher: { pos: { x: 0, y: -4, z: 2.5 }, lookAt: { x: 0, y: 30, z: 2.5 }, fov: 50 },
+  // 3d is computed dynamically from orbit params
 }
 
-function ballRadius(wy: number, f: number): number {
-  const dy = Math.max(wy - CAMERA_Y, 0.01)
-  return Math.max(2, Math.min(22, (0.121 / dy) * f))
+// ── 3D Orbit Camera ────────────────────────────────────────────────────────
+
+const ORBIT_CENTER = { x: 0, y: 25, z: 3 }
+const ORBIT_INIT = { azimuth: 1.454, elevation: 0.538, distance: 29.3 }
+
+function getOrbitCamera(orbit: { azimuth: number; elevation: number; distance: number }): Camera3D {
+  const { azimuth, elevation, distance } = orbit
+  const cosE = Math.cos(elevation)
+  return {
+    pos: {
+      x: ORBIT_CENTER.x + distance * cosE * Math.sin(azimuth),
+      y: ORBIT_CENTER.y - distance * cosE * Math.cos(azimuth),
+      z: ORBIT_CENTER.z + distance * Math.sin(elevation),
+    },
+    lookAt: ORBIT_CENTER,
+    fov: 50,
+  }
 }
+
+// ── General 3D → 2D projection (lookAt camera) ────────────────────────────
+
+function project3D(
+  wx: number, wy: number, wz: number,
+  cam: Camera3D,
+  canvasW: number, canvasH: number,
+): { x: number; y: number; scale: number; depth: number } {
+  // Forward direction (camera → lookAt)
+  let fx = cam.lookAt.x - cam.pos.x
+  let fy = cam.lookAt.y - cam.pos.y
+  let fz = cam.lookAt.z - cam.pos.z
+  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
+  fx /= fl; fy /= fl; fz /= fl
+
+  // Right = forward × worldUp(0,0,1)
+  let rx = fy, ry = -fx, rz = 0
+  const rl = Math.sqrt(rx * rx + ry * ry + rz * rz)
+  if (rl > 0.0001) { rx /= rl; ry /= rl; rz /= rl }
+
+  // Camera up = right × forward
+  const ux = ry * fz - rz * fy
+  const uy = rz * fx - rx * fz
+  const uz = rx * fy - ry * fx
+
+  // Point relative to camera
+  const dx = wx - cam.pos.x
+  const dy = wy - cam.pos.y
+  const dz = wz - cam.pos.z
+
+  // Camera-space coordinates
+  const camX = rx * dx + ry * dy + rz * dz
+  const camY = ux * dx + uy * dy + uz * dz
+  const camZ = fx * dx + fy * dy + fz * dz // depth
+
+  const depth = Math.max(camZ, 0.01)
+  const fovRad = (cam.fov * Math.PI) / 180
+  const focalLength = (canvasH / 2) / Math.tan(fovRad / 2)
+  const scale = focalLength / depth
+
+  const flipMult = cam.flipX ? -1 : 1
+  return { x: canvasW / 2 + flipMult * camX * scale, y: canvasH / 2 - camY * scale, scale, depth }
+}
+
+/** Unproject screen point to a world plane at y=planeY */
+function unprojectToPlane(
+  screenX: number, screenY: number,
+  cam: Camera3D,
+  canvasW: number, canvasH: number,
+  planeY: number,
+): { x: number; z: number } | null {
+  let fx = cam.lookAt.x - cam.pos.x, fy = cam.lookAt.y - cam.pos.y, fz = cam.lookAt.z - cam.pos.z
+  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
+  fx /= fl; fy /= fl; fz /= fl
+
+  let rx = fy, ry = -fx, rz = 0
+  const rl = Math.sqrt(rx * rx + ry * ry)
+  if (rl > 0.0001) { rx /= rl; ry /= rl }
+
+  const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx
+  const fovRad = (cam.fov * Math.PI) / 180
+  const focalLen = (canvasH / 2) / Math.tan(fovRad / 2)
+
+  const flipMult = cam.flipX ? -1 : 1
+  const ndcX = flipMult * (screenX - canvasW / 2) / focalLen
+  const ndcY = -(screenY - canvasH / 2) / focalLen
+
+  // Ray direction in world space
+  const rdx = fx + ndcX * rx + ndcY * ux
+  const rdy = fy + ndcX * ry + ndcY * uy
+  const rdz = fz + ndcX * rz + ndcY * uz
+
+  if (Math.abs(rdy) < 0.0001) return null
+  const t = (planeY - cam.pos.y) / rdy
+  if (t <= 0) return null
+
+  return { x: cam.pos.x + t * rdx, z: cam.pos.z + t * rdz }
+}
+
+// ── Default pitches ────────────────────────────────────────────────────────
 
 const DEFAULT_PITCHES: SimulatedPitch[] = [
   { id: '1', name: '4-Seam Fastball', color: '#ef4444', velocity: 95, spinRate: 2300, spinAxis: 210, hBreak: -8, iVBreak: 16, releasePosX: -2, releasePosZ: 6 },
@@ -44,7 +150,8 @@ const DEFAULT_PITCHES: SimulatedPitch[] = [
 
 let pitchIdCounter = 10
 
-// Pitch editor field
+// ── Field slider sub-component ─────────────────────────────────────────────
+
 function Field({ label, value, min, max, step, unit, onChange }: {
   label: string; value: number; min: number; max: number; step: number; unit: string
   onChange: (v: number) => void
@@ -64,40 +171,86 @@ function Field({ label, value, min, max, step, unit, onChange }: {
   )
 }
 
+// ── Toggle button sub-component ────────────────────────────────────────────
+
+function Toggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className={`flex-1 text-[10px] py-1 rounded border transition font-medium
+        ${active ? 'bg-cyan-600/20 text-cyan-300 border-cyan-600/50' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-zinc-300'}`}
+    >{label}</button>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
+
 export default function PitchSimulation({ data, playerName, quality, containerRef, onFrameUpdate }: TemplateProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const canvasContainerRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
-  const mountedRef = useRef(false)
+  const mountedRef = useRef(true)
 
   const [pitches, setPitches] = useState<SimulatedPitch[]>(DEFAULT_PITCHES)
   const [selectedPitchId, setSelectedPitchId] = useState<string>('1')
-  const [targetX, setTargetX] = useState(0) // feet
-  const [targetZ, setTargetZ] = useState(2.5) // feet
+  const [targetX, setTargetX] = useState(0)
+  const [targetZ, setTargetZ] = useState(2.5)
   const [isDraggingTarget, setIsDraggingTarget] = useState(false)
-
-  // Playback state
   const [playing, setPlaying] = useState(true)
-  const [scrubT, setScrubT] = useState(0) // 0-1 normalized time
-  const playingRef = useRef(true)
-  const scrubRef = useRef(0)
+  const [scrubT, setScrubT] = useState(0)
+  const [tunnelMode, setTunnelMode] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>('catcher')
+  const [referencePitchId, setReferencePitchId] = useState('1')
+  const [isOrbiting, setIsOrbiting] = useState(false)
+  const [lockRelease, setLockRelease] = useState(false)
+  const orbitRef = useRef({ ...ORBIT_INIT })
 
-  // Keep refs in sync
-  useEffect(() => { playingRef.current = playing }, [playing])
-  useEffect(() => { scrubRef.current = scrubT }, [scrubT])
+  // Mutable refs for the rAF loop
+  const pitchesRef = useRef(pitches)
+  const targetXRef = useRef(targetX)
+  const targetZRef = useRef(targetZ)
+  const playingRef = useRef(playing)
+  const scrubRef = useRef(scrubT)
+  const qualityRef = useRef(quality)
+  const tunnelModeRef = useRef(tunnelMode)
+  const viewModeRef = useRef(viewMode)
+  const referencePitchIdRef = useRef(referencePitchId)
+  const setScrubTRef = useRef(setScrubT)
+
+  // Sync refs (scrubRef managed by tick + handlers only)
+  pitchesRef.current = pitches
+  targetXRef.current = targetX
+  targetZRef.current = targetZ
+  playingRef.current = playing
+  qualityRef.current = quality
+  tunnelModeRef.current = tunnelMode
+  viewModeRef.current = viewMode
+  referencePitchIdRef.current = referencePitchId
+  setScrubTRef.current = setScrubT
+
+  // ── Callbacks ──────────────────────────────────────────────────────────
 
   const updatePitch = useCallback((id: string, patch: Partial<SimulatedPitch>) => {
-    setPitches(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p))
-  }, [])
+    setPitches(prev => {
+      const updated = prev.map(p => p.id === id ? { ...p, ...patch } : p)
+      // If release lock is on and release point changed, sync all pitches
+      if (lockRelease && (patch.releasePosX !== undefined || patch.releasePosZ !== undefined)) {
+        const src = updated.find(p => p.id === id)!
+        return updated.map(p => ({
+          ...p,
+          releasePosX: patch.releasePosX !== undefined ? src.releasePosX : p.releasePosX,
+          releasePosZ: patch.releasePosZ !== undefined ? src.releasePosZ : p.releasePosZ,
+        }))
+      }
+      return updated
+    })
+  }, [lockRelease])
 
   const addPitch = useCallback(() => {
     const id = String(++pitchIdCounter)
-    const newPitch: SimulatedPitch = {
+    setPitches(prev => [...prev, {
       id, name: 'New Pitch', color: '#10b981',
       velocity: 90, spinRate: 2200, spinAxis: 180,
       hBreak: 0, iVBreak: 10, releasePosX: -2, releasePosZ: 6,
-    }
-    setPitches(prev => [...prev, newPitch])
+    }])
     setSelectedPitchId(id)
   }, [])
 
@@ -105,11 +258,11 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
     setPitches(prev => {
       const next = prev.filter(p => p.id !== id)
       if (selectedPitchId === id && next.length > 0) setSelectedPitchId(next[0].id)
+      if (referencePitchId === id && next.length > 0) setReferencePitchId(next[0].id)
       return next
     })
-  }, [selectedPitchId])
+  }, [selectedPitchId, referencePitchId])
 
-  // Import from player data
   const importFromPlayer = useCallback(() => {
     if (!data.length) return
     const typeMap = new Map<string, any[]>()
@@ -118,19 +271,21 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
       if (!typeMap.has(d.pitch_name)) typeMap.set(d.pitch_name, [])
       typeMap.get(d.pitch_name)!.push(d)
     }
-
     const imported: SimulatedPitch[] = []
+    let maxVelo = 0
+    let maxVeloId = ''
     for (const [name, rows] of typeMap) {
       if (rows.length < 3) continue
       const avg = (field: string) => {
         const vals = rows.map((r: any) => r[field]).filter((v: any) => v != null) as number[]
         return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
       }
+      const id = String(++pitchIdCounter)
+      const velo = Math.round(avg('release_speed'))
+      if (velo > maxVelo) { maxVelo = velo; maxVeloId = id }
       imported.push({
-        id: String(++pitchIdCounter),
-        name,
-        color: getPitchColor(name),
-        velocity: Math.round(avg('release_speed')),
+        id, name, color: getPitchColor(name),
+        velocity: velo,
         spinRate: Math.round(avg('release_spin_rate')),
         spinAxis: Math.round(avg('spin_axis')),
         hBreak: Math.round(avg('pfx_x') * 12 * 10) / 10,
@@ -142,249 +297,341 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
     if (imported.length) {
       setPitches(imported)
       setSelectedPitchId(imported[0].id)
+      setReferencePitchId(maxVeloId || imported[0].id)
     }
   }, [data])
 
-  // Canvas rendering — uses canvasContainerRef for sizing (not outer containerRef)
+  // ── Animation loop ─────────────────────────────────────────────────────
+
   useEffect(() => {
     mountedRef.current = true
     const canvas = canvasRef.current
-    const container = canvasContainerRef.current
-    if (!canvas || !container || !pitches.length) return
+    if (!canvas) return
 
-    function setupAndRun() {
-      const dpr = quality.resolution
-      const cssW = container!.clientWidth
-      const cssH = container!.clientHeight
-      if (cssW === 0 || cssH === 0) return
+    const ANIM_DURATION = 1.0
+    const PAUSE_DURATION = 1.0
+    let startTs: number | null = null
+    let frameCount = 0
 
-      canvas!.width = Math.round(cssW * dpr)
-      canvas!.height = Math.round(cssH * dpr)
-      canvas!.style.width = `${cssW}px`
-      canvas!.style.height = `${cssH}px`
+    function tick(timestamp: number) {
+      if (!mountedRef.current) return
+
+      const parent = canvas!.parentElement
+      if (!parent) { rafRef.current = requestAnimationFrame(tick); return }
+      const cssW = parent.clientWidth
+      const cssH = parent.clientHeight
+      if (cssW <= 0 || cssH <= 0) { rafRef.current = requestAnimationFrame(tick); return }
+
+      const q = qualityRef.current
+      const dpr = q.resolution
+
+      const needW = Math.round(cssW * dpr)
+      const needH = Math.round(cssH * dpr)
+      if (canvas!.width !== needW || canvas!.height !== needH) {
+        canvas!.width = needW
+        canvas!.height = needH
+        canvas!.style.width = `${cssW}px`
+        canvas!.style.height = `${cssH}px`
+      }
 
       const ctx = canvas!.getContext('2d')
-      if (!ctx) return
+      if (!ctx) { rafRef.current = requestAnimationFrame(tick); return }
 
-      // Dynamic focal length from actual canvas size
-      const fovRad = (CAMERA_FOV_DEG * Math.PI) / 180
-      const focalLength = (cssH / 2) / Math.tan(fovRad / 2)
-      const centerX = cssW / 2
-      const centerY = cssH * 0.42
+      // Animation time
+      let t: number
+      if (playingRef.current) {
+        if (startTs === null) startTs = timestamp
+        const elapsed = (timestamp - startTs) / 1000
+        const cycleT = elapsed % (ANIM_DURATION + PAUSE_DURATION)
+        t = Math.min(cycleT / ANIM_DURATION, 1)
+        scrubRef.current = t
+        frameCount++
+        if (frameCount % 6 === 0) setScrubTRef.current(t)
+      } else {
+        startTs = null
+        t = scrubRef.current
+      }
 
-      // Compute trajectories
-      const steps = quality.id === 'draft' ? 40 : quality.id === 'standard' ? 80 : 120
-      const allTrajectories: { pitch: SimulatedPitch; traj: TrajectoryPoint[] }[] = pitches.map(p => {
+      // Read latest state from refs
+      const view = viewModeRef.current
+      const cam = view === '3d' ? getOrbitCamera(orbitRef.current) : CAMERAS[view]
+      const isTunnel = tunnelModeRef.current
+      const refId = referencePitchIdRef.current
+      const currentPitches = pitchesRef.current
+      const tx = targetXRef.current
+      const tz = targetZRef.current
+      const steps = q.id === 'draft' ? 40 : q.id === 'standard' ? 80 : 120
+
+      // Helper
+      const proj = (wx: number, wy: number, wz: number) => project3D(wx, wy, wz, cam, cssW, cssH)
+
+      // ── Compute trajectories ─────────────────────────────────────────
+      const refPitch = currentPitches.find(p => p.id === refId) || currentPitches[0]
+      let refKin: PitchKinematics | null = null
+      if (isTunnel && refPitch) {
+        try { refKin = simulatedPitchToKinematics(refPitch, tx, tz) } catch { /* skip */ }
+      }
+
+      const allTrajectories: { pitch: SimulatedPitch; traj: TrajectoryPoint[]; isRef: boolean }[] = []
+      for (const p of currentPitches) {
         try {
-          const kin = simulatedPitchToKinematics(p, targetX, targetZ)
-          return { pitch: p, traj: computeTrajectory(kin, steps) }
-        } catch {
-          return { pitch: p, traj: [] }
-        }
-      }).filter(t => t.traj.length > 2)
-
-      const ANIM_DURATION = 1.0
-      const PAUSE_DURATION = 1.0
-      let startTs: number | null = null
-      let frameCount = 0
-
-      function drawFrame(t: number) {
-        ctx!.save()
-        ctx!.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-        // Background
-        const grad = ctx!.createLinearGradient(0, 0, 0, cssH)
-        grad.addColorStop(0, '#0c1118')
-        grad.addColorStop(1, '#09090b')
-        ctx!.fillStyle = grad
-        ctx!.fillRect(0, 0, cssW, cssH)
-
-        // Strike zone
-        const szTL = worldToCanvas(SZ_LEFT, SZ_Y, SZ_TOP, focalLength, centerX, centerY)
-        const szBR = worldToCanvas(SZ_RIGHT, SZ_Y, SZ_BOTTOM, focalLength, centerX, centerY)
-        const szW = szBR.x - szTL.x
-        const szH = szBR.y - szTL.y
-
-        ctx!.fillStyle = 'rgba(255,255,255,0.03)'
-        ctx!.fillRect(szTL.x, szTL.y, szW, szH)
-        ctx!.strokeStyle = 'rgba(255,255,255,0.55)'
-        ctx!.lineWidth = 1.5
-        ctx!.strokeRect(szTL.x, szTL.y, szW, szH)
-
-        // Grid
-        ctx!.strokeStyle = 'rgba(255,255,255,0.08)'
-        ctx!.lineWidth = 0.75
-        for (let i = 1; i <= 2; i++) {
-          const xOff = szTL.x + (szW / 3) * i
-          ctx!.beginPath(); ctx!.moveTo(xOff, szTL.y); ctx!.lineTo(xOff, szBR.y); ctx!.stroke()
-          const yOff = szTL.y + (szH / 3) * i
-          ctx!.beginPath(); ctx!.moveTo(szTL.x, yOff); ctx!.lineTo(szBR.x, yOff); ctx!.stroke()
-        }
-
-        // Target crosshair
-        const tgt = worldToCanvas(targetX, SZ_Y, targetZ, focalLength, centerX, centerY)
-        ctx!.strokeStyle = 'rgba(255,255,0,0.6)'
-        ctx!.lineWidth = 1.5
-        const crossSize = 12
-        ctx!.beginPath(); ctx!.moveTo(tgt.x - crossSize, tgt.y); ctx!.lineTo(tgt.x + crossSize, tgt.y); ctx!.stroke()
-        ctx!.beginPath(); ctx!.moveTo(tgt.x, tgt.y - crossSize); ctx!.lineTo(tgt.x, tgt.y + crossSize); ctx!.stroke()
-        ctx!.beginPath(); ctx!.arc(tgt.x, tgt.y, 6, 0, Math.PI * 2); ctx!.stroke()
-
-        // Draw trajectories
-        for (const { pitch, traj } of allTrajectories) {
-          const maxTrajT = traj[traj.length - 1].t
-          const currentT = t * maxTrajT
-
-          let currentIdx = traj.length - 1
-          for (let i = 0; i < traj.length - 1; i++) {
-            if (traj[i + 1].t > currentT) { currentIdx = i; break }
+          let kin: PitchKinematics
+          if (isTunnel && refKin && p.id !== refId) {
+            kin = tunnelPitchKinematics(p, refKin)
+          } else {
+            kin = simulatedPitchToKinematics(p, tx, tz)
           }
+          const traj = computeTrajectory(kin, steps)
+          if (traj.length > 2) allTrajectories.push({ pitch: p, traj, isRef: p.id === (refPitch?.id ?? '') })
+        } catch { /* skip invalid */ }
+      }
 
-          // Trail
-          ctx!.beginPath()
-          ctx!.strokeStyle = pitch.color
-          ctx!.lineWidth = 2
-          ctx!.globalAlpha = 0.5
-          let started = false
-          for (let i = 0; i <= currentIdx; i++) {
-            const sp = worldToCanvas(traj[i].x, traj[i].y, traj[i].z, focalLength, centerX, centerY)
-            if (!started) { ctx!.moveTo(sp.x, sp.y); started = true }
-            else ctx!.lineTo(sp.x, sp.y)
-          }
-          ctx!.stroke()
-          ctx!.globalAlpha = 1
+      // ── Draw ─────────────────────────────────────────────────────────
+      ctx.save()
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-          // Ball
-          const pt = traj[currentIdx]
-          const sp = worldToCanvas(pt.x, pt.y, pt.z, focalLength, centerX, centerY)
-          const r = ballRadius(pt.y, focalLength)
+      // Background
+      const grad = ctx.createLinearGradient(0, 0, 0, cssH)
+      grad.addColorStop(0, '#0c1118')
+      grad.addColorStop(1, '#09090b')
+      ctx.fillStyle = grad
+      ctx.fillRect(0, 0, cssW, cssH)
 
-          // Glow
-          const glow = ctx!.createRadialGradient(sp.x, sp.y, r * 0.2, sp.x, sp.y, r * 2)
-          glow.addColorStop(0, pitch.color + 'aa')
-          glow.addColorStop(1, pitch.color + '00')
-          ctx!.beginPath(); ctx!.arc(sp.x, sp.y, r * 2, 0, Math.PI * 2)
-          ctx!.fillStyle = glow; ctx!.fill()
+      // Ground reference lines for 3D view
+      if (view === '3d') {
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)'
+        ctx.lineWidth = 0.5
+        for (const yy of [0, 10, 20, 30, 40, 50, 60]) {
+          const a = proj(-10, yy, 0)
+          const b = proj(10, yy, 0)
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+        }
+        for (const xx of [-10, -5, 0, 5, 10]) {
+          const a = proj(xx, 0, 0)
+          const b = proj(xx, 60, 0)
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+        }
+      }
 
-          // Core
-          ctx!.beginPath(); ctx!.arc(sp.x, sp.y, r, 0, Math.PI * 2)
-          ctx!.fillStyle = pitch.color; ctx!.fill()
+      // Home plate (3D view only — pitcher view is flipped catcher)
+      if (view === '3d') {
+        const hpPts = [
+          proj(-8.5 / 12, 0, 0), proj(8.5 / 12, 0, 0),
+          proj(8.5 / 12, 8.5 / 12, 0), proj(0, 17 / 12, 0), proj(-8.5 / 12, 8.5 / 12, 0),
+        ]
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        hpPts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y))
+        ctx.closePath(); ctx.stroke()
+      }
 
-          // Landing dot + label
-          if (t >= 1) {
-            const lastPt = traj[traj.length - 1]
-            const lastSp = worldToCanvas(lastPt.x, lastPt.y, lastPt.z, focalLength, centerX, centerY)
-            ctx!.beginPath(); ctx!.arc(lastSp.x, lastSp.y, 5, 0, Math.PI * 2)
-            ctx!.fillStyle = pitch.color
-            ctx!.globalAlpha = 0.8; ctx!.fill(); ctx!.globalAlpha = 1
+      // Pitcher's rubber (3D view only)
+      if (view === '3d') {
+        const rubL = proj(-1, 60.5, 0.83)
+        const rubR = proj(1, 60.5, 0.83)
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+        ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(rubL.x, rubL.y); ctx.lineTo(rubR.x, rubR.y); ctx.stroke()
+      }
 
-            ctx!.font = '10px Inter, system-ui, sans-serif'
-            ctx!.fillStyle = pitch.color
-            ctx!.fillText(pitch.name, lastSp.x + 8, lastSp.y + 4)
-          }
+      // Strike zone (4-corner wireframe works for all views)
+      const szCorners = [
+        proj(SZ_LEFT, SZ_Y, SZ_TOP), proj(SZ_RIGHT, SZ_Y, SZ_TOP),
+        proj(SZ_RIGHT, SZ_Y, SZ_BOTTOM), proj(SZ_LEFT, SZ_Y, SZ_BOTTOM),
+      ]
+      ctx.fillStyle = 'rgba(255,255,255,0.03)'
+      ctx.beginPath()
+      szCorners.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y))
+      ctx.closePath(); ctx.fill()
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      szCorners.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y))
+      ctx.closePath(); ctx.stroke()
+
+      // Strike zone 3×3 grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+      ctx.lineWidth = 0.75
+      const szWidthWorld = SZ_RIGHT - SZ_LEFT
+      const szHeightWorld = SZ_TOP - SZ_BOTTOM
+      for (let i = 1; i <= 2; i++) {
+        const xLine = SZ_LEFT + (szWidthWorld / 3) * i
+        const top = proj(xLine, SZ_Y, SZ_TOP)
+        const bot = proj(xLine, SZ_Y, SZ_BOTTOM)
+        ctx.beginPath(); ctx.moveTo(top.x, top.y); ctx.lineTo(bot.x, bot.y); ctx.stroke()
+
+        const zLine = SZ_BOTTOM + (szHeightWorld / 3) * i
+        const left = proj(SZ_LEFT, SZ_Y, zLine)
+        const right = proj(SZ_RIGHT, SZ_Y, zLine)
+        ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(right.x, right.y); ctx.stroke()
+      }
+
+      // Target crosshair
+      const tgt = proj(tx, SZ_Y, tz)
+      ctx.strokeStyle = isTunnel ? 'rgba(255,255,0,0.6)' : 'rgba(255,255,0,0.6)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.moveTo(tgt.x - 12, tgt.y); ctx.lineTo(tgt.x + 12, tgt.y); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(tgt.x, tgt.y - 12); ctx.lineTo(tgt.x, tgt.y + 12); ctx.stroke()
+      ctx.beginPath(); ctx.arc(tgt.x, tgt.y, 6, 0, Math.PI * 2); ctx.stroke()
+
+      // Trajectories
+      for (const { pitch, traj, isRef } of allTrajectories) {
+        const maxTrajT = traj[traj.length - 1].t
+        const currentT = t * maxTrajT
+        let currentIdx = traj.length - 1
+        for (let i = 0; i < traj.length - 1; i++) {
+          if (traj[i + 1].t > currentT) { currentIdx = i; break }
         }
 
-        // Tunnel point
-        if (allTrajectories.length >= 2 && t >= 1) {
-          const t1 = allTrajectories[0].traj
-          const t2 = allTrajectories[1].traj
-          const minLen = Math.min(t1.length, t2.length)
-          for (let i = 0; i < minLen; i++) {
-            const dist = Math.sqrt((t1[i].x - t2[i].x) ** 2 + (t1[i].z - t2[i].z) ** 2)
-            if (dist > 1 / 12) {
-              const tunnelDist = (t1[i].y - SZ_Y).toFixed(1)
-              ctx!.font = '10px Inter, system-ui, sans-serif'
-              ctx!.fillStyle = 'rgba(255,255,0,0.6)'
-              ctx!.fillText(`Tunnel: ${tunnelDist}ft from plate`, 16, cssH - 34)
-              break
+        // Trail line
+        ctx.beginPath()
+        ctx.strokeStyle = pitch.color
+        ctx.lineWidth = (isTunnel && isRef) ? 3 : 2
+        ctx.globalAlpha = 0.5
+        for (let i = 0; i <= currentIdx; i++) {
+          const sp = proj(traj[i].x, traj[i].y, traj[i].z)
+          if (i === 0) ctx.moveTo(sp.x, sp.y); else ctx.lineTo(sp.x, sp.y)
+        }
+        ctx.stroke()
+        ctx.globalAlpha = 1
+
+        // Ball
+        const pt = traj[currentIdx]
+        const sp = proj(pt.x, pt.y, pt.z)
+        const r = Math.max(2, Math.min(22, 0.121 * sp.scale))
+
+        const glow = ctx.createRadialGradient(sp.x, sp.y, r * 0.2, sp.x, sp.y, r * 2)
+        glow.addColorStop(0, pitch.color + 'aa')
+        glow.addColorStop(1, pitch.color + '00')
+        ctx.beginPath(); ctx.arc(sp.x, sp.y, r * 2, 0, Math.PI * 2)
+        ctx.fillStyle = glow; ctx.fill()
+
+        ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2)
+        ctx.fillStyle = pitch.color; ctx.fill()
+
+        // REF badge in tunnel mode
+        if (isTunnel && isRef && t < 0.3) {
+          ctx.font = '8px Inter, system-ui, sans-serif'
+          ctx.fillStyle = 'rgba(255,255,0,0.5)'
+          ctx.fillText('REF', sp.x + r + 4, sp.y - 4)
+        }
+
+        // Landing dot + label at completion
+        if (t >= 1) {
+          const lp = traj[traj.length - 1]
+          const ls = proj(lp.x, lp.y, lp.z)
+          ctx.globalAlpha = 0.8
+          ctx.beginPath(); ctx.arc(ls.x, ls.y, 5, 0, Math.PI * 2)
+          ctx.fillStyle = pitch.color; ctx.fill()
+          ctx.globalAlpha = 1
+          ctx.font = '10px Inter, system-ui, sans-serif'
+          ctx.fillStyle = pitch.color
+          ctx.fillText(pitch.name, ls.x + 8, ls.y + 4)
+        }
+      }
+
+      // Tunnel divergence info (bottom-left)
+      let infoY = cssH - 14
+      if (isTunnel && allTrajectories.length >= 2 && t >= 1) {
+        const refTraj = allTrajectories.find(a => a.isRef)
+        if (refTraj) {
+          for (const other of allTrajectories) {
+            if (other.isRef) continue
+            const t1 = refTraj.traj
+            const t2 = other.traj
+            const minLen = Math.min(t1.length, t2.length)
+            for (let i = 0; i < minLen; i++) {
+              const dist = Math.sqrt((t1[i].x - t2[i].x) ** 2 + (t1[i].z - t2[i].z) ** 2)
+              if (dist > 1 / 12) {
+                ctx.font = '10px Inter, system-ui, sans-serif'
+                ctx.fillStyle = other.pitch.color
+                ctx.fillText(
+                  `${other.pitch.name}: tunnel ${(t1[i].y - SZ_Y).toFixed(1)}ft from plate`,
+                  16, infoY,
+                )
+                infoY -= 16
+                break
+              }
             }
           }
         }
-
-        // Title
-        ctx!.font = `bold ${Math.max(12, Math.round(cssH * 0.028))}px Inter, system-ui, sans-serif`
-        ctx!.fillStyle = 'rgba(255,255,255,0.9)'
-        ctx!.fillText('Pitch Simulation', 16, 28)
-
-        ctx!.font = `${Math.max(10, Math.round(cssH * 0.018))}px Inter, system-ui, sans-serif`
-        ctx!.fillStyle = 'rgba(161,161,170,0.7)'
-        ctx!.fillText(`${pitches.length} pitch${pitches.length !== 1 ? 'es' : ''} designed`, 16, cssH - 14)
-
-        ctx!.restore()
       }
 
-      function tick(timestamp: number) {
-        if (!mountedRef.current) return
+      // Pitch count
+      ctx.font = `${Math.max(10, Math.round(cssH * 0.018))}px Inter, system-ui, sans-serif`
+      ctx.fillStyle = 'rgba(161,161,170,0.5)'
+      ctx.fillText(`${currentPitches.length} pitch${currentPitches.length !== 1 ? 'es' : ''}`, 16, infoY)
 
-        let t: number
-        if (playingRef.current) {
-          if (startTs === null) startTs = timestamp
-          const elapsed = (timestamp - startTs) / 1000
-          const cycleT = elapsed % (ANIM_DURATION + PAUSE_DURATION)
-          t = Math.min(cycleT / ANIM_DURATION, 1)
-          // Sync scrub slider to current playback position
-          scrubRef.current = t
-        } else {
-          // Paused: render at scrub position, reset startTs so resume is smooth
-          startTs = null
-          t = scrubRef.current
-        }
+      // Mode + view label (top-right)
+      ctx.font = '10px Inter, system-ui, sans-serif'
+      ctx.fillStyle = 'rgba(161,161,170,0.35)'
+      const modeLabel = isTunnel ? 'Tunnel Mode' : 'Anti-Tunnel Mode'
+      const viewLabel = view === 'catcher' ? 'Catcher' : view === 'pitcher' ? 'Pitcher' : '3D (drag to orbit)'
+      ctx.textAlign = 'right'
+      ctx.fillText(`${modeLabel}  ·  ${viewLabel}`, cssW - 16, 20)
+      ctx.textAlign = 'left'
 
-        drawFrame(t)
-
-        frameCount++
-        onFrameUpdate?.(frameCount, Math.round((ANIM_DURATION + PAUSE_DURATION) * quality.fps))
-        rafRef.current = requestAnimationFrame(tick)
-      }
-
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      ctx.restore()
       rafRef.current = requestAnimationFrame(tick)
     }
 
-    setupAndRun()
-
-    const obs = new ResizeObserver(() => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-      setupAndRun()
-    })
-    obs.observe(container)
+    rafRef.current = requestAnimationFrame(tick)
 
     return () => {
       mountedRef.current = false
-      obs.disconnect()
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
-  }, [pitches, targetX, targetZ, quality, onFrameUpdate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Target drag handler — uses canvasContainerRef for sizing
+  // ── Scroll wheel zoom for 3D orbit ──────────────────────────────────────
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const handler = (e: WheelEvent) => {
+      if (viewModeRef.current !== '3d') return
+      e.preventDefault()
+      orbitRef.current = {
+        ...orbitRef.current,
+        distance: Math.max(10, Math.min(80, orbitRef.current.distance + e.deltaY * 0.05)),
+      }
+    }
+    canvas.addEventListener('wheel', handler, { passive: false })
+    return () => canvas.removeEventListener('wheel', handler)
+  }, [])
+
+  // ── Target & orbit drag ────────────────────────────────────────────────
+
   const handleCanvasPointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
-    const container = canvasContainerRef.current
-    if (!canvas || !container) return
+    if (!canvas || !canvas.parentElement) return
 
     const rect = canvas.getBoundingClientRect()
-    const cssW = container.clientWidth
-    const cssH = container.clientHeight
-    const fovRad = (CAMERA_FOV_DEG * Math.PI) / 180
-    const focalLength = (cssH / 2) / Math.tan(fovRad / 2)
-    const centerX = cssW / 2
-    const centerY = cssH * 0.42
+    const cssW = canvas.parentElement.clientWidth
+    const cssH = canvas.parentElement.clientHeight
+    const view = viewModeRef.current
+    const cam = view === '3d' ? getOrbitCamera(orbitRef.current) : CAMERAS[view]
 
-    // Check if click is near target
-    const tgt = worldToCanvas(targetX, SZ_Y, targetZ, focalLength, centerX, centerY)
+    // Check if clicking near target crosshair
+    const tgt = project3D(targetXRef.current, SZ_Y, targetZRef.current, cam, cssW, cssH)
     const dx = e.clientX - rect.left - tgt.x
     const dy = e.clientY - rect.top - tgt.y
-    if (Math.sqrt(dx * dx + dy * dy) < 20) {
+
+    if (Math.sqrt(dx * dx + dy * dy) < 24) {
+      // Target drag
       setIsDraggingTarget(true)
       const onMove = (ev: PointerEvent) => {
         const mx = ev.clientX - rect.left
         const my = ev.clientY - rect.top
-        const depth = Math.max(SZ_Y - CAMERA_Y, 0.01)
-        const wx = ((mx - centerX) / focalLength) * depth
-        const wz = CAMERA_Z - ((my - centerY) / focalLength) * depth
-        setTargetX(Math.max(-1.5, Math.min(1.5, wx)))
-        setTargetZ(Math.max(0.5, Math.min(4.5, wz)))
+        const activeCam = view === '3d' ? getOrbitCamera(orbitRef.current) : CAMERAS[view]
+        const hit = unprojectToPlane(mx, my, activeCam, cssW, cssH, SZ_Y)
+        if (hit) {
+          setTargetX(Math.max(-1.5, Math.min(1.5, hit.x)))
+          setTargetZ(Math.max(0.5, Math.min(4.5, hit.z)))
+        }
       }
       const onUp = () => {
         setIsDraggingTarget(false)
@@ -393,20 +640,58 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
+    } else if (view === '3d') {
+      // Orbit drag
+      setIsOrbiting(true)
+      let lastX = e.clientX
+      let lastY = e.clientY
+      const onMove = (ev: PointerEvent) => {
+        const moveX = ev.clientX - lastX
+        const moveY = ev.clientY - lastY
+        lastX = ev.clientX
+        lastY = ev.clientY
+        orbitRef.current = {
+          ...orbitRef.current,
+          azimuth: orbitRef.current.azimuth - moveX * 0.005,
+          elevation: Math.max(-0.3, Math.min(1.45, orbitRef.current.elevation + moveY * 0.005)),
+        }
+      }
+      const onUp = () => {
+        setIsOrbiting(false)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
     }
-  }, [targetX, targetZ])
+  }, [])
+
+  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
     <div className="absolute inset-0 flex" style={{ background: '#09090b' }}>
-      {/* Left panel: pitch builder */}
+      {/* Left panel */}
       <div className="w-64 shrink-0 border-r border-zinc-800 flex flex-col overflow-hidden bg-zinc-900/50">
+        {/* Mode toggle */}
+        <div className="px-3 py-2 border-b border-zinc-800 flex gap-1 shrink-0">
+          <Toggle label="Tunnel" active={tunnelMode} onClick={() => setTunnelMode(true)} />
+          <Toggle label="Anti-Tunnel" active={!tunnelMode} onClick={() => setTunnelMode(false)} />
+        </div>
+
+        {/* View toggle */}
+        <div className="px-3 py-2 border-b border-zinc-800 flex gap-1 shrink-0">
+          <Toggle label="Catcher" active={viewMode === 'catcher'} onClick={() => setViewMode('catcher')} />
+          <Toggle label="Pitcher" active={viewMode === 'pitcher'} onClick={() => setViewMode('pitcher')} />
+          <Toggle label="3D" active={viewMode === '3d'} onClick={() => setViewMode('3d')} />
+        </div>
+
+        {/* Pitch header */}
         <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between shrink-0">
           <span className="text-[11px] font-bold text-white uppercase tracking-wider">Pitches</span>
           <div className="flex gap-1">
             {data.length > 0 && (
               <button onClick={importFromPlayer}
-                className="text-[10px] text-cyan-400 hover:text-cyan-300 transition px-1.5 py-0.5 rounded border border-cyan-600/30 hover:border-cyan-500/50"
-                title="Import averages from player data">
+                className="text-[10px] text-cyan-400 hover:text-cyan-300 transition px-1.5 py-0.5 rounded border border-cyan-600/30 hover:border-cyan-500/50">
                 Import
               </button>
             )}
@@ -427,20 +712,22 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
                   ${selectedPitchId === p.id ? 'bg-zinc-800/60' : 'hover:bg-zinc-800/30'}`}
               >
                 <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                <input
-                  type="text" value={p.name}
+                <input type="text" value={p.name}
                   onClick={e => e.stopPropagation()}
                   onChange={e => updatePitch(p.id, { name: e.target.value })}
-                  className="flex-1 bg-transparent text-xs text-zinc-200 outline-none min-w-0"
-                />
-                {pitches.length > 1 && (
+                  className="flex-1 bg-transparent text-xs text-zinc-200 outline-none min-w-0" />
+                {tunnelMode && (
                   <button
-                    onClick={e => { e.stopPropagation(); removePitch(p.id) }}
-                    className="text-zinc-600 hover:text-red-400 transition text-xs shrink-0"
-                  >&times;</button>
+                    onClick={e => { e.stopPropagation(); setReferencePitchId(p.id) }}
+                    className={`text-[11px] shrink-0 transition ${referencePitchId === p.id ? 'text-yellow-400' : 'text-zinc-600 hover:text-yellow-400/60'}`}
+                    title={referencePitchId === p.id ? 'Reference pitch (hits target)' : 'Set as reference'}
+                  >{referencePitchId === p.id ? '\u2605' : '\u2606'}</button>
+                )}
+                {pitches.length > 1 && (
+                  <button onClick={e => { e.stopPropagation(); removePitch(p.id) }}
+                    className="text-zinc-600 hover:text-red-400 transition text-xs shrink-0">&times;</button>
                 )}
               </button>
-
               {selectedPitchId === p.id && (
                 <div className="px-3 py-2 space-y-1.5 bg-zinc-800/20 border-b border-zinc-800">
                   <div className="flex items-center gap-2 mb-1">
@@ -468,9 +755,32 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
           ))}
         </div>
 
+        {/* Release point lock */}
+        <div className="px-3 py-2 border-t border-zinc-800 shrink-0">
+          <button
+            onClick={() => {
+              const next = !lockRelease
+              setLockRelease(next)
+              if (next && pitches.length > 1) {
+                // Sync all release points to the first pitch
+                const src = pitches[0]
+                setPitches(prev => prev.map(p => ({ ...p, releasePosX: src.releasePosX, releasePosZ: src.releasePosZ })))
+              }
+            }}
+            className={`w-full text-[10px] py-1.5 rounded border transition font-medium
+              ${lockRelease
+                ? 'bg-cyan-600/20 text-cyan-300 border-cyan-600/50'
+                : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-zinc-300'}`}
+          >
+            {lockRelease ? 'Release Point Locked' : 'Lock Release Points'}
+          </button>
+        </div>
+
         {/* Target controls */}
         <div className="px-3 py-2 border-t border-zinc-800 shrink-0 space-y-1.5">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Target</span>
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">
+            Target {tunnelMode && <span className="normal-case text-zinc-600">(ref pitch lands here)</span>}
+          </span>
           <Field label="X" value={Math.round(targetX * 100) / 100} min={-1.5} max={1.5} step={0.05} unit="ft"
             onChange={v => setTargetX(v)} />
           <Field label="Z" value={Math.round(targetZ * 100) / 100} min={0.5} max={4.5} step={0.05} unit="ft"
@@ -481,29 +791,23 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
 
       {/* Right panel: canvas + playback */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* Canvas area — this ref drives sizing */}
-        <div ref={canvasContainerRef} className="flex-1 min-h-0 relative overflow-hidden">
-          <canvas
-            ref={canvasRef}
-            style={{ display: 'block', cursor: isDraggingTarget ? 'grabbing' : 'default' }}
+        <div className="flex-1 min-h-0 relative overflow-hidden">
+          <canvas ref={canvasRef}
+            style={{ display: 'block', cursor: isDraggingTarget || isOrbiting ? 'grabbing' : viewMode === '3d' ? 'grab' : 'default' }}
             onPointerDown={handleCanvasPointerDown}
-            aria-label="Pitch simulation visualization"
-          />
+            aria-label="Pitch simulation visualization" />
         </div>
 
         {/* Playback controls */}
-        <div className="shrink-0 bg-zinc-900/80 border-t border-zinc-800 px-4 py-2 flex items-center gap-3">
-          {/* Play/Pause */}
-          <button
-            onClick={() => setPlaying(!playing)}
+        <div className="shrink-0 bg-zinc-900/80 border-t border-zinc-800 px-4 py-2 flex items-center gap-3"
+          style={{ height: 40 }}>
+          <button onClick={() => setPlaying(!playing)}
             className="w-7 h-7 flex items-center justify-center rounded bg-zinc-800 border border-zinc-700
               text-zinc-300 hover:text-white hover:border-zinc-600 transition"
-            title={playing ? 'Pause' : 'Play'}
-          >
+            title={playing ? 'Pause' : 'Play'}>
             {playing ? (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" rx="1" />
-                <rect x="14" y="4" width="4" height="16" rx="1" />
+                <rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" />
               </svg>
             ) : (
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
@@ -511,49 +815,19 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
               </svg>
             )}
           </button>
-
-          {/* Scrub slider */}
-          <input
-            type="range" min={0} max={1} step={0.005}
-            value={scrubT}
-            onChange={e => {
-              const v = parseFloat(e.target.value)
-              setScrubT(v)
-              scrubRef.current = v
-              if (playing) setPlaying(false)
-            }}
+          <input type="range" min={0} max={1} step={0.005}
+            value={playing ? scrubRef.current : scrubT}
+            onChange={e => { const v = parseFloat(e.target.value); setScrubT(v); scrubRef.current = v; if (playing) setPlaying(false) }}
             className="flex-1 h-1 bg-zinc-700 rounded-full appearance-none cursor-pointer
               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400
-              [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:cursor-pointer"
-          />
-
-          {/* Quick jump buttons */}
-          <button
-            onClick={() => { setScrubT(0); scrubRef.current = 0; setPlaying(false) }}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-600"
-            title="Jump to start"
-          >
-            Start
-          </button>
-          <button
-            onClick={() => { setScrubT(0.5); scrubRef.current = 0.5; setPlaying(false) }}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-600"
-            title="Jump to mid-flight"
-          >
-            Mid
-          </button>
-          <button
-            onClick={() => { setScrubT(1); scrubRef.current = 1; setPlaying(false) }}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-600"
-            title="Jump to plate"
-          >
-            Plate
-          </button>
-
-          <span className="text-[10px] text-zinc-600 tabular-nums">
-            {Math.round(scrubT * 100)}%
-          </span>
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400" />
+          <button onClick={() => { setScrubT(0); scrubRef.current = 0; setPlaying(false) }}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-600">Start</button>
+          <button onClick={() => { setScrubT(0.5); scrubRef.current = 0.5; setPlaying(false) }}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-600">Mid</button>
+          <button onClick={() => { setScrubT(1); scrubRef.current = 1; setPlaying(false) }}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-600">Plate</button>
+          <span className="text-[10px] text-zinc-600 tabular-nums">{Math.round(scrubT * 100)}%</span>
         </div>
       </div>
     </div>

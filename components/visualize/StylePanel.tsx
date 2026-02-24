@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStyle } from './StyleContext'
-import { PALETTE_PRESETS, DEFAULT_STYLE } from '@/lib/stylePresets'
+import { StyleSettings, PALETTE_PRESETS, DEFAULT_STYLE } from '@/lib/stylePresets'
 import { PITCH_COLORS } from '@/components/chartConfig'
 
 // Common pitch names for per-pitch color overrides
@@ -90,6 +90,31 @@ interface StylePanelProps {
 export default function StylePanel({ open, onClose }: StylePanelProps) {
   const { style, updateStyle, resetStyle } = useStyle()
 
+  // Staged (draft) state — only applied on "Apply" click
+  const [draft, setDraft] = useState<StyleSettings>(style)
+  const [dirty, setDirty] = useState(false)
+
+  // Sync draft when panel opens or live style changes externally
+  useEffect(() => {
+    if (open) { setDraft(style); setDirty(false) }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function patchDraft(patch: Partial<StyleSettings>) {
+    setDraft(prev => ({ ...prev, ...patch }))
+    setDirty(true)
+  }
+
+  function applyDraft() {
+    updateStyle(draft)
+    setDirty(false)
+  }
+
+  function handleReset() {
+    resetStyle()
+    setDraft({ ...DEFAULT_STYLE })
+    setDirty(false)
+  }
+
   if (!open) return null
 
   return (
@@ -105,7 +130,7 @@ export default function StylePanel({ open, onClose }: StylePanelProps) {
           <h3 className="text-sm font-bold text-white">Style</h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={resetStyle}
+              onClick={handleReset}
               className="text-[10px] text-zinc-500 hover:text-zinc-300 transition"
             >
               Reset
@@ -125,8 +150,8 @@ export default function StylePanel({ open, onClose }: StylePanelProps) {
             <label className="block">
               <span className="text-[11px] text-zinc-400 block mb-1">Palette</span>
               <select
-                value={style.paletteId}
-                onChange={e => updateStyle({ paletteId: e.target.value })}
+                value={draft.paletteId}
+                onChange={e => patchDraft({ paletteId: e.target.value })}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200
                   focus:outline-none focus:border-cyan-600/50 transition cursor-pointer"
               >
@@ -140,15 +165,15 @@ export default function StylePanel({ open, onClose }: StylePanelProps) {
               <span className="text-[11px] text-zinc-400 block mb-1.5">Pitch Colors</span>
               <div className="grid grid-cols-3 gap-1.5">
                 {COMMON_PITCHES.map(name => {
-                  const current = style.pitchColorOverrides[name] ||
-                    PALETTE_PRESETS.find(p => p.id === style.paletteId)?.colors[name] ||
+                  const current = draft.pitchColorOverrides[name] ||
+                    PALETTE_PRESETS.find(p => p.id === draft.paletteId)?.colors[name] ||
                     PITCH_COLORS[name] || '#71717a'
                   return (
                     <label key={name} className="flex items-center gap-1.5 cursor-pointer" title={name}>
                       <input
                         type="color" value={current}
-                        onChange={e => updateStyle({
-                          pitchColorOverrides: { ...style.pitchColorOverrides, [name]: e.target.value }
+                        onChange={e => patchDraft({
+                          pitchColorOverrides: { ...draft.pitchColorOverrides, [name]: e.target.value }
                         })}
                         className="w-5 h-5 rounded border border-zinc-700 bg-transparent cursor-pointer
                           [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded"
@@ -165,14 +190,14 @@ export default function StylePanel({ open, onClose }: StylePanelProps) {
               <div className="flex items-center gap-2">
                 <input
                   type="color"
-                  value={style.backgroundColor || '#09090b'}
-                  onChange={e => updateStyle({ backgroundColor: e.target.value })}
+                  value={draft.backgroundColor || '#09090b'}
+                  onChange={e => patchDraft({ backgroundColor: e.target.value })}
                   className="w-6 h-6 rounded border border-zinc-700 bg-transparent cursor-pointer
                     [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded"
                 />
                 <input
-                  type="text" value={style.backgroundColor} placeholder="auto"
-                  onChange={e => updateStyle({ backgroundColor: e.target.value })}
+                  type="text" value={draft.backgroundColor} placeholder="auto"
+                  onChange={e => patchDraft({ backgroundColor: e.target.value })}
                   className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200
                     placeholder:text-zinc-600 focus:outline-none focus:border-cyan-600/50 transition"
                 />
@@ -182,48 +207,62 @@ export default function StylePanel({ open, onClose }: StylePanelProps) {
 
           {/* Rendering */}
           <Section title="Rendering">
-            <SliderField label="Trail Length" value={style.trailLength} min={0} max={20} step={1}
-              onChange={v => updateStyle({ trailLength: v })} />
-            <SliderField label="Trail Opacity" value={style.trailOpacity} min={0} max={1} step={0.05}
-              onChange={v => updateStyle({ trailOpacity: v })} />
-            <SliderField label="Trail Width" value={style.trailWidth} min={1} max={5} step={0.5}
-              onChange={v => updateStyle({ trailWidth: v })} />
-            <SliderField label="Ball Size" value={style.ballSize} min={0.5} max={3} step={0.1}
-              onChange={v => updateStyle({ ballSize: v })} />
-            <Toggle label="Glow Effect" checked={style.glowEnabled}
-              onChange={v => updateStyle({ glowEnabled: v })} />
+            <SliderField label="Trail Length" value={draft.trailLength} min={0} max={20} step={1}
+              onChange={v => patchDraft({ trailLength: v })} />
+            <SliderField label="Trail Opacity" value={draft.trailOpacity} min={0} max={1} step={0.05}
+              onChange={v => patchDraft({ trailOpacity: v })} />
+            <SliderField label="Trail Width" value={draft.trailWidth} min={1} max={5} step={0.5}
+              onChange={v => patchDraft({ trailWidth: v })} />
+            <SliderField label="Ball Size" value={draft.ballSize} min={0.5} max={3} step={0.1}
+              onChange={v => patchDraft({ ballSize: v })} />
+            <Toggle label="Glow Effect" checked={draft.glowEnabled}
+              onChange={v => patchDraft({ glowEnabled: v })} />
           </Section>
 
           {/* Animation */}
           <Section title="Animation">
-            <SliderField label="Playback Speed" value={style.playbackSpeed} min={0.25} max={4} step={0.25}
-              onChange={v => updateStyle({ playbackSpeed: v })} />
-            <SliderField label="Batch Size" value={style.batchSize} min={1} max={20} step={1}
-              onChange={v => updateStyle({ batchSize: v })} />
-            <SliderField label="Max Pitch Override" value={style.maxPitchOverride} min={0} max={2000} step={10}
-              onChange={v => updateStyle({ maxPitchOverride: v })} />
+            <SliderField label="Playback Speed" value={draft.playbackSpeed} min={0.25} max={4} step={0.25}
+              onChange={v => patchDraft({ playbackSpeed: v })} />
+            <SliderField label="Batch Size" value={draft.batchSize} min={1} max={20} step={1}
+              onChange={v => patchDraft({ batchSize: v })} />
+            <SliderField label="Max Pitch Override" value={draft.maxPitchOverride} min={0} max={2000} step={10}
+              onChange={v => patchDraft({ maxPitchOverride: v })} />
             <span className="text-[10px] text-zinc-600">0 = use quality preset</span>
           </Section>
 
           {/* Display */}
           <Section title="Display">
-            <TextInput label="Title Override" value={style.titleOverride} placeholder="auto"
-              onChange={v => updateStyle({ titleOverride: v })} />
-            <TextInput label="Subtitle" value={style.subtitleText} placeholder="none"
-              onChange={v => updateStyle({ subtitleText: v })} />
-            <TextInput label="Watermark" value={style.watermarkText} placeholder="none"
-              onChange={v => updateStyle({ watermarkText: v })} />
-            <SliderField label="Font Scale" value={style.fontScale} min={0.75} max={2} step={0.05}
-              onChange={v => updateStyle({ fontScale: v })} />
-            <Toggle label="Show Legend" checked={style.showLegend}
-              onChange={v => updateStyle({ showLegend: v })} />
-            <Toggle label="Show Axis Labels" checked={style.showAxisLabels}
-              onChange={v => updateStyle({ showAxisLabels: v })} />
-            <Toggle label="Show Grid Lines" checked={style.showGridLines}
-              onChange={v => updateStyle({ showGridLines: v })} />
-            <Toggle label="Show Stat Callouts" checked={style.showStatCallouts}
-              onChange={v => updateStyle({ showStatCallouts: v })} />
+            <TextInput label="Title Override" value={draft.titleOverride} placeholder="auto"
+              onChange={v => patchDraft({ titleOverride: v })} />
+            <TextInput label="Subtitle" value={draft.subtitleText} placeholder="none"
+              onChange={v => patchDraft({ subtitleText: v })} />
+            <TextInput label="Watermark" value={draft.watermarkText} placeholder="none"
+              onChange={v => patchDraft({ watermarkText: v })} />
+            <SliderField label="Font Scale" value={draft.fontScale} min={0.75} max={2} step={0.05}
+              onChange={v => patchDraft({ fontScale: v })} />
+            <Toggle label="Show Legend" checked={draft.showLegend}
+              onChange={v => patchDraft({ showLegend: v })} />
+            <Toggle label="Show Axis Labels" checked={draft.showAxisLabels}
+              onChange={v => patchDraft({ showAxisLabels: v })} />
+            <Toggle label="Show Grid Lines" checked={draft.showGridLines}
+              onChange={v => patchDraft({ showGridLines: v })} />
+            <Toggle label="Show Stat Callouts" checked={draft.showStatCallouts}
+              onChange={v => patchDraft({ showStatCallouts: v })} />
           </Section>
+        </div>
+
+        {/* Apply button */}
+        <div className="shrink-0 px-4 py-3 border-t border-zinc-800">
+          <button
+            onClick={applyDraft}
+            disabled={!dirty}
+            className={`w-full py-2 rounded text-sm font-medium transition
+              ${dirty
+                ? 'bg-cyan-600 text-white hover:bg-cyan-500 cursor-pointer'
+                : 'bg-zinc-800 text-zinc-600 border border-zinc-700 cursor-not-allowed'}`}
+          >
+            {dirty ? 'Apply Changes' : 'No Changes'}
+          </button>
         </div>
       </div>
     </>
