@@ -44,7 +44,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       (_event, session) => {
         const u = session?.user ?? null
         setUser(u)
-        if (u) loadProfile(u.id)
+        if (u) loadProfile()
         else {
           setProfile(null)
           setPermissions([])
