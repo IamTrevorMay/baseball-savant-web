@@ -19,8 +19,8 @@ const MODULES = [
     name: 'Hitter Approach',
     code: 'HAIE',
     description: 'Optimal hitting strategy — sit-on zones, take-until rules, chase avoidance, two-strike mode.',
-    href: '/models/hitter',
-    active: false,
+    href: '/models/matchup',
+    active: true,
     icon: (
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 22V2M2 12h20M7 7l10 10M17 7L7 17" />

@@ -2,8 +2,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { computePAIE } from '@/lib/engines/paie'
+import { computeHAIE } from '@/lib/engines/haie'
 import { MatchupPanel } from '@/components/models/MatchupPanel'
-import type { MatchupData, PAIEOutput } from '@/lib/engines/types'
+import { HitterPanel } from '@/components/models/HitterPanel'
+import type { MatchupData, PAIEOutput, HAIEOutput } from '@/lib/engines/types'
 
 interface PlayerResult {
   player_name: string
@@ -25,6 +27,8 @@ const TTO_OPTIONS = [
 ]
 const SEASONS = [2025, 2024, 2023, 2022, 2021, 2020]
 
+type ViewMode = 'pitching' | 'hitting'
+
 export default function MatchupPage() {
   // Player search state
   const [pitcherQuery, setPitcherQuery] = useState('')
@@ -40,6 +44,9 @@ export default function MatchupPage() {
   const [count, setCount] = useState('0-0')
   const [tto, setTto] = useState(1)
   const [season, setSeason] = useState(2025)
+
+  // View toggle
+  const [viewMode, setViewMode] = useState<ViewMode>('pitching')
 
   // Results
   const [loading, setLoading] = useState(false)
@@ -114,6 +121,21 @@ export default function MatchupPage() {
       tto,
     })
   }, [matchupData, count, tto])
+
+  // Compute HAIE from matchup data + current count (instant re-computation)
+  const haieResult: HAIEOutput | null = useMemo(() => {
+    if (!matchupData?.arsenal?.length) return null
+    const [balls, strikes] = count.split('-').map(Number)
+    return computeHAIE({
+      arsenal: matchupData.arsenal,
+      veloTrend: matchupData.veloTrend,
+      batterZones: matchupData.batterZones,
+      chaseProfile: matchupData.chaseProfile,
+      countProfile: matchupData.countProfile,
+      h2h: matchupData.h2h,
+      count: { balls, strikes },
+    })
+  }, [matchupData, count])
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
@@ -276,7 +298,7 @@ export default function MatchupPage() {
       )}
 
       {/* Results */}
-      {!loading && matchupData && paieResult && (
+      {!loading && matchupData && paieResult && haieResult && (
         <div>
           <div className="flex items-center gap-3 mb-4">
             <h2 className="text-lg font-bold text-white">{matchupData.pitcherName}</h2>
@@ -286,7 +308,36 @@ export default function MatchupPage() {
               Count: {count} &middot; TTO: {tto === 3 ? '3rd+' : tto === 2 ? '2nd' : '1st'} &middot; Season: {season}
             </span>
           </div>
-          <MatchupPanel result={paieResult} data={matchupData} />
+
+          {/* Pitching / Hitting toggle */}
+          <div className="flex items-center gap-1 mb-4 bg-zinc-900 border border-zinc-800 rounded-lg p-1 w-fit">
+            <button
+              onClick={() => setViewMode('pitching')}
+              className={`px-4 py-1.5 rounded text-xs font-medium transition ${
+                viewMode === 'pitching'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Pitching View
+            </button>
+            <button
+              onClick={() => setViewMode('hitting')}
+              className={`px-4 py-1.5 rounded text-xs font-medium transition ${
+                viewMode === 'hitting'
+                  ? 'bg-purple-600 text-white'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Hitting View
+            </button>
+          </div>
+
+          {viewMode === 'pitching' ? (
+            <MatchupPanel result={paieResult} data={matchupData} />
+          ) : (
+            <HitterPanel result={haieResult} data={matchupData} />
+          )}
         </div>
       )}
 

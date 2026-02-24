@@ -92,6 +92,74 @@ export interface PAIEOutput {
   recentVelo: number | null
 }
 
+// ── HAIE Input / Output ─────────────────────────────────────────────────────
+
+export type ApproachMode = 'aggressive' | 'neutral' | 'protective'
+
+export interface HAIEInput {
+  arsenal: PitchArsenal[]
+  veloTrend: VeloTrend[]
+  batterZones: BatterZone[]
+  chaseProfile: ChaseRegion[]
+  countProfile: CountProfile[]
+  h2h: H2HRecord[]
+  count: { balls: number; strikes: number }
+}
+
+export interface SitOnZone {
+  zone: number
+  zoneName: string
+  avg_ev: number | null
+  barrel_pct: number | null
+  xwoba: number | null
+  score: number
+}
+
+export interface ChaseWarning {
+  quadrant: string
+  swing_pct: number
+  whiff_pct: number
+  severity: number
+  exploitedBy: string[]
+  tip: string
+}
+
+export interface TwoStrikeMode {
+  expectPitch: string
+  protectAgainst: string
+  strategy: string
+}
+
+export interface HitterZoneScore {
+  zone: number
+  score: number
+  label: 'attack' | 'neutral' | 'avoid'
+}
+
+export interface CountAdvantageInfo {
+  count: string
+  xwoba: number | null
+  label: 'hitter' | 'pitcher' | 'neutral'
+}
+
+export interface HAIEOutput {
+  approachMode: ApproachMode
+  confidence: number
+  sitOnPitch: string
+  sitOnZones: SitOnZone[]
+  takeUntilRule: string
+  chaseWarnings: ChaseWarning[]
+  twoStrikeMode: TwoStrikeMode | null
+  hitterZoneScores: HitterZoneScore[]
+  rationale: string[]
+  fatigueDetected: boolean
+  fatigueMessage: string | null
+  seasonBaselineVelo: number | null
+  recentVelo: number | null
+  countAdvantage: CountAdvantageInfo
+  adjustments: { rule: string; delta: number }[]
+}
+
 // ── Matchup API response ────────────────────────────────────────────────────
 
 export interface MatchupData {
