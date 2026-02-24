@@ -147,7 +147,8 @@ export default function MatchupPage() {
                     {pitcherResults.map(p => (
                       <button
                         key={p.pitcher}
-                        onClick={() => {
+                        onMouseDown={(e) => {
+                          e.preventDefault()
                           setSelectedPitcher(p)
                           setPitcherQuery('')
                           setPitcherResults([])
@@ -194,7 +195,8 @@ export default function MatchupPage() {
                     {batterResults.map(p => (
                       <button
                         key={p.batter}
-                        onClick={() => {
+                        onMouseDown={(e) => {
+                          e.preventDefault()
                           setSelectedBatter(p)
                           setBatterQuery('')
                           setBatterResults([])
