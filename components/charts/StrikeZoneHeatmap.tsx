@@ -11,7 +11,8 @@ export default function StrikeZoneHeatmap({ data }: { data: any[] }) {
     type: 'histogram2d' as any, colorscale: 'YlOrRd', reversescale: false,
     nbinsx: 25, nbinsy: 25,
     colorbar: { tickfont: { color: COLORS.text, size: 9 }, len: 0.8 },
-    hovertemplate: 'X: %{x:.2f} ft<br>Z: %{y:.2f} ft<br>Count: %{z}<extra></extra>',
+    customdata: f.map(d => [+(d.plate_x * 12).toFixed(1), +(d.plate_z * 12).toFixed(1)]),
+    hovertemplate: 'X: %{customdata[0]:.1f}"<br>Z: %{customdata[1]:.1f}"<br>Count: %{z}<extra></extra>',
   }
 
   const layout = {

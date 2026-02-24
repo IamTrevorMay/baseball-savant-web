@@ -19,7 +19,7 @@ export default async function ModelsLayout({ children }: { children: React.React
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6 gap-4">
-        <a href="/" className="text-zinc-500 hover:text-zinc-300 text-xs transition">Triton Apex</a>
+        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
         <span className="text-zinc-700">/</span>
         <a href="/models" className="font-bold text-purple-400 hover:text-purple-300 tracking-wide text-sm transition">Models</a>
         <span className="text-zinc-700">/</span>

@@ -19,6 +19,12 @@ export const PITCH_COLORS: Record<string, string> = {
 
 export function getPitchColor(p: string): string { return PITCH_COLORS[p] || '#71717a' }
 
+export const PITCH_CODE_NAMES: Record<string, string> = {
+  FF: '4-Seam', SI: 'Sinker', FC: 'Cutter', SL: 'Slider', ST: 'Sweeper',
+  SV: 'Slurve', CH: 'Changeup', FS: 'Splitter', CU: 'Curveball',
+  KC: 'Knuckle Curve', KN: 'Knuckleball', EP: 'Eephus', FA: 'Fastball',
+}
+
 export const BASE_LAYOUT: any = {
   paper_bgcolor: COLORS.paper, plot_bgcolor: COLORS.bg,
   font: { family: 'Inter, system-ui, sans-serif', color: COLORS.text, size: 11 },

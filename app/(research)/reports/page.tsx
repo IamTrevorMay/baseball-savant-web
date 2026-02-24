@@ -248,6 +248,12 @@ function ReportsPageInner() {
     loadTemplates()
   }
 
+  // Delete template
+  async function deleteTemplate(id: string) {
+    await supabase.from('report_templates').delete().eq('id', id)
+    loadTemplates()
+  }
+
   // Load template
   async function loadTemplate(id: string) {
     const { data } = await supabase.from('report_templates').select('*').eq('id', id).single()
@@ -289,17 +295,19 @@ function ReportsPageInner() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6 gap-6">
-        <a href="/" className="text-zinc-600 hover:text-zinc-400 text-xs transition">Neptune</a><span className="text-zinc-800 mx-1">/</span>
-        <a href="/home" className="font-bold text-emerald-400 text-sm hover:text-emerald-300 transition">Triton</a>
-        <div className="flex gap-4 text-xs text-zinc-500">
-          <a href="/home" className="hover:text-zinc-300 transition">Home</a>
-          <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
-          <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
-          <a href="/reports" className="text-emerald-400">Reports</a>
-          <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
-          <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
-          <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
+      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6">
+        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
+        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4">Research</a>
+        <div className="flex-1 flex justify-center">
+          <div className="flex gap-4 text-xs text-zinc-500">
+            <a href="/home" className="hover:text-zinc-300 transition">Home</a>
+            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
+            <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
+            <a href="/reports" className="text-emerald-400">Reports</a>
+            <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
+            <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
+            <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
+          </div>
         </div>
       </nav>
 
@@ -437,13 +445,18 @@ function ReportsPageInner() {
               <div className="flex items-center gap-1.5">
                 <button onClick={() => setShowSaveModal(true)}
                   className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition">Save</button>
-                {templates.length > 0 && (
+                {templates.length > 0 && (<>
                   <select defaultValue="" onChange={e => { if (e.target.value) loadTemplate(e.target.value); e.target.value = '' }}
                     className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-400 focus:outline-none">
                     <option value="" disabled>Load...</option>
                     {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
-                )}
+                  <select defaultValue="" onChange={e => { if (e.target.value) { deleteTemplate(e.target.value); e.target.value = '' } }}
+                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-red-400 focus:outline-none">
+                    <option value="" disabled>Delete...</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </>)}
                 <button onClick={exportPDF} disabled={exporting}
                   className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded text-[11px] text-white font-medium transition disabled:opacity-50">
                   {exporting ? 'Exporting...' : 'Export PDF'}

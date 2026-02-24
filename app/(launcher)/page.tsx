@@ -88,7 +88,7 @@ function LauncherContent() {
       <div className="flex flex-col items-center mb-12 relative">
         <div className="absolute right-0 top-0"><UserMenu /></div>
         <h1 className="font-[family-name:var(--font-bebas)] text-5xl uppercase text-orange-500 tracking-widest">Triton Apex</h1>
-        <p className="text-sm text-zinc-500 mt-1">Find the peak.</p>
+        <p className="text-sm text-zinc-500 mt-1">Find Your Peak.</p>
       </div>
 
       {/* Denied alert */}

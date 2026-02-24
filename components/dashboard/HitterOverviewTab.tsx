@@ -149,7 +149,7 @@ function calcTotals(rows: any[], cols: {k:string,l:string}[]): any {
   const pctFields = ["ba","obp","slg","ops","kPct","bbPct","whiffPct","contactPct","zonePct","chasePct","gbPct","fbPct","ldPct","xBA","xwOBA","xSLG","wOBA","facedPct","avgEV","maxEV","avgLA","avgVelo","hardHitPct","barrelPct"]
   const totals: any = {}
   cols.forEach(c => {
-    if (c.k === "year" || c.k === "name") { totals[c.k] = "Total"; return }
+    if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
     if (vals.length === 0) { totals[c.k] = "—"; return }
     if (pctFields.includes(c.k)) {

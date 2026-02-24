@@ -33,6 +33,7 @@ export default function HittersPage() {
   const [dbInfo, setDbInfo] = useState({ total: 0, lastDate: '' })
   const router = useRouter()
   const debounceRef = useRef<NodeJS.Timeout>(null)
+  const reqCounterRef = useRef(0)
 
   useEffect(() => {
     loadDbInfo()
@@ -55,9 +56,12 @@ export default function HittersPage() {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (!value.trim()) { setResults([]); return }
     debounceRef.current = setTimeout(async () => {
+      const reqId = ++reqCounterRef.current
       setLoading(true)
       const { data } = await supabase.rpc('search_batters', { search_term: value.trim(), result_limit: 8 })
-      setResults(data || [])
+      if (reqId === reqCounterRef.current) {
+        setResults(data || [])
+      }
       setLoading(false)
     }, 200)
   }
@@ -69,10 +73,10 @@ export default function HittersPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
       {/* Nav */}
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-6">
-        <div className="flex items-center gap-6">
-          <a href="/" className="text-zinc-600 hover:text-zinc-400 text-xs transition">Neptune</a><span className="text-zinc-800 mx-1">/</span>
-          <a href="/home" className="font-bold text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Triton</a>
+      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6">
+        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
+        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4">Research</a>
+        <div className="flex-1 flex justify-center">
           <div className="flex gap-4 text-xs text-zinc-500">
             <a href="/home" className="hover:text-zinc-300 transition">Home</a>
             <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
@@ -123,7 +127,6 @@ export default function HittersPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-zinc-400">{p.avg_exit_velo} mph EV</div>
                     <div className="text-[11px] text-zinc-600">{p.total_pitches.toLocaleString()} pitches seen</div>
                   </div>
                 </div>
@@ -147,8 +150,7 @@ export default function HittersPage() {
                 </div>
                 <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition">{p.player_name}</span>
               </div>
-              <div className="flex justify-between text-[11px] text-zinc-500">
-                <span>{p.avg_exit_velo} mph EV</span>
+              <div className="text-[11px] text-zinc-500">
                 <span>{p.games.toLocaleString()} G</span>
               </div>
               <div className="text-[11px] text-zinc-600 mt-1">{p.total_pitches.toLocaleString()} pitches seen</div>

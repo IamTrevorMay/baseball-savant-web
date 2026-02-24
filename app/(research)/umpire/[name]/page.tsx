@@ -184,8 +184,8 @@ export default function UmpireScorecardPage() {
       {/* Nav */}
       <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
-          <a href="/" className="text-zinc-600 hover:text-zinc-400 text-xs transition">Neptune</a><span className="text-zinc-800 mx-1">/</span>
-          <a href="/home" className="font-bold text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Triton</a>
+          <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
+          <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Research</a>
           <div className="relative">
             <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
               onFocus={() => searchQuery && setShowSearch(true)}

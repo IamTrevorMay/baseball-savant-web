@@ -140,7 +140,7 @@ function MiniHeatmap({ data, title, metric, size = 220 }: { data: any[]; title: 
   } else {
     // Bin the data and compute metric per bin
     const nbins = 12
-    const xRange = [-2.2, 2.2], yRange = [-0.2, 4.5]
+    const xRange = [-1.96, 1.96], yRange = [0.25, 4.75]
     const xStep = (xRange[1] - xRange[0]) / nbins
     const yStep = (yRange[1] - yRange[0]) / nbins
     const bins: any[][][] = Array.from({ length: nbins }, () => Array.from({ length: nbins }, () => []))
@@ -152,6 +152,26 @@ function MiniHeatmap({ data, title, metric, size = 220 }: { data: any[]; title: 
     })
 
     const z = bins.map(row => row.map(cell => calcMetric(cell, metric)))
+    // Two-pass neighbor interpolation to fill null gaps
+    for (let pass = 0; pass < 2; pass++) {
+      for (let r = 0; r < nbins; r++) {
+        for (let c = 0; c < nbins; c++) {
+          if (z[r][c] === null) {
+            const neighbors: number[] = []
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue
+                const nr = r + dr, nc = c + dc
+                if (nr >= 0 && nr < nbins && nc >= 0 && nc < nbins && z[nr][nc] !== null)
+                  neighbors.push(z[nr][nc] as number)
+              }
+            }
+            if (neighbors.length >= 2)
+              z[r][c] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length
+          }
+        }
+      }
+    }
     const x = Array.from({ length: nbins }, (_, i) => xRange[0] + (i + 0.5) * xStep)
     const y = Array.from({ length: nbins }, (_, i) => yRange[0] + (i + 0.5) * yStep)
 
@@ -176,8 +196,8 @@ function MiniHeatmap({ data, title, metric, size = 220 }: { data: any[]; title: 
           paper_bgcolor: 'transparent', plot_bgcolor: COLORS.bg,
           font: { ...BASE_LAYOUT.font },
           margin: { t: 5, r: 5, b: 5, l: 5 },
-          xaxis: { range: [-2.2, 2.2], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
-          yaxis: { range: [-0.2, 4.5], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
+          xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
+          yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
           shapes: ZONE_SHAPES,
           width: size, height: size,
         }}
@@ -205,7 +225,9 @@ function MiniScatter({ data, title, size = 220 }: { data: any[]; title: string; 
     x: pts.map(d => d.plate_x), y: pts.map(d => d.plate_z),
     type: 'scatter' as any, mode: 'markers',
     marker: { size: 3.5, color: getPitchColor(name), opacity: 0.5 },
-    name, hovertemplate: `${name}<br>X: %{x:.2f} ft<br>Z: %{y:.2f} ft<extra></extra>`,
+    name,
+    customdata: pts.map(d => [+(d.plate_x * 12).toFixed(1), +(d.plate_z * 12).toFixed(1)]),
+    hovertemplate: `${name}<br>X: %{customdata[0]:.1f}"<br>Z: %{customdata[1]:.1f}"<extra></extra>`,
   }))
 
   return (
@@ -217,8 +239,8 @@ function MiniScatter({ data, title, size = 220 }: { data: any[]; title: string; 
           paper_bgcolor: 'transparent', plot_bgcolor: COLORS.bg,
           font: { ...BASE_LAYOUT.font },
           margin: { t: 5, r: 5, b: 5, l: 5 },
-          xaxis: { range: [-2.2, 2.2], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
-          yaxis: { range: [-0.2, 4.5], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
+          xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
+          yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
           shapes: ZONE_SHAPES, showlegend: false,
           width: size, height: size,
         }}
@@ -313,11 +335,8 @@ export default function LocationTab({ data }: Props) {
   const f = useMemo(() => data.filter(d => d.plate_x != null && d.plate_z != null), [data])
 
   const metricRange = useMemo(() => {
-    if (metric === "frequency") {
-      return { min: "0", max: f.length.toLocaleString() }
-    }
     const nbins = 12
-    const xR = [-2.2, 2.2], yR = [-0.2, 4.5]
+    const xR = [-1.96, 1.96], yR = [0.25, 4.75]
     const xS = (xR[1]-xR[0])/nbins, yS = (yR[1]-yR[0])/nbins
     const bins: any[][][] = Array.from({length:nbins}, () => Array.from({length:nbins}, () => []))
     f.forEach(d => {
@@ -325,6 +344,10 @@ export default function LocationTab({ data }: Props) {
       const yi = Math.min(Math.floor((d.plate_z-yR[0])/yS), nbins-1)
       if (xi >= 0 && yi >= 0) bins[yi][xi].push(d)
     })
+    if (metric === "frequency") {
+      const maxBin = Math.max(...bins.flat().map(cell => cell.length))
+      return { min: "0", max: maxBin.toLocaleString() }
+    }
     const vals = bins.flat().map(cell => calcMetric(cell, metric)).filter((v): v is number => v !== null)
     if (vals.length === 0) return { min: "—", max: "—" }
     const mn = Math.min(...vals), mx = Math.max(...vals)

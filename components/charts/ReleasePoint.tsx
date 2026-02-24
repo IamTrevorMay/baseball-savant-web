@@ -15,7 +15,8 @@ export default function ReleasePoint({ data }: { data: any[] }) {
       type: 'scatter' as any, mode: 'markers' as any,
       name: pt,
       marker: { color: getPitchColor(pt), size: 5, opacity: 0.5 },
-      hovertemplate: `${pt}<br>X: %{x:.2f} ft<br>Z: %{y:.2f} ft<extra></extra>`,
+      customdata: pts.map(d => [+(d.release_pos_x * 12).toFixed(1), +(d.release_pos_z * 12).toFixed(1)]),
+      hovertemplate: `${pt}<br>X: %{customdata[0]:.1f}"<br>Z: %{customdata[1]:.1f}"<extra></extra>`,
     }
   })
 

@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, CUSTOM_COL_CATALOG, GROUP_BY_OPTIONS } from './TileViz'
 import type { MetricKey, ScatterMode, BarMetric, TableMode } from './TileViz'
 import { applyFiltersToData, FILTER_CATALOG, type ActiveFilter, type FilterDef } from '../FilterEngine'
+import { PITCH_CODE_NAMES } from '../chartConfig'
 
 export type VizType = 'heatmap'|'scatter'|'bar'|'strike_zone'|'table'|'empty'
 
@@ -220,7 +221,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
             <span className="text-[10px] text-zinc-500">Filters:</span>
             {config.filters.map((f, i) => (
               <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded text-[9px] text-emerald-300">
-                {f.def.label}: {f.values?.join(", ") || `${f.min||""}u2013${f.max||""}`}
+                {f.def.label}: {f.def.key === 'pitch_type' ? f.values?.map(v => PITCH_CODE_NAMES[v] || v).join(", ") : (f.values?.join(", ") || `${f.min||""}\u2013${f.max||""}`)}
                 <span onClick={() => onUpdate({ ...config, filters: config.filters.filter((_, idx) => idx !== i) })} className="cursor-pointer hover:text-red-400">u00d7</span>
               </span>
             ))}
@@ -266,7 +267,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
                       const nv = vals.includes(opt) ? vals.filter(v => v !== opt) : [...vals, opt]
                       const nf = [...config.filters]; nf[i] = { ...f, values: nv }; onUpdate({ ...config, filters: nf })
                     }}
-                      className={`px-1 py-0 rounded text-[9px] transition ${f.values?.includes(opt) ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"}`}>{opt}</button>
+                      className={`px-1 py-0 rounded text-[9px] transition ${f.values?.includes(opt) ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"}`}>{f.def.key === 'pitch_type' ? (PITCH_CODE_NAMES[opt] || opt) : opt}</button>
                   ))}
                 </div>
               )}

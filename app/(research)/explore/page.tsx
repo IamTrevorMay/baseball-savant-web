@@ -389,8 +389,8 @@ export default function ExplorePage() {
           <button onClick={()=>setSideOpen(!sideOpen)} className="text-zinc-400 hover:text-white transition p-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
           </button>
-          <a href="/" className="text-zinc-600 hover:text-zinc-400 text-xs transition">Neptune</a><span className="text-zinc-800 mx-1">/</span>
-          <a href="/home" className="font-bold text-sm tracking-wide text-emerald-400 hover:text-emerald-300 transition">Triton</a>
+          <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
+          <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-2">Research</a>
           <span className="text-xs text-zinc-600">|</span>
           <span className="text-xs text-zinc-500">Data Explorer</span>
         </div>
