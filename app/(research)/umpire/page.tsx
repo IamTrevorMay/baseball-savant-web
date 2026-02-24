@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+
 import { useRouter } from 'next/navigation'
 
 interface UmpireResult {
@@ -48,29 +48,16 @@ export default function UmpirePage() {
   async function loadLeaderboard() {
     setLeaderboardLoading(true)
     try {
-      const { data, error } = await supabase.rpc('run_query', {
-        query_text: `
-          SELECT u.hp_umpire,
-            COUNT(DISTINCT u.game_pk) as games,
-            MIN(u.game_date)::text as first_date,
-            MAX(u.game_date)::text as last_date,
-            COUNT(*) FILTER (WHERE p.type IN ('B','S')) as called_pitches,
-            COUNT(*) FILTER (WHERE
-              (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top AND p.type = 'S')
-              OR (NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) AND p.type = 'B')
-            ) as correct_calls
-          FROM game_umpires u
-          JOIN pitches p ON p.game_pk = u.game_pk
-          WHERE p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL
-          GROUP BY u.hp_umpire
-          ORDER BY games DESC
-          LIMIT 50
-        `
+      const res = await fetch('/api/umpire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'leaderboard' }),
       })
-      if (error) {
-        console.error('Leaderboard query error:', error)
+      if (!res.ok) {
+        console.error('Leaderboard query error:', await res.text())
         return
       }
+      const data = await res.json()
       if (data) {
         const parsed: UmpireResult[] = data.map((row: Record<string, unknown>) => ({
           hp_umpire: row.hp_umpire as string,
@@ -99,16 +86,12 @@ export default function UmpirePage() {
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const { data } = await supabase.rpc('run_query', {
-          query_text: `
-            SELECT hp_umpire, COUNT(DISTINCT game_pk) as games
-            FROM game_umpires
-            WHERE LOWER(hp_umpire) LIKE '%${value.trim().toLowerCase().replace(/'/g, "''")}%'
-            GROUP BY hp_umpire
-            ORDER BY games DESC
-            LIMIT 8
-          `
+        const res = await fetch('/api/umpire', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'search', query: value }),
         })
+        const data = res.ok ? await res.json() : null
         if (data) {
           setSearchResults(data.map((row: Record<string, unknown>) => ({
             hp_umpire: row.hp_umpire as string,
