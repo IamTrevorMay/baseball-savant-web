@@ -131,7 +131,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
               <span className="text-[10px] text-zinc-500">Metric:</span>
               <select value={config.metric || 'frequency'} onChange={e => onUpdate({ ...config, metric: e.target.value as MetricKey })}
                 className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
-                {([['frequency','Frequency'],['ba','BA'],['slg','SLG'],['woba','wOBA'],['xba','xBA'],['xwoba','xwOBA'],['xslg','xSLG'],['ev','Exit Velo'],['la','Launch Angle'],['whiff_pct','Whiff%']] as [MetricKey,string][]).map(([m,label]) => (
+                {([['frequency','Frequency'],['ba','BA'],['slg','SLG'],['woba','wOBA'],['xba','xBA'],['xwoba','xwOBA'],['xslg','xSLG'],['ev','Exit Velo'],['la','Launch Angle'],['whiff_pct','Whiff%'],['chase_pct','Chase%'],['swing_pct','Swing%']] as [MetricKey,string][]).map(([m,label]) => (
                   <option key={m} value={m}>{label}</option>
                 ))}
               </select>
@@ -155,7 +155,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
               <span className="text-[10px] text-zinc-500">Metric:</span>
               <select value={config.barMetric || 'usage'} onChange={e => onUpdate({ ...config, barMetric: e.target.value as BarMetric })}
                 className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
-                {([['usage','Usage%'],['whiff','Whiff%'],['velo','Avg Velo'],['spin','Avg Spin'],['csw','CSW%'],['zone','Zone%'],['chase','Chase%'],['ev','Avg EV'],['xwoba','xwOBA']] as [BarMetric,string][]).map(([m,label]) => (
+                {([['usage','Usage%'],['whiff','Whiff%'],['velo','Avg Velo'],['spin','Avg Spin'],['csw','CSW%'],['zone','Zone%'],['chase','Chase%'],['swing','Swing%'],['ev','Avg EV'],['xwoba','xwOBA']] as [BarMetric,string][]).map(([m,label]) => (
                   <option key={m} value={m}>{label}</option>
                 ))}
               </select>

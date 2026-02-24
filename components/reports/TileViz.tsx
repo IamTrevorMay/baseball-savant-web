@@ -18,10 +18,10 @@ const SPECTRUM: [number,string][] = [
   [0.75,'#f09015'],[0.85,'#e06010'],[0.95,'#c42a0c'],[1,'#9e0000'],
 ]
 
-type MetricKey = 'frequency'|'ba'|'slg'|'woba'|'xba'|'xwoba'|'xslg'|'ev'|'la'|'whiff_pct'
+type MetricKey = 'frequency'|'ba'|'slg'|'woba'|'xba'|'xwoba'|'xslg'|'ev'|'la'|'whiff_pct'|'chase_pct'|'swing_pct'
 const METRIC_LABELS: Record<MetricKey, string> = {
   frequency:'Frequency', ba:'BA', slg:'SLG', woba:'wOBA',
-  xba:'xBA', xwoba:'xwOBA', xslg:'xSLG', ev:'Exit Velo', la:'Launch Angle', whiff_pct:'Whiff%',
+  xba:'xBA', xwoba:'xwOBA', xslg:'xSLG', ev:'Exit Velo', la:'Launch Angle', whiff_pct:'Whiff%', chase_pct:'Chase%', swing_pct:'Swing%',
 }
 
 function calcMetric(pitches: any[], metric: MetricKey): number|null {
@@ -50,6 +50,14 @@ function calcMetric(pitches: any[], metric: MetricKey): number|null {
       const wh=pitches.filter(p=>(p.description||'').toLowerCase().includes('swinging_strike'))
       return sw.length?wh.length/sw.length:null
     }
+    case 'chase_pct': {
+      const oz=pitches.filter(p=>p.zone>9);const sw=oz.filter(p=>{const s=(p.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')})
+      return oz.length?sw.length/oz.length:null
+    }
+    case 'swing_pct': {
+      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d.includes('foul_tip')})
+      return pitches.length?sw.length/pitches.length:null
+    }
     default: return null
   }
 }
@@ -59,7 +67,7 @@ function fmtMetric(v:number|null,m:MetricKey):string {
   if(['ba','slg','woba','xba','xwoba','xslg'].includes(m)) return v.toFixed(3)
   if(m==='ev') return v.toFixed(1)
   if(m==='la') return v.toFixed(1)+'\u00b0'
-  if(m==='whiff_pct') return (v*100).toFixed(1)+'%'
+  if(m==='whiff_pct'||m==='chase_pct'||m==='swing_pct') return (v*100).toFixed(1)+'%'
   return v.toFixed(2)
 }
 
@@ -133,8 +141,8 @@ export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode
 }
 
 // ── BAR CHART ─────────────────────────────────────────────────────────────────
-export type BarMetric = 'usage'|'whiff'|'velo'|'spin'|'csw'|'zone'|'chase'|'ev'|'xwoba'
-const BAR_LABELS:Record<BarMetric,string> = {usage:'Usage%',whiff:'Whiff%',velo:'Avg Velo',spin:'Avg Spin',csw:'CSW%',zone:'Zone%',chase:'Chase%',ev:'Avg EV',xwoba:'xwOBA'}
+export type BarMetric = 'usage'|'whiff'|'velo'|'spin'|'csw'|'zone'|'chase'|'swing'|'ev'|'xwoba'
+const BAR_LABELS:Record<BarMetric,string> = {usage:'Usage%',whiff:'Whiff%',velo:'Avg Velo',spin:'Avg Spin',csw:'CSW%',zone:'Zone%',chase:'Chase%',swing:'Swing%',ev:'Avg EV',xwoba:'xwOBA'}
 export function TileBar({data,metric='usage'}:{data:any[];metric?:BarMetric}) {
   const types = [...new Set(data.map(d=>d.pitch_name).filter(Boolean))].sort()
   if(!types.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
@@ -148,6 +156,7 @@ export function TileBar({data,metric='usage'}:{data:any[];metric?:BarMetric}) {
       case 'csw': {const cs=p.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s==='called_strike'});return p.length?100*cs.length/p.length:0}
       case 'zone': {const iz=p.filter(d=>d.zone>=1&&d.zone<=9);const hz=p.filter(d=>d.zone!=null);return hz.length?100*iz.length/hz.length:0}
       case 'chase': {const oz=p.filter(d=>d.zone>9);const sw=oz.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')});return oz.length?100*sw.length/oz.length:0}
+      case 'swing': {const sw=p.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')||s.includes('foul_tip')});return p.length?100*sw.length/p.length:0}
       case 'ev': {const v=p.map(d=>d.launch_speed).filter(Boolean);return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:0}
       case 'xwoba': {const v=p.map(d=>d.estimated_woba_using_speedangle).filter((x:any)=>x!=null);return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:0}
       default: return 0
@@ -207,6 +216,7 @@ export const CUSTOM_COL_CATALOG: CustomColDef[] = [
   { key: 'csw', label: 'CSW%', category: 'Rates', compute: p => { const cs = p.filter((d: any) => { const s = (d.description || '').toLowerCase(); return s.includes('swinging_strike') || s === 'called_strike' }); return p.length ? 100 * cs.length / p.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'zone', label: 'Zone%', category: 'Rates', compute: p => { const iz = p.filter((d: any) => d.zone >= 1 && d.zone <= 9); const hz = p.filter((d: any) => d.zone != null); return hz.length ? 100 * iz.length / hz.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'chase', label: 'Chase%', category: 'Rates', compute: p => { const oz = p.filter((d: any) => d.zone > 9); const sw = oz.filter((d: any) => { const s = (d.description || '').toLowerCase(); return s.includes('swinging_strike') || s.includes('foul') || s.includes('hit_into_play') }); return oz.length ? 100 * sw.length / oz.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'swing', label: 'Swing%', category: 'Rates', compute: p => { const sw = p.filter((d: any) => { const s = (d.description || '').toLowerCase(); return s.includes('swinging_strike') || s.includes('foul') || s.includes('hit_into_play') || s.includes('foul_tip') }); return p.length ? 100 * sw.length / p.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   // Batting
   { key: 'ba', label: 'BA', category: 'Batting', compute: p => { const ab = p.filter((d: any) => d.events && !['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt'].includes(d.events)); const h = ab.filter((d: any) => ['single', 'double', 'triple', 'home_run'].includes(d.events)); return ab.length ? h.length / ab.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(3) },
   { key: 'slg', label: 'SLG', category: 'Batting', compute: p => { const ab = p.filter((d: any) => d.events && !['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt'].includes(d.events)); if (!ab.length) return null; const tb = ab.reduce((s: number, d: any) => s + (d.events === 'single' ? 1 : d.events === 'double' ? 2 : d.events === 'triple' ? 3 : d.events === 'home_run' ? 4 : 0), 0); return tb / ab.length }, fmt: v => v === null ? '\u2014' : v.toFixed(3) },
