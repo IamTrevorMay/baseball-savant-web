@@ -61,7 +61,7 @@ function TemplateWorkspaceInner() {
         const res = await fetch(`/api/player-data?id=${playerId}&col=pitcher`)
         if (!res.ok) throw new Error(`API error: ${res.status}`)
         const json = await res.json()
-        const rows: any[] = json.data ?? json ?? []
+        const rows: any[] = json.rows ?? json.data ?? json ?? []
 
         const enriched = enrichData(rows)
 

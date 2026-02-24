@@ -47,7 +47,12 @@ export default function PlayerPicker({ label = 'Search for a player...', onSelec
         result_limit: 8,
       })
       if (!error && data) {
-        setResults(data as PlayerResult[])
+        setResults((data as any[]).map(d => ({
+          id: d.pitcher,
+          name: d.player_name,
+          team: d.team,
+          position: undefined,
+        })))
         setShowDropdown(true)
       }
     } catch (err) {
