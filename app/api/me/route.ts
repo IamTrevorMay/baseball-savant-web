@@ -18,7 +18,7 @@ export async function GET() {
 
   let permissions: string[]
   if (profile?.role === 'owner' || profile?.role === 'admin') {
-    permissions = ['research', 'mechanics', 'models', 'compete']
+    permissions = ['research', 'mechanics', 'models', 'compete', 'visualize']
   } else {
     permissions = perms?.map((p: any) => p.tool) ?? []
   }

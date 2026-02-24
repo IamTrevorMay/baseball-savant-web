@@ -86,7 +86,7 @@ function LauncherContent() {
   const searchParams = useSearchParams()
   const denied = searchParams.get('denied')
   // If no user session (preview mode or not logged in), show all tools as accessible
-  const effectivePermissions = user ? permissions : ['research', 'mechanics', 'models', 'compete']
+  const effectivePermissions = user ? permissions : ['research', 'mechanics', 'models', 'compete', 'visualize']
 
   if (loading) {
     return (
