@@ -56,6 +56,15 @@ function ReportsPageInner() {
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
 
+  // Push to Compete state
+  const [showPushModal, setShowPushModal] = useState(false)
+  const [competeAthletes, setCompeteAthletes] = useState<any[]>([])
+  const [pushTarget, setPushTarget] = useState('')
+  const [pushTitle, setPushTitle] = useState('')
+  const [pushDesc, setPushDesc] = useState('')
+  const [pushing, setPushing] = useState(false)
+  const [pushError, setPushError] = useState('')
+
   // Scope selection
   function chooseScope(s: Scope) {
     setScope(s)
@@ -264,6 +273,44 @@ function ReportsPageInner() {
     }
   }
 
+  // Push to Compete
+  async function openPushModal() {
+    setShowPushModal(true)
+    setPushTitle(currentPlayerName ? `${currentPlayerName} Report` : 'Scouting Report')
+    setPushDesc('')
+    setPushTarget('')
+    setPushError('')
+    try {
+      const res = await fetch('/api/compete/athletes')
+      const data = await res.json()
+      setCompeteAthletes(data.athletes || [])
+    } catch { setCompeteAthletes([]) }
+  }
+
+  async function pushToCompete() {
+    if (!pushTarget || !pushTitle.trim()) return
+    setPushing(true)
+    setPushError('')
+    try {
+      const res = await fetch('/api/compete/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: pushTarget,
+          title: pushTitle.trim(),
+          description: pushDesc.trim() || null,
+          player_name: currentPlayerName || null,
+          subject_type: subjectType || 'pitching',
+          metadata: { tiles: tiles.map(t => ({ id: t.id, viz: t.viz, title: t.title })), filters: globalFilters },
+        }),
+      })
+      const data = await res.json()
+      if (data.error) { setPushError(data.error); setPushing(false); return }
+      setShowPushModal(false)
+    } catch { setPushError('Failed to push report') }
+    setPushing(false)
+  }
+
   // Handle query params for "Generate Report" from player page
   useEffect(() => {
     const playerId = searchParams.get('playerId')
@@ -461,6 +508,10 @@ function ReportsPageInner() {
                   className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded text-[11px] text-white font-medium transition disabled:opacity-50">
                   {exporting ? 'Exporting...' : 'Export PDF'}
                 </button>
+                <button onClick={openPushModal}
+                  className="px-2 py-1 bg-amber-700 hover:bg-amber-600 border border-amber-600 rounded text-[11px] text-white font-medium transition">
+                  Push to Compete
+                </button>
               </div>
 
               {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
@@ -486,6 +537,49 @@ function ReportsPageInner() {
                   <button onClick={saveTemplate} disabled={!templateName.trim() || saving}
                     className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-500 transition disabled:opacity-50">
                     {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Push to Compete Modal */}
+          {showPushModal && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowPushModal(false)}>
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-96" onClick={e => e.stopPropagation()}>
+                <h3 className="text-sm font-semibold text-white mb-3">Push to Compete</h3>
+                <p className="text-[11px] text-zinc-500 mb-4">Share this report with an athlete on Compete.</p>
+                {pushError && <p className="text-[11px] text-red-400 mb-3">{pushError}</p>}
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] text-zinc-500 mb-1 block">Athlete</label>
+                    <select value={pushTarget} onChange={e => setPushTarget(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white focus:border-amber-500 focus:outline-none">
+                      <option value="">Select athlete...</option>
+                      {competeAthletes.map((a: any) => (
+                        <option key={a.id} value={a.id}>
+                          {a.profiles?.full_name || a.profiles?.email || 'Unknown'} {a.position ? `(${a.position})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-zinc-500 mb-1 block">Title</label>
+                    <input value={pushTitle} onChange={e => setPushTitle(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-zinc-500 mb-1 block">Description (optional)</label>
+                    <textarea value={pushDesc} onChange={e => setPushDesc(e.target.value)} rows={2}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none resize-none" />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button onClick={() => setShowPushModal(false)}
+                    className="px-3 py-1.5 bg-zinc-800 text-zinc-400 rounded text-xs hover:text-white transition">Cancel</button>
+                  <button onClick={pushToCompete} disabled={!pushTarget || !pushTitle.trim() || pushing}
+                    className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs hover:bg-amber-500 transition disabled:opacity-50">
+                    {pushing ? 'Pushing...' : 'Push Report'}
                   </button>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import CompeteNav from '@/components/compete/CompeteNav'
 
 export default async function CompeteLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -22,6 +23,7 @@ export default async function CompeteLayout({ children }: { children: React.Reac
         <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
         <span className="text-zinc-700">/</span>
         <span className="font-bold text-amber-400 tracking-wide text-sm">Compete</span>
+        <CompeteNav />
       </nav>
       {children}
     </div>
