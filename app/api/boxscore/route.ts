@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
         const p = players[`ID${id}`]
         if (!p) return null
         const s = p.stats?.batting || {}
+        const ss = p.seasonStats?.batting || {}
         return {
           id,
           name: p.person?.fullName || '',
@@ -35,10 +36,10 @@ export async function GET(req: NextRequest) {
           rbi: s.rbi ?? 0,
           bb: s.baseOnBalls ?? 0,
           so: s.strikeOuts ?? 0,
-          avg: s.avg || '',
-          obp: s.obp || '',
-          slg: s.slg || '',
           hr: s.homeRuns ?? 0,
+          avg: ss.avg || s.avg || '',
+          obp: ss.obp || s.obp || '',
+          slg: ss.slg || s.slg || '',
         }
       }).filter(Boolean)
 
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
         const p = players[`ID${id}`]
         if (!p) return null
         const s = p.stats?.pitching || {}
+        const ss = p.seasonStats?.pitching || {}
         return {
           id,
           name: p.person?.fullName || '',
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest) {
           bb: s.baseOnBalls ?? 0,
           so: s.strikeOuts ?? 0,
           hr: s.homeRuns ?? 0,
-          era: s.era || '',
+          era: ss.era || s.era || '',
           pitches: s.numberOfPitches ?? 0,
           strikes: s.strikes ?? 0,
         }

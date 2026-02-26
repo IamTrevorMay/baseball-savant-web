@@ -356,28 +356,27 @@ export default function HomePage() {
 
 /* ─── Diamond (base runners) ─── */
 
-function Diamond({ onFirst, onSecond, onThird, size = 28 }: { onFirst: boolean; onSecond: boolean; onThird: boolean; size?: number }) {
+function Diamond({ onFirst, onSecond, onThird, size = 20 }: { onFirst: boolean; onSecond: boolean; onThird: boolean; size?: number }) {
   const s = size
   const half = s / 2
-  const baseSize = s * 0.28
+  const baseSize = s * 0.26
   const bh = baseSize / 2
-  const off = s * 0.07 // inset from edge
+  const pad = s * 0.12
   return (
     <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} className="shrink-0">
-      {/* diamond outline */}
-      <path d={`M${half} ${off} L${s - off} ${half} L${half} ${s - off} L${off} ${half} Z`}
-        fill="none" stroke="#3f3f46" strokeWidth={1} />
-      {/* 2nd base */}
-      <rect x={half - bh} y={off - bh + 1} width={baseSize} height={baseSize}
-        transform={`rotate(45 ${half} ${off + 1})`}
+      <path d={`M${half} ${pad} L${s - pad} ${half} L${half} ${s - pad} L${pad} ${half} Z`}
+        fill="none" stroke="#3f3f46" strokeWidth={0.8} />
+      {/* 2nd */}
+      <rect x={half - bh} y={pad - bh} width={baseSize} height={baseSize}
+        transform={`rotate(45 ${half} ${pad})`}
         fill={onSecond ? '#34d399' : '#27272a'} stroke={onSecond ? '#34d399' : '#3f3f46'} strokeWidth={0.5} />
-      {/* 3rd base */}
-      <rect x={off - bh} y={half - bh} width={baseSize} height={baseSize}
-        transform={`rotate(45 ${off} ${half})`}
+      {/* 3rd */}
+      <rect x={pad - bh} y={half - bh} width={baseSize} height={baseSize}
+        transform={`rotate(45 ${pad} ${half})`}
         fill={onThird ? '#34d399' : '#27272a'} stroke={onThird ? '#34d399' : '#3f3f46'} strokeWidth={0.5} />
-      {/* 1st base */}
-      <rect x={s - off - bh} y={half - bh} width={baseSize} height={baseSize}
-        transform={`rotate(45 ${s - off} ${half})`}
+      {/* 1st */}
+      <rect x={s - pad - bh} y={half - bh} width={baseSize} height={baseSize}
+        transform={`rotate(45 ${s - pad} ${half})`}
         fill={onFirst ? '#34d399' : '#27272a'} stroke={onFirst ? '#34d399' : '#3f3f46'} strokeWidth={0.5} />
     </svg>
   )
@@ -423,32 +422,24 @@ function ScoreCard({ game, selected, onClick }: { game: Game; selected: boolean;
     statusText = gameTime(game.gameDate)
   }
 
-  const isSpring = game.gameType === 'S' || game.gameType === 'E'
   const lastName = (name: string) => name.split(' ').slice(-1)[0]
 
   return (
     <div onClick={onClick} className={`bg-zinc-900 border rounded-lg p-4 min-w-[240px] flex-shrink-0 cursor-pointer transition ${
       selected ? 'border-emerald-500 ring-1 ring-emerald-500/30' : isLive ? 'border-emerald-700/50 hover:border-emerald-700' : 'border-zinc-800 hover:border-zinc-700'
     }`}>
-      {/* Header: status + game type */}
+      {/* Header: status + situation */}
       <div className="flex items-center justify-between mb-2">
         <span className={`text-[10px] font-bold uppercase tracking-wider ${statusColor}`}>
           {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse align-middle" />}
           {statusText}
         </span>
-        <div className="flex items-center gap-2">
-          {isSpring && (
-            <span className="text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-400">
-              ST
-            </span>
-          )}
-          {isLive && game.outs !== null && (
-            <div className="flex items-center gap-2">
-              <OutsDots outs={game.outs} />
-              <Diamond onFirst={game.onFirst} onSecond={game.onSecond} onThird={game.onThird} />
-            </div>
-          )}
-        </div>
+        {isLive && game.outs !== null && (
+          <div className="flex items-center gap-2">
+            <OutsDots outs={game.outs} />
+            <Diamond onFirst={game.onFirst} onSecond={game.onSecond} onThird={game.onThird} />
+          </div>
+        )}
       </div>
 
       {/* Away team */}
@@ -483,14 +474,14 @@ function ScoreCard({ game, selected, onClick }: { game: Game; selected: boolean;
       {isLive && (game.pitcher || game.batter) && (
         <div className="mt-2 pt-2 border-t border-zinc-800 space-y-0.5">
           {game.pitcher && (
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-zinc-600 font-medium w-2">P</span>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="text-zinc-600 font-medium shrink-0">P</span>
               <span className="text-zinc-400 truncate">{lastName(game.pitcher.name)}</span>
             </div>
           )}
           {game.batter && (
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-zinc-600 font-medium w-2">AB</span>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="text-zinc-600 font-medium shrink-0">AB</span>
               <span className="text-zinc-400 truncate">{lastName(game.batter.name)}</span>
             </div>
           )}
@@ -523,6 +514,17 @@ function ScoreCard({ game, selected, onClick }: { game: Game; selected: boolean;
 function BoxScorePanel({ box, side, setSide }: { box: BoxScore; side: 'away' | 'home'; setSide: (s: 'away' | 'home') => void }) {
   const team = side === 'away' ? box.away : box.home
 
+  // Always show at least 9 innings
+  const minInnings = 9
+  const inningCount = Math.max(minInnings, box.innings.length)
+  const displayInnings = Array.from({ length: inningCount }, (_, i) => {
+    const num = i + 1
+    const existing = box.innings.find(inn => inn.num === num)
+    return existing || { num, ordinal: String(num), away: { runs: null }, home: { runs: null } }
+  })
+  // Determine which innings have been played (have data)
+  const lastPlayedInning = box.innings.length
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
       {/* Line Score */}
@@ -531,7 +533,7 @@ function BoxScorePanel({ box, side, setSide }: { box: BoxScore; side: 'away' | '
           <thead>
             <tr className="text-zinc-500 bg-zinc-800/50">
               <th className="text-left px-3 py-2 w-20"></th>
-              {box.innings.map(inn => (
+              {displayInnings.map(inn => (
                 <th key={inn.num} className="text-center px-2 py-2 min-w-[24px]">{inn.num}</th>
               ))}
               <th className="text-center px-3 py-2 font-bold">R</th>
@@ -550,9 +552,14 @@ function BoxScorePanel({ box, side, setSide }: { box: BoxScore; side: 'away' | '
                       style={{ backgroundColor: TEAM_COLORS[t.team.abbrev] || '#52525b' }}>{t.team.abbrev}</div>
                     <span className="text-white font-medium text-[11px]">{t.team.abbrev}</span>
                   </td>
-                  {box.innings.map(inn => {
+                  {displayInnings.map(inn => {
                     const runs = s === 'away' ? inn.away.runs : inn.home.runs
-                    return <td key={inn.num} className="text-center px-2 py-1.5 text-zinc-300">{runs !== null ? runs : ''}</td>
+                    const played = inn.num <= lastPlayedInning
+                    return (
+                      <td key={inn.num} className={`text-center px-2 py-1.5 ${played ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                        {runs !== null ? runs : played ? 0 : ''}
+                      </td>
+                    )
                   })}
                   <td className="text-center px-3 py-1.5 text-white font-bold">{tot.runs}</td>
                   <td className="text-center px-3 py-1.5 text-zinc-300">{tot.hits}</td>
@@ -565,7 +572,7 @@ function BoxScorePanel({ box, side, setSide }: { box: BoxScore; side: 'away' | '
       </div>
 
       {/* Team toggle */}
-      <div className="flex gap-1 px-4 pt-3 pb-2">
+      <div className="flex justify-center gap-1 px-4 pt-3 pb-2">
         {(['away', 'home'] as const).map(s => {
           const t = s === 'away' ? box.away : box.home
           return (
