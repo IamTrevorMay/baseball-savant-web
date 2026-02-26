@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
+import ResearchNav from '@/components/ResearchNav'
 import VizPanel from '@/components/VizPanel'
 import FilterEngine, { ActiveFilter, applyFiltersToData } from '@/components/FilterEngine'
 import OverviewTab from '@/components/dashboard/OverviewTab'
@@ -213,30 +214,25 @@ export default function PlayerDashboard() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 flex flex-col">
       {/* Top Nav */}
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-4">
-          <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-          <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition">Research</a>
-          <div className="relative">
-            <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
-              onFocus={() => searchQuery && setShowSearch(true)}
-              placeholder="Search pitcher..."
-              className="w-64 pl-3 pr-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
-            {showSearch && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-xl z-50">
-                {searchResults.map(p => (
-                  <div key={p.pitcher} onClick={() => { router.push(`/player/${p.pitcher}`); setShowSearch(false); setSearchQuery('') }}
-                    className="px-3 py-2 text-sm hover:bg-zinc-700 cursor-pointer flex justify-between">
-                    <span className="text-white">{p.player_name}</span>
-                    <span className="text-zinc-500 text-xs">{p.team}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      <ResearchNav active="/pitchers">
+        <div className="relative ml-4 hidden sm:block">
+          <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
+            onFocus={() => searchQuery && setShowSearch(true)}
+            placeholder="Search pitcher..."
+            className="w-64 pl-3 pr-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
+          {showSearch && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-xl z-50">
+              {searchResults.map(p => (
+                <div key={p.pitcher} onClick={() => { router.push(`/player/${p.pitcher}`); setShowSearch(false); setSearchQuery('') }}
+                  className="px-3 py-2 text-sm hover:bg-zinc-700 cursor-pointer flex justify-between">
+                  <span className="text-white">{p.player_name}</span>
+                  <span className="text-zinc-500 text-xs">{p.team}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="flex gap-4"><a href="/home" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Home</a><a href="/pitchers" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Pitchers</a><a href="/hitters" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Hitters</a><a href="/reports" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Reports</a><a href="/umpire" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Umpires</a><a href="/explore" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Explorer</a><a href="/analyst" className="text-xs text-zinc-500 hover:text-zinc-300 transition">Analyst</a></div>
-      </nav>
+      </ResearchNav>
 
       {/* Player Header */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-5">

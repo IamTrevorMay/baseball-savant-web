@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import ResearchNav from '@/components/ResearchNav'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -181,21 +182,7 @@ export default function AnalystPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 flex flex-col">
       {/* Nav */}
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6 shrink-0">
-        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4">Research</a>
-        <div className="flex-1 flex justify-center">
-          <div className="flex gap-4 text-xs text-zinc-500">
-            <a href="/home" className="hover:text-zinc-300 transition">Home</a>
-            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
-            <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
-            <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
-            <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
-            <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
-            <a href="/analyst" className="text-emerald-400">Analyst</a>
-          </div>
-        </div>
-      </nav>
+      <ResearchNav active="/analyst" />
 
       <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
         {/* Messages */}

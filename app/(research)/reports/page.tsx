@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import ResearchNav from '@/components/ResearchNav'
 import FilterEngine, { ActiveFilter, applyFiltersToData, FILTER_CATALOG } from '@/components/FilterEngine'
 import ReportTile, { TileConfig, defaultTile } from '@/components/reports/ReportTile'
 import { computeStuffProfile, generateSimilarStuffFilters, applyOverlayRules, type StuffProfile, type OverlayRule } from '@/lib/overlayEngine'
@@ -570,21 +571,7 @@ function ReportsPageInner() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 md:px-6">
-        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4 hidden sm:inline">Research</a>
-        <div className="flex-1 flex justify-center">
-          <div className="flex gap-2 md:gap-4 text-[10px] md:text-xs text-zinc-500 overflow-x-auto">
-            <a href="/home" className="hover:text-zinc-300 transition whitespace-nowrap">Home</a>
-            <a href="/pitchers" className="hover:text-zinc-300 transition whitespace-nowrap">Pitchers</a>
-            <a href="/hitters" className="hover:text-zinc-300 transition whitespace-nowrap">Hitters</a>
-            <a href="/reports" className="text-emerald-400 whitespace-nowrap">Reports</a>
-            <a href="/umpire" className="hover:text-zinc-300 transition whitespace-nowrap hidden sm:inline">Umpires</a>
-            <a href="/explore" className="hover:text-zinc-300 transition whitespace-nowrap hidden sm:inline">Explore</a>
-            <a href="/analyst" className="hover:text-zinc-300 transition whitespace-nowrap">Analyst</a>
-          </div>
-        </div>
-      </nav>
+      <ResearchNav active="/reports" />
 
       {/* ── Header Bar ────────────────────────────────────────────────── */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-3 md:px-6 py-2">

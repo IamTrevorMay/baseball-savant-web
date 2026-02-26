@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import ResearchNav from '@/components/ResearchNav'
 
 /* ─── News Types ─── */
 interface NewsItem {
@@ -83,22 +84,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
-      {/* Nav */}
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6">
-        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4">Research</a>
-        <div className="flex-1 flex justify-center">
-          <div className="flex gap-4 text-xs text-zinc-500">
-            <a href="/home" className="text-emerald-400">Home</a>
-            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
-            <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
-            <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
-            <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
-            <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
-            <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
-          </div>
-        </div>
-      </nav>
+      <ResearchNav active="/home" />
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* ─── News Section ─── */}

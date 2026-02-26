@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { loadGlossary, colName, colDesc } from '@/lib/glossary'
 import { SidebarCheckboxes, Chips, RangeInput } from '@/components/FilterComponents'
 import VizPanel from '@/components/VizPanel'
+import ResearchNav from '@/components/ResearchNav'
 
 interface RangeFilter { min: string; max: string }
 type CatFilter = string[] | null
@@ -384,28 +385,21 @@ export default function ExplorePage() {
 
   return (
     <div className="h-screen flex flex-col bg-zinc-950 text-zinc-200 overflow-hidden">
-      <header className="h-11 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={()=>setSideOpen(!sideOpen)} className="text-zinc-400 hover:text-white transition p-1">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-          </button>
-          <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-          <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-2">Research</a>
-          <span className="text-xs text-zinc-600">|</span>
-          <span className="text-xs text-zinc-500">Data Explorer</span>
-        </div>
+      <ResearchNav active="/explore" rightContent={
         <div className="flex items-center gap-4">
           <span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches · through {dbInfo.lastDate}</span>
-          <a href="/home" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Home</a>
-          <a href="/pitchers" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Pitchers</a>
-          <a href="/hitters" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Hitters</a>
-          <a href="/reports" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Reports</a>
-          <a href="/umpire" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Umpires</a>
-          <a href="/analyst" className="text-[11px] text-zinc-500 hover:text-emerald-400 transition">Analyst</a>
           <button onClick={runUpdate} disabled={updating} className="text-[11px] text-zinc-500 hover:text-emerald-400 transition disabled:text-zinc-700">{updating ? "Updating..." : "Update Data"}</button>
           {updateMsg && <span className="text-[11px] text-emerald-400">{updateMsg}</span>}
         </div>
-      </header>
+      }>
+        <div className="flex items-center gap-3 ml-4">
+          <button onClick={()=>setSideOpen(!sideOpen)} className="text-zinc-400 hover:text-white transition p-1">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h16"/></svg>
+          </button>
+          <span className="text-xs text-zinc-600 hidden sm:inline">|</span>
+          <span className="text-xs text-zinc-500 hidden sm:inline">Data Explorer</span>
+        </div>
+      </ResearchNav>
 
       <div className="flex flex-1 overflow-hidden">
         <aside className={`${sideOpen?'w-[280px]':'w-0'} bg-zinc-900/80 border-r border-zinc-800 transition-all duration-200 overflow-hidden shrink-0 flex flex-col`}>

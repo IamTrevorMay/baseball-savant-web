@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import ResearchNav from '@/components/ResearchNav'
 
 interface HitterResult {
   player_name: string
@@ -73,22 +74,7 @@ export default function HittersPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
       {/* Nav */}
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6">
-        <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4">Research</a>
-        <div className="flex-1 flex justify-center">
-          <div className="flex gap-4 text-xs text-zinc-500">
-            <a href="/home" className="hover:text-zinc-300 transition">Home</a>
-            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
-            <a href="/hitters" className="text-emerald-400">Hitters</a>
-            <a href="/reports" className="hover:text-zinc-300 transition">Reports</a>
-            <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
-            <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
-            <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
-          </div>
-        </div>
-        <span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches</span>
-      </nav>
+      <ResearchNav active="/hitters" rightContent={<span className="text-[11px] text-zinc-600 font-mono">{dbInfo.total.toLocaleString()} pitches</span>} />
 
       {/* Hero */}
       <div className="flex flex-col items-center justify-center pt-24 pb-16 px-4">
