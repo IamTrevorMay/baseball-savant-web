@@ -6,11 +6,37 @@ import ResearchNav from '@/components/ResearchNav'
 interface GameTeam {
   id: number; name: string; abbrev: string; score: number | null
 }
+interface PlayerRef { id: number; name: string }
 interface Game {
   gamePk: number; gameDate: string; gameType: string; seriesDescription: string
   state: string; detailedState: string
   away: GameTeam; home: GameTeam
   inning: number | null; inningOrdinal: string | null; inningHalf: string | null
+  outs: number | null; onFirst: boolean; onSecond: boolean; onThird: boolean
+  pitcher: PlayerRef | null; batter: PlayerRef | null
+  probableAway: PlayerRef | null; probableHome: PlayerRef | null
+}
+
+/* ─── Box Score Types ─── */
+interface BoxBatter {
+  id: number; name: string; boxName: string; pos: string
+  ab: number; r: number; h: number; rbi: number; bb: number; so: number
+  avg: string; obp: string; slg: string; hr: number
+}
+interface BoxPitcher {
+  id: number; name: string; boxName: string
+  ip: string; h: number; r: number; er: number; bb: number; so: number
+  hr: number; era: string; pitches: number; strikes: number
+}
+interface BoxTeam {
+  team: { id: number; name: string; abbrev: string }
+  batting: { totals: any }
+  batters: BoxBatter[]; pitchers: BoxPitcher[]
+}
+interface InningLine { num: number; ordinal: string; away: { runs: number | null }; home: { runs: number | null } }
+interface BoxScore {
+  gamePk: string; away: BoxTeam; home: BoxTeam; innings: InningLine[]
+  totals: { away: { runs: number; hits: number; errors: number }; home: { runs: number; hits: number; errors: number } }
 }
 
 /* ─── News Types ─── */
@@ -53,6 +79,10 @@ export default function HomePage() {
   const [games, setGames] = useState<Game[]>([])
   const [scoresLoading, setScoresLoading] = useState(true)
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [selectedGamePk, setSelectedGamePk] = useState<number | null>(null)
+  const [boxScore, setBoxScore] = useState<BoxScore | null>(null)
+  const [boxLoading, setBoxLoading] = useState(false)
+  const [boxTeamSide, setBoxTeamSide] = useState<'away' | 'home'>('away')
 
   const fetchScores = useCallback((date: string, showLoading = false) => {
     if (showLoading) setScoresLoading(true)
@@ -83,10 +113,23 @@ export default function HomePage() {
   /* fetch scores on date change + auto-refresh every 30s */
   useEffect(() => {
     fetchScores(scoresDate, true)
+    setSelectedGamePk(null)
+    setBoxScore(null)
     if (refreshRef.current) clearInterval(refreshRef.current)
     refreshRef.current = setInterval(() => fetchScores(scoresDate), 30000)
     return () => { if (refreshRef.current) clearInterval(refreshRef.current) }
   }, [scoresDate, fetchScores])
+
+  /* fetch box score when a game is selected */
+  useEffect(() => {
+    if (!selectedGamePk) { setBoxScore(null); return }
+    setBoxLoading(true)
+    setBoxTeamSide('away')
+    fetch(`/api/boxscore?gamePk=${selectedGamePk}`)
+      .then(r => r.json())
+      .then(d => { if (d.away) setBoxScore(d); setBoxLoading(false) })
+      .catch(() => setBoxLoading(false))
+  }, [selectedGamePk])
 
   useEffect(() => {
     fetch('/api/news').then(r => r.json()).then(d => { setNews(d.items || []); setNewsLoading(false) }).catch(() => setNewsLoading(false))
@@ -215,9 +258,25 @@ export default function HomePage() {
           ) : games.length === 0 ? (
             <div className="text-center py-12 text-zinc-500 text-sm">No games scheduled for this date.</div>
           ) : (
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-              {games.map(g => <ScoreCard key={g.gamePk} game={g} />)}
-            </div>
+            <>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                {games.map(g => (
+                  <ScoreCard key={g.gamePk} game={g} selected={g.gamePk === selectedGamePk}
+                    onClick={() => setSelectedGamePk(g.gamePk === selectedGamePk ? null : g.gamePk)} />
+                ))}
+              </div>
+              {selectedGamePk && (
+                <div className="mt-4">
+                  {boxLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="w-8 h-8 border-4 border-zinc-700 border-t-emerald-500 rounded-full animate-spin" />
+                    </div>
+                  ) : boxScore ? (
+                    <BoxScorePanel box={boxScore} side={boxTeamSide} setSide={setBoxTeamSide} />
+                  ) : null}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -295,9 +354,50 @@ export default function HomePage() {
   )
 }
 
+/* ─── Diamond (base runners) ─── */
+
+function Diamond({ onFirst, onSecond, onThird, size = 28 }: { onFirst: boolean; onSecond: boolean; onThird: boolean; size?: number }) {
+  const s = size
+  const half = s / 2
+  const baseSize = s * 0.28
+  const bh = baseSize / 2
+  const off = s * 0.07 // inset from edge
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} className="shrink-0">
+      {/* diamond outline */}
+      <path d={`M${half} ${off} L${s - off} ${half} L${half} ${s - off} L${off} ${half} Z`}
+        fill="none" stroke="#3f3f46" strokeWidth={1} />
+      {/* 2nd base */}
+      <rect x={half - bh} y={off - bh + 1} width={baseSize} height={baseSize}
+        transform={`rotate(45 ${half} ${off + 1})`}
+        fill={onSecond ? '#34d399' : '#27272a'} stroke={onSecond ? '#34d399' : '#3f3f46'} strokeWidth={0.5} />
+      {/* 3rd base */}
+      <rect x={off - bh} y={half - bh} width={baseSize} height={baseSize}
+        transform={`rotate(45 ${off} ${half})`}
+        fill={onThird ? '#34d399' : '#27272a'} stroke={onThird ? '#34d399' : '#3f3f46'} strokeWidth={0.5} />
+      {/* 1st base */}
+      <rect x={s - off - bh} y={half - bh} width={baseSize} height={baseSize}
+        transform={`rotate(45 ${s - off} ${half})`}
+        fill={onFirst ? '#34d399' : '#27272a'} stroke={onFirst ? '#34d399' : '#3f3f46'} strokeWidth={0.5} />
+    </svg>
+  )
+}
+
+/* ─── Outs indicator ─── */
+
+function OutsDots({ outs }: { outs: number }) {
+  return (
+    <div className="flex gap-1">
+      {[0, 1, 2].map(i => (
+        <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < outs ? 'bg-amber-400' : 'bg-zinc-700'}`} />
+      ))}
+    </div>
+  )
+}
+
 /* ─── Score Card ─── */
 
-function ScoreCard({ game }: { game: Game }) {
+function ScoreCard({ game, selected, onClick }: { game: Game; selected: boolean; onClick: () => void }) {
   const isLive = game.state === 'Live'
   const isFinal = game.state === 'Final'
   const isPreview = game.state === 'Preview'
@@ -324,26 +424,35 @@ function ScoreCard({ game }: { game: Game }) {
   }
 
   const isSpring = game.gameType === 'S' || game.gameType === 'E'
+  const lastName = (name: string) => name.split(' ').slice(-1)[0]
 
   return (
-    <div className={`bg-zinc-900 border rounded-lg p-4 min-w-[220px] flex-shrink-0 ${
-      isLive ? 'border-emerald-700/50' : 'border-zinc-800'
+    <div onClick={onClick} className={`bg-zinc-900 border rounded-lg p-4 min-w-[240px] flex-shrink-0 cursor-pointer transition ${
+      selected ? 'border-emerald-500 ring-1 ring-emerald-500/30' : isLive ? 'border-emerald-700/50 hover:border-emerald-700' : 'border-zinc-800 hover:border-zinc-700'
     }`}>
       {/* Header: status + game type */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <span className={`text-[10px] font-bold uppercase tracking-wider ${statusColor}`}>
           {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse align-middle" />}
           {statusText}
         </span>
-        {isSpring && (
-          <span className="text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-400">
-            ST
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isSpring && (
+            <span className="text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-400">
+              ST
+            </span>
+          )}
+          {isLive && game.outs !== null && (
+            <div className="flex items-center gap-2">
+              <OutsDots outs={game.outs} />
+              <Diamond onFirst={game.onFirst} onSecond={game.onSecond} onThird={game.onThird} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Away team */}
-      <div className={`flex items-center justify-between py-1.5 ${awayWon ? 'text-white' : 'text-zinc-400'}`}>
+      <div className={`flex items-center justify-between py-1 ${awayWon ? 'text-white' : 'text-zinc-400'}`}>
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
             style={{ backgroundColor: TEAM_COLORS[game.away.abbrev] || '#52525b' }}>
@@ -357,7 +466,7 @@ function ScoreCard({ game }: { game: Game }) {
       </div>
 
       {/* Home team */}
-      <div className={`flex items-center justify-between py-1.5 ${homeWon ? 'text-white' : 'text-zinc-400'}`}>
+      <div className={`flex items-center justify-between py-1 ${homeWon ? 'text-white' : 'text-zinc-400'}`}>
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
             style={{ backgroundColor: TEAM_COLORS[game.home.abbrev] || '#52525b' }}>
@@ -368,6 +477,190 @@ function ScoreCard({ game }: { game: Game }) {
         <span className={`text-sm font-mono font-semibold ${homeWon ? 'text-white' : ''}`}>
           {game.home.score !== null ? game.home.score : ''}
         </span>
+      </div>
+
+      {/* Live: pitcher / batter */}
+      {isLive && (game.pitcher || game.batter) && (
+        <div className="mt-2 pt-2 border-t border-zinc-800 space-y-0.5">
+          {game.pitcher && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-zinc-600 font-medium w-2">P</span>
+              <span className="text-zinc-400 truncate">{lastName(game.pitcher.name)}</span>
+            </div>
+          )}
+          {game.batter && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-zinc-600 font-medium w-2">AB</span>
+              <span className="text-zinc-400 truncate">{lastName(game.batter.name)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview: probable pitchers */}
+      {isPreview && (game.probableAway || game.probableHome) && (
+        <div className="mt-2 pt-2 border-t border-zinc-800 space-y-0.5">
+          {game.probableAway && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-zinc-600 font-medium">{game.away.abbrev}</span>
+              <span className="text-zinc-400 truncate">{lastName(game.probableAway.name)}</span>
+            </div>
+          )}
+          {game.probableHome && (
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-zinc-600 font-medium">{game.home.abbrev}</span>
+              <span className="text-zinc-400 truncate">{lastName(game.probableHome.name)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Box Score Panel ─── */
+
+function BoxScorePanel({ box, side, setSide }: { box: BoxScore; side: 'away' | 'home'; setSide: (s: 'away' | 'home') => void }) {
+  const team = side === 'away' ? box.away : box.home
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      {/* Line Score */}
+      <div className="overflow-x-auto border-b border-zinc-800">
+        <table className="w-full text-[11px] font-mono">
+          <thead>
+            <tr className="text-zinc-500 bg-zinc-800/50">
+              <th className="text-left px-3 py-2 w-20"></th>
+              {box.innings.map(inn => (
+                <th key={inn.num} className="text-center px-2 py-2 min-w-[24px]">{inn.num}</th>
+              ))}
+              <th className="text-center px-3 py-2 font-bold">R</th>
+              <th className="text-center px-3 py-2 font-bold">H</th>
+              <th className="text-center px-3 py-2 font-bold">E</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(['away', 'home'] as const).map(s => {
+              const t = s === 'away' ? box.away : box.home
+              const tot = box.totals[s]
+              return (
+                <tr key={s} className="border-t border-zinc-800/30">
+                  <td className="px-3 py-1.5 flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white shrink-0"
+                      style={{ backgroundColor: TEAM_COLORS[t.team.abbrev] || '#52525b' }}>{t.team.abbrev}</div>
+                    <span className="text-white font-medium text-[11px]">{t.team.abbrev}</span>
+                  </td>
+                  {box.innings.map(inn => {
+                    const runs = s === 'away' ? inn.away.runs : inn.home.runs
+                    return <td key={inn.num} className="text-center px-2 py-1.5 text-zinc-300">{runs !== null ? runs : ''}</td>
+                  })}
+                  <td className="text-center px-3 py-1.5 text-white font-bold">{tot.runs}</td>
+                  <td className="text-center px-3 py-1.5 text-zinc-300">{tot.hits}</td>
+                  <td className="text-center px-3 py-1.5 text-zinc-300">{tot.errors}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Team toggle */}
+      <div className="flex gap-1 px-4 pt-3 pb-2">
+        {(['away', 'home'] as const).map(s => {
+          const t = s === 'away' ? box.away : box.home
+          return (
+            <button key={s} onClick={() => setSide(s)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition flex items-center gap-1.5 ${
+                side === s ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+              }`}>
+              <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white shrink-0"
+                style={{ backgroundColor: TEAM_COLORS[t.team.abbrev] || '#52525b' }}>{t.team.abbrev}</div>
+              {t.team.name}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Batting table */}
+      <div className="px-4 pb-3">
+        <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Batting</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-zinc-500 font-medium">
+                <th className="text-left px-2 py-1.5">Player</th>
+                <th className="text-right px-2 py-1.5">AB</th>
+                <th className="text-right px-2 py-1.5">R</th>
+                <th className="text-right px-2 py-1.5">H</th>
+                <th className="text-right px-2 py-1.5">RBI</th>
+                <th className="text-right px-2 py-1.5">BB</th>
+                <th className="text-right px-2 py-1.5">SO</th>
+                <th className="text-right px-2 py-1.5 hidden md:table-cell">HR</th>
+                <th className="text-right px-2 py-1.5 hidden md:table-cell">AVG</th>
+                <th className="text-right px-2 py-1.5 hidden lg:table-cell">OBP</th>
+                <th className="text-right px-2 py-1.5 hidden lg:table-cell">SLG</th>
+              </tr>
+            </thead>
+            <tbody>
+              {team.batters.map((b, i) => (
+                <tr key={b.id} className="border-t border-zinc-800/30 hover:bg-zinc-800/20 transition">
+                  <td className="px-2 py-1.5 text-white font-medium whitespace-nowrap">
+                    <span className="text-zinc-500 mr-1.5">{b.pos}</span>{b.boxName || b.name}
+                  </td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{b.ab}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{b.r}</td>
+                  <td className="text-right px-2 py-1.5 text-white font-mono font-medium">{b.h}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{b.rbi}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{b.bb}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{b.so}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono hidden md:table-cell">{b.hr}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-400 font-mono hidden md:table-cell">{b.avg}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-400 font-mono hidden lg:table-cell">{b.obp}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-400 font-mono hidden lg:table-cell">{b.slg}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pitching table */}
+      <div className="px-4 pb-4">
+        <h4 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider mb-2">Pitching</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-zinc-500 font-medium">
+                <th className="text-left px-2 py-1.5">Pitcher</th>
+                <th className="text-right px-2 py-1.5">IP</th>
+                <th className="text-right px-2 py-1.5">H</th>
+                <th className="text-right px-2 py-1.5">R</th>
+                <th className="text-right px-2 py-1.5">ER</th>
+                <th className="text-right px-2 py-1.5">BB</th>
+                <th className="text-right px-2 py-1.5">SO</th>
+                <th className="text-right px-2 py-1.5 hidden md:table-cell">HR</th>
+                <th className="text-right px-2 py-1.5 hidden md:table-cell">P-S</th>
+                <th className="text-right px-2 py-1.5 hidden lg:table-cell">ERA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {team.pitchers.map(p => (
+                <tr key={p.id} className="border-t border-zinc-800/30 hover:bg-zinc-800/20 transition">
+                  <td className="px-2 py-1.5 text-white font-medium whitespace-nowrap">{p.boxName || p.name}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{p.ip}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{p.h}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{p.r}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{p.er}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono">{p.bb}</td>
+                  <td className="text-right px-2 py-1.5 text-white font-mono font-medium">{p.so}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-300 font-mono hidden md:table-cell">{p.hr}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-400 font-mono hidden md:table-cell">{p.pitches}-{p.strikes}</td>
+                  <td className="text-right px-2 py-1.5 text-zinc-400 font-mono hidden lg:table-cell">{p.era}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
