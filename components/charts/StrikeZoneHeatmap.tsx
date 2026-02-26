@@ -18,7 +18,7 @@ export default function StrikeZoneHeatmap({ data }: { data: any[] }) {
   const layout = {
     ...BASE_LAYOUT,
     title: { text: 'Pitch Location Heatmap', font: { size: 14, color: COLORS.textLight } },
-    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal (ft)', range: [-2.5, 2.5], scaleanchor: 'y' },
+    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal (ft) — Catcher View', range: [-2.5, 2.5], scaleanchor: 'y' },
     yaxis: { ...BASE_LAYOUT.yaxis, title: 'Vertical (ft)', range: [0, 5] },
     shapes: [
       { type: 'rect', x0: -0.708, x1: 0.708, y0: 1.5, y1: 3.5, line: { color: '#ffffff', width: 2 } },

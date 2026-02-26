@@ -113,7 +113,7 @@ export default function ReleasePoint({ data, playerName, quality }: TemplateProp
     },
     xaxis: {
       ...BASE_LAYOUT.xaxis,
-      title: 'Horizontal Release (ft)',
+      title: 'Horizontal Release (ft) — Catcher View',
       zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1,
     },
     yaxis: {
@@ -126,7 +126,7 @@ export default function ReleasePoint({ data, playerName, quality }: TemplateProp
     margin: { t: 45, r: 130, b: 50, l: 60 },
     annotations: [{
       x: 0.5, y: -0.1, xref: 'paper' as const, yref: 'paper' as const,
-      text: 'Dashed ellipse = 1σ spread • Cross = mean', font: { size: 9, color: COLORS.text }, showarrow: false,
+      text: 'Dashed ellipse = 1σ spread • Cross = mean • +x = toward 1B (catcher view)', font: { size: 9, color: COLORS.text }, showarrow: false,
     }],
   }
 

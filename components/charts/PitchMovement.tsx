@@ -22,7 +22,7 @@ export default function PitchMovement({ data }: { data: any[] }) {
   const layout = {
     ...BASE_LAYOUT,
     title: { text: 'Pitch Movement', font: { size: 14, color: COLORS.textLight } },
-    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal Break (in)', zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1 },
+    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal Break (in) — Catcher View (+x → 1B)', zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1 },
     yaxis: { ...BASE_LAYOUT.yaxis, title: 'Induced Vertical Break (in)', zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1 },
     height: 500,
     legend: { ...BASE_LAYOUT.legend, x: 1, xanchor: 'right', y: 1 },

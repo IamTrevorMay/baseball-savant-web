@@ -272,7 +272,7 @@ export default function PitchTunneling({ data, playerName, quality, containerRef
       // Title
       ctx!.font = `bold ${Math.max(12, Math.round(cssH * 0.028))}px Inter, system-ui, sans-serif`
       ctx!.fillStyle = 'rgba(255,255,255,0.9)'
-      ctx!.fillText(`${playerName} — Pitch Tunneling`, 16, 28)
+      ctx!.fillText(`${playerName} — Pitch Tunneling (Catcher View)`, 16, 28)
 
       // Legend
       ctx!.font = `${Math.max(10, Math.round(cssH * 0.017))}px Inter, system-ui, sans-serif`

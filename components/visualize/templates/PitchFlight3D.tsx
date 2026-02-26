@@ -263,10 +263,14 @@ export default function PitchFlight3D({
     ctx.fillStyle = 'rgba(255,255,255,0.9)'
     ctx.fillText(`${playerName} — 3D Pitch Flight`, 16, 28)
 
-    // Subtle camera hint
+    // Subtle camera hint + coordinate reference
     ctx.font = `${Math.max(10, Math.round(cssH * 0.018))}px Inter, system-ui, sans-serif`
     ctx.fillStyle = 'rgba(161,161,170,0.7)'
     ctx.fillText('Drag to rotate', 16, cssH - 14)
+    ctx.fillStyle = 'rgba(161,161,170,0.35)'
+    ctx.textAlign = 'right'
+    ctx.fillText('+x = toward 1B (catcher view)', cssW - 16, cssH - 14)
+    ctx.textAlign = 'left'
   }
 
   // ---------------------------------------------------------------------------

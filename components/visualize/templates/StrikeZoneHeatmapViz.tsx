@@ -223,7 +223,7 @@ export default function StrikeZoneHeatmapViz({
     },
     xaxis: {
       ...BASE_LAYOUT.xaxis,
-      title: 'Horizontal (ft)',
+      title: 'Horizontal (ft) — Catcher View',
       range: X_RANGE,
       scaleanchor: 'y',
       showgrid: false,
@@ -237,7 +237,11 @@ export default function StrikeZoneHeatmapViz({
       zeroline: false,
     },
     shapes: ZONE_SHAPES,
-    margin: { t: 45, r: 70, b: 45, l: 55 },
+    margin: { t: 45, r: 70, b: 55, l: 55 },
+    annotations: [
+      { x: X_RANGE[0] + 0.3, y: -0.05, text: '← 3B', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },
+      { x: X_RANGE[1] - 0.3, y: -0.05, text: '1B →', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },
+    ],
   }
 
   return (

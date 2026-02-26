@@ -184,7 +184,7 @@ export default function ArsenalOverlay({
     },
     xaxis: {
       ...BASE_LAYOUT.xaxis,
-      title: 'Horizontal Break (in)',
+      title: 'Horizontal Break (in) — Catcher View',
       zeroline: true,
       zerolinecolor: '#52525b',
       zerolinewidth: 1.5,
@@ -210,7 +210,7 @@ export default function ArsenalOverlay({
         y: -0.1,
         xref: 'paper' as const,
         yref: 'paper' as const,
-        text: 'Dashed ellipse = 1\u03c3 spread \u2022 Cross = mean',
+        text: 'Dashed ellipse = 1\u03c3 spread \u2022 Cross = mean \u2022 +x = toward 1B (catcher view)',
         font: { size: 9, color: COLORS.text },
         showarrow: false,
       },

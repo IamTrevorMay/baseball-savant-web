@@ -23,7 +23,7 @@ export default function ReleasePoint({ data }: { data: any[] }) {
   const layout = {
     ...BASE_LAYOUT,
     title: { text: 'Release Point', font: { size: 14, color: COLORS.textLight } },
-    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal (ft)', scaleanchor: 'y' },
+    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal (ft) — Catcher View (+x → 1B)', scaleanchor: 'y' },
     yaxis: { ...BASE_LAYOUT.yaxis, title: 'Vertical (ft)' },
     height: 500, width: 450,
     legend: { ...BASE_LAYOUT.legend, x: 1, xanchor: 'right', y: 1 },

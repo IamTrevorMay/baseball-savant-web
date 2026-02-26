@@ -18,7 +18,7 @@ const METRICS: { id: Metric; label: string; unit: string }[] = [
   { id: 'release_speed', label: 'Velocity', unit: 'mph' },
   { id: 'release_spin_rate', label: 'Spin Rate', unit: 'rpm' },
   { id: 'pfx_z_in', label: 'Induced Vertical Break', unit: 'in' },
-  { id: 'pfx_x_in', label: 'Horizontal Break', unit: 'in' },
+  { id: 'pfx_x_in', label: 'Horizontal Break (+ → 1B)', unit: 'in' },
   { id: 'vaa', label: 'Vertical Approach Angle', unit: '°' },
   { id: 'release_extension', label: 'Extension', unit: 'ft' },
 ]

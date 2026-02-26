@@ -27,7 +27,7 @@ interface Camera3D {
   pos: { x: number; y: number; z: number }
   lookAt: { x: number; y: number; z: number }
   fov: number
-  flipX?: boolean  // mirror horizontal axis (pitcher = flipped catcher)
+  flipX?: boolean  // mirror horizontal axis for pitcher's perspective
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -39,8 +39,8 @@ const SZ_TOP = 3.5
 const SZ_Y = 17 / 12
 
 const CAMERAS: Record<string, Camera3D> = {
-  catcher: { pos: { x: 0, y: -4, z: 2.5 }, lookAt: { x: 0, y: 30, z: 2.5 }, fov: 50, flipX: true },
-  pitcher: { pos: { x: 0, y: -4, z: 2.5 }, lookAt: { x: 0, y: 30, z: 2.5 }, fov: 50 },
+  catcher: { pos: { x: 0, y: -4, z: 2.5 }, lookAt: { x: 0, y: 30, z: 2.5 }, fov: 50 },
+  pitcher: { pos: { x: 0, y: -4, z: 2.5 }, lookAt: { x: 0, y: 30, z: 2.5 }, fov: 50, flipX: true },
   // 3d is computed dynamically from orbit params
 }
 
@@ -468,6 +468,25 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
         ctx.beginPath(); ctx.moveTo(left.x, left.y); ctx.lineTo(right.x, right.y); ctx.stroke()
       }
 
+      // Directional labels (catcher/pitcher views)
+      if (view !== '3d') {
+        ctx.font = '9px Inter, system-ui, sans-serif'
+        ctx.fillStyle = 'rgba(161,161,170,0.35)'
+        const labelY = szCorners[2].y + 14
+        if (view === 'catcher') {
+          ctx.textAlign = 'left'
+          ctx.fillText('3B ←', szCorners[3].x, labelY)
+          ctx.textAlign = 'right'
+          ctx.fillText('→ 1B', szCorners[2].x, labelY)
+        } else {
+          ctx.textAlign = 'left'
+          ctx.fillText('1B ←', szCorners[3].x, labelY)
+          ctx.textAlign = 'right'
+          ctx.fillText('→ 3B', szCorners[2].x, labelY)
+        }
+        ctx.textAlign = 'left'
+      }
+
       // Target crosshair
       const tgt = proj(tx, SZ_Y, tz)
       ctx.strokeStyle = isTunnel ? 'rgba(255,255,0,0.6)' : 'rgba(255,255,0,0.6)'
@@ -568,7 +587,7 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
       ctx.font = '10px Inter, system-ui, sans-serif'
       ctx.fillStyle = 'rgba(161,161,170,0.35)'
       const modeLabel = isTunnel ? 'Tunnel Mode' : 'Anti-Tunnel Mode'
-      const viewLabel = view === 'catcher' ? 'Catcher' : view === 'pitcher' ? 'Pitcher' : '3D (drag to orbit)'
+      const viewLabel = view === 'catcher' ? 'Catcher View (+x → 1B)' : view === 'pitcher' ? 'Pitcher View (+x → 3B)' : '3D (drag to orbit)'
       ctx.textAlign = 'right'
       ctx.fillText(`${modeLabel}  ·  ${viewLabel}`, cssW - 16, 20)
       ctx.textAlign = 'left'
@@ -743,6 +762,7 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
                     onChange={v => updatePitch(p.id, { spinRate: v })} />
                   <Field label="HB" value={p.hBreak} min={-25} max={25} step={0.5} unit="in"
                     onChange={v => updatePitch(p.id, { hBreak: v })} />
+                  <span className="text-[8px] text-zinc-600 pl-14">−3B / +1B (catcher view)</span>
                   <Field label="IVB" value={p.iVBreak} min={-15} max={25} step={0.5} unit="in"
                     onChange={v => updatePitch(p.id, { iVBreak: v })} />
                   <Field label="Rel X" value={p.releasePosX} min={-4} max={4} step={0.1} unit="ft"
