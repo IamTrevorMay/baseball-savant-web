@@ -102,7 +102,12 @@ export function TileHeatmap({data,metric='frequency',stand=null}:{data:any[];met
     const bins:any[][][]=Array.from({length:nb},()=>Array.from({length:nb},()=>[]))
     f.forEach(d=>{const xi=Math.min(Math.max(Math.floor((d.plate_x-xR[0])/xS),0),nb-1),yi=Math.min(Math.max(Math.floor((d.plate_z-yR[0])/yS),0),nb-1);bins[yi][xi].push(d)})
     const z=bins.map(row=>row.map(cell=>calcMetric(cell,metric)))
-    for(let pass=0;pass<2;pass++){for(let r=0;r<nb;r++){for(let c=0;c<nb;c++){if(z[r][c]===null){const neighbors:number[]=[];for(let dr=-1;dr<=1;dr++){for(let dc=-1;dc<=1;dc++){if(dr===0&&dc===0)continue;const nr=r+dr,nc=c+dc;if(nr>=0&&nr<nb&&nc>=0&&nc<nb&&z[nr][nc]!==null)neighbors.push(z[nr][nc]!)}};if(neighbors.length>=2)z[r][c]=neighbors.reduce((a,b)=>a+b,0)/neighbors.length}}}}
+    // Chase%: null out bins inside the strike zone (can't chase in-zone pitches)
+    if(metric==='chase_pct'){for(let r=0;r<nb;r++){for(let c=0;c<nb;c++){const bx=xR[0]+(c+.5)*xS,by=yR[0]+(r+.5)*yS;if(bx>=-0.708&&bx<=0.708&&by>=1.5&&by<=3.5)z[r][c]=null}}}
+    for(let pass=0;pass<2;pass++){for(let r=0;r<nb;r++){for(let c=0;c<nb;c++){if(z[r][c]===null){
+      // Don't interpolate into strike zone for chase%
+      if(metric==='chase_pct'){const bx=xR[0]+(c+.5)*xS,by=yR[0]+(r+.5)*yS;if(bx>=-0.708&&bx<=0.708&&by>=1.5&&by<=3.5)continue}
+      const neighbors:number[]=[];for(let dr=-1;dr<=1;dr++){for(let dc=-1;dc<=1;dc++){if(dr===0&&dc===0)continue;const nr=r+dr,nc=c+dc;if(nr>=0&&nr<nb&&nc>=0&&nc<nb&&z[nr][nc]!==null)neighbors.push(z[nr][nc]!)}};if(neighbors.length>=2)z[r][c]=neighbors.reduce((a,b)=>a+b,0)/neighbors.length}}}}
     trace={x:Array.from({length:nb},(_,i)=>xR[0]+(i+.5)*xS),y:Array.from({length:nb},(_,i)=>yR[0]+(i+.5)*yS),z,type:"heatmap",colorscale:SPECTRUM,showscale:false,zsmooth:"best",connectgaps:true,hoverongaps:false,hovertemplate:`${METRIC_LABELS[metric]}: %{z:.3f}<extra></extra>`}
   }
   const zVals = metric==="frequency" ? null : (trace.z as (number|null)[][])?.flat().filter((v:any):v is number=>v!==null)
@@ -111,7 +116,7 @@ export function TileHeatmap({data,metric='frequency',stand=null}:{data:any[];met
   const fmtZ = (v:number) => metric==="frequency" ? String(Math.round(v)) : ["ba","slg","woba","xba","xwoba","xslg"].includes(metric) ? v.toFixed(3) : v.toFixed(1)
   return (
     <div className="relative w-full h-full">
-      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...ZONE_SHAPES,...batShapes(stand)],autosize:true}} style={{width:"100%",height:"100%"}} />
+      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...(metric==='chase_pct'?[{type:'rect' as const,x0:-0.708,x1:0.708,y0:1.5,y1:3.5,fillcolor:'#09090b',line:{color:'#fff',width:2},layer:'above' as const},...ZONE_SHAPES.slice(1)]:[...ZONE_SHAPES]),...batShapes(stand)],autosize:true}} style={{width:"100%",height:"100%"}} />
       {zVals && zVals.length > 0 && (
         <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
           <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMin)}</span>

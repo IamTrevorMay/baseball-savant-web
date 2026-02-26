@@ -324,6 +324,17 @@ function ReportsPageInner() {
     }))
   }, [tiles, overlayFiltersPerTile])
 
+  // Count unique pitches displayed across all tiles (accounts for overlay/modifier filters)
+  const displayedPitchCount = useMemo(() => {
+    if (!overlayFiltersPerTile) return filteredData.length
+    const seen = new Set<any>()
+    effectiveTiles.forEach(tile => {
+      const tileFiltered = tile.filters.length > 0 ? applyFiltersToData(filteredData, tile.filters) : filteredData
+      tileFiltered.forEach((row: any) => seen.add(row))
+    })
+    return seen.size
+  }, [filteredData, effectiveTiles, overlayFiltersPerTile])
+
   function updateTile(id: string, config: TileConfig) { setTiles(t => t.map(tile => tile.id === id ? config : tile)) }
   function removeTile(id: string) { setTiles(t => t.filter(tile => tile.id !== id)) }
   function addTile() { if (tiles.length < 16) setTiles(t => [...t, defaultTile('t' + Date.now())]) }
@@ -347,7 +358,7 @@ function ReportsPageInner() {
       pdf.text(reportTitle || currentPlayerName || 'Report', 10, 12)
       pdf.setFontSize(8)
       pdf.setTextColor(150, 150, 150)
-      pdf.text(reportSubtitle || `${subjectType || ''} · ${filteredData.length.toLocaleString()} pitches · Triton`, 10, 18)
+      pdf.text(reportSubtitle || `${subjectType || ''} · ${displayedPitchCount.toLocaleString()} pitches · Triton`, 10, 18)
       const marginTop = 22
       const availH = pageH - marginTop - 5
       const ratio = canvas.width / canvas.height
@@ -779,7 +790,7 @@ function ReportsPageInner() {
           </div>
 
           {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
-          <span className="text-[11px] text-zinc-600">{filteredData.length.toLocaleString()} pitches</span>
+          <span className="text-[11px] text-zinc-600">{displayedPitchCount.toLocaleString()} pitches</span>
         </div>
       </div>
 
@@ -882,7 +893,7 @@ function ReportsPageInner() {
               placeholder={currentPlayerName || 'Report Title'}
               className="bg-transparent text-lg font-bold text-white text-center w-full max-w-md mx-auto block focus:outline-none placeholder-zinc-600" />
             <input type="text" value={reportSubtitle} onChange={e => setReportSubtitle(e.target.value)}
-              placeholder={`${subjectType === 'pitching' ? 'Pitching' : 'Hitting'} Report · ${filteredData.length.toLocaleString()} pitches`}
+              placeholder={`${subjectType === 'pitching' ? 'Pitching' : 'Hitting'} Report · ${displayedPitchCount.toLocaleString()} pitches`}
               className="bg-transparent text-[11px] text-zinc-500 text-center w-full max-w-md mx-auto block focus:outline-none placeholder-zinc-700 mt-0.5" />
           </div>
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
