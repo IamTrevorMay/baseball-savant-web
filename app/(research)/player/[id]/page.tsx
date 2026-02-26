@@ -15,6 +15,8 @@ import GameLogTab from "@/components/dashboard/GameLogTab"
 import PitchLogTab from "@/components/dashboard/PitchLogTab"
 import SplitsTab from "@/components/dashboard/SplitsTab"
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
+import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
+import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
 
 interface PlayerInfo {
   player_name: string; pitcher: number; total_pitches: number
@@ -23,7 +25,7 @@ interface PlayerInfo {
 }
 
 
-const TABS = [
+const BASE_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'movement', label: 'Movement' },
   { id: 'viz', label: 'Visualizations' },
@@ -60,12 +62,20 @@ export default function PlayerDashboard() {
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
 
+  // Model tabs
+  const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
+
   // Search bar state
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearch, setShowSearch] = useState(false)
 
-  useEffect(() => { loadPlayer() }, [pitcherId])
+  useEffect(() => { loadPlayer(); loadModelTabs() }, [pitcherId])
+
+  async function loadModelTabs() {
+    const models = await fetchDeployedModels()
+    setModelTabs(getDashboardModels(models, 'pitcher'))
+  }
 
   // Client-side filtered data
   const filteredData = useMemo(() => {
@@ -261,10 +271,10 @@ export default function PlayerDashboard() {
       {/* Tabs */}
       <div className="bg-zinc-900/50 border-b border-zinc-800 px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex">
-            {TABS.map(t => (
+          <div className="flex overflow-x-auto">
+            {[...BASE_TABS, ...modelTabs.map(m => ({ id: `model_${m.column_name}`, label: m.name }))].map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
                   tab === t.id ? "text-emerald-400 border-emerald-400" : "text-zinc-500 border-transparent hover:text-zinc-300"
                 }`}>
                 {t.label}
@@ -288,6 +298,7 @@ export default function PlayerDashboard() {
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}
           {tab === 'splits' && <SplitsTab data={data} />}
           {tab === 'gamelog' && <GameLogTab data={data} />}
+          {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}
         </div>
       </div>
     </div>

@@ -253,6 +253,21 @@ export const CUSTOM_COL_CATALOG: CustomColDef[] = [
   { key: 'gb_pct', label: 'GB%', category: 'Batted Ball', compute: p => { const bbe = p.filter((d: any) => d.bb_type); const gb = bbe.filter((d: any) => d.bb_type === 'ground_ball'); return bbe.length ? 100 * gb.length / bbe.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
 ]
 
+// Create model column definitions from deployed model metadata
+export function makeModelColDef(columnName: string, label: string, category: string, decimals: number = 2): CustomColDef {
+  return {
+    key: columnName,
+    label,
+    category,
+    compute: p => avg(p, columnName),
+    fmt: v => v === null ? '\u2014' : v.toFixed(decimals),
+  }
+}
+
+export function getFullColCatalog(extraCols: CustomColDef[] = []): CustomColDef[] {
+  return [...CUSTOM_COL_CATALOG, ...extraCols]
+}
+
 const COL_MAP = Object.fromEntries(CUSTOM_COL_CATALOG.map(c => [c.key, c]))
 
 export const GROUP_BY_OPTIONS = [

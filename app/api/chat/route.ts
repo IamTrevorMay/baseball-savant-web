@@ -8,6 +8,46 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+const MODEL_BUILDER_SYSTEM_PROMPT = `You are a baseball analytics model builder embedded in the Triton app. You help users create custom metric formulas that can be deployed as computed columns on the pitches table.
+
+DATABASE SCHEMA - Table: pitches
+Key columns available for formulas:
+- release_speed (REAL) - velocity mph
+- release_spin_rate (REAL) - spin rpm
+- spin_axis (REAL) - spin axis degrees
+- pfx_x (REAL) - horizontal break feet (multiply by 12 for inches)
+- pfx_z (REAL) - induced vertical break feet (multiply by 12 for inches)
+- plate_x (REAL) - horizontal plate location ft
+- plate_z (REAL) - vertical plate location ft
+- release_extension (REAL) - extension ft
+- release_pos_x/y/z (REAL) - release point ft
+- arm_angle (REAL) - degrees
+- launch_speed (REAL) - exit velocity mph
+- launch_angle (REAL) - degrees
+- estimated_ba_using_speedangle (REAL) - xBA
+- estimated_woba_using_speedangle (REAL) - xwOBA
+- woba_value (REAL), delta_run_exp (REAL)
+- bat_speed (REAL), swing_length (REAL)
+- vx0, vy0, vz0, ax, ay, az (REAL) - trajectory components
+- zone (REAL) - strike zone region 1-14
+- pitch_type (TEXT) - FF, SL, CH, CU, SI, FC, ST, FS, KC, KN
+- description (TEXT) - pitch result
+
+FORMULA RULES:
+1. Formulas must be valid PostgreSQL expressions that reference columns from the pitches table
+2. Use COALESCE for NULL handling: COALESCE(release_speed, 0)
+3. Allowed SQL functions: ABS, SQRT, POWER, LN, LOG, EXP, GREATEST, LEAST, ROUND, CEIL, FLOOR, SIGN, COALESCE, NULLIF, CASE/WHEN/THEN/ELSE/END
+4. Column names must use the model_ prefix convention (e.g., model_stuff_plus)
+5. Formulas should produce REAL (numeric) output
+6. Do NOT use subqueries, CTEs, or window functions — only scalar expressions
+
+When you have a formula ready to render, output a FORMULA_UPDATE block like this:
+FORMULA_UPDATE:{"formula":"ROUND((release_speed - 85) * 2 + (pfx_z * 12 - 10) * 1.5, 2)","name":"Stuff Plus","columnName":"model_stuff_plus","description":"Custom stuff metric based on velocity and movement"}
+
+Use the test_formula tool to validate formulas against sample data. Analyze the results and suggest improvements.
+
+Be collaborative — ask clarifying questions about what the user wants to measure, propose formulas, test them, and iterate.`
+
 const SYSTEM_PROMPT = `You are a baseball analytics assistant embedded in the Triton app. You have access to a Supabase database with 7.4 million+ Statcast pitch records from 2015-2025.
 
 You are talking to Trevor May, a former MLB pitcher who uses this platform for YouTube content and media analysis. He understands advanced pitching metrics deeply.
@@ -101,9 +141,49 @@ const tools: Anthropic.Tool[] = [
   }
 ]
 
+const modelBuilderTools: Anthropic.Tool[] = [
+  ...tools,
+  {
+    name: 'test_formula',
+    description: 'Test a formula against sample pitches data. Returns 200 sample rows with the formula computed, plus aggregate stats (mean, stddev, min, max). Use this to validate formulas and analyze distributions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        formula: { type: 'string', description: 'The PostgreSQL expression to test as a formula.' }
+      },
+      required: ['formula']
+    }
+  }
+]
+
+async function handleTestFormula(formula: string): Promise<string> {
+  const FORBIDDEN = /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke)\b/i
+  const DANGEROUS = /(--|;)/
+  if (FORBIDDEN.test(formula) || DANGEROUS.test(formula)) {
+    return JSON.stringify({ error: 'Formula contains forbidden SQL keywords' })
+  }
+  try {
+    const sampleSql = `SELECT player_name, pitch_name, game_date, release_speed, (${formula}) AS model_value FROM pitches WHERE release_speed IS NOT NULL ORDER BY random() LIMIT 200`
+    const { data: sampleRows, error: sampleErr } = await supabase.rpc('run_query', { query_text: sampleSql })
+    if (sampleErr) return JSON.stringify({ error: sampleErr.message })
+
+    const statsSql = `SELECT AVG((${formula})::numeric) AS mean, STDDEV((${formula})::numeric) AS stddev, MIN((${formula})::numeric) AS min, MAX((${formula})::numeric) AS max FROM (SELECT * FROM pitches WHERE release_speed IS NOT NULL ORDER BY random() LIMIT 10000) sub`
+    const { data: statsData, error: statsErr } = await supabase.rpc('run_query', { query_text: statsSql })
+    if (statsErr) return JSON.stringify({ error: statsErr.message })
+
+    const stats = Array.isArray(statsData) && statsData.length > 0 ? statsData[0] : {}
+    return JSON.stringify({ sampleRows: (sampleRows || []).slice(0, 20), stats, totalSampleRows: (sampleRows || []).length })
+  } catch (e: any) {
+    return JSON.stringify({ error: e.message })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json()
+    const { messages, mode } = await req.json()
+    const isModelBuilder = mode === 'model-builder'
+    const systemPrompt = isModelBuilder ? MODEL_BUILDER_SYSTEM_PROMPT : SYSTEM_PROMPT
+    const activeTools = isModelBuilder ? modelBuilderTools : tools
 
     let currentMessages = messages.map((m: any) => ({
       role: m.role,
@@ -114,8 +194,8 @@ export async function POST(req: NextRequest) {
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      tools,
+      system: systemPrompt,
+      tools: activeTools,
       messages: currentMessages,
     })
 
@@ -139,8 +219,6 @@ export async function POST(req: NextRequest) {
             } else {
               const { data, error } = await supabase.rpc('run_query', { query_text: input.sql })
               if (error) {
-                // Try direct query as fallback
-                const { data: d2, error: e2 } = await supabase.from('pitches').select('*').limit(1)
                 result = JSON.stringify({ error: error.message, hint: 'Try simplifying the query.' })
               } else {
                 result = JSON.stringify({ explanation: input.explanation, data, row_count: Array.isArray(data) ? data.length : 0 })
@@ -150,6 +228,9 @@ export async function POST(req: NextRequest) {
             const input = block.input as { name: string }
             const { data, error } = await supabase.rpc('search_players', { search_term: input.name, result_limit: 5 })
             result = JSON.stringify(error ? { error: error.message } : { players: data })
+          } else if (block.name === 'test_formula') {
+            const input = block.input as { formula: string }
+            result = await handleTestFormula(input.formula)
           } else {
             result = JSON.stringify({ error: 'Unknown tool' })
           }
@@ -167,8 +248,8 @@ export async function POST(req: NextRequest) {
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-5-20250929',
         max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        tools,
+        system: systemPrompt,
+        tools: activeTools,
         messages: currentMessages,
       })
     }

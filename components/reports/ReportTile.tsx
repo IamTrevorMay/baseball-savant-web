@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, CUSTOM_COL_CATALOG, GROUP_BY_OPTIONS } from './TileViz'
+import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, CUSTOM_COL_CATALOG, GROUP_BY_OPTIONS, getFullColCatalog, type CustomColDef } from './TileViz'
 import type { MetricKey, ScatterMode, BarMetric, TableMode } from './TileViz'
 import { applyFiltersToData, FILTER_CATALOG, type ActiveFilter, type FilterDef } from '../FilterEngine'
 import { PITCH_CODE_NAMES } from '../chartConfig'
@@ -31,11 +31,12 @@ interface Props {
   optionsCache: Record<string, string[]>
   onUpdate: (config: TileConfig) => void
   onRemove: () => void
+  extraColumns?: CustomColDef[]
 }
 
 const DEFAULT_CUSTOM_COLS = ['n', 'pct', 'velo', 'spin', 'whiff', 'ev']
 
-export default function ReportTile({ config, data, optionsCache, onUpdate, onRemove }: Props) {
+export default function ReportTile({ config, data, optionsCache, onUpdate, onRemove, extraColumns = [] }: Props) {
   const [showConfig, setShowConfig] = useState(config.viz === 'empty')
   const [filterSearch, setFilterSearch] = useState('')
   const [showTileFilters, setShowTileFilters] = useState(false)
@@ -197,12 +198,13 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
                   {showColPicker && (
                     <div className="absolute top-full right-0 md:left-0 md:right-auto mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-48 max-h-56 overflow-y-auto">
                       {(() => {
-                        const cats = [...new Set(CUSTOM_COL_CATALOG.map(c => c.category))]
+                        const fullCatalog = getFullColCatalog(extraColumns)
+                        const cats = [...new Set(fullCatalog.map(c => c.category))]
                         const selected = new Set(config.tableColumns || DEFAULT_CUSTOM_COLS)
                         return cats.map(cat => (
                           <div key={cat}>
                             <div className="px-2 py-1 text-[9px] text-zinc-500 font-medium uppercase tracking-wider bg-zinc-900/50 sticky top-0">{cat}</div>
-                            {CUSTOM_COL_CATALOG.filter(c => c.category === cat).map(c => (
+                            {fullCatalog.filter(c => c.category === cat).map(c => (
                               <label key={c.key} className="flex items-center gap-2 px-2 py-1 hover:bg-zinc-700 cursor-pointer">
                                 <input type="checkbox" checked={selected.has(c.key)}
                                   onChange={() => {

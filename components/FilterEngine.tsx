@@ -12,6 +12,10 @@ export interface FilterDef {
   dbColumn?: string            // if different from key
 }
 
+export function getFullCatalog(extraFilters: FilterDef[] = []): FilterDef[] {
+  return [...FILTER_CATALOG, ...extraFilters]
+}
+
 export const FILTER_CATALOG: FilterDef[] = [
   // Situational
   { key: 'game_year', label: 'Season', category: 'Situational', type: 'multi', numberCast: true },
@@ -89,10 +93,11 @@ export interface FilterEngineProps {
   activeFilters: ActiveFilter[]
   onFiltersChange: (filters: ActiveFilter[]) => void
   optionsCache: Record<string, string[]>  // available options per filter key
+  extraFilters?: FilterDef[]              // additional filters from deployed models
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
-export default function FilterEngine({ activeFilters, onFiltersChange, optionsCache }: FilterEngineProps) {
+export default function FilterEngine({ activeFilters, onFiltersChange, optionsCache, extraFilters = [] }: FilterEngineProps) {
   const [query, setQuery] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [expandedChip, setExpandedChip] = useState<string | null>(null)
@@ -122,7 +127,8 @@ export default function FilterEngine({ activeFilters, onFiltersChange, optionsCa
   // Filter catalog by search query, exclude already-active filters
   const activeKeys = new Set(activeFilters.map(f => f.def.key))
   const [showAll, setShowAll] = useState(false)
-  const available = FILTER_CATALOG.filter(f => !activeKeys.has(f.key))
+  const fullCatalog = getFullCatalog(extraFilters)
+  const available = fullCatalog.filter(f => !activeKeys.has(f.key))
   const suggestions = query.trim()
     ? available.filter(f =>
         f.label.toLowerCase().includes(query.toLowerCase()) ||

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ResearchNav from '@/components/ResearchNav'
+import ModelBuilder from '@/components/model-builder/ModelBuilder'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -20,6 +21,7 @@ const SUGGESTIONS = [
 ]
 
 export default function AnalystPage() {
+  const [mode, setMode] = useState<'chat' | 'model-builder'>('chat')
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -184,6 +186,27 @@ export default function AnalystPage() {
       {/* Nav */}
       <ResearchNav active="/analyst" />
 
+      {/* Mode Toggle */}
+      <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-2">
+        <div className="max-w-4xl mx-auto flex items-center gap-1">
+          <button onClick={() => setMode('chat')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+              mode === 'chat' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}>
+            Chat
+          </button>
+          <button onClick={() => setMode('model-builder')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+              mode === 'model-builder' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}>
+            Model Builder
+          </button>
+        </div>
+      </div>
+
+      {mode === 'model-builder' ? (
+        <ModelBuilder />
+      ) : (
       <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
@@ -252,6 +275,7 @@ export default function AnalystPage() {
           <p className="text-[11px] text-zinc-600 mt-2 text-center">Powered by Claude · Queries 7.4M+ Statcast pitches</p>
         </div>
       </div>
+      )}
     </div>
   )
 }

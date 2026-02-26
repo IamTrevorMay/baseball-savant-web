@@ -12,6 +12,8 @@ import PitchLogTab from '@/components/dashboard/PitchLogTab'
 import HitterSplitsTab from '@/components/dashboard/HitterSplitsTab'
 import HitterGameLogTab from '@/components/dashboard/HitterGameLogTab'
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
+import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
+import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
 
 interface HitterInfo {
   player_name: string; batter: number; total_pitches: number
@@ -19,7 +21,7 @@ interface HitterInfo {
   team: string; bats: string; latest_season: number; first_date: string
 }
 
-const TABS = [
+const BASE_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'viz', label: 'Visualizations' },
   { id: 'results', label: 'Results' },
@@ -53,12 +55,20 @@ export default function HitterDashboard() {
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
 
+  // Model tabs
+  const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
+
   // Search bar state
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearch, setShowSearch] = useState(false)
 
-  useEffect(() => { loadPlayer() }, [batterId])
+  useEffect(() => { loadPlayer(); loadModelTabs() }, [batterId])
+
+  async function loadModelTabs() {
+    const models = await fetchDeployedModels()
+    setModelTabs(getDashboardModels(models, 'hitter'))
+  }
 
   // Client-side filtered data
   const filteredData = useMemo(() => {
@@ -248,10 +258,10 @@ export default function HitterDashboard() {
       {/* Tabs */}
       <div className="bg-zinc-900/50 border-b border-zinc-800 px-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex">
-            {TABS.map(t => (
+          <div className="flex overflow-x-auto">
+            {[...BASE_TABS, ...modelTabs.map(m => ({ id: `model_${m.column_name}`, label: m.name }))].map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
                   tab === t.id ? "text-emerald-400 border-emerald-400" : "text-zinc-500 border-transparent hover:text-zinc-300"
                 }`}>
                 {t.label}
@@ -274,6 +284,7 @@ export default function HitterDashboard() {
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="hitter" />}
           {tab === 'splits' && <HitterSplitsTab data={data} />}
           {tab === 'gamelog' && <HitterGameLogTab data={data} />}
+          {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}
         </div>
       </div>
     </div>
