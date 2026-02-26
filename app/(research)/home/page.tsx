@@ -172,47 +172,6 @@ export default function HomePage() {
       <ResearchNav active="/home" />
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* ─── News Section ─── */}
-        <div className="mb-10">
-          <h2 className="text-2xl font-bold text-white mb-1">News</h2>
-          <p className="text-sm text-zinc-500 mb-6">Latest from around baseball</p>
-
-          {newsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({length: 6}).map((_, i) => (
-                <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 animate-pulse">
-                  <div className="h-3 w-20 bg-zinc-800 rounded mb-3" />
-                  <div className="h-4 w-full bg-zinc-800 rounded mb-2" />
-                  <div className="h-4 w-3/4 bg-zinc-800 rounded mb-3" />
-                  <div className="h-3 w-full bg-zinc-800 rounded mb-1" />
-                  <div className="h-3 w-2/3 bg-zinc-800 rounded" />
-                </div>
-              ))}
-            </div>
-          ) : news.length === 0 ? (
-            <div className="text-center py-12 text-zinc-500 text-sm">No articles available right now.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {news.slice(0, 12).map((item, i) => (
-                <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
-                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition group block">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white"
-                      style={{ backgroundColor: item.sourceColor }}>{item.source}</span>
-                    <span className="text-[11px] text-zinc-600">{timeAgo(item.pubDate)}</span>
-                  </div>
-                  <h3 className="text-sm font-semibold text-white group-hover:text-emerald-400 transition leading-snug mb-2 line-clamp-2">
-                    {item.title}
-                  </h3>
-                  {item.description && (
-                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3">{item.description}</p>
-                  )}
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* ─── Scores Section ─── */}
         <div className="mb-10">
           <div className="flex items-center justify-between mb-6">
@@ -277,6 +236,47 @@ export default function HomePage() {
                 </div>
               )}
             </>
+          )}
+        </div>
+
+        {/* ─── News Section ─── */}
+        <div className="mb-10">
+          <h2 className="text-2xl font-bold text-white mb-1">News</h2>
+          <p className="text-sm text-zinc-500 mb-6">Latest from around baseball</p>
+
+          {newsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({length: 6}).map((_, i) => (
+                <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 animate-pulse">
+                  <div className="h-3 w-20 bg-zinc-800 rounded mb-3" />
+                  <div className="h-4 w-full bg-zinc-800 rounded mb-2" />
+                  <div className="h-4 w-3/4 bg-zinc-800 rounded mb-3" />
+                  <div className="h-3 w-full bg-zinc-800 rounded mb-1" />
+                  <div className="h-3 w-2/3 bg-zinc-800 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : news.length === 0 ? (
+            <div className="text-center py-12 text-zinc-500 text-sm">No articles available right now.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {news.slice(0, 12).map((item, i) => (
+                <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
+                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition group block">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white"
+                      style={{ backgroundColor: item.sourceColor }}>{item.source}</span>
+                    <span className="text-[11px] text-zinc-600">{timeAgo(item.pubDate)}</span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-white group-hover:text-emerald-400 transition leading-snug mb-2 line-clamp-2">
+                    {item.title}
+                  </h3>
+                  {item.description && (
+                    <p className="text-xs text-zinc-500 leading-relaxed line-clamp-3">{item.description}</p>
+                  )}
+                </a>
+              ))}
+            </div>
           )}
         </div>
 
