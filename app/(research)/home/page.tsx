@@ -2,6 +2,17 @@
 import { useState, useEffect } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 
+/* ─── Scores Types ─── */
+interface GameTeam {
+  id: number; name: string; abbrev: string; score: number | null
+}
+interface Game {
+  gamePk: number; gameDate: string; gameType: string; seriesDescription: string
+  state: string; detailedState: string
+  away: GameTeam; home: GameTeam
+  inning: number | null; inningOrdinal: string | null; inningHalf: string | null
+}
+
 /* ─── News Types ─── */
 interface NewsItem {
   title: string
@@ -36,6 +47,10 @@ const AL_ORDER = ['AL East','AL Central','AL West']
 const NL_ORDER = ['NL East','NL Central','NL West']
 
 export default function HomePage() {
+  /* ─── Scores state ─── */
+  const [games, setGames] = useState<Game[]>([])
+  const [scoresLoading, setScoresLoading] = useState(true)
+
   /* ─── News state ─── */
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
@@ -47,6 +62,7 @@ export default function HomePage() {
   const [view, setView] = useState<'division'|'league'|'wildcard'>('division')
 
   useEffect(() => {
+    fetch('/api/scores').then(r => r.json()).then(d => { setGames(d.games || []); setScoresLoading(false) }).catch(() => setScoresLoading(false))
     fetch('/api/news').then(r => r.json()).then(d => { setNews(d.items || []); setNewsLoading(false) }).catch(() => setNewsLoading(false))
   }, [])
 
@@ -128,6 +144,32 @@ export default function HomePage() {
           )}
         </div>
 
+        {/* ─── Scores Section ─── */}
+        <div className="mb-10">
+          <h2 className="text-2xl font-bold text-white mb-1">Today&apos;s Scores</h2>
+          <p className="text-sm text-zinc-500 mb-6">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+
+          {scoresLoading ? (
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {Array.from({length: 6}).map((_, i) => (
+                <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 animate-pulse min-w-[220px] flex-shrink-0">
+                  <div className="h-3 w-16 bg-zinc-800 rounded mb-4" />
+                  <div className="h-4 w-full bg-zinc-800 rounded mb-2" />
+                  <div className="h-4 w-full bg-zinc-800 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : games.length === 0 ? (
+            <div className="text-center py-12 text-zinc-500 text-sm">No games scheduled today.</div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+              {games.map(g => <ScoreCard key={g.gamePk} game={g} />)}
+            </div>
+          )}
+        </div>
+
         {/* ─── Standings Section ─── */}
         <div>
           <div className="flex items-center justify-between mb-6">
@@ -197,6 +239,84 @@ export default function HomePage() {
             </>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Score Card ─── */
+
+function ScoreCard({ game }: { game: Game }) {
+  const isLive = game.state === 'Live'
+  const isFinal = game.state === 'Final'
+  const isPreview = game.state === 'Preview'
+
+  const awayWon = isFinal && game.away.score !== null && game.home.score !== null && game.away.score > game.home.score
+  const homeWon = isFinal && game.away.score !== null && game.home.score !== null && game.home.score > game.away.score
+
+  function gameTime(dateStr: string) {
+    return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
+
+  let statusText = ''
+  let statusColor = 'text-zinc-500'
+  if (isLive) {
+    statusText = `${game.inningHalf === 'Top' ? '\u25B2' : '\u25BC'} ${game.inningOrdinal || ''}`
+    statusColor = 'text-emerald-400'
+  } else if (isFinal) {
+    statusText = game.inning && game.inning > 9 ? `Final/${game.inning}` : 'Final'
+  } else if (game.detailedState === 'Postponed') {
+    statusText = 'PPD'
+    statusColor = 'text-red-400'
+  } else {
+    statusText = gameTime(game.gameDate)
+  }
+
+  const isSpring = game.gameType === 'S' || game.gameType === 'E'
+
+  return (
+    <div className={`bg-zinc-900 border rounded-lg p-4 min-w-[220px] flex-shrink-0 ${
+      isLive ? 'border-emerald-700/50' : 'border-zinc-800'
+    }`}>
+      {/* Header: status + game type */}
+      <div className="flex items-center justify-between mb-3">
+        <span className={`text-[10px] font-bold uppercase tracking-wider ${statusColor}`}>
+          {isLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse align-middle" />}
+          {statusText}
+        </span>
+        {isSpring && (
+          <span className="text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-900/40 text-amber-400">
+            ST
+          </span>
+        )}
+      </div>
+
+      {/* Away team */}
+      <div className={`flex items-center justify-between py-1.5 ${awayWon ? 'text-white' : 'text-zinc-400'}`}>
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+            style={{ backgroundColor: TEAM_COLORS[game.away.abbrev] || '#52525b' }}>
+            {game.away.abbrev}
+          </div>
+          <span className={`text-sm font-medium ${awayWon ? 'text-white' : ''}`}>{game.away.abbrev}</span>
+        </div>
+        <span className={`text-sm font-mono font-semibold ${awayWon ? 'text-white' : ''}`}>
+          {game.away.score !== null ? game.away.score : ''}
+        </span>
+      </div>
+
+      {/* Home team */}
+      <div className={`flex items-center justify-between py-1.5 ${homeWon ? 'text-white' : 'text-zinc-400'}`}>
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+            style={{ backgroundColor: TEAM_COLORS[game.home.abbrev] || '#52525b' }}>
+            {game.home.abbrev}
+          </div>
+          <span className={`text-sm font-medium ${homeWon ? 'text-white' : ''}`}>{game.home.abbrev}</span>
+        </div>
+        <span className={`text-sm font-mono font-semibold ${homeWon ? 'text-white' : ''}`}>
+          {game.home.score !== null ? game.home.score : ''}
+        </span>
       </div>
     </div>
   )
