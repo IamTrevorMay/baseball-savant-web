@@ -68,9 +68,9 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
 
   if (config.viz === 'empty') {
     return (
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col items-center justify-center p-4 h-full min-h-[200px]">
-        <p className="text-[11px] text-zinc-500 mb-3">Choose a visualization</p>
-        <div className="grid grid-cols-2 gap-2">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col items-center justify-center p-4 h-full min-h-[180px]">
+        <p className="text-xs md:text-[11px] text-zinc-500 mb-3">Choose a visualization</p>
+        <div className="grid grid-cols-2 gap-2 w-full max-w-[220px]">
           {[
             ['heatmap', 'Heatmap'],
             ['scatter', 'Scatter'],
@@ -79,7 +79,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
             ['table', 'Data Table'],
           ].map(([k, l]) => (
             <button key={k} onClick={() => setViz(k as VizType)}
-              className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+              className="px-3 py-2.5 md:py-2 bg-zinc-800 border border-zinc-700 rounded text-xs md:text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
               {l}
             </button>
           ))}
@@ -104,21 +104,21 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
       )}
 
       {/* Tile Header */}
-      <div className="flex items-center px-2 py-1 border-b border-zinc-800 bg-zinc-800/30 flex-shrink-0 relative">
+      <div className="flex items-center px-2 py-1.5 md:py-1 border-b border-zinc-800 bg-zinc-800/30 flex-shrink-0 relative">
         {/* Delete X button */}
         <button onClick={() => setShowDeleteConfirm(true)}
-          className="absolute left-1 top-1 w-4 h-4 flex items-center justify-center rounded-full bg-zinc-700/80 text-zinc-400 hover:bg-red-600 hover:text-white opacity-0 group-hover/tile:opacity-100 transition-all text-[10px] leading-none z-10">
+          className="absolute left-1 top-1 w-5 h-5 md:w-4 md:h-4 flex items-center justify-center rounded-full bg-zinc-700/80 text-zinc-400 hover:bg-red-600 hover:text-white opacity-0 group-hover/tile:opacity-100 transition-all text-xs md:text-[10px] leading-none z-10">
           &times;
         </button>
         <div className="flex-1 flex flex-col items-center">
           <input type="text" value={config.title || ""} onChange={e => onUpdate({ ...config, title: e.target.value })}
-            placeholder={config.viz.replace("_", " ")} className="bg-transparent text-[11px] text-white font-medium text-center w-full focus:outline-none placeholder-zinc-500" />
+            placeholder={config.viz.replace("_", " ")} className="bg-transparent text-xs md:text-[11px] text-white font-medium text-center w-full focus:outline-none placeholder-zinc-500" />
           <input type="text" value={config.subtitle || ""} onChange={e => onUpdate({ ...config, subtitle: e.target.value })}
-            placeholder="subtitle" className="bg-transparent text-[9px] text-zinc-500 text-center w-full focus:outline-none placeholder-zinc-700" />
+            placeholder="subtitle" className="bg-transparent text-[10px] md:text-[9px] text-zinc-500 text-center w-full focus:outline-none placeholder-zinc-700" />
         </div>
         <div className="absolute right-1 top-1 flex items-center gap-1">
-          <button onClick={() => setShowConfig(!showConfig)} className="text-zinc-500 hover:text-zinc-300 transition">
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v1m0 16v1m-7.07-2.93l.71.71M5.64 5.64l-.71-.71M3 12h1m16 0h1m-2.93 7.07l-.71-.71M18.36 5.64l.71-.71M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <button onClick={() => setShowConfig(!showConfig)} className="text-zinc-500 hover:text-zinc-300 transition p-1">
+            <svg className="w-4 h-4 md:w-3.5 md:h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v1m0 16v1m-7.07-2.93l.71.71M5.64 5.64l-.71-.71M3 12h1m16 0h1m-2.93 7.07l-.71-.71M18.36 5.64l.71-.71M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
           </button>
         </div>
       </div>
@@ -126,11 +126,11 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
       {/* Config Panel */}
       {showConfig && (
         <div className="px-2 py-1.5 border-b border-zinc-800 bg-zinc-800/20 space-y-1.5 flex-shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
             <span className="text-[10px] text-zinc-500">Viz:</span>
             {['heatmap','scatter','bar','strike_zone','table'].map(v => (
               <button key={v} onClick={() => setViz(v as VizType)}
-                className={`px-1.5 py-0.5 rounded text-[10px] transition ${config.viz === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                className={`px-2 py-1 md:px-1.5 md:py-0.5 rounded text-[11px] md:text-[10px] transition ${config.viz === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
                 {v.replace('_', ' ')}
               </button>
             ))}
@@ -140,7 +140,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-zinc-500">Metric:</span>
               <select value={config.metric || 'frequency'} onChange={e => onUpdate({ ...config, metric: e.target.value as MetricKey })}
-                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 md:px-1.5 md:py-0.5 text-[11px] md:text-[10px] text-white focus:outline-none">
                 {([['frequency','Frequency'],['ba','BA'],['slg','SLG'],['woba','wOBA'],['xba','xBA'],['xwoba','xwOBA'],['xslg','xSLG'],['ev','Exit Velo'],['la','Launch Angle'],['whiff_pct','Whiff%'],['chase_pct','Chase%'],['swing_pct','Swing%']] as [MetricKey,string][]).map(([m,label]) => (
                   <option key={m} value={m}>{label}</option>
                 ))}
@@ -149,11 +149,11 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
           )}
 
           {config.viz === 'scatter' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2">
               <span className="text-[10px] text-zinc-500">Mode:</span>
               {(['location','movement','ev_la'] as ScatterMode[]).map(m => (
                 <button key={m} onClick={() => onUpdate({ ...config, scatterMode: m })}
-                  className={`px-1.5 py-0.5 rounded text-[10px] transition ${(config.scatterMode||'location')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
+                  className={`px-2 py-1 md:px-1.5 md:py-0.5 rounded text-[11px] md:text-[10px] transition ${(config.scatterMode||'location')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
                   {m === 'ev_la' ? 'EV/LA' : m}
                 </button>
               ))}
@@ -164,7 +164,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-zinc-500">Metric:</span>
               <select value={config.barMetric || 'usage'} onChange={e => onUpdate({ ...config, barMetric: e.target.value as BarMetric })}
-                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 md:px-1.5 md:py-0.5 text-[11px] md:text-[10px] text-white focus:outline-none">
                 {([['usage','Usage%'],['whiff','Whiff%'],['velo','Avg Velo'],['spin','Avg Spin'],['csw','CSW%'],['zone','Zone%'],['chase','Chase%'],['swing','Swing%'],['ev','Avg EV'],['xwoba','xwOBA']] as [BarMetric,string][]).map(([m,label]) => (
                   <option key={m} value={m}>{label}</option>
                 ))}
@@ -173,29 +173,29 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
           )}
 
           {config.viz === 'table' && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
               <span className="text-[10px] text-zinc-500">View:</span>
               {(['arsenal','results','splits','custom'] as TableMode[]).map(m => (
                 <button key={m} onClick={() => onUpdate({ ...config, tableMode: m, tableColumns: m === 'custom' ? (config.tableColumns || DEFAULT_CUSTOM_COLS) : config.tableColumns })}
-                  className={`px-1.5 py-0.5 rounded text-[10px] transition ${(config.tableMode||'arsenal')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
+                  className={`px-2 py-1 md:px-1.5 md:py-0.5 rounded text-[11px] md:text-[10px] transition ${(config.tableMode||'arsenal')===m ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
                   {m}
                 </button>
               ))}
               {(config.tableMode === 'custom') && (<>
                 <select value={config.tableGroupBy || 'pitch_name'}
                   onChange={e => onUpdate({ ...config, tableGroupBy: e.target.value })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 md:px-1.5 md:py-0.5 text-[11px] md:text-[10px] text-white focus:outline-none">
                   {GROUP_BY_OPTIONS.map(o => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
                 <div className="relative" ref={colPickerRef}>
                   <button onClick={() => setShowColPicker(!showColPicker)}
-                    className="px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition">
+                    className="px-2 py-1 md:px-1.5 md:py-0.5 rounded text-[11px] md:text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition">
                     Columns ({(config.tableColumns || DEFAULT_CUSTOM_COLS).length})
                   </button>
                   {showColPicker && (
-                    <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-48 max-h-56 overflow-y-auto">
+                    <div className="absolute top-full right-0 md:left-0 md:right-auto mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 w-48 max-h-56 overflow-y-auto">
                       {(() => {
                         const cats = [...new Set(CUSTOM_COL_CATALOG.map(c => c.category))]
                         const selected = new Set(config.tableColumns || DEFAULT_CUSTOM_COLS)
@@ -227,10 +227,10 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
           )}
 
           {/* Tile Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
             <span className="text-[10px] text-zinc-500">Filters:</span>
             {config.filters.map((f, i) => (
-              <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] ${
+              <span key={i} className={`inline-flex items-center gap-1 px-2 py-1 md:px-1.5 md:py-0.5 rounded text-[10px] md:text-[9px] ${
                 f.readonly
                   ? 'bg-amber-900/30 border border-amber-700/50 text-amber-300'
                   : 'bg-emerald-900/30 border border-emerald-700/50 text-emerald-300'
@@ -244,7 +244,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
             <div className="relative">
               <input type="text" value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
                 onFocus={() => setShowTileFilters(true)}
-                placeholder="+ filter" className="w-16 px-1 py-0.5 bg-transparent border border-zinc-700 rounded text-[9px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:w-28 transition-all" />
+                placeholder="+ filter" className="w-20 md:w-16 px-1.5 py-1 md:px-1 md:py-0.5 bg-transparent border border-zinc-700 rounded text-[10px] md:text-[9px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none focus:w-32 md:focus:w-28 transition-all" />
               {showTileFilters && (() => {
                 const activeKeys = new Set(config.filters.map(f => f.def.key))
                 const matches = filterSearch.trim()
@@ -273,26 +273,26 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
 
           {/* Expanded tile filter editors */}
           {config.filters.map((f, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              <span className="text-[9px] text-zinc-500 w-14 truncate">{f.def.label}:</span>
+            <div key={i} className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] md:text-[9px] text-zinc-500 w-14 truncate">{f.def.label}:</span>
               {f.def.type === "multi" && (
-                <div className="flex flex-wrap gap-0.5 flex-1">
+                <div className="flex flex-wrap gap-1 md:gap-0.5 flex-1">
                   {(optionsCache[f.def.key] || []).slice(0, 20).map(opt => (
                     <button key={opt} onClick={() => {
                       const vals = f.values || []
                       const nv = vals.includes(opt) ? vals.filter(v => v !== opt) : [...vals, opt]
                       const nf = [...config.filters]; nf[i] = { ...f, values: nv }; onUpdate({ ...config, filters: nf })
                     }}
-                      className={`px-1 py-0 rounded text-[9px] transition ${f.values?.includes(opt) ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"}`}>{f.def.key === 'pitch_type' ? (PITCH_CODE_NAMES[opt] || opt) : opt}</button>
+                      className={`px-1.5 py-0.5 md:px-1 md:py-0 rounded text-[10px] md:text-[9px] transition ${f.values?.includes(opt) ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-500 hover:text-zinc-300"}`}>{f.def.key === 'pitch_type' ? (PITCH_CODE_NAMES[opt] || opt) : opt}</button>
                   ))}
                 </div>
               )}
               {f.def.type === "range" && (
                 <div className="flex gap-1">
                   <input type="number" value={f.min||""} onChange={e => { const nf=[...config.filters]; nf[i]={...f, min:e.target.value}; onUpdate({...config, filters:nf}) }}
-                    placeholder="Min" className="w-14 px-1 py-0.5 bg-zinc-900 border border-zinc-600 rounded text-[9px] text-white placeholder-zinc-600 focus:outline-none" />
+                    placeholder="Min" className="w-16 md:w-14 px-1.5 py-1 md:px-1 md:py-0.5 bg-zinc-900 border border-zinc-600 rounded text-[10px] md:text-[9px] text-white placeholder-zinc-600 focus:outline-none" />
                   <input type="number" value={f.max||""} onChange={e => { const nf=[...config.filters]; nf[i]={...f, max:e.target.value}; onUpdate({...config, filters:nf}) }}
-                    placeholder="Max" className="w-14 px-1 py-0.5 bg-zinc-900 border border-zinc-600 rounded text-[9px] text-white placeholder-zinc-600 focus:outline-none" />
+                    placeholder="Max" className="w-16 md:w-14 px-1.5 py-1 md:px-1 md:py-0.5 bg-zinc-900 border border-zinc-600 rounded text-[10px] md:text-[9px] text-white placeholder-zinc-600 focus:outline-none" />
                 </div>
               )}
             </div>

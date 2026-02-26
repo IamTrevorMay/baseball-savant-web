@@ -388,12 +388,12 @@ export function TileTable({ data, mode = 'arsenal', columns, groupBy }: { data: 
 
   return (
     <div className="flex-1 overflow-auto">
-      <table className="w-full text-[10px]">
+      <table className="w-full text-[11px] md:text-[10px]">
         <thead>
           <tr className="bg-zinc-800/50">
             {cols.map(([k, l]) => (
               <th key={k} onClick={() => handleSort(k)}
-                className={`px-2 py-1 font-medium text-right first:text-left cursor-pointer hover:text-zinc-200 transition whitespace-nowrap ${sortCol === k ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                className={`px-2.5 py-1.5 md:px-2 md:py-1 font-medium text-right first:text-left cursor-pointer hover:text-zinc-200 transition whitespace-nowrap ${sortCol === k ? 'text-emerald-400' : 'text-zinc-400'}`}>
                 {l} {sortCol === k ? (sortDir === 'desc' ? '\u2193' : '\u2191') : ''}
               </th>
             ))}
@@ -403,7 +403,7 @@ export function TileTable({ data, mode = 'arsenal', columns, groupBy }: { data: 
           {sortedRows.map((r: any, i: number) => (
             <tr key={i} className="border-t border-zinc-800/30 hover:bg-zinc-800/20">
               {cols.map(([k]) => (
-                <td key={k} className="px-2 py-1 font-mono text-zinc-300 text-right first:text-left first:font-sans first:text-white">
+                <td key={k} className="px-2.5 py-1.5 md:px-2 md:py-1 font-mono text-zinc-300 text-right first:text-left first:font-sans first:text-white">
                   {fmtCell(k, r[k])}
                 </td>
               ))}

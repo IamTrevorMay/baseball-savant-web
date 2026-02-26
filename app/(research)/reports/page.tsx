@@ -52,7 +52,7 @@ function ReportsPageInner() {
   const [rawData, setRawData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
-  const [columns, setColumns] = useState(4)
+  const [columns, setColumns] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 1 : 4)
   const [exporting, setExporting] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
@@ -570,227 +570,225 @@ function ReportsPageInner() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
-      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-6">
+      <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 md:px-6">
         <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4">Research</a>
+        <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4 hidden sm:inline">Research</a>
         <div className="flex-1 flex justify-center">
-          <div className="flex gap-4 text-xs text-zinc-500">
-            <a href="/home" className="hover:text-zinc-300 transition">Home</a>
-            <a href="/pitchers" className="hover:text-zinc-300 transition">Pitchers</a>
-            <a href="/hitters" className="hover:text-zinc-300 transition">Hitters</a>
-            <a href="/reports" className="text-emerald-400">Reports</a>
-            <a href="/umpire" className="hover:text-zinc-300 transition">Umpires</a>
-            <a href="/explore" className="hover:text-zinc-300 transition">Explore</a>
-            <a href="/analyst" className="hover:text-zinc-300 transition">Analyst</a>
+          <div className="flex gap-2 md:gap-4 text-[10px] md:text-xs text-zinc-500 overflow-x-auto">
+            <a href="/home" className="hover:text-zinc-300 transition whitespace-nowrap">Home</a>
+            <a href="/pitchers" className="hover:text-zinc-300 transition whitespace-nowrap">Pitchers</a>
+            <a href="/hitters" className="hover:text-zinc-300 transition whitespace-nowrap">Hitters</a>
+            <a href="/reports" className="text-emerald-400 whitespace-nowrap">Reports</a>
+            <a href="/umpire" className="hover:text-zinc-300 transition whitespace-nowrap hidden sm:inline">Umpires</a>
+            <a href="/explore" className="hover:text-zinc-300 transition whitespace-nowrap hidden sm:inline">Explore</a>
+            <a href="/analyst" className="hover:text-zinc-300 transition whitespace-nowrap">Analyst</a>
           </div>
         </div>
       </nav>
 
       {/* ── Header Bar ────────────────────────────────────────────────── */}
-      <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-2">
-        <div className="max-w-[95vw] mx-auto flex items-center gap-3 flex-wrap">
+      <div className="bg-zinc-900 border-b border-zinc-800 px-3 md:px-6 py-2">
+        <div className="max-w-[95vw] mx-auto flex flex-col gap-2 md:gap-0">
 
-          {/* Pitchers / Hitters toggle */}
-          <div className="flex rounded-lg overflow-hidden border border-zinc-700">
-            <button onClick={() => handleSubjectTypeChange('pitching')}
-              className={`px-3 py-1 text-[11px] font-medium transition ${subjectType === 'pitching' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-              Pitchers
-            </button>
-            <button onClick={() => handleSubjectTypeChange('hitting')}
-              className={`px-3 py-1 text-[11px] font-medium transition ${subjectType === 'hitting' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-              Hitters
-            </button>
-          </div>
-
-          {/* Player / Team toggle */}
-          <div className="flex rounded-lg overflow-hidden border border-zinc-700">
-            <button onClick={() => handleScopeChange('player')}
-              className={`px-3 py-1 text-[11px] font-medium transition ${scope === 'player' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-              Player
-            </button>
-            <button onClick={() => handleScopeChange('team')}
-              className={`px-3 py-1 text-[11px] font-medium transition ${scope === 'team' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-              Team
-            </button>
-          </div>
-
-          {/* Subject: Player search OR Team dropdown + roster nav */}
-          {scope === 'player' ? (
-            <div ref={subjectSearchRef} className="relative">
-              <input type="text"
-                value={subjectSearch}
-                onChange={e => handleSubjectSearch(e.target.value)}
-                onFocus={() => { if (subjectResults.length > 0) setShowSubjectDropdown(true) }}
-                placeholder={selectedPlayer ? selectedPlayer.name : `Search ${subjectType === 'pitching' ? 'pitcher' : 'hitter'}...`}
-                className="w-52 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-white placeholder-zinc-500 focus:border-emerald-600 focus:outline-none" />
-              {showSubjectDropdown && subjectResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                  {subjectResults.map((p: any) => (
-                    <button key={p.player_id} onClick={() => selectPlayer(p)}
-                      className="w-full text-left px-3 py-2 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition border-b border-zinc-700/50 last:border-0">
-                      <span className="font-medium">{p.player_name}</span>
-                      <span className="text-zinc-500 ml-2">{p.player_position} &middot; {p.pitch_count?.toLocaleString()}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+          {/* Row 1: Toggles + Subject */}
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+            {/* Pitchers / Hitters toggle */}
+            <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+              <button onClick={() => handleSubjectTypeChange('pitching')}
+                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${subjectType === 'pitching' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                Pitchers
+              </button>
+              <button onClick={() => handleSubjectTypeChange('hitting')}
+                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${subjectType === 'hitting' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                Hitters
+              </button>
             </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <select value={selectedTeam} onChange={e => handleTeamSelect(e.target.value)}
-                className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-[11px] text-white focus:outline-none">
-                <option value="">Select team...</option>
-                {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              {activeRoster.length > 1 && (
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => goToRosterPlayer(rosterIndex - 1)} disabled={rosterIndex === 0}
-                    className="px-1.5 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white disabled:opacity-30 transition">&larr;</button>
-                  <select value={rosterIndex} onChange={e => goToRosterPlayer(Number(e.target.value))}
-                    className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-white focus:outline-none">
-                    {activeRoster.map((p, i) => (
-                      <option key={p.id} value={i}>{p.name} ({p.position})</option>
-                    ))}
-                  </select>
-                  <span className="text-[10px] text-zinc-600">{rosterIndex + 1}/{activeRoster.length}</span>
-                  <button onClick={() => goToRosterPlayer(rosterIndex + 1)} disabled={rosterIndex >= activeRoster.length - 1}
-                    className="px-1.5 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white disabled:opacity-30 transition">&rarr;</button>
-                </div>
-              )}
+
+            {/* Player / Team toggle */}
+            <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+              <button onClick={() => handleScopeChange('player')}
+                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${scope === 'player' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                Player
+              </button>
+              <button onClick={() => handleScopeChange('team')}
+                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${scope === 'team' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                Team
+              </button>
             </div>
-          )}
 
-          {/* Separator */}
-          <div className="w-px h-5 bg-zinc-800" />
-
-          {/* Templates dropdown */}
-          <select defaultValue="" onChange={e => {
-            const val = e.target.value
-            if (val === '__default') { setTiles(defaultTiles()); setGlobalFilters([]) }
-            else if (val) { loadTemplate(val) }
-            e.target.value = ''
-          }}
-            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none">
-            <option value="" disabled>Templates</option>
-            <option value="__default">Default</option>
-            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-
-          {/* Separator */}
-          <div className="w-px h-5 bg-zinc-800" />
-
-          {/* Modifier dropdown (renamed from overlay) */}
-          <select
-            value={reportMode === 'vs_similar_stuff' ? 'vs_similar_stuff' : (activeOverlayId || 'none')}
-            onChange={e => {
-              const val = e.target.value
-              if (val === 'none') {
-                setReportMode('default')
-                setActiveOverlayId(null)
-                clearModifierTarget()
-              } else if (val === 'vs_similar_stuff') {
-                setReportMode('vs_similar_stuff')
-                setActiveOverlayId(null)
-                // Use modifier target data if available, otherwise subject data
-                const sourceData = modifierTargetData.length > 0 ? modifierTargetData : rawData
-                if (sourceData.length > 0) {
-                  setPitcherStuffProfile(computeStuffProfile(sourceData))
-                }
-              } else if (val === '__build__') {
-                setShowOverlayBuilder(true)
-                e.target.value = reportMode === 'vs_similar_stuff' ? 'vs_similar_stuff' : (activeOverlayId || 'none')
-              } else {
-                setReportMode(val)
-                setActiveOverlayId(val)
-                const sourceData = modifierTargetData.length > 0 ? modifierTargetData : rawData
-                if (sourceData.length > 0) {
-                  setPitcherStuffProfile(computeStuffProfile(sourceData))
-                }
-              }
-            }}
-            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none"
-          >
-            <option value="none">No Modifier</option>
-            <option value="vs_similar_stuff">vs. Stuff</option>
-            {overlayTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            <option value="__build__">Build Modifier...</option>
-          </select>
-
-          {/* Modifier target search — always visible for selecting the modifier player */}
-          <div ref={modifierSearchRef} className="relative">
-            {modifierTarget ? (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-900/30 border border-amber-700/50 rounded-lg">
-                <span className="text-[11px] text-amber-400 font-medium">{modifierTarget.name}</span>
-                <button onClick={clearModifierTarget} className="text-amber-500 hover:text-amber-300 transition text-xs">&times;</button>
-              </div>
-            ) : (
-              <>
+            {/* Subject: Player search OR Team dropdown + roster nav */}
+            {scope === 'player' ? (
+              <div ref={subjectSearchRef} className="relative flex-1 min-w-[160px] max-w-xs">
                 <input type="text"
-                  value={modifierTargetSearch}
-                  onChange={e => handleModifierTargetSearch(e.target.value)}
-                  placeholder={`vs. ${subjectType === 'hitting' ? 'pitcher' : 'hitter'}...`}
-                  className="w-44 px-3 py-1.5 bg-zinc-800 border border-amber-700/50 rounded-lg text-[11px] text-amber-400 placeholder-amber-700/60 focus:border-amber-500 focus:outline-none" />
-                {modifierTargetResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-amber-700/50 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                    {modifierTargetResults.map((p: any) => (
-                      <button key={p.player_id} onClick={() => selectModifierTarget(p)}
-                        className="w-full text-left px-3 py-2 text-[11px] text-amber-300 hover:bg-zinc-700 hover:text-amber-200 transition border-b border-zinc-700/50 last:border-0">
+                  value={subjectSearch}
+                  onChange={e => handleSubjectSearch(e.target.value)}
+                  onFocus={() => { if (subjectResults.length > 0) setShowSubjectDropdown(true) }}
+                  placeholder={selectedPlayer ? selectedPlayer.name : `Search ${subjectType === 'pitching' ? 'pitcher' : 'hitter'}...`}
+                  className="w-full px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs md:text-[11px] text-white placeholder-zinc-500 focus:border-emerald-600 focus:outline-none" />
+                {showSubjectDropdown && subjectResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                    {subjectResults.map((p: any) => (
+                      <button key={p.player_id} onClick={() => selectPlayer(p)}
+                        className="w-full text-left px-3 py-2.5 md:py-2 text-xs md:text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition border-b border-zinc-700/50 last:border-0">
                         <span className="font-medium">{p.player_name}</span>
-                        <span className="text-amber-600 ml-2">{p.player_position} &middot; {p.pitch_count?.toLocaleString()}</span>
+                        <span className="text-zinc-500 ml-2">{p.player_position} &middot; {p.pitch_count?.toLocaleString()}</span>
                       </button>
                     ))}
                   </div>
                 )}
-              </>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap">
+                <select value={selectedTeam} onChange={e => handleTeamSelect(e.target.value)}
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs md:text-[11px] text-white focus:outline-none">
+                  <option value="">Select team...</option>
+                  {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {activeRoster.length > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => goToRosterPlayer(rosterIndex - 1)} disabled={rosterIndex === 0}
+                      className="px-2 py-1.5 md:px-1.5 md:py-1 bg-zinc-800 border border-zinc-700 rounded text-xs md:text-[11px] text-zinc-400 hover:text-white disabled:opacity-30 transition">&larr;</button>
+                    <select value={rosterIndex} onChange={e => goToRosterPlayer(Number(e.target.value))}
+                      className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 md:py-1 text-xs md:text-[11px] text-white focus:outline-none max-w-[140px]">
+                      {activeRoster.map((p, i) => (
+                        <option key={p.id} value={i}>{p.name} ({p.position})</option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-zinc-600">{rosterIndex + 1}/{activeRoster.length}</span>
+                    <button onClick={() => goToRosterPlayer(rosterIndex + 1)} disabled={rosterIndex >= activeRoster.length - 1}
+                      className="px-2 py-1.5 md:px-1.5 md:py-1 bg-zinc-800 border border-zinc-700 rounded text-xs md:text-[11px] text-zinc-400 hover:text-white disabled:opacity-30 transition">&rarr;</button>
+                  </div>
+                )}
+              </div>
             )}
+
+            {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
+            <span className="text-[11px] text-zinc-600 ml-auto md:ml-0">{displayedPitchCount.toLocaleString()} pitches</span>
           </div>
 
-          {/* Mode badge */}
-          {reportMode !== 'default' && (
-            <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-              reportMode === 'vs_similar_stuff'
-                ? 'bg-amber-900/40 border border-amber-700/50 text-amber-400'
-                : 'bg-purple-900/40 border border-purple-700/50 text-purple-400'
-            }`}>
-              {reportMode === 'vs_similar_stuff' ? 'vs. Stuff' : overlayTemplates.find(t => t.id === activeOverlayId)?.name || 'Modifier'}
-            </span>
-          )}
+          {/* Row 2: Templates, Modifier, Grid, Actions */}
+          <div className="flex items-center gap-2 md:gap-3 flex-wrap md:mt-1.5">
+            {/* Templates dropdown */}
+            <select defaultValue="" onChange={e => {
+              const val = e.target.value
+              if (val === '__default') { setTiles(defaultTiles()); setGlobalFilters([]) }
+              else if (val) { loadTemplate(val) }
+              e.target.value = ''
+            }}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs md:text-[11px] text-zinc-400 focus:outline-none">
+              <option value="" disabled>Templates</option>
+              <option value="__default">Default</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
 
-          {/* Separator */}
-          <div className="w-px h-5 bg-zinc-800" />
+            <div className="w-px h-5 bg-zinc-800 hidden md:block" />
 
-          {/* Grid columns */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-[11px] text-zinc-500">Grid:</span>
-            {[1, 2, 3, 4].map(c => (
-              <button key={c} onClick={() => setColumns(c)}
-                className={`w-6 h-6 rounded text-[11px] font-medium transition ${columns === c ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>{c}</button>
-            ))}
-          </div>
+            {/* Modifier dropdown */}
+            <select
+              value={reportMode === 'vs_similar_stuff' ? 'vs_similar_stuff' : (activeOverlayId || 'none')}
+              onChange={e => {
+                const val = e.target.value
+                if (val === 'none') {
+                  setReportMode('default')
+                  setActiveOverlayId(null)
+                  clearModifierTarget()
+                } else if (val === 'vs_similar_stuff') {
+                  setReportMode('vs_similar_stuff')
+                  setActiveOverlayId(null)
+                  const sourceData = modifierTargetData.length > 0 ? modifierTargetData : rawData
+                  if (sourceData.length > 0) {
+                    setPitcherStuffProfile(computeStuffProfile(sourceData))
+                  }
+                } else if (val === '__build__') {
+                  setShowOverlayBuilder(true)
+                  e.target.value = reportMode === 'vs_similar_stuff' ? 'vs_similar_stuff' : (activeOverlayId || 'none')
+                } else {
+                  setReportMode(val)
+                  setActiveOverlayId(val)
+                  const sourceData = modifierTargetData.length > 0 ? modifierTargetData : rawData
+                  if (sourceData.length > 0) {
+                    setPitcherStuffProfile(computeStuffProfile(sourceData))
+                  }
+                }
+              }}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs md:text-[11px] text-zinc-400 focus:outline-none"
+            >
+              <option value="none">No Modifier</option>
+              <option value="vs_similar_stuff">vs. Stuff</option>
+              {overlayTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="__build__">Build Modifier...</option>
+            </select>
 
-          {/* Save/Load/Delete/Export */}
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => setShowSaveModal(true)}
-              className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition">Save</button>
-            {templates.length > 0 && (
-              <select defaultValue="" onChange={e => { if (e.target.value) { deleteTemplate(e.target.value); e.target.value = '' } }}
-                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-red-400/60 hover:text-red-400 focus:outline-none w-8" title="Delete template">
-                <option value="" disabled>&times;</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+            {/* Modifier target search */}
+            <div ref={modifierSearchRef} className="relative">
+              {modifierTarget ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 md:py-1 bg-amber-900/30 border border-amber-700/50 rounded-lg">
+                  <span className="text-xs md:text-[11px] text-amber-400 font-medium">{modifierTarget.name}</span>
+                  <button onClick={clearModifierTarget} className="text-amber-500 hover:text-amber-300 transition text-sm md:text-xs">&times;</button>
+                </div>
+              ) : (
+                <>
+                  <input type="text"
+                    value={modifierTargetSearch}
+                    onChange={e => handleModifierTargetSearch(e.target.value)}
+                    placeholder={`vs. ${subjectType === 'hitting' ? 'pitcher' : 'hitter'}...`}
+                    className="w-36 md:w-44 px-3 py-1.5 bg-zinc-800 border border-amber-700/50 rounded-lg text-xs md:text-[11px] text-amber-400 placeholder-amber-700/60 focus:border-amber-500 focus:outline-none" />
+                  {modifierTargetResults.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-amber-700/50 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                      {modifierTargetResults.map((p: any) => (
+                        <button key={p.player_id} onClick={() => selectModifierTarget(p)}
+                          className="w-full text-left px-3 py-2.5 md:py-2 text-xs md:text-[11px] text-amber-300 hover:bg-zinc-700 hover:text-amber-200 transition border-b border-zinc-700/50 last:border-0">
+                          <span className="font-medium">{p.player_name}</span>
+                          <span className="text-amber-600 ml-2">{p.player_position} &middot; {p.pitch_count?.toLocaleString()}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Mode badge */}
+            {reportMode !== 'default' && (
+              <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                reportMode === 'vs_similar_stuff'
+                  ? 'bg-amber-900/40 border border-amber-700/50 text-amber-400'
+                  : 'bg-purple-900/40 border border-purple-700/50 text-purple-400'
+              }`}>
+                {reportMode === 'vs_similar_stuff' ? 'vs. Stuff' : overlayTemplates.find(t => t.id === activeOverlayId)?.name || 'Modifier'}
+              </span>
             )}
-            <button onClick={exportPDF} disabled={exporting}
-              className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded text-[11px] text-white font-medium transition disabled:opacity-50">
-              {exporting ? 'Exporting...' : 'Export PDF'}
-            </button>
-            <button onClick={openPushModal}
-              className="px-2 py-1 bg-amber-700 hover:bg-amber-600 border border-amber-600 rounded text-[11px] text-white font-medium transition">
-              Push to Compete
-            </button>
-          </div>
 
-          {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
-          <span className="text-[11px] text-zinc-600">{displayedPitchCount.toLocaleString()} pitches</span>
+            {/* Grid columns */}
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[11px] text-zinc-500 hidden md:inline">Grid:</span>
+              {[1, 2, 3, 4].map(c => (
+                <button key={c} onClick={() => setColumns(c)}
+                  className={`w-7 h-7 md:w-6 md:h-6 rounded text-xs md:text-[11px] font-medium transition ${columns === c ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>{c}</button>
+              ))}
+            </div>
+
+            {/* Save/Delete/Export */}
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => setShowSaveModal(true)}
+                className="px-2.5 py-1.5 md:px-2 md:py-1 bg-zinc-800 border border-zinc-700 rounded text-xs md:text-[11px] text-zinc-400 hover:text-white transition">Save</button>
+              {templates.length > 0 && (
+                <select defaultValue="" onChange={e => { if (e.target.value) { deleteTemplate(e.target.value); e.target.value = '' } }}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-red-400/60 hover:text-red-400 focus:outline-none w-8" title="Delete template">
+                  <option value="" disabled>&times;</option>
+                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              )}
+              <button onClick={exportPDF} disabled={exporting}
+                className="px-2.5 py-1.5 md:px-2 md:py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded text-xs md:text-[11px] text-white font-medium transition disabled:opacity-50">
+                {exporting ? '...' : 'PDF'}
+              </button>
+              <button onClick={openPushModal}
+                className="px-2.5 py-1.5 md:px-2 md:py-1 bg-amber-700 hover:bg-amber-600 border border-amber-600 rounded text-xs md:text-[11px] text-white font-medium transition hidden sm:inline-flex">
+                Push
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -800,7 +798,7 @@ function ReportsPageInner() {
       {/* Save Template Modal */}
       {showSaveModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowSaveModal(false)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80" onClick={e => e.stopPropagation()}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 md:p-6 w-[90vw] max-w-80 mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-white mb-3">Save Report Template</h3>
             <input type="text" value={templateName} onChange={e => setTemplateName(e.target.value)}
               placeholder="Template name..." autoFocus
@@ -821,7 +819,7 @@ function ReportsPageInner() {
       {/* Push to Compete Modal */}
       {showPushModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowPushModal(false)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-96" onClick={e => e.stopPropagation()}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 md:p-6 w-[90vw] max-w-96 mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-white mb-3">Push to Compete</h3>
             <p className="text-[11px] text-zinc-500 mb-4">Share this report with an athlete on Compete.</p>
             {pushError && <p className="text-[11px] text-red-400 mb-3">{pushError}</p>}
@@ -875,7 +873,7 @@ function ReportsPageInner() {
 
       {/* ── Empty State / Tile Grid ───────────────────────────────────── */}
       {!hasSubject && !loading ? (
-        <div className="flex flex-col items-center justify-center py-32 text-center">
+        <div className="flex flex-col items-center justify-center py-20 md:py-32 text-center px-6">
           <div className="text-4xl mb-4 opacity-30">&#9776;</div>
           <h2 className="text-lg font-semibold text-zinc-500 mb-2">Reports Builder</h2>
           <p className="text-sm text-zinc-600 max-w-sm">
@@ -885,20 +883,20 @@ function ReportsPageInner() {
           </p>
         </div>
       ) : (
-        <div className="max-w-[95vw] mx-auto px-6 py-4">
+        <div className="max-w-[95vw] mx-auto px-3 md:px-6 py-3 md:py-4">
           {/* Editable Report Title / Subtitle */}
           <div ref={gridRef}>
           <div className="mb-3 text-center">
             <input type="text" value={reportTitle} onChange={e => setReportTitle(e.target.value)}
               placeholder={currentPlayerName || 'Report Title'}
-              className="bg-transparent text-lg font-bold text-white text-center w-full max-w-md mx-auto block focus:outline-none placeholder-zinc-600" />
+              className="bg-transparent text-base md:text-lg font-bold text-white text-center w-full mx-auto block focus:outline-none placeholder-zinc-600" />
             <input type="text" value={reportSubtitle} onChange={e => setReportSubtitle(e.target.value)}
               placeholder={`${subjectType === 'pitching' ? 'Pitching' : 'Hitting'} Report · ${displayedPitchCount.toLocaleString()} pitches`}
-              className="bg-transparent text-[11px] text-zinc-500 text-center w-full max-w-md mx-auto block focus:outline-none placeholder-zinc-700 mt-0.5" />
+              className="bg-transparent text-[11px] text-zinc-500 text-center w-full mx-auto block focus:outline-none placeholder-zinc-700 mt-0.5" />
           </div>
-          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+          <div className="grid gap-2 md:gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
             {effectiveTiles.map(tile => (
-              <div key={tile.id} style={{ minHeight: columns === 1 ? 350 : columns === 2 ? 300 : 250 }}>
+              <div key={tile.id} style={{ minHeight: columns === 1 ? 320 : columns === 2 ? 280 : 250 }}>
                 <ReportTile
                   config={tile}
                   data={filteredData}
@@ -912,7 +910,7 @@ function ReportsPageInner() {
           </div>
           {tiles.length < 16 && (
             <button onClick={addTile}
-              className="mt-3 w-full py-3 border-2 border-dashed border-zinc-800 rounded-lg text-zinc-600 hover:border-emerald-600 hover:text-emerald-400 transition text-sm font-medium">
+              className="mt-3 w-full py-4 md:py-3 border-2 border-dashed border-zinc-800 rounded-lg text-zinc-600 hover:border-emerald-600 hover:text-emerald-400 transition text-sm font-medium">
               + Add Tile ({tiles.length}/16)
             </button>
           )}
