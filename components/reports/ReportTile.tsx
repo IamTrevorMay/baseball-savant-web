@@ -54,6 +54,16 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   // Apply tile-level filters
   const filtered = config.filters.length > 0 ? applyFiltersToData(data, config.filters) : data
 
+  // Determine dominant batter stand for bat graphic
+  const dominantStand = (() => {
+    const stands = filtered.map(d => d.stand).filter(Boolean)
+    if (!stands.length) return null
+    const lCount = stands.filter((s: string) => s === 'L').length
+    const rCount = stands.filter((s: string) => s === 'R').length
+    if (lCount === 0 && rCount === 0) return null
+    return lCount > rCount ? 'L' as const : 'R' as const
+  })()
+
   function setViz(viz: VizType) { onUpdate({ ...config, viz }) }
 
   if (config.viz === 'empty') {
@@ -292,10 +302,10 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
 
       {/* Visualization */}
       <div className="flex-1 p-1 min-h-0">
-        {config.viz === 'heatmap' && <TileHeatmap data={filtered} metric={config.metric || 'frequency'} />}
+        {config.viz === 'heatmap' && <TileHeatmap data={filtered} metric={config.metric || 'frequency'} stand={dominantStand} />}
         {config.viz === 'scatter' && <TileScatter data={filtered} mode={config.scatterMode || 'location'} />}
         {config.viz === 'bar' && <TileBar data={filtered} metric={config.barMetric || 'usage'} />}
-        {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} />}
+        {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} stand={dominantStand} />}
         {config.viz === 'table' && <TileTable data={filtered} mode={config.tableMode || 'arsenal'} columns={config.tableColumns} groupBy={config.tableGroupBy} />}
       </div>
     </div>

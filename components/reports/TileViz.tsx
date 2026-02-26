@@ -13,9 +13,9 @@ const ZONE_SHAPES = [
   { type: 'path' as const, path: 'M -0.708 0.15 L 0 0 L 0.708 0.15', line: { color: 'rgba(255,255,255,0.3)', width: 2 } },
 ]
 const SPECTRUM: [number,string][] = [
-  [0,'#2166ac'],[0.1,'#3388b8'],[0.2,'#4ba8c4'],[0.25,'#6cc4a0'],
-  [0.35,'#98d478'],[0.45,'#c8e64a'],[0.55,'#f0e830'],[0.65,'#f5c020'],
-  [0.75,'#f09015'],[0.85,'#e06010'],[0.95,'#c42a0c'],[1,'#9e0000'],
+  [0,'#1a3d7c'],[0.05,'#2166ac'],[0.15,'#3388b8'],[0.25,'#4ba8c4'],
+  [0.35,'#6cc4a0'],[0.45,'#c8e64a'],[0.55,'#f0e830'],[0.65,'#f5a020'],
+  [0.75,'#e06010'],[0.85,'#c42a0c'],[0.92,'#9e0000'],[1,'#7a0000'],
 ]
 
 type MetricKey = 'frequency'|'ba'|'slg'|'woba'|'xba'|'xwoba'|'xslg'|'ev'|'la'|'whiff_pct'|'chase_pct'|'swing_pct'
@@ -71,15 +71,34 @@ function fmtMetric(v:number|null,m:MetricKey):string {
   return v.toFixed(2)
 }
 
+// Bat annotation shapes for batter side
+function batShapes(stand: 'L'|'R'|null): any[] {
+  if (!stand) return []
+  // Bat on the side the hitter stands — angled toward the plate
+  const x = stand === 'R' ? -1.2 : 1.2
+  const dx = stand === 'R' ? 0.35 : -0.35
+  return [{
+    type: 'line' as const,
+    x0: x, x1: x + dx,
+    y0: 1.0, y1: 2.8,
+    line: { color: 'rgba(180,140,80,0.4)', width: 4 },
+  }, {
+    type: 'line' as const,
+    x0: x + dx, x1: x + dx * 1.15,
+    y0: 2.8, y1: 3.2,
+    line: { color: 'rgba(180,140,80,0.25)', width: 3 },
+  }]
+}
+
 // ── HEATMAP ──────────────────────────────────────────────────────────────────
-export function TileHeatmap({data,metric='frequency'}:{data:any[];metric?:MetricKey}) {
+export function TileHeatmap({data,metric='frequency',stand=null}:{data:any[];metric?:MetricKey;stand?:'L'|'R'|null}) {
   const f = data.filter(d=>d.plate_x!=null&&d.plate_z!=null)
   if(f.length<5) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">Not enough data</div>
   let trace: any
   if(metric==="frequency") {
     trace = {x:f.map(d=>d.plate_x),y:f.map(d=>d.plate_z),type:"histogram2dcontour",colorscale:SPECTRUM,ncontours:25,contours:{coloring:"heatmap"},line:{width:0},showscale:false,hovertemplate:"%{z:.0f} pitches<extra></extra>"}
   } else {
-    const nb=16,xR=[-2.2,2.2],yR=[-0.2,4.5],xS=(xR[1]-xR[0])/nb,yS=(yR[1]-yR[0])/nb
+    const nb=16,xR=[-1.76,1.76],yR=[0.24,4.06],xS=(xR[1]-xR[0])/nb,yS=(yR[1]-yR[0])/nb
     const bins:any[][][]=Array.from({length:nb},()=>Array.from({length:nb},()=>[]))
     f.forEach(d=>{const xi=Math.min(Math.max(Math.floor((d.plate_x-xR[0])/xS),0),nb-1),yi=Math.min(Math.max(Math.floor((d.plate_z-yR[0])/yS),0),nb-1);bins[yi][xi].push(d)})
     const z=bins.map(row=>row.map(cell=>calcMetric(cell,metric)))
@@ -92,11 +111,11 @@ export function TileHeatmap({data,metric='frequency'}:{data:any[];metric?:Metric
   const fmtZ = (v:number) => metric==="frequency" ? String(Math.round(v)) : ["ba","slg","woba","xba","xwoba","xslg"].includes(metric) ? v.toFixed(3) : v.toFixed(1)
   return (
     <div className="relative w-full h-full">
-      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-2.2,2.2],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[-0.2,4.5],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:ZONE_SHAPES,autosize:true}} style={{width:"100%",height:"100%"}} />
+      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...ZONE_SHAPES,...batShapes(stand)],autosize:true}} style={{width:"100%",height:"100%"}} />
       {zVals && zVals.length > 0 && (
         <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
           <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMin)}</span>
-          <div className="w-12 h-1.5 rounded-full" style={{background:"linear-gradient(to right, #2166ac, #4ba8c4, #6cc4a0, #c8e64a, #f0e830, #f09015, #9e0000)"}} />
+          <div className="w-12 h-1.5 rounded-full" style={{background:"linear-gradient(to right, #1a3d7c, #2166ac, #4ba8c4, #c8e64a, #f0e830, #e06010, #9e0000, #7a0000)"}} />
           <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMax)}</span>
         </div>
       )}
@@ -135,8 +154,8 @@ export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode
   const xTitle = mode==='location'?'':mode==='movement'?'H Break (in)':'Exit Velo'
   const yTitle = mode==='location'?'':mode==='movement'?'IVB (in)':'Launch Angle'
   const shapes = mode==='location'?ZONE_SHAPES:[]
-  const xRange = mode==='location'?[-2.2,2.2]:undefined
-  const yRange = mode==='location'?[-0.2,4.5]:undefined
+  const xRange = mode==='location'?[-1.76,1.76]:undefined
+  const yRange = mode==='location'?[0.24,4.06]:undefined
   return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:10,r:10,b:mode==='location'?5:30,l:mode==='location'?5:35},xaxis:{title:xTitle,range:xRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',fixedrange:true,tickfont:{size:8}},yaxis:{title:yTitle,range:yRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',scaleanchor:mode==='location'?'x':undefined,fixedrange:true,tickfont:{size:8}},shapes,showlegend:false,autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
@@ -166,7 +185,7 @@ export function TileBar({data,metric='usage'}:{data:any[];metric?:BarMetric}) {
 }
 
 // ── STRIKE ZONE OVERLAY ──────────────────────────────────────────────────────
-export function TileStrikeZone({data}:{data:any[]}) {
+export function TileStrikeZone({data,stand=null}:{data:any[];stand?:'L'|'R'|null}) {
   const groups:Record<string,any[]>={}
   const f = data.filter(d=>d.plate_x!=null&&d.plate_z!=null)
   if(!f.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
@@ -177,7 +196,7 @@ export function TileStrikeZone({data}:{data:any[]}) {
     marker:{size:5,color:getPitchColor(name),opacity:.7,line:{width:.5,color:'rgba(0,0,0,0.3)'}},
     name,customdata:pts.map(d=>[d.player_name||"",d.release_speed?d.release_speed.toFixed(1):""]),hovertemplate:`${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>X: %{x:.1f}\"<br>Z: %{y:.1f}\"<extra></extra>`,
   }))
-  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-2.2,2.2],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[-0.2,4.5],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
+  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:[...ZONE_SHAPES,...batShapes(stand)],showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
 // ── CUSTOM COLUMN DEFINITIONS ────────────────────────────────────────────────

@@ -59,6 +59,10 @@ function ReportsPageInner() {
   const subjectSearchRef = useRef<HTMLDivElement>(null)
   const modifierSearchRef = useRef<HTMLDivElement>(null)
 
+  // Report title/subtitle
+  const [reportTitle, setReportTitle] = useState('')
+  const [reportSubtitle, setReportSubtitle] = useState('')
+
   // Save/Load template state
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [templateName, setTemplateName] = useState('')
@@ -340,10 +344,10 @@ function ReportsPageInner() {
       pdf.setTextColor(255, 255, 255)
       pdf.setFillColor(9, 9, 11)
       pdf.rect(0, 0, pageW, pageH, 'F')
-      pdf.text(currentPlayerName || 'Report', 10, 12)
+      pdf.text(reportTitle || currentPlayerName || 'Report', 10, 12)
       pdf.setFontSize(8)
       pdf.setTextColor(150, 150, 150)
-      pdf.text(`${subjectType || ''} · ${filteredData.length.toLocaleString()} pitches · Triton`, 10, 18)
+      pdf.text(reportSubtitle || `${subjectType || ''} · ${filteredData.length.toLocaleString()} pitches · Triton`, 10, 18)
       const marginTop = 22
       const availH = pageH - marginTop - 5
       const ratio = canvas.width / canvas.height
@@ -759,8 +763,8 @@ function ReportsPageInner() {
               className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition">Save</button>
             {templates.length > 0 && (
               <select defaultValue="" onChange={e => { if (e.target.value) { deleteTemplate(e.target.value); e.target.value = '' } }}
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-red-400 focus:outline-none">
-                <option value="" disabled>Delete...</option>
+                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-red-400/60 hover:text-red-400 focus:outline-none w-8" title="Delete template">
+                <option value="" disabled>&times;</option>
                 {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             )}
@@ -871,7 +875,17 @@ function ReportsPageInner() {
         </div>
       ) : (
         <div className="max-w-[95vw] mx-auto px-6 py-4">
-          <div ref={gridRef} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+          {/* Editable Report Title / Subtitle */}
+          <div ref={gridRef}>
+          <div className="mb-3 text-center">
+            <input type="text" value={reportTitle} onChange={e => setReportTitle(e.target.value)}
+              placeholder={currentPlayerName || 'Report Title'}
+              className="bg-transparent text-lg font-bold text-white text-center w-full max-w-md mx-auto block focus:outline-none placeholder-zinc-600" />
+            <input type="text" value={reportSubtitle} onChange={e => setReportSubtitle(e.target.value)}
+              placeholder={`${subjectType === 'pitching' ? 'Pitching' : 'Hitting'} Report · ${filteredData.length.toLocaleString()} pitches`}
+              className="bg-transparent text-[11px] text-zinc-500 text-center w-full max-w-md mx-auto block focus:outline-none placeholder-zinc-700 mt-0.5" />
+          </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
             {effectiveTiles.map(tile => (
               <div key={tile.id} style={{ minHeight: columns === 1 ? 350 : columns === 2 ? 300 : 250 }}>
                 <ReportTile
@@ -883,6 +897,7 @@ function ReportsPageInner() {
                 />
               </div>
             ))}
+          </div>
           </div>
           {tiles.length < 16 && (
             <button onClick={addTile}
