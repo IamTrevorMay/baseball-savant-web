@@ -2,8 +2,8 @@
 import { useState } from 'react'
 import { colName } from '@/lib/glossary'
 
-const DISPLAY_COLS = [
-  'game_date','inning','inning_topbot','balls','strikes','outs_when_up',
+const BASE_COLS = [
+  'game_date','vs_team','player_col','inning','inning_topbot','balls','strikes','outs_when_up',
   'pitch_name','release_speed','release_spin_rate','pfx_x','pfx_z',
   'plate_x','plate_z','zone','description','events',
   'launch_speed','launch_angle','hit_distance_sc','bb_type',
@@ -13,7 +13,15 @@ const DISPLAY_COLS = [
 
 type SortDir = 'asc' | 'desc'
 
-export default function PitchLogTab({ data }: { data: any[] }) {
+export default function PitchLogTab({ data, mode = 'pitcher' }: { data: any[]; mode?: 'pitcher' | 'hitter' }) {
+  const playerCol = mode === 'pitcher' ? 'batter_name' : 'pitcher_name'
+  const DISPLAY_COLS = BASE_COLS.map(c => c === 'player_col' ? playerCol : c)
+
+  const COL_LABELS: Record<string, string> = {
+    vs_team: 'Opp',
+    batter_name: 'Batter',
+    pitcher_name: 'Pitcher',
+  }
   const [sortCol, setSortCol] = useState('game_date')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(0)
@@ -77,7 +85,7 @@ export default function PitchLogTab({ data }: { data: any[] }) {
                   className={`bg-zinc-800 px-2 py-2 text-right font-medium whitespace-nowrap cursor-pointer hover:text-zinc-200 transition ${
                     sortCol === col ? 'text-emerald-400' : 'text-zinc-500'
                   }`}>
-                  {colName(col)} {sortCol === col ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                  {COL_LABELS[col] || colName(col)} {sortCol === col ? (sortDir === 'desc' ? '↓' : '↑') : ''}
                 </th>
               ))}
               <th className="bg-zinc-800 px-2 py-2 text-center text-zinc-500 font-medium">Vid</th>
@@ -90,6 +98,8 @@ export default function PitchLogTab({ data }: { data: any[] }) {
                 {DISPLAY_COLS.map(col => (
                   <td key={col} className={`px-2 py-1.5 whitespace-nowrap font-mono text-right ${
                     col === 'pitch_name' ? 'text-white font-sans font-medium' :
+                    col === playerCol ? 'text-white font-sans font-medium' :
+                    col === 'vs_team' ? 'text-zinc-400 font-sans' :
                     col === 'release_speed' ? 'text-amber-400' :
                     col === 'launch_speed' ? 'text-sky-400' :
                     col === 'description' ? descColor(row[col]) + ' font-sans' :

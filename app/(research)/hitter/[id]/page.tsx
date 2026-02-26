@@ -271,7 +271,7 @@ export default function HitterDashboard() {
           {tab === 'overview' && <HitterOverviewTab data={data} info={info} />}
           {tab === 'viz' && <LocationTab data={data} />}
           {tab === 'results' && <ResultsTab data={data} />}
-          {tab === 'pitchlog' && <PitchLogTab data={data} />}
+          {tab === 'pitchlog' && <PitchLogTab data={data} mode="hitter" />}
           {tab === 'splits' && <HitterSplitsTab data={data} />}
           {tab === 'gamelog' && <HitterGameLogTab data={data} />}
         </div>

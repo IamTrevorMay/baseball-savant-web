@@ -285,7 +285,7 @@ export default function PlayerDashboard() {
           {tab === 'viz' && <LocationTab data={data} />}
           {tab === 'velocity' && <VelocityTab data={data} />}
           {tab === 'results' && <ResultsTab data={data} />}
-          {tab === 'pitchlog' && <PitchLogTab data={data} />}
+          {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}
           {tab === 'splits' && <SplitsTab data={data} />}
           {tab === 'gamelog' && <GameLogTab data={data} />}
         </div>
