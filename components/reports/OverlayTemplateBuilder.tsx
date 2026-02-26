@@ -140,7 +140,7 @@ export default function OverlayTemplateBuilder({ onClose, onSaved }: Props) {
         {/* Left: Template List */}
         <div className="w-56 border-r border-zinc-800 flex flex-col shrink-0">
           <div className="px-3 py-3 border-b border-zinc-800 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Overlays</h3>
+            <h3 className="text-sm font-semibold text-white">Modifiers</h3>
             <button onClick={newTemplate} className="text-[10px] text-emerald-400 hover:text-emerald-300 transition">+ New</button>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -154,7 +154,7 @@ export default function OverlayTemplateBuilder({ onClose, onSaved }: Props) {
               </button>
             ))}
             {templates.length === 0 && (
-              <div className="px-3 py-4 text-[11px] text-zinc-600 text-center">No overlay templates yet</div>
+              <div className="px-3 py-4 text-[11px] text-zinc-600 text-center">No modifier templates yet</div>
             )}
           </div>
         </div>
@@ -163,7 +163,7 @@ export default function OverlayTemplateBuilder({ onClose, onSaved }: Props) {
         <div className="flex-1 flex flex-col min-w-0">
           <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">
-              {selected ? 'Edit Overlay' : name ? 'New Overlay' : 'Overlay Builder'}
+              {selected ? 'Edit Modifier' : name ? 'New Modifier' : 'Modifier Builder'}
             </h3>
             <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition text-lg">&times;</button>
           </div>
