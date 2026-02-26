@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 
 /* ─── Scores Types ─── */
@@ -48,8 +48,27 @@ const NL_ORDER = ['NL East','NL Central','NL West']
 
 export default function HomePage() {
   /* ─── Scores state ─── */
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const [scoresDate, setScoresDate] = useState(todayStr)
   const [games, setGames] = useState<Game[]>([])
   const [scoresLoading, setScoresLoading] = useState(true)
+  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const fetchScores = useCallback((date: string, showLoading = false) => {
+    if (showLoading) setScoresLoading(true)
+    fetch(`/api/scores?date=${date}`)
+      .then(r => r.json())
+      .then(d => { setGames(d.games || []); setScoresLoading(false) })
+      .catch(() => setScoresLoading(false))
+  }, [])
+
+  const shiftDate = (days: number) => {
+    const d = new Date(scoresDate + 'T12:00:00')
+    d.setDate(d.getDate() + days)
+    setScoresDate(d.toISOString().slice(0, 10))
+  }
+
+  const isToday = scoresDate === todayStr
 
   /* ─── News state ─── */
   const [news, setNews] = useState<NewsItem[]>([])
@@ -61,8 +80,15 @@ export default function HomePage() {
   const [season, setSeason] = useState(new Date().getFullYear())
   const [view, setView] = useState<'division'|'league'|'wildcard'>('division')
 
+  /* fetch scores on date change + auto-refresh every 30s */
   useEffect(() => {
-    fetch('/api/scores').then(r => r.json()).then(d => { setGames(d.games || []); setScoresLoading(false) }).catch(() => setScoresLoading(false))
+    fetchScores(scoresDate, true)
+    if (refreshRef.current) clearInterval(refreshRef.current)
+    refreshRef.current = setInterval(() => fetchScores(scoresDate), 30000)
+    return () => { if (refreshRef.current) clearInterval(refreshRef.current) }
+  }, [scoresDate, fetchScores])
+
+  useEffect(() => {
     fetch('/api/news').then(r => r.json()).then(d => { setNews(d.items || []); setNewsLoading(false) }).catch(() => setNewsLoading(false))
   }, [])
 
@@ -146,10 +172,35 @@ export default function HomePage() {
 
         {/* ─── Scores Section ─── */}
         <div className="mb-10">
-          <h2 className="text-2xl font-bold text-white mb-1">Today&apos;s Scores</h2>
-          <p className="text-sm text-zinc-500 mb-6">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-1">Scores</h2>
+              <p className="text-sm text-zinc-500">
+                {new Date(scoresDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                {isToday && <span className="ml-2 text-emerald-400 font-medium">Today</span>}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => shiftDate(-1)}
+                className="p-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition"
+                aria-label="Previous day">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <input type="date" value={scoresDate} onChange={e => e.target.value && setScoresDate(e.target.value)}
+                className="bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-white focus:border-emerald-600 focus:outline-none [color-scheme:dark]" />
+              {!isToday && (
+                <button onClick={() => setScoresDate(todayStr)}
+                  className="px-3 py-1.5 rounded text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-500 transition">
+                  Today
+                </button>
+              )}
+              <button onClick={() => shiftDate(1)}
+                className="p-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition"
+                aria-label="Next day">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </div>
+          </div>
 
           {scoresLoading ? (
             <div className="flex gap-4 overflow-x-auto pb-2">
@@ -162,7 +213,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : games.length === 0 ? (
-            <div className="text-center py-12 text-zinc-500 text-sm">No games scheduled today.</div>
+            <div className="text-center py-12 text-zinc-500 text-sm">No games scheduled for this date.</div>
           ) : (
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
               {games.map(g => <ScoreCard key={g.gamePk} game={g} />)}
