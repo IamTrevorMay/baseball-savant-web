@@ -649,10 +649,15 @@ function ReportsPageInner() {
           <div className="w-px h-5 bg-zinc-800" />
 
           {/* Templates dropdown */}
-          <select defaultValue="" onChange={e => { if (e.target.value) { loadTemplate(e.target.value); e.target.value = '' } }}
+          <select defaultValue="" onChange={e => {
+            const val = e.target.value
+            if (val === '__default') { setTiles(defaultTiles()); setGlobalFilters([]) }
+            else if (val) { loadTemplate(val) }
+            e.target.value = ''
+          }}
             className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none">
             <option value="" disabled>Templates</option>
-            <option value="__default" onClick={() => { setTiles(defaultTiles()); setGlobalFilters([]) }}>Default</option>
+            <option value="__default">Default</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
 
@@ -691,41 +696,39 @@ function ReportsPageInner() {
             className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-400 focus:outline-none"
           >
             <option value="none">No Modifier</option>
-            {subjectType === 'pitching' && <option value="vs_similar_stuff">vs. Similar Stuff</option>}
+            <option value="vs_similar_stuff">vs. Stuff</option>
             {overlayTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             <option value="__build__">Build Modifier...</option>
           </select>
 
-          {/* Modifier target search — appears when modifier is active */}
-          {reportMode !== 'default' && (
-            <div ref={modifierSearchRef} className="relative">
-              {modifierTarget ? (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-900/30 border border-amber-700/50 rounded-lg">
-                  <span className="text-[11px] text-amber-400 font-medium">{modifierTarget.name}</span>
-                  <button onClick={clearModifierTarget} className="text-amber-500 hover:text-amber-300 transition text-xs">&times;</button>
-                </div>
-              ) : (
-                <>
-                  <input type="text"
-                    value={modifierTargetSearch}
-                    onChange={e => handleModifierTargetSearch(e.target.value)}
-                    placeholder={`Search ${subjectType === 'hitting' ? 'pitcher' : 'hitter'} target...`}
-                    className="w-44 px-3 py-1.5 bg-zinc-800 border border-amber-700/50 rounded-lg text-[11px] text-amber-400 placeholder-amber-700/60 focus:border-amber-500 focus:outline-none" />
-                  {modifierTargetResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-amber-700/50 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                      {modifierTargetResults.map((p: any) => (
-                        <button key={p.player_id} onClick={() => selectModifierTarget(p)}
-                          className="w-full text-left px-3 py-2 text-[11px] text-amber-300 hover:bg-zinc-700 hover:text-amber-200 transition border-b border-zinc-700/50 last:border-0">
-                          <span className="font-medium">{p.player_name}</span>
-                          <span className="text-amber-600 ml-2">{p.player_position} &middot; {p.pitch_count?.toLocaleString()}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
+          {/* Modifier target search — always visible for selecting the modifier player */}
+          <div ref={modifierSearchRef} className="relative">
+            {modifierTarget ? (
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-900/30 border border-amber-700/50 rounded-lg">
+                <span className="text-[11px] text-amber-400 font-medium">{modifierTarget.name}</span>
+                <button onClick={clearModifierTarget} className="text-amber-500 hover:text-amber-300 transition text-xs">&times;</button>
+              </div>
+            ) : (
+              <>
+                <input type="text"
+                  value={modifierTargetSearch}
+                  onChange={e => handleModifierTargetSearch(e.target.value)}
+                  placeholder={`vs. ${subjectType === 'hitting' ? 'pitcher' : 'hitter'}...`}
+                  className="w-44 px-3 py-1.5 bg-zinc-800 border border-amber-700/50 rounded-lg text-[11px] text-amber-400 placeholder-amber-700/60 focus:border-amber-500 focus:outline-none" />
+                {modifierTargetResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-amber-700/50 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                    {modifierTargetResults.map((p: any) => (
+                      <button key={p.player_id} onClick={() => selectModifierTarget(p)}
+                        className="w-full text-left px-3 py-2 text-[11px] text-amber-300 hover:bg-zinc-700 hover:text-amber-200 transition border-b border-zinc-700/50 last:border-0">
+                        <span className="font-medium">{p.player_name}</span>
+                        <span className="text-amber-600 ml-2">{p.player_position} &middot; {p.pitch_count?.toLocaleString()}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           {/* Mode badge */}
           {reportMode !== 'default' && (
@@ -754,13 +757,6 @@ function ReportsPageInner() {
           <div className="flex items-center gap-1.5">
             <button onClick={() => setShowSaveModal(true)}
               className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition">Save</button>
-            {templates.length > 0 && (
-              <select defaultValue="" onChange={e => { if (e.target.value) loadTemplate(e.target.value); e.target.value = '' }}
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-400 focus:outline-none">
-                <option value="" disabled>Load...</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            )}
             {templates.length > 0 && (
               <select defaultValue="" onChange={e => { if (e.target.value) { deleteTemplate(e.target.value); e.target.value = '' } }}
                 className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-red-400 focus:outline-none">
