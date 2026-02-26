@@ -80,6 +80,7 @@ export default function PitchLogTab({ data }: { data: any[] }) {
                   {colName(col)} {sortCol === col ? (sortDir === 'desc' ? '↓' : '↑') : ''}
                 </th>
               ))}
+              <th className="bg-zinc-800 px-2 py-2 text-center text-zinc-500 font-medium">Vid</th>
             </tr>
           </thead>
           <tbody>
@@ -98,6 +99,19 @@ export default function PitchLogTab({ data }: { data: any[] }) {
                     {fmt(row[col])}
                   </td>
                 ))}
+                <td className="px-2 py-1.5 text-center">
+                  {row.game_pk && row.at_bat_number && row.pitch_number ? (
+                    <button
+                      onClick={() => window.open(`/api/play-video?game_pk=${row.game_pk}&ab=${row.at_bat_number}&pitch=${row.pitch_number}`, '_blank')}
+                      className="text-zinc-600 hover:text-emerald-400 transition"
+                      title="Watch pitch video"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M3 3.732a1.5 1.5 0 0 1 2.305-1.265l6.706 4.267a1.5 1.5 0 0 1 0 2.531l-6.706 4.268A1.5 1.5 0 0 1 3 12.267V3.732Z" />
+                      </svg>
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
