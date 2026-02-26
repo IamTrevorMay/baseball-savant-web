@@ -82,6 +82,7 @@ export interface ActiveFilter {
   max?: string                 // for range
   startDate?: string           // for date
   endDate?: string             // for date
+  readonly?: boolean           // overlay filters (cannot be removed by user)
 }
 
 export interface FilterEngineProps {

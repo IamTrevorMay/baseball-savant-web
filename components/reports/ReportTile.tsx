@@ -220,9 +220,15 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] text-zinc-500">Filters:</span>
             {config.filters.map((f, i) => (
-              <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-700/50 rounded text-[9px] text-emerald-300">
+              <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] ${
+                f.readonly
+                  ? 'bg-amber-900/30 border border-amber-700/50 text-amber-300'
+                  : 'bg-emerald-900/30 border border-emerald-700/50 text-emerald-300'
+              }`}>
                 {f.def.label}: {f.def.key === 'pitch_type' ? f.values?.map(v => PITCH_CODE_NAMES[v] || v).join(", ") : (f.values?.join(", ") || `${f.min||""}\u2013${f.max||""}`)}
-                <span onClick={() => onUpdate({ ...config, filters: config.filters.filter((_, idx) => idx !== i) })} className="cursor-pointer hover:text-red-400">u00d7</span>
+                {!f.readonly && (
+                  <span onClick={() => onUpdate({ ...config, filters: config.filters.filter((_, idx) => idx !== i) })} className="cursor-pointer hover:text-red-400">&times;</span>
+                )}
               </span>
             ))}
             <div className="relative">

@@ -2,8 +2,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import FilterEngine, { ActiveFilter, applyFiltersToData } from '@/components/FilterEngine'
+import FilterEngine, { ActiveFilter, applyFiltersToData, FILTER_CATALOG } from '@/components/FilterEngine'
 import ReportTile, { TileConfig, defaultTile } from '@/components/reports/ReportTile'
+import { computeStuffProfile, generateSimilarStuffFilters, applyOverlayRules, type StuffProfile, type OverlayRule } from '@/lib/overlayEngine'
+import OverlayTemplateBuilder from '@/components/reports/OverlayTemplateBuilder'
 
 interface RosterPlayer { id: number; name: string; position: string }
 
@@ -55,6 +57,14 @@ function ReportsPageInner() {
   const [templateName, setTemplateName] = useState('')
   const [templates, setTemplates] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
+
+  // Overlay / vs. Similar Stuff state
+  const [reportMode, setReportMode] = useState<'default' | 'vs_similar_stuff' | string>('default')
+  const [pitcherStuffProfile, setPitcherStuffProfile] = useState<StuffProfile | null>(null)
+  const [overlayFiltersPerTile, setOverlayFiltersPerTile] = useState<Record<string, ActiveFilter[]> | null>(null)
+  const [overlayTemplates, setOverlayTemplates] = useState<{ id: string; name: string }[]>([])
+  const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null)
+  const [showOverlayBuilder, setShowOverlayBuilder] = useState(false)
 
   // Push to Compete state
   const [showPushModal, setShowPushModal] = useState(false)
@@ -195,6 +205,38 @@ function ReportsPageInner() {
     return applyFiltersToData(rawData, globalFilters)
   }, [rawData, globalFilters])
 
+  // Compute overlay filters when stuff profile or tiles change
+  useEffect(() => {
+    if (reportMode === 'vs_similar_stuff' && pitcherStuffProfile) {
+      const result = generateSimilarStuffFilters(pitcherStuffProfile, tiles)
+      const map: Record<string, ActiveFilter[]> = {}
+      result.forEach(r => { map[r.tileId] = r.overlayFilters })
+      setOverlayFiltersPerTile(map)
+    } else if (activeOverlayId && activeOverlayId !== 'vs_similar_stuff') {
+      // Custom overlay template — load and apply
+      supabase.from('overlay_templates').select('*').eq('id', activeOverlayId).single().then(({ data: tmpl }) => {
+        if (tmpl && pitcherStuffProfile) {
+          // Need pitcher data for rule evaluation — use rawData as proxy
+          const result = applyOverlayRules(tmpl.rules as OverlayRule[], rawData, tiles)
+          const map: Record<string, ActiveFilter[]> = {}
+          result.forEach(r => { map[r.tileId] = r.overlayFilters })
+          setOverlayFiltersPerTile(map)
+        }
+      })
+    } else {
+      setOverlayFiltersPerTile(null)
+    }
+  }, [reportMode, pitcherStuffProfile, tiles, activeOverlayId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Inject overlay filters into tiles for rendering
+  const effectiveTiles = useMemo(() => {
+    if (!overlayFiltersPerTile) return tiles
+    return tiles.map(tile => ({
+      ...tile,
+      filters: [...tile.filters, ...(overlayFiltersPerTile[tile.id] || [])]
+    }))
+  }, [tiles, overlayFiltersPerTile])
+
   function updateTile(id: string, config: TileConfig) { setTiles(t => t.map(tile => tile.id === id ? config : tile)) }
   function removeTile(id: string) { setTiles(t => t.filter(tile => tile.id !== id)) }
   function addTile() { if (tiles.length < 16) setTiles(t => [...t, defaultTile('t' + Date.now())]) }
@@ -316,19 +358,114 @@ function ReportsPageInner() {
     const playerId = searchParams.get('playerId')
     const playerName = searchParams.get('playerName')
     const type = searchParams.get('type') as SubjectType | null
-    if (playerId && playerName) {
-      setScope('player')
-      setSubjectType(type || 'pitching')
-      setSelectedPlayer({ id: Number(playerId), name: playerName })
-      setTiles(defaultTiles())
-      setGlobalFilters([])
-      loadPlayerData(Number(playerId))
-      setStep('report')
+    if (!playerId || !playerName) return
+
+    const templateIdParam = searchParams.get('templateId')
+    const modeParam = searchParams.get('mode') || 'default'
+    const yearsParam = searchParams.get('years')
+    const startDateParam = searchParams.get('startDate')
+    const endDateParam = searchParams.get('endDate')
+    const oppTypeParam = searchParams.get('oppType')
+    const oppIdParam = searchParams.get('oppId')
+    const oppNameParam = searchParams.get('oppName')
+
+    setScope('player')
+    setSubjectType(type || 'pitching')
+    setSelectedPlayer({ id: Number(playerId), name: playerName })
+    setReportMode(modeParam)
+    setStep('report')
+
+    async function hydrateReport() {
+      // Load template if specified
+      if (templateIdParam) {
+        const { data: tmpl } = await supabase.from('report_templates').select('*').eq('id', templateIdParam).single()
+        if (tmpl) {
+          setTiles(tmpl.tiles_config || defaultTiles())
+          setColumns(tmpl.columns || 4)
+        } else {
+          setTiles(defaultTiles())
+        }
+      } else {
+        setTiles(defaultTiles())
+      }
+
+      // Build additional global filters from URL params
+      const extraFilters: ActiveFilter[] = []
+
+      // Year filter
+      if (yearsParam) {
+        const yearDef = FILTER_CATALOG.find(f => f.key === 'game_year')!
+        extraFilters.push({ def: yearDef, values: yearsParam.split(',') })
+      }
+
+      // Date range filter
+      if (startDateParam || endDateParam) {
+        const dateDef = FILTER_CATALOG.find(f => f.key === 'game_date')!
+        extraFilters.push({ def: dateDef, startDate: startDateParam || '', endDate: endDateParam || '' })
+      }
+
+      // Opposition filter
+      if (oppTypeParam && oppIdParam) {
+        if (oppTypeParam === 'team') {
+          const teamDef = FILTER_CATALOG.find(f => f.key === 'vs_team')!
+          extraFilters.push({ def: teamDef, values: [oppIdParam] })
+        } else if (oppTypeParam === 'hitter') {
+          const batterDef = FILTER_CATALOG.find(f => f.key === 'batter_name')!
+          extraFilters.push({ def: batterDef, values: [oppNameParam || oppIdParam] })
+        }
+      }
+
+      setGlobalFilters(extraFilters)
+
+      // vs. Similar Stuff mode: load pitcher data first for stuff profile
+      if (modeParam === 'vs_similar_stuff' && type === 'pitching') {
+        // Load pitcher's own data to compute stuff profile
+        const pitcherRes = await fetch(`/api/player-data?id=${playerId}&col=pitcher`)
+        const pitcherJson = await pitcherRes.json()
+        const pitcherRows = pitcherJson.rows || []
+        enrichData(pitcherRows)
+        const profile = computeStuffProfile(pitcherRows)
+        setPitcherStuffProfile(profile)
+
+        // If opposition is a hitter, load hitter's data as rawData
+        if (oppTypeParam === 'hitter' && oppIdParam) {
+          const hitterRes = await fetch(`/api/player-data?id=${oppIdParam}&col=batter`)
+          const hitterJson = await hitterRes.json()
+          const hitterRows = hitterJson.rows || []
+          enrichData(hitterRows)
+          setRawData(hitterRows)
+          buildOptions(hitterRows)
+        } else {
+          // Team opposition or no opposition: use pitcher's own data
+          setRawData(pitcherRows)
+          buildOptions(pitcherRows)
+        }
+      } else {
+        // Default mode: load subject player data
+        const col = (type || 'pitching') === "hitting" ? "batter" : "pitcher"
+        const res = await fetch(`/api/player-data?id=${playerId}&col=${col}`)
+        const json = await res.json()
+        const rows = json.rows || []
+        enrichData(rows)
+        setRawData(rows)
+        buildOptions(rows)
+      }
+
+      setLoading(false)
     }
+
+    setLoading(true)
+    hydrateReport()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load templates on mount
-  useEffect(() => { loadTemplates() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    loadTemplates()
+    // Load overlay templates
+    supabase.from('overlay_templates').select('id, name').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) setOverlayTemplates(data)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function goBack() {
     if (step === 'report') setStep('choose_subject')
@@ -488,6 +625,52 @@ function ReportsPageInner() {
                 ))}
               </div>
 
+              {/* Mode badge */}
+              {reportMode !== 'default' && (
+                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                  reportMode === 'vs_similar_stuff'
+                    ? 'bg-amber-900/40 border border-amber-700/50 text-amber-400'
+                    : 'bg-purple-900/40 border border-purple-700/50 text-purple-400'
+                }`}>
+                  {reportMode === 'vs_similar_stuff' ? 'vs. Similar Stuff' : overlayTemplates.find(t => t.id === activeOverlayId)?.name || 'Overlay'}
+                </span>
+              )}
+
+              {/* Overlay dropdown */}
+              <select
+                value={reportMode === 'vs_similar_stuff' ? 'vs_similar_stuff' : (activeOverlayId || 'none')}
+                onChange={e => {
+                  const val = e.target.value
+                  if (val === 'none') {
+                    setReportMode('default')
+                    setActiveOverlayId(null)
+                  } else if (val === 'vs_similar_stuff') {
+                    setReportMode('vs_similar_stuff')
+                    setActiveOverlayId(null)
+                    // Compute stuff profile from current data if not already set
+                    if (!pitcherStuffProfile && rawData.length > 0) {
+                      setPitcherStuffProfile(computeStuffProfile(rawData))
+                    }
+                  } else if (val === '__build__') {
+                    setShowOverlayBuilder(true)
+                    e.target.value = reportMode === 'vs_similar_stuff' ? 'vs_similar_stuff' : (activeOverlayId || 'none')
+                  } else {
+                    setReportMode(val)
+                    setActiveOverlayId(val)
+                    // Need stuff profile for custom overlays too
+                    if (!pitcherStuffProfile && rawData.length > 0) {
+                      setPitcherStuffProfile(computeStuffProfile(rawData))
+                    }
+                  }
+                }}
+                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-400 focus:outline-none"
+              >
+                <option value="none">No Overlay</option>
+                {subjectType === 'pitching' && <option value="vs_similar_stuff">vs. Similar Stuff</option>}
+                {overlayTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                <option value="__build__">Build Overlay...</option>
+              </select>
+
               {/* Save/Load/Export */}
               <div className="flex items-center gap-1.5">
                 <button onClick={() => setShowSaveModal(true)}
@@ -586,10 +769,23 @@ function ReportsPageInner() {
             </div>
           )}
 
+          {/* Overlay Template Builder */}
+          {showOverlayBuilder && (
+            <OverlayTemplateBuilder
+              onClose={() => setShowOverlayBuilder(false)}
+              onSaved={() => {
+                // Reload overlay templates
+                supabase.from('overlay_templates').select('id, name').order('created_at', { ascending: false }).then(({ data }) => {
+                  if (data) setOverlayTemplates(data)
+                })
+              }}
+            />
+          )}
+
           {/* Tile Grid */}
           <div className="max-w-[95vw] mx-auto px-6 py-4">
             <div ref={gridRef} className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
-              {tiles.map(tile => (
+              {effectiveTiles.map(tile => (
                 <div key={tile.id} style={{ minHeight: columns === 1 ? 350 : columns === 2 ? 300 : 250 }}>
                   <ReportTile
                     config={tile}

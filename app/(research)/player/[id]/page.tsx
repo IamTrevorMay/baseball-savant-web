@@ -13,6 +13,7 @@ import ResultsTab from '@/components/dashboard/ResultsTab'
 import GameLogTab from "@/components/dashboard/GameLogTab"
 import PitchLogTab from "@/components/dashboard/PitchLogTab"
 import SplitsTab from "@/components/dashboard/SplitsTab"
+import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 
 interface PlayerInfo {
   player_name: string; pitcher: number; total_pitches: number
@@ -254,10 +255,7 @@ export default function PlayerDashboard() {
               </div>
             </div>
           </div>
-          <a href={`/reports?playerId=${info.pitcher}&playerName=${encodeURIComponent(info.player_name)}&type=pitching`}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition">
-            Generate Report
-          </a>
+          <GenerateReportDropdown playerId={info.pitcher} playerName={info.player_name} playerData={allData} dashboardType="pitching" />
         </div>
       </div>
 
