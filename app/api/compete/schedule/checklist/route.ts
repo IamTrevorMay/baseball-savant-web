@@ -14,47 +14,55 @@ export async function PUT(req: NextRequest) {
     .single()
   if (!athlete) return NextResponse.json({ error: 'No athlete profile' }, { status: 400 })
 
-  const { event_id, checklist_item_id, checked } = await req.json()
+  const body = await req.json()
 
   // Get the event and verify ownership
   const { data: event } = await supabaseAdmin
     .from('schedule_events')
     .select('id, athlete_id, event_type')
-    .eq('id', event_id)
+    .eq('id', body.event_id)
     .single()
 
   if (!event || event.athlete_id !== athlete.id) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const detailTable = event.event_type === 'throwing' ? 'throwing_details' : 'workout_details'
+  // Flow 1: Throwing — direct completed toggle
+  if (event.event_type === 'throwing') {
+    const { completed } = body
+    await supabaseAdmin
+      .from('schedule_events')
+      .update({ completed: !!completed, updated_at: new Date().toISOString() })
+      .eq('id', event.id)
 
-  // Get current detail row
+    return NextResponse.json({ completed: !!completed })
+  }
+
+  // Flow 2: Workout — toggle individual exercise, recompute completed
+  const { exercise_id, checked } = body
+
   const { data: detail } = await supabaseAdmin
-    .from(detailTable)
-    .select('checklist')
-    .eq('event_id', event_id)
+    .from('workout_details')
+    .select('exercises')
+    .eq('event_id', event.id)
     .single()
 
   if (!detail) return NextResponse.json({ error: 'No details found' }, { status: 404 })
 
-  // Toggle the checklist item
-  const checklist = (detail.checklist as { id: string; label: string; checked: boolean }[] || []).map(item =>
-    item.id === checklist_item_id ? { ...item, checked } : item
+  const exercises = ((detail.exercises as { id: string; name: string; reps: string; weight: string; checked: boolean }[]) || []).map(ex =>
+    ex.id === exercise_id ? { ...ex, checked: !!checked } : ex
   )
 
-  // Update checklist
   await supabaseAdmin
-    .from(detailTable)
-    .update({ checklist })
-    .eq('event_id', event_id)
+    .from('workout_details')
+    .update({ exercises })
+    .eq('event_id', event.id)
 
-  // Recompute completed: all items checked = true
-  const allChecked = checklist.length > 0 && checklist.every(item => item.checked)
+  const allChecked = exercises.length > 0 && exercises.every(ex => ex.checked)
   await supabaseAdmin
     .from('schedule_events')
     .update({ completed: allChecked, updated_at: new Date().toISOString() })
-    .eq('id', event_id)
+    .eq('id', event.id)
 
-  return NextResponse.json({ checklist, completed: allChecked })
+  return NextResponse.json({ exercises, completed: allChecked })
 }

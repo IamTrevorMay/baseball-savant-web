@@ -12,7 +12,6 @@ import CreateEventMenu from '@/components/compete/schedule/CreateEventMenu'
 function getMonthRange(date: Date) {
   const y = date.getFullYear()
   const m = date.getMonth()
-  // Include buffer for calendar grid overflow
   const from = new Date(y, m, -6).toISOString().split('T')[0]
   const to = new Date(y, m + 1, 7).toISOString().split('T')[0]
   return { from, to }
@@ -87,27 +86,40 @@ export default function SchedulePage() {
     setSelectedDate(new Date().toISOString().split('T')[0])
   }
 
-  // Checklist toggle (optimistic)
-  const handleToggleChecklist = async (eventId: string, itemId: string, checked: boolean) => {
+  // Throwing: toggle completed directly
+  const handleToggleComplete = async (eventId: string, completed: boolean) => {
     // Optimistic update
-    setEvents(prev => prev.map(evt => {
-      if (evt.id !== eventId) return evt
-      const details = evt.event_type === 'throwing' ? evt.throwing_details : evt.workout_details
-      if (!details) return evt
-      const newChecklist = details.checklist.map(item => item.id === itemId ? { ...item, checked } : item)
-      const allChecked = newChecklist.length > 0 && newChecklist.every(item => item.checked)
+    setEvents(prev => prev.map(evt =>
+      evt.id === eventId ? { ...evt, completed } : evt
+    ))
 
-      if (evt.event_type === 'throwing') {
-        return { ...evt, completed: allChecked, throwing_details: { ...evt.throwing_details!, checklist: newChecklist } }
-      }
-      return { ...evt, completed: allChecked, workout_details: { ...evt.workout_details!, checklist: newChecklist } }
-    }))
-
-    // Background API call
     fetch('/api/compete/schedule/checklist', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event_id: eventId, checklist_item_id: itemId, checked }),
+      body: JSON.stringify({ event_id: eventId, completed }),
+    })
+  }
+
+  // Workout: toggle individual exercise
+  const handleToggleExercise = async (eventId: string, exerciseId: string, checked: boolean) => {
+    // Optimistic update
+    setEvents(prev => prev.map(evt => {
+      if (evt.id !== eventId || !evt.workout_details) return evt
+      const exercises = evt.workout_details.exercises.map(ex =>
+        ex.id === exerciseId ? { ...ex, checked } : ex
+      )
+      const allChecked = exercises.length > 0 && exercises.every(ex => ex.checked)
+      return {
+        ...evt,
+        completed: allChecked,
+        workout_details: { ...evt.workout_details, exercises },
+      }
+    }))
+
+    fetch('/api/compete/schedule/checklist', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_id: eventId, exercise_id: exerciseId, checked }),
     })
   }
 
@@ -255,7 +267,8 @@ export default function SchedulePage() {
                           <EventDetail
                             key={evt.id}
                             event={evt}
-                            onToggleChecklist={handleToggleChecklist}
+                            onToggleComplete={handleToggleComplete}
+                            onToggleExercise={handleToggleExercise}
                             onEdit={() => setEditingEvent(evt)}
                             onDelete={() => handleDelete(evt.id)}
                           />
@@ -274,7 +287,8 @@ export default function SchedulePage() {
             <CalendarWeek
               currentDate={currentDate}
               events={events}
-              onToggleChecklist={handleToggleChecklist}
+              onToggleComplete={handleToggleComplete}
+              onToggleExercise={handleToggleExercise}
               onEditEvent={setEditingEvent}
               onDeleteEvent={handleDelete}
               whoopRecovery={whoopRecovery}
@@ -284,15 +298,15 @@ export default function SchedulePage() {
           {/* Legend */}
           <div className="flex items-center gap-4 mt-4 pt-3 border-t border-zinc-800/50">
             <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <div className="w-6 h-3 rounded bg-blue-500/20" />
               <span className="text-[10px] text-zinc-500">Throwing</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <div className="w-6 h-3 rounded bg-purple-500/20" />
               <span className="text-[10px] text-zinc-500">Workout</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <div className="w-6 h-3 rounded bg-green-500/20" />
               <span className="text-[10px] text-zinc-500">Completed</span>
             </div>
             {whoopRecovery.size > 0 && (

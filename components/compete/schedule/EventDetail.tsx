@@ -1,19 +1,19 @@
 'use client'
 
-import { ScheduleEvent, ChecklistItem } from '@/lib/compete/schedule-types'
+import { ScheduleEvent } from '@/lib/compete/schedule-types'
 
 interface Props {
   event: ScheduleEvent
   compact?: boolean
-  onToggleChecklist: (eventId: string, itemId: string, checked: boolean) => void
+  onToggleComplete: (eventId: string, completed: boolean) => void
+  onToggleExercise: (eventId: string, exerciseId: string, checked: boolean) => void
   onEdit: () => void
   onDelete: () => void
 }
 
-export default function EventDetail({ event, compact = false, onToggleChecklist, onEdit, onDelete }: Props) {
+export default function EventDetail({ event, compact = false, onToggleComplete, onToggleExercise, onEdit, onDelete }: Props) {
   const isThrowing = event.event_type === 'throwing'
-  const details = isThrowing ? event.throwing_details : event.workout_details
-  const checklist: ChecklistItem[] = details?.checklist || []
+  const exercises = event.workout_details?.exercises || []
 
   const colorClasses = event.completed
     ? 'border-green-500/30 bg-green-500/5'
@@ -64,39 +64,51 @@ export default function EventDetail({ event, compact = false, onToggleChecklist,
         </div>
       )}
 
-      {/* Workout summary */}
+      {/* Workout summary + checkable exercises */}
       {!isThrowing && event.workout_details && (
         <div className="text-[11px] text-zinc-400 space-y-0.5 mb-1.5">
           {event.workout_details.title && <div className="font-medium text-zinc-300">{event.workout_details.title}</div>}
           {event.workout_details.description && <div className="text-zinc-500">{event.workout_details.description}</div>}
-          {event.workout_details.exercises && event.workout_details.exercises.length > 0 && (
-            <div className="text-zinc-500">
-              {event.workout_details.exercises.length} exercise{event.workout_details.exercises.length !== 1 ? 's' : ''}
+          {exercises.length > 0 && (
+            <div className="space-y-1 mt-1.5 pt-1.5 border-t border-zinc-800/50">
+              {exercises.map(ex => (
+                <label
+                  key={ex.id}
+                  className="flex items-center gap-1.5 cursor-pointer group"
+                >
+                  <input
+                    type="checkbox"
+                    checked={ex.checked}
+                    onChange={() => onToggleExercise(event.id, ex.id, !ex.checked)}
+                    className="w-3 h-3 rounded border-zinc-700 bg-zinc-800 text-green-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  />
+                  <span className={`text-[11px] transition flex-1 ${ex.checked ? 'text-zinc-600 line-through' : 'text-zinc-400 group-hover:text-zinc-300'}`}>
+                    {ex.name}
+                  </span>
+                  {(ex.reps || ex.weight) && (
+                    <span className={`text-[10px] ${ex.checked ? 'text-zinc-700' : 'text-zinc-600'}`}>
+                      {ex.reps}{ex.reps && ex.weight ? ' @ ' : ''}{ex.weight}{ex.weight ? ' lbs' : ''}
+                    </span>
+                  )}
+                </label>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Checklist */}
-      {checklist.length > 0 && (
-        <div className="space-y-1 mt-1.5 pt-1.5 border-t border-zinc-800/50">
-          {checklist.map(item => (
-            <label
-              key={item.id}
-              className="flex items-center gap-1.5 cursor-pointer group"
-            >
-              <input
-                type="checkbox"
-                checked={item.checked}
-                onChange={() => onToggleChecklist(event.id, item.id, !item.checked)}
-                className="w-3 h-3 rounded border-zinc-700 bg-zinc-800 text-green-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-              />
-              <span className={`text-[11px] transition ${item.checked ? 'text-zinc-600 line-through' : 'text-zinc-400 group-hover:text-zinc-300'}`}>
-                {item.label}
-              </span>
-            </label>
-          ))}
-        </div>
+      {/* Throwing: Mark Complete toggle */}
+      {isThrowing && (
+        <button
+          onClick={() => onToggleComplete(event.id, !event.completed)}
+          className={`w-full mt-1.5 py-1.5 rounded text-[10px] font-semibold uppercase tracking-wider transition ${
+            event.completed
+              ? 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
+              : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+          }`}
+        >
+          {event.completed ? 'Completed' : 'Mark Complete'}
+        </button>
       )}
     </div>
   )

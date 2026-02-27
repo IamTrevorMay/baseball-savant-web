@@ -1,14 +1,9 @@
-export interface ChecklistItem {
-  id: string
-  label: string
-  checked: boolean
-}
-
 export interface Exercise {
   id: string
   name: string
   reps: string
   weight: string
+  checked: boolean
 }
 
 export interface ThrowingDetails {
@@ -18,7 +13,6 @@ export interface ThrowingDetails {
   distance_ft: number | null
   effort_pct: number | null
   notes: string | null
-  checklist: ChecklistItem[]
 }
 
 export interface WorkoutDetails {
@@ -27,7 +21,6 @@ export interface WorkoutDetails {
   title: string | null
   description: string | null
   exercises: Exercise[]
-  checklist: ChecklistItem[]
 }
 
 export interface ScheduleEvent {
@@ -47,7 +40,6 @@ export interface ScheduleProgram {
   id: string
   athlete_id: string
   name: string
-  type: 'throwing' | 'workout'
   start_date: string
   weeks: number
   created_at: string
@@ -63,7 +55,6 @@ export interface ThrowingTemplate {
     distance_ft?: number
     effort_pct?: number
     notes?: string
-    checklist?: ChecklistItem[]
   }
 }
 
@@ -75,8 +66,18 @@ export interface WorkoutTemplate {
     title?: string
     description?: string
     exercises?: Exercise[]
-    checklist?: ChecklistItem[]
   }
+}
+
+export interface ProgramDayConfig {
+  event_type: 'throwing' | 'workout' | 'rest'
+  throwing?: { throws?: number; distance_ft?: number; effort_pct?: number; notes?: string }
+  workout?: { title?: string; description?: string; exercises?: Exercise[] }
+}
+
+export interface ProgramWeekConfig {
+  week_number: number
+  days: Record<number, ProgramDayConfig>
 }
 
 export type ViewMode = 'month' | 'week'

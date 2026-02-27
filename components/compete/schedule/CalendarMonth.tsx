@@ -48,6 +48,21 @@ function getMonthDays(year: number, month: number) {
   return days
 }
 
+function EventBar({ event }: { event: ScheduleEvent }) {
+  const label = event.event_type === 'throwing' ? 'THROW' : 'WORKOUT'
+  const bgClass = event.completed
+    ? 'bg-green-500/20 text-green-400'
+    : event.event_type === 'throwing'
+      ? 'bg-blue-500/20 text-blue-400'
+      : 'bg-purple-500/20 text-purple-400'
+
+  return (
+    <div className={`rounded px-1 py-0.5 text-[9px] font-semibold tracking-wider truncate ${bgClass}`}>
+      {label}
+    </div>
+  )
+}
+
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export default function CalendarMonth({ currentDate, events, selectedDate, onSelectDate, whoopRecovery }: Props) {
@@ -71,43 +86,39 @@ export default function CalendarMonth({ currentDate, events, selectedDate, onSel
           <div key={d} className="text-center text-[10px] text-zinc-600 font-medium py-1">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-px bg-zinc-800/50 rounded-lg overflow-hidden">
+      <div className="grid grid-cols-7 gap-[2px] bg-zinc-800/50 rounded-lg overflow-hidden">
         {days.map(({ date, day, inMonth }) => {
           const dayEvents = eventsByDate.get(date) || []
           const isToday = date === today
           const isSelected = date === selectedDate
           const recovery = whoopRecovery?.get(date)
+          const visibleEvents = dayEvents.slice(0, 2)
+          const overflowCount = dayEvents.length - 2
 
           return (
             <button
               key={date}
               onClick={() => onSelectDate(date)}
               className={`
-                relative min-h-[72px] p-1.5 text-left transition-colors
+                relative min-h-[100px] p-1.5 text-left transition-colors
                 ${inMonth ? 'bg-zinc-900' : 'bg-zinc-950/50'}
                 ${isSelected ? 'ring-1 ring-amber-500/50' : ''}
                 hover:bg-zinc-800/80
               `}
             >
               <span className={`
-                text-xs font-medium block mb-1
+                text-sm font-medium block mb-1
                 ${!inMonth ? 'text-zinc-700' : isToday ? 'text-amber-400' : 'text-zinc-400'}
               `}>
                 {day}
               </span>
-              <div className="flex flex-wrap gap-0.5">
-                {dayEvents.map(evt => (
-                  <div
-                    key={evt.id}
-                    className={`w-2 h-2 rounded-full ${
-                      evt.completed
-                        ? 'bg-green-500'
-                        : evt.event_type === 'throwing'
-                          ? 'bg-blue-500'
-                          : 'bg-purple-500'
-                    }`}
-                  />
+              <div className="space-y-0.5">
+                {visibleEvents.map(evt => (
+                  <EventBar key={evt.id} event={evt} />
                 ))}
+                {overflowCount > 0 && (
+                  <div className="text-[9px] text-zinc-600 px-1">+{overflowCount} more</div>
+                )}
               </div>
               {recovery && (
                 <div className="absolute bottom-1 right-1">

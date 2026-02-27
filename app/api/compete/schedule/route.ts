@@ -89,15 +89,14 @@ export async function POST(req: NextRequest) {
       distance_ft: throwing.distance_ft ?? null,
       effort_pct: throwing.effort_pct ?? null,
       notes: throwing.notes ?? null,
-      checklist: throwing.checklist ?? [],
     })
   } else if (event_type === 'workout' && workout) {
+    const exercises = (workout.exercises ?? []).map((ex: { id: string; name: string; reps: string; weight: string }) => ({ ...ex, checked: false }))
     await supabaseAdmin.from('workout_details').insert({
       event_id: event.id,
       title: workout.title ?? null,
       description: workout.description ?? null,
-      exercises: workout.exercises ?? [],
-      checklist: workout.checklist ?? [],
+      exercises,
     })
   }
 
@@ -151,14 +150,13 @@ export async function PUT(req: NextRequest) {
       distance_ft: throwing.distance_ft ?? null,
       effort_pct: throwing.effort_pct ?? null,
       notes: throwing.notes ?? null,
-      checklist: throwing.checklist ?? [],
     }).eq('event_id', id)
   } else if (existing.event_type === 'workout' && workout) {
+    const exercises = (workout.exercises ?? []).map((ex: { id: string; name: string; reps: string; weight: string; checked?: boolean }) => ({ ...ex, checked: ex.checked ?? false }))
     await supabaseAdmin.from('workout_details').update({
       title: workout.title ?? null,
       description: workout.description ?? null,
-      exercises: workout.exercises ?? [],
-      checklist: workout.checklist ?? [],
+      exercises,
     }).eq('event_id', id)
   }
 
