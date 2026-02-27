@@ -209,8 +209,11 @@ export async function fetchSleep(athleteId: string, startDate: string, endDate: 
   return fetchPaginated<WhoopSleep>(athleteId, '/activity/sleep', startDate, endDate)
 }
 
-export async function fetchRecovery(athleteId: string, startDate: string, endDate: string) {
-  return fetchPaginated<WhoopRecovery>(athleteId, '/recovery', startDate, endDate)
+export async function fetchRecoveryForCycle(athleteId: string, cycleId: number): Promise<WhoopRecovery | null> {
+  const res = await whoopFetch(athleteId, `/cycle/${cycleId}/recovery`)
+  if (res.status === 404) return null // No recovery for this cycle
+  if (!res.ok) return null
+  return res.json()
 }
 
 export async function fetchWorkouts(athleteId: string, startDate: string, endDate: string) {
@@ -223,18 +226,21 @@ export async function syncWhoopData(athleteId: string, days = 30) {
   const endDate = new Date().toISOString().split('T')[0]
   const startDate = new Date(Date.now() - days * 86_400_000).toISOString().split('T')[0]
 
-  // Fetch all data types in parallel (recovery is a separate endpoint from cycles)
-  const [cycles, recoveries, sleeps, workouts] = await Promise.all([
+  // Fetch cycles, sleep, workouts in parallel
+  const [cycles, sleeps, workouts] = await Promise.all([
     fetchCycles(athleteId, startDate, endDate),
-    fetchRecovery(athleteId, startDate, endDate),
     fetchSleep(athleteId, startDate, endDate),
     fetchWorkouts(athleteId, startDate, endDate),
   ])
 
-  // Build a map of cycle_id -> recovery score for joining
-  const recoveryByCycleId = new Map(
-    recoveries.map(r => [r.cycle_id, r])
+  // Fetch recovery for each cycle (endpoint is /cycle/{id}/recovery)
+  const recoveryByCycleId = new Map<number, WhoopRecovery>()
+  const recoveryResults = await Promise.all(
+    cycles.map(c => fetchRecoveryForCycle(athleteId, c.id))
   )
+  recoveryResults.forEach((r, i) => {
+    if (r) recoveryByCycleId.set(cycles[i].id, r)
+  })
 
   // Upsert cycles with recovery data joined in
   if (cycles.length > 0) {
