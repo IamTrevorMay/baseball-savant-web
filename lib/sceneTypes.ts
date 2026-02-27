@@ -1,4 +1,4 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium'
 
 // ── Data Binding ────────────────────────────────────────────────────────────
 
@@ -65,6 +65,7 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'player-image', name: 'Player', desc: 'MLB headshot', icon: '\u25c9' },
   { type: 'comparison-bar', name: 'Stat Bar', desc: 'Horizontal bar', icon: '\u25ac' },
   { type: 'pitch-flight', name: 'Pitch Flight', desc: 'Animated trajectory', icon: '\u2312' },
+  { type: 'stadium', name: 'Stadium', desc: '3D field with hit trajectories', icon: '\u26be' },
 ]
 
 const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string, any> }> = {
@@ -96,6 +97,17 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
       ],
       viewMode: 'catcher', showZone: true, animate: true,
       bgColor: '#09090b', showGrid: true, loopDuration: 1.5, showKey: true,
+    },
+  },
+  'stadium': {
+    w: 500, h: 400,
+    props: {
+      hits: [
+        { id: 'h1', batterId: null, batterName: '', eventFilter: '', bbTypeFilter: '', color: '#06b6d4', showInKey: true },
+      ],
+      viewMode: 'overhead', park: 'generic', animate: true, showKey: true,
+      bgColor: '#09090b', showWall: true, showField: true, loopDuration: 3,
+      animMode: 'simultaneous', displayMode: 'all', singleHitIndex: 0,
     },
   },
 }

@@ -11,10 +11,11 @@ interface PlayerResult {
 
 interface Props {
   label?: string
+  playerType?: 'pitcher' | 'hitter'
   onSelect: (playerId: number, playerName: string) => void
 }
 
-export default function PlayerPicker({ label = 'Search for a player...', onSelect }: Props) {
+export default function PlayerPicker({ label = 'Search for a player...', playerType = 'pitcher', onSelect }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<PlayerResult[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
@@ -42,25 +43,42 @@ export default function PlayerPicker({ label = 'Search for a player...', onSelec
     }
     setLoading(true)
     try {
-      const { data, error } = await supabase.rpc('search_players', {
-        search_term: term.trim(),
-        result_limit: 8,
-      })
-      if (!error && data) {
-        setResults((data as any[]).map(d => ({
-          id: d.pitcher,
-          name: d.player_name,
-          team: d.team,
-          position: undefined,
-        })))
-        setShowDropdown(true)
+      if (playerType === 'hitter') {
+        const { data, error } = await supabase.rpc('search_all_players', {
+          search_term: term.trim(),
+          player_type: 'hitter',
+          result_limit: 8,
+        })
+        if (!error && data) {
+          setResults((data as any[]).map(d => ({
+            id: d.player_id,
+            name: d.player_name,
+            team: d.team,
+            position: undefined,
+          })))
+          setShowDropdown(true)
+        }
+      } else {
+        const { data, error } = await supabase.rpc('search_players', {
+          search_term: term.trim(),
+          result_limit: 8,
+        })
+        if (!error && data) {
+          setResults((data as any[]).map(d => ({
+            id: d.pitcher,
+            name: d.player_name,
+            team: d.team,
+            position: undefined,
+          })))
+          setShowDropdown(true)
+        }
       }
     } catch (err) {
       console.error('PlayerPicker search error:', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [playerType])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value

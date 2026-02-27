@@ -22,6 +22,52 @@ export async function GET(req: NextRequest) {
     const dateFrom = sp.get('dateFrom')
     const dateTo = sp.get('dateTo')
     const kinematics = sp.get('kinematics') === 'true'
+    const battedBalls = sp.get('battedBalls') === 'true'
+
+    // ── Batted Balls mode (for Stadium element) ──────────────────────────
+    if (battedBalls) {
+      const batterId = sp.get('batterId') || playerId
+      const events = sp.get('events')    // comma-sep: home_run,double,triple,single
+      const bbType = sp.get('bbType')    // comma-sep: fly_ball,line_drive,ground_ball,popup
+      const minEV = sp.get('minEV')
+      const park = sp.get('park')        // home_team filter
+
+      const where: string[] = [
+        `batter = ${parseInt(batterId)}`,
+        'hc_x IS NOT NULL',
+        'hc_y IS NOT NULL',
+        'launch_speed IS NOT NULL',
+        'launch_angle IS NOT NULL',
+      ]
+      if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
+      if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+      if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
+      if (events) {
+        const evList = events.split(',').map(e => `'${e.trim().replace(/'/g, "''")}'`).join(',')
+        where.push(`events IN (${evList})`)
+      }
+      if (bbType) {
+        const bbList = bbType.split(',').map(b => `'${b.trim().replace(/'/g, "''")}'`).join(',')
+        where.push(`bb_type IN (${bbList})`)
+      }
+      if (minEV) where.push(`launch_speed >= ${parseFloat(minEV)}`)
+      if (park) where.push(`home_team = '${park.replace(/'/g, "''")}'`)
+
+      const sql = `
+        SELECT
+          launch_speed, launch_angle, hc_x, hc_y,
+          hit_distance_sc, events, bb_type, home_team, game_date,
+          ROUND((ATAN2(hc_x - 125.42, 198.27 - hc_y) * 180 / PI())::numeric, 2) as spray_angle
+        FROM pitches
+        WHERE ${where.join(' AND ')}
+        ORDER BY game_date DESC
+        LIMIT 500
+      `.trim()
+
+      const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ battedBalls: data })
+    }
 
     // Build WHERE clauses
     const where: string[] = [`pitcher = ${parseInt(playerId)}`]

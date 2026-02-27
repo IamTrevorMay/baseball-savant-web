@@ -1,6 +1,7 @@
 import { Scene, SceneElement } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { drawPitchFlightStatic } from './PitchFlightRenderer'
+import { drawStadiumStatic } from './StadiumRenderer'
 
 // ── Canvas helpers ───────────────────────────────────────────────────────────
 
@@ -270,6 +271,9 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
       case 'pitch-flight':
         drawPitchFlightStatic(ctx, el)
         break
+      case 'stadium':
+        await drawStadiumStatic(ctx, el)
+        break
     }
 
     ctx.restore()
@@ -325,6 +329,7 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
       case 'player-image': await drawPlayerImage(ctx, el); break
       case 'comparison-bar': drawComparisonBar(ctx, el); break
       case 'pitch-flight': drawPitchFlightStatic(ctx, el); break
+      case 'stadium': await drawStadiumStatic(ctx, el); break
     }
 
     ctx.restore()

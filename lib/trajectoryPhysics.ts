@@ -246,6 +246,98 @@ export function simulatedPitchToKinematics(
  * @param pitch         The pitch to tunnel
  * @param referenceKin  Kinematics of the reference pitch (usually a fastball aimed at the target)
  */
+// ---------------------------------------------------------------------------
+// Batted Ball Trajectory
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a batted ball trajectory using projectile motion with air drag.
+ *
+ * Coordinate system for batted balls (top-down field view):
+ *   x  — horizontal (positive toward RF, negative toward LF)
+ *   y  — depth into field (positive toward outfield)
+ *   z  — vertical (positive upward)
+ *
+ * @param params  Launch conditions
+ * @param steps   Number of integration steps (default 100)
+ * @returns       TrajectoryPoint[] from bat contact to landing (z ≤ 0)
+ */
+export function computeBattedBallTrajectory(
+  params: { launchSpeed: number; launchAngle: number; sprayAngle: number },
+  steps = 100,
+): TrajectoryPoint[] {
+  const { launchSpeed, launchAngle, sprayAngle } = params
+
+  // Convert to ft/s and radians
+  const v0 = launchSpeed * 5280 / 3600  // mph → ft/s
+  const laRad = (launchAngle * Math.PI) / 180
+  const saRad = (sprayAngle * Math.PI) / 180
+
+  // Initial velocity components
+  const vHoriz = v0 * Math.cos(laRad)
+  let vx = vHoriz * Math.sin(saRad)   // lateral (+ = RF)
+  let vy = vHoriz * Math.cos(saRad)   // into field
+  let vz = v0 * Math.sin(laRad)       // vertical
+
+  // Baseball constants
+  const g = 32.174       // gravity ft/s²
+  const Cd = 0.35        // drag coefficient
+  const rho = 0.0023769  // air density slugs/ft³ (sea level)
+  const A = 0.02922      // cross-section area ft² (baseball ~2.9 in diameter)
+  const m = 0.3125 / g   // mass in slugs (5 oz = 0.3125 lb)
+  const dragK = 0.5 * Cd * rho * A / m  // drag factor
+
+  // Starting position: 3ft above ground at home plate
+  let x = 0, y = 0, z = 3
+  const dt = 0.02  // 20ms timesteps
+  const points: TrajectoryPoint[] = [{ x: 0, y: 0, z: 3, t: 0 }]
+
+  for (let i = 1; i <= steps * 10; i++) {
+    const t = i * dt
+
+    // Speed magnitude
+    const speed = Math.sqrt(vx * vx + vy * vy + vz * vz)
+    const drag = dragK * speed
+
+    // Update velocities (drag opposes motion)
+    vx -= drag * vx * dt
+    vy -= drag * vy * dt
+    vz -= (g + drag * vz) * dt
+
+    // Update positions
+    x += vx * dt
+    y += vy * dt
+    z += vz * dt
+
+    points.push({ x, y, z: Math.max(0, z), t })
+
+    // Ball has landed
+    if (z <= 0) break
+
+    // Safety: bail after 10 seconds
+    if (t > 10) break
+  }
+
+  return points
+}
+
+/**
+ * Convert Statcast hit coordinates (hc_x, hc_y) to spray angle in degrees.
+ *
+ * Statcast coordinate system:
+ *   hc_x: 0-250, home plate at ~125.42
+ *   hc_y: 0-250, home plate at ~198.27, outfield toward 0
+ *
+ * Returns spray angle in degrees: 0° = center field, negative = LF, positive = RF.
+ */
+export function sprayAngleFromHC(hc_x: number, hc_y: number): number {
+  return Math.atan2(hc_x - 125.42, 198.27 - hc_y) * (180 / Math.PI)
+}
+
+// ---------------------------------------------------------------------------
+// Tunnel Pitch
+// ---------------------------------------------------------------------------
+
 export function tunnelPitchKinematics(
   pitch: SimulatedPitch,
   referenceKin: PitchKinematics,

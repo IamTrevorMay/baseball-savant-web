@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { SceneElement, DataBinding } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
+import { TEAM_OPTIONS } from '@/lib/stadiumData'
 
 const PITCH_TYPES = [
   { value: 'FF', label: 'Four-Seam' }, { value: 'SI', label: 'Sinker' },
@@ -410,6 +411,196 @@ function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUp
   )
 }
 
+// ── Stadium Section ──────────────────────────────────────────────────────────
+
+const DEFAULT_HIT_COLORS = ['#06b6d4', '#f97316', '#a855f7', '#22c55e', '#ef4444', '#eab308', '#ec4899', '#3b82f6']
+
+const EVENT_OPTIONS = [
+  { value: '', label: 'All Events' },
+  { value: 'home_run', label: 'Home Runs' },
+  { value: 'double', label: 'Doubles' },
+  { value: 'triple', label: 'Triples' },
+  { value: 'single', label: 'Singles' },
+  { value: 'home_run,double,triple,single', label: 'All Hits' },
+]
+
+const BB_TYPE_OPTIONS = [
+  { value: '', label: 'All Types' },
+  { value: 'fly_ball', label: 'Fly Ball' },
+  { value: 'line_drive', label: 'Line Drive' },
+  { value: 'ground_ball', label: 'Ground Ball' },
+  { value: 'popup', label: 'Popup' },
+]
+
+interface HitEntry {
+  id: string
+  batterId: number | null
+  batterName: string
+  eventFilter: string
+  bbTypeFilter: string
+  color: string
+  showInKey: boolean
+  gameYear?: number
+  dateFrom?: string
+  dateTo?: string
+}
+
+function StadiumSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  const hits: HitEntry[] = p.hits || [{ id: 'h1', batterId: null, batterName: '', eventFilter: '', bbTypeFilter: '', color: '#06b6d4', showInKey: true }]
+
+  function updateHit(idx: number, updates: Partial<HitEntry>) {
+    const next = hits.map((h, i) => i === idx ? { ...h, ...updates } : h)
+    onUpdateProps({ hits: next })
+  }
+
+  function addHit() {
+    const colorIdx = hits.length % DEFAULT_HIT_COLORS.length
+    const newHit: HitEntry = {
+      id: Math.random().toString(36).slice(2, 8),
+      batterId: null, batterName: '', eventFilter: '', bbTypeFilter: '',
+      color: DEFAULT_HIT_COLORS[colorIdx], showInKey: true,
+    }
+    onUpdateProps({ hits: [...hits, newHit] })
+  }
+
+  function removeHit(idx: number) {
+    if (hits.length <= 1) return
+    onUpdateProps({ hits: hits.filter((_, i) => i !== idx) })
+  }
+
+  return (
+    <>
+      {/* Per-hit-group controls */}
+      {hits.map((h, idx) => (
+        <Section key={h.id} title={`Hit Group ${idx + 1}`}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: h.color }} />
+              <span className="text-[10px] text-zinc-400">{h.batterName || 'No batter'}</span>
+            </div>
+            {hits.length > 1 && (
+              <button
+                onClick={() => removeHit(idx)}
+                className="text-[10px] text-zinc-500 hover:text-red-400 transition px-1"
+                title="Remove hit group"
+              >
+                {'\u2715'}
+              </button>
+            )}
+          </div>
+
+          <PlayerPicker
+            label="Search hitter..."
+            playerType="hitter"
+            onSelect={(id, name) => updateHit(idx, { batterId: id, batterName: name })}
+          />
+          {h.batterName && (
+            <div className="text-[10px] text-cyan-400/70 truncate">{h.batterName}</div>
+          )}
+
+          <SelField
+            label="Events"
+            value={h.eventFilter || ''}
+            onChange={v => updateHit(idx, { eventFilter: v })}
+            options={EVENT_OPTIONS}
+          />
+          <SelField
+            label="Hit Type"
+            value={h.bbTypeFilter || ''}
+            onChange={v => updateHit(idx, { bbTypeFilter: v })}
+            options={BB_TYPE_OPTIONS}
+          />
+          <ClrField label="Color" value={h.color || '#06b6d4'} onChange={v => updateHit(idx, { color: v })} />
+
+          {/* Date filters */}
+          <div className="mt-1.5 pt-1.5 border-t border-zinc-800/50">
+            <div className="text-[10px] text-zinc-600 mb-1">Data Filter</div>
+            <NumField label="Season" value={h.gameYear ?? 0} onChange={v => updateHit(idx, { gameYear: v || undefined })} min={2015} max={2025} />
+            <label className="flex flex-col gap-0.5 mt-1">
+              <span className="text-[10px] text-zinc-600">Date Range</span>
+              <div className="flex gap-1">
+                <input
+                  type="date"
+                  value={h.dateFrom || ''}
+                  onChange={e => updateHit(idx, { dateFrom: e.target.value || undefined })}
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-300 focus:border-cyan-600 outline-none"
+                />
+                <input
+                  type="date"
+                  value={h.dateTo || ''}
+                  onChange={e => updateHit(idx, { dateTo: e.target.value || undefined })}
+                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-300 focus:border-cyan-600 outline-none"
+                />
+              </div>
+            </label>
+          </div>
+          <BoolField label="Show in Key" value={h.showInKey !== false} onChange={v => updateHit(idx, { showInKey: v })} />
+        </Section>
+      ))}
+
+      {/* Add hit group button */}
+      <div className="mb-3">
+        <button
+          onClick={addHit}
+          className="w-full px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 border-dashed text-[11px] text-zinc-400 hover:text-cyan-400 hover:border-cyan-600/40 transition"
+        >
+          + Add Hit Group
+        </button>
+      </div>
+
+      {/* Shared settings */}
+      <Section title="Field">
+        <SelField
+          label="Park"
+          value={p.park || 'generic'}
+          onChange={v => onUpdateProps({ park: v })}
+          options={TEAM_OPTIONS}
+        />
+        <SelField
+          label="View"
+          value={p.viewMode || 'overhead'}
+          onChange={v => onUpdateProps({ viewMode: v })}
+          options={[
+            { value: 'overhead', label: 'Overhead (2D)' },
+            { value: 'broadcast', label: 'Broadcast (3D)' },
+            { value: 'centerfield', label: 'Centerfield (3D)' },
+          ]}
+        />
+        <BoolField label="Show Wall" value={p.showWall !== false} onChange={v => onUpdateProps({ showWall: v })} />
+        <BoolField label="Show Field" value={p.showField !== false} onChange={v => onUpdateProps({ showField: v })} />
+      </Section>
+
+      <Section title="Display">
+        <SelField
+          label="Display"
+          value={p.displayMode || 'all'}
+          onChange={v => onUpdateProps({ displayMode: v })}
+          options={[
+            { value: 'all', label: 'All Hits' },
+            { value: 'single', label: 'Single Hit' },
+          ]}
+        />
+        {p.displayMode === 'single' && (
+          <NumField label="Hit #" value={p.singleHitIndex || 0} onChange={v => onUpdateProps({ singleHitIndex: v })} min={0} />
+        )}
+        <SelField
+          label="Anim Mode"
+          value={p.animMode || 'simultaneous'}
+          onChange={v => onUpdateProps({ animMode: v })}
+          options={[
+            { value: 'simultaneous', label: 'Simultaneous' },
+            { value: 'sequential', label: 'Sequential' },
+          ]}
+        />
+        <BoolField label="Animate" value={p.animate ?? true} onChange={v => onUpdateProps({ animate: v })} />
+        <BoolField label="Show Key" value={p.showKey !== false} onChange={v => onUpdateProps({ showKey: v })} />
+        <ClrField label="BG Color" value={p.bgColor || '#09090b'} onChange={v => onUpdateProps({ bgColor: v })} />
+        <NumField label="Loop (s)" value={p.loopDuration || 3} onChange={v => onUpdateProps({ loopDuration: v })} min={1} max={10} step={0.5} />
+      </Section>
+    </>
+  )
+}
+
 // ── Panel ────────────────────────────────────────────────────────────────────
 
 export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, bindingLoading }: Props) {
@@ -527,6 +718,11 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
       {/* Pitch Flight */}
       {element.type === 'pitch-flight' && (
         <PitchFlightSection p={p} onUpdateProps={onUpdateProps} />
+      )}
+
+      {/* Stadium */}
+      {element.type === 'stadium' && (
+        <StadiumSection p={p} onUpdateProps={onUpdateProps} />
       )}
 
       {/* Data Binding */}
