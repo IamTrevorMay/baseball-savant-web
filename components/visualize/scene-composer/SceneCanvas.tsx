@@ -1,9 +1,59 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useRef, useEffect } from 'react'
 import { Scene, SceneElement } from '@/lib/sceneTypes'
 import PitchFlightRenderer from './PitchFlightRenderer'
 import StadiumRenderer from './StadiumRenderer'
+
+// ── Ticker Renderer ──────────────────────────────────────────────────────────
+
+function TickerRenderer({ props: p, width, height }: { props: Record<string, any>; width: number; height: number }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [offset, setOffset] = useState(0)
+  const rafRef = useRef<number>(0)
+
+  useEffect(() => {
+    const speed = (p.speed || 60) / 60 // pixels per frame at 60fps
+    const dir = p.direction === 'right' ? 1 : -1
+    let last = 0
+
+    function tick(ts: number) {
+      if (!last) last = ts
+      const dt = ts - last
+      last = ts
+      setOffset(prev => {
+        const next = prev + dir * speed * (dt / 16.67)
+        return next
+      })
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [p.speed, p.direction])
+
+  const text = p.text || 'Ticker text here'
+  const doubled = `${text}${p.separator || ' \u2022 '}${text}${p.separator || ' \u2022 '}`
+
+  return (
+    <div
+      className="w-full h-full overflow-hidden flex items-center"
+      style={{ backgroundColor: p.showBg !== false ? (p.bgColor || '#09090b') : 'transparent' }}
+    >
+      <div
+        ref={scrollRef}
+        className="whitespace-nowrap"
+        style={{
+          fontSize: p.fontSize || 20,
+          fontWeight: p.fontWeight || 600,
+          color: p.color || '#ffffff',
+          transform: `translateX(${offset % (width * 2)}px)`,
+        }}
+      >
+        {doubled}
+      </div>
+    </div>
+  )
+}
 
 // ── Element Renderers ──────────────────────────────────────────────────────────
 
@@ -151,9 +201,99 @@ function renderElementContent(el: SceneElement) {
       return <PitchFlightRenderer props={el.props} width={el.width} height={el.height} />
     case 'stadium':
       return <StadiumRenderer props={el.props} width={el.width} height={el.height} />
+    case 'ticker':
+      return <TickerRenderer props={el.props} width={el.width} height={el.height} />
     default:
       return <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 text-xs">Unknown</div>
   }
+}
+
+// ── Snap Guides ──────────────────────────────────────────────────────────────
+
+const SNAP_THRESHOLD = 6
+
+interface SnapGuide {
+  axis: 'x' | 'y'
+  position: number
+}
+
+function computeSnapGuides(
+  draggingEl: SceneElement,
+  newX: number, newY: number,
+  elements: SceneElement[],
+  sceneW: number, sceneH: number,
+): { x: number; y: number; guides: SnapGuide[] } {
+  const guides: SnapGuide[] = []
+  let snapX = newX
+  let snapY = newY
+
+  // Edges and center of the dragging element
+  const myL = newX
+  const myR = newX + draggingEl.width
+  const myCX = newX + draggingEl.width / 2
+  const myT = newY
+  const myB = newY + draggingEl.height
+  const myCY = newY + draggingEl.height / 2
+
+  // Scene center
+  const sceneCX = sceneW / 2
+  const sceneCY = sceneH / 2
+
+  // Check snap to scene center
+  if (Math.abs(myCX - sceneCX) < SNAP_THRESHOLD) {
+    snapX = sceneCX - draggingEl.width / 2
+    guides.push({ axis: 'x', position: sceneCX })
+  }
+  if (Math.abs(myCY - sceneCY) < SNAP_THRESHOLD) {
+    snapY = sceneCY - draggingEl.height / 2
+    guides.push({ axis: 'y', position: sceneCY })
+  }
+
+  // Check snap to other elements
+  for (const other of elements) {
+    if (other.id === draggingEl.id) continue
+
+    const oL = other.x
+    const oR = other.x + other.width
+    const oCX = other.x + other.width / 2
+    const oT = other.y
+    const oB = other.y + other.height
+    const oCY = other.y + other.height / 2
+
+    // X-axis snaps
+    const xSnaps = [
+      { my: myL, target: oL },  // left-to-left
+      { my: myR, target: oR },  // right-to-right
+      { my: myL, target: oR },  // left-to-right
+      { my: myR, target: oL },  // right-to-left
+      { my: myCX, target: oCX }, // center-to-center
+    ]
+    for (const s of xSnaps) {
+      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+        snapX = newX + (s.target - s.my)
+        guides.push({ axis: 'x', position: s.target })
+        break
+      }
+    }
+
+    // Y-axis snaps
+    const ySnaps = [
+      { my: myT, target: oT },
+      { my: myB, target: oB },
+      { my: myT, target: oB },
+      { my: myB, target: oT },
+      { my: myCY, target: oCY },
+    ]
+    for (const s of ySnaps) {
+      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+        snapY = newY + (s.target - s.my)
+        guides.push({ axis: 'y', position: s.target })
+        break
+      }
+    }
+  }
+
+  return { x: Math.round(snapX), y: Math.round(snapY), guides }
 }
 
 // ── Interaction types ────────────────────────────────────────────────────────
@@ -171,14 +311,16 @@ const HANDLE_CURSORS: Record<string, string> = { nw: 'nw-resize', ne: 'ne-resize
 interface Props {
   scene: Scene
   selectedId: string | null
+  selectedIds?: Set<string>
   zoom: number
-  onSelect: (id: string | null) => void
+  onSelect: (id: string | null, additive?: boolean) => void
   onUpdateElement: (id: string, updates: Partial<SceneElement>) => void
   canvasRef: React.RefObject<HTMLDivElement | null>
 }
 
-export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdateElement, canvasRef }: Props) {
+export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSelect, onUpdateElement, canvasRef }: Props) {
   const [drag, setDrag] = useState<DragState>(null)
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, id: string) => {
@@ -186,7 +328,7 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
       e.stopPropagation()
       const el = scene.elements.find(el => el.id === id)
       if (!el) return
-      onSelect(id)
+      onSelect(id, e.shiftKey)
       if (el.locked) return
       setDrag({ type: 'move', id, startX: e.clientX, startY: e.clientY, elX: el.x, elY: el.y })
     },
@@ -211,7 +353,33 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
       const dy = (e.clientY - drag.startY) / zoom
 
       if (drag.type === 'move') {
-        onUpdateElement(drag.id, { x: Math.round(drag.elX + dx), y: Math.round(drag.elY + dy) })
+        const el = scene.elements.find(el => el.id === drag.id)
+        if (!el) return
+
+        const rawX = drag.elX + dx
+        const rawY = drag.elY + dy
+
+        // Compute snap guides
+        const { x: snappedX, y: snappedY, guides } = computeSnapGuides(
+          el, rawX, rawY, scene.elements, scene.width, scene.height
+        )
+        setSnapGuides(guides)
+
+        // Move selected element
+        const offsetX = snappedX - el.x
+        const offsetY = snappedY - el.y
+        onUpdateElement(drag.id, { x: snappedX, y: snappedY })
+
+        // Move other selected elements (multi-select group move)
+        if (selectedIds && selectedIds.size > 1 && selectedIds.has(drag.id)) {
+          for (const otherId of selectedIds) {
+            if (otherId === drag.id) continue
+            const other = scene.elements.find(e => e.id === otherId)
+            if (other && !other.locked) {
+              onUpdateElement(otherId, { x: other.x + offsetX, y: other.y + offsetY })
+            }
+          }
+        }
       } else if (drag.type === 'resize') {
         const { handle, elX, elY, elW, elH } = drag
         let nx = elX, ny = elY, nw = elW, nh = elH
@@ -222,10 +390,15 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
         onUpdateElement(drag.id, { x: Math.round(nx), y: Math.round(ny), width: Math.round(nw), height: Math.round(nh) })
       }
     },
-    [drag, zoom, onUpdateElement]
+    [drag, zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds]
   )
 
-  const handleMouseUp = useCallback(() => setDrag(null), [])
+  const handleMouseUp = useCallback(() => {
+    setDrag(null)
+    setSnapGuides([])
+  }, [])
+
+  const allSelected = selectedIds || new Set(selectedId ? [selectedId] : [])
 
   return (
     <div
@@ -264,9 +437,23 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
         <div className="absolute pointer-events-none" style={{ left: scene.width / 2 - 0.5, top: 0, width: 1, height: scene.height, background: 'rgba(255,255,255,0.03)' }} />
         <div className="absolute pointer-events-none" style={{ top: scene.height / 2 - 0.5, left: 0, width: scene.width, height: 1, background: 'rgba(255,255,255,0.03)' }} />
 
+        {/* Snap guides */}
+        {snapGuides.map((guide, i) => (
+          <div
+            key={i}
+            className="absolute pointer-events-none"
+            style={
+              guide.axis === 'x'
+                ? { left: guide.position, top: 0, width: 1, height: scene.height, background: '#f97316', opacity: 0.6, zIndex: 9998 }
+                : { top: guide.position, left: 0, height: 1, width: scene.width, background: '#f97316', opacity: 0.6, zIndex: 9998 }
+            }
+          />
+        ))}
+
         {/* Elements */}
         {[...scene.elements].sort((a, b) => a.zIndex - b.zIndex).map(el => {
-          const selected = el.id === selectedId
+          const selected = allSelected.has(el.id)
+          const isPrimary = el.id === selectedId
           return (
             <div
               key={el.id}
@@ -279,7 +466,7 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
                 opacity: el.opacity,
                 transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
                 zIndex: el.zIndex,
-                outline: selected ? '2px solid #06b6d4' : undefined,
+                outline: selected ? `2px solid ${isPrimary ? '#06b6d4' : '#06b6d480'}` : undefined,
                 outlineOffset: 2,
               }}
               onMouseDown={e => handleMouseDown(e, el.id)}
@@ -287,7 +474,7 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
               {renderElementContent(el)}
 
               {/* Resize handles */}
-              {selected && !el.locked &&
+              {isPrimary && !el.locked &&
                 HANDLES.map(h => (
                   <div
                     key={h}

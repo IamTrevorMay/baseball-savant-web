@@ -227,6 +227,37 @@ function drawComparisonBar(ctx: CanvasRenderingContext2D, el: SceneElement) {
   ctx.restore()
 }
 
+function drawTicker(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+
+  ctx.save()
+
+  // Background
+  if (p.showBg !== false) {
+    ctx.fillStyle = p.bgColor || '#09090b'
+    ctx.fillRect(x, y, w, h)
+  }
+
+  // Text (render static for export — show first visible portion)
+  const text = p.text || ''
+  const sep = p.separator || ' \u2022 '
+  const fullText = `${text}${sep}${text}${sep}`
+  ctx.font = `${p.fontWeight || 600} ${p.fontSize || 20}px ${FONT}`
+  ctx.fillStyle = p.color || '#ffffff'
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'left'
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, w, h)
+  ctx.clip()
+  ctx.fillText(fullText, x + 8, y + h / 2)
+  ctx.restore()
+
+  ctx.restore()
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export async function exportScenePNG(scene: Scene, filename: string): Promise<void> {
@@ -273,6 +304,9 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
         break
       case 'stadium':
         await drawStadiumStatic(ctx, el)
+        break
+      case 'ticker':
+        drawTicker(ctx, el)
         break
     }
 
@@ -330,6 +364,7 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
       case 'comparison-bar': drawComparisonBar(ctx, el); break
       case 'pitch-flight': drawPitchFlightStatic(ctx, el); break
       case 'stadium': await drawStadiumStatic(ctx, el); break
+      case 'ticker': drawTicker(ctx, el); break
     }
 
     ctx.restore()
@@ -427,4 +462,61 @@ export async function exportWebM(
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+// ── MP4 Video Export (FFmpeg WASM) ──────────────────────────────────────────
+
+export async function exportMP4(
+  scene: Scene,
+  onProgress?: (pct: number) => void,
+): Promise<void> {
+  const { FFmpeg } = await import('@ffmpeg/ffmpeg')
+  const { fetchFile } = await import('@ffmpeg/util')
+
+  const ffmpeg = new FFmpeg()
+  await ffmpeg.load()
+
+  const fps = scene.fps || 30
+  const duration = scene.duration || 5
+  const totalFrames = fps * duration
+
+  // Render frames and write as PNGs into FFmpeg's virtual FS
+  for (let f = 0; f <= totalFrames; f++) {
+    const canvas = await renderFrame(scene, f)
+    const blob = await new Promise<Blob>((resolve) => {
+      canvas.toBlob(b => resolve(b!), 'image/png')
+    })
+    const data = await fetchFile(blob)
+    const padded = String(f).padStart(5, '0')
+    await ffmpeg.writeFile(`frame_${padded}.png`, data)
+    onProgress?.(((f + 1) / (totalFrames + 1)) * 80) // 0-80% for rendering
+  }
+
+  // Encode to MP4 using H.264
+  await ffmpeg.exec([
+    '-framerate', String(fps),
+    '-i', 'frame_%05d.png',
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-preset', 'fast',
+    '-crf', '18',
+    '-movflags', '+faststart',
+    'output.mp4',
+  ])
+  onProgress?.(95)
+
+  const output = await ffmpeg.readFile('output.mp4') as Uint8Array
+  const mp4Blob = new Blob([new Uint8Array(output.buffer, output.byteOffset, output.byteLength).slice()], { type: 'video/mp4' })
+
+  const url = URL.createObjectURL(mp4Blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${scene.name.replace(/\s+/g, '-').toLowerCase()}.mp4`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  ffmpeg.terminate()
+  onProgress?.(100)
 }

@@ -5,6 +5,9 @@ import { SceneElement, DataBinding } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import { TEAM_OPTIONS } from '@/lib/stadiumData'
+import { TRANSITIONS, applyTransition, type TransitionPreset } from '@/lib/transitions'
+import { TEAM_COLORS, TEAM_COLOR_OPTIONS } from '@/lib/teamColors'
+import { saveElementPreset } from '@/lib/sceneTemplates'
 
 const PITCH_TYPES = [
   { value: 'FF', label: 'Four-Seam' }, { value: 'SI', label: 'Sinker' },
@@ -22,7 +25,9 @@ interface Props {
   onFetchBinding: () => void
   onDelete: () => void
   onDuplicate: () => void
+  onUpdateKeyframes?: (keyframes: import('@/lib/sceneTypes').Keyframe[]) => void
   bindingLoading?: boolean
+  fps?: number
 }
 
 // ── Field Helpers ────────────────────────────────────────────────────────────
@@ -601,9 +606,150 @@ function StadiumSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdate
   )
 }
 
+// ── Ticker Section ──────────────────────────────────────────────────────────
+
+function TickerSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  return (
+    <>
+      <Section title="Content">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-zinc-500">Text</span>
+          <textarea
+            value={p.text || ''}
+            onChange={e => onUpdateProps({ text: e.target.value })}
+            rows={3}
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 focus:border-cyan-600 outline-none resize-none"
+          />
+        </label>
+        <NumField label="Font Size" value={p.fontSize || 20} onChange={v => onUpdateProps({ fontSize: v })} min={10} max={80} />
+        <NumField label="Weight" value={p.fontWeight || 600} onChange={v => onUpdateProps({ fontWeight: v })} min={100} max={900} step={100} />
+        <ClrField label="Color" value={p.color || '#ffffff'} onChange={v => onUpdateProps({ color: v })} />
+        <TxtField label="Separator" value={p.separator || ' \u2022 '} onChange={v => onUpdateProps({ separator: v })} />
+      </Section>
+      <Section title="Scroll">
+        <NumField label="Speed" value={p.speed || 60} onChange={v => onUpdateProps({ speed: v })} min={10} max={300} />
+        <SelField
+          label="Direction"
+          value={p.direction || 'left'}
+          onChange={v => onUpdateProps({ direction: v })}
+          options={[
+            { value: 'left', label: 'Left' },
+            { value: 'right', label: 'Right' },
+          ]}
+        />
+        <BoolField label="Show BG" value={p.showBg !== false} onChange={v => onUpdateProps({ showBg: v })} />
+        <ClrField label="BG Color" value={p.bgColor || '#09090b'} onChange={v => onUpdateProps({ bgColor: v })} />
+      </Section>
+    </>
+  )
+}
+
+// ── Transition Section ──────────────────────────────────────────────────────
+
+function TransitionSection({ element, onUpdateKeyframes, fps }: { element: SceneElement; onUpdateKeyframes?: (kfs: import('@/lib/sceneTypes').Keyframe[]) => void; fps: number }) {
+  const [category, setCategory] = useState<'enter' | 'exit' | 'emphasis'>('enter')
+  const [duration, setDuration] = useState(15) // frames
+
+  if (!onUpdateKeyframes) return null
+
+  const filtered = TRANSITIONS.filter(t => t.category === category)
+
+  function handleApply(preset: TransitionPreset) {
+    const startFrame = category === 'exit' ? Math.max(0, (fps * 5) - duration) : (element.enterFrame || 0)
+    const kfs = applyTransition(element, preset.id, startFrame, duration)
+    onUpdateKeyframes!(kfs)
+  }
+
+  return (
+    <Section title="Transitions">
+      <div className="flex gap-1 mb-2">
+        {(['enter', 'exit', 'emphasis'] as const).map(cat => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            className={`flex-1 px-1.5 py-1 rounded text-[10px] transition ${
+              category === cat
+                ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-600/40'
+                : 'bg-zinc-800 text-zinc-500 border border-zinc-700 hover:text-zinc-300'
+            }`}
+          >
+            {cat.charAt(0).toUpperCase() + cat.slice(1)}
+          </button>
+        ))}
+      </div>
+      <NumField label="Duration (frames)" value={duration} onChange={v => setDuration(Math.max(2, v))} min={2} max={120} />
+      <div className="space-y-1 mt-2">
+        {filtered.map(t => (
+          <button
+            key={t.id}
+            onClick={() => handleApply(t)}
+            className="w-full text-left px-2.5 py-1.5 rounded bg-zinc-800/50 border border-zinc-800 hover:border-cyan-600/40 hover:bg-zinc-800 transition text-[11px] text-zinc-300 flex items-center gap-2"
+          >
+            <span className="text-zinc-500">{t.icon}</span>
+            {t.name}
+          </button>
+        ))}
+      </div>
+      {(element.keyframes?.length ?? 0) > 0 && (
+        <button
+          onClick={() => onUpdateKeyframes!([])}
+          className="w-full mt-2 px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-zinc-500 hover:text-red-400 hover:border-red-600/40 transition"
+        >
+          Clear All Keyframes
+        </button>
+      )}
+    </Section>
+  )
+}
+
+// ── Team Color Section ──────────────────────────────────────────────────────
+
+function TeamColorSection({ element, onUpdate, onUpdateProps }: { element: SceneElement; onUpdate: (u: Partial<SceneElement>) => void; onUpdateProps: (u: Record<string, any>) => void }) {
+  function applyTheme(teamKey: string) {
+    const tc = TEAM_COLORS[teamKey]
+    if (!tc) return
+    const p = element.props
+    // Apply primary color to main color fields based on element type
+    switch (element.type) {
+      case 'stat-card':
+        onUpdateProps({ color: tc.primary })
+        break
+      case 'text':
+        onUpdateProps({ color: tc.primary })
+        break
+      case 'shape':
+        onUpdateProps({ fill: tc.secondary, stroke: tc.primary })
+        break
+      case 'player-image':
+        onUpdateProps({ borderColor: tc.primary })
+        break
+      case 'comparison-bar':
+        onUpdateProps({ color: tc.primary })
+        break
+      case 'ticker':
+        onUpdateProps({ color: tc.accent, bgColor: tc.primary })
+        break
+    }
+  }
+
+  return (
+    <Section title="Team Theme">
+      <select
+        onChange={e => { if (e.target.value) applyTheme(e.target.value) }}
+        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 focus:border-cyan-600 outline-none"
+        defaultValue=""
+      >
+        {TEAM_COLOR_OPTIONS.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </Section>
+  )
+}
+
 // ── Panel ────────────────────────────────────────────────────────────────────
 
-export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, bindingLoading }: Props) {
+export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30 }: Props) {
   const p = element.props
   const b = element.dataBinding
   const showBinding = element.type === 'stat-card' || element.type === 'comparison-bar'
@@ -725,6 +871,17 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
         <StadiumSection p={p} onUpdateProps={onUpdateProps} />
       )}
 
+      {/* Ticker */}
+      {element.type === 'ticker' && (
+        <TickerSection p={p} onUpdateProps={onUpdateProps} />
+      )}
+
+      {/* Transitions */}
+      <TransitionSection element={element} onUpdateKeyframes={onUpdateKeyframes} fps={fps} />
+
+      {/* Team Color Theme */}
+      <TeamColorSection element={element} onUpdate={onUpdate} onUpdateProps={onUpdateProps} />
+
       {/* Data Binding */}
       {showBinding && (
         <DataBindingSection
@@ -753,6 +910,19 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
         </div>
         <BoolField label="Locked" value={element.locked} onChange={v => onUpdate({ locked: v })} />
       </Section>
+
+      {/* Save as Preset */}
+      <div className="border-t border-zinc-800 pt-3 mt-1">
+        <button
+          onClick={() => {
+            const name = prompt('Preset name:', `${element.type} preset`)
+            if (name) saveElementPreset(name, element)
+          }}
+          className="w-full px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 border-dashed text-[11px] text-zinc-400 hover:text-emerald-400 hover:border-emerald-600/40 transition"
+        >
+          {'\u2605'} Save as Preset
+        </button>
+      </div>
     </div>
   )
 }

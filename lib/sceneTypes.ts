@@ -1,4 +1,4 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker'
 
 // ── Data Binding ────────────────────────────────────────────────────────────
 
@@ -66,6 +66,7 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'comparison-bar', name: 'Stat Bar', desc: 'Horizontal bar', icon: '\u25ac' },
   { type: 'pitch-flight', name: 'Pitch Flight', desc: 'Animated trajectory', icon: '\u2312' },
   { type: 'stadium', name: 'Stadium', desc: '3D field with hit trajectories', icon: '\u26be' },
+  { type: 'ticker', name: 'Ticker', desc: 'Scrolling text crawl', icon: '\u21c4' },
 ]
 
 const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string, any> }> = {
@@ -110,6 +111,15 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
       animMode: 'simultaneous', displayMode: 'all', singleHitIndex: 0,
     },
   },
+  'ticker': {
+    w: 800, h: 48,
+    props: {
+      text: 'Breaking: Player Name hits 3 home runs in tonight\'s game \u2022 Team clinches playoff spot \u2022 Trade deadline approaching',
+      fontSize: 20, fontWeight: 600, color: '#ffffff',
+      bgColor: '#09090b', speed: 60, direction: 'left',
+      separator: ' \u2022 ', showBg: true,
+    },
+  },
 }
 
 let zCounter = 100
@@ -149,4 +159,8 @@ export const SCENE_PRESETS: { label: string; w: number; h: number }[] = [
   { label: '1080\u00d71920 (9:16)', w: 1080, h: 1920 },
   { label: '1080\u00d71080 (1:1)', w: 1080, h: 1080 },
   { label: '3840\u00d72160 (4K)', w: 3840, h: 2160 },
+  { label: '1280\u00d7720 (YouTube)', w: 1280, h: 720 },
+  { label: '1200\u00d7628 (Twitter)', w: 1200, h: 628 },
+  { label: '1080\u00d71350 (IG Portrait)', w: 1080, h: 1350 },
+  { label: '1920\u00d7200 (Lower Third)', w: 1920, h: 200 },
 ]

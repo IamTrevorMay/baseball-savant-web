@@ -3,19 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Scene, SceneElement, ElementType, DataBinding, Keyframe, EasingFunction, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
+import { useSceneHistory } from '@/lib/useSceneHistory'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
-import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM } from '@/components/visualize/scene-composer/exportScene'
+import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
 
 const STORAGE_KEY = 'triton-scene-composer'
 const ZOOM_STEPS = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0]
 
 export default function SceneComposerPage() {
-  const [scene, setScene] = useState<Scene>(createDefaultScene())
+  const [scene, setScene, { undo, redo, canUndo, canRedo }] = useSceneHistory<Scene>(createDefaultScene())
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [zoom, setZoom] = useState(0.5)
   const [loaded, setLoaded] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -103,8 +105,29 @@ export default function SceneComposerPage() {
       const el = createElement(type, scene.width / 2, scene.height / 2)
       setScene(prev => ({ ...prev, elements: [...prev.elements, el] }))
       setSelectedId(el.id)
+      setSelectedIds(new Set([el.id]))
     },
     [scene.width, scene.height]
+  )
+
+  const addDirectElement = useCallback(
+    (el: SceneElement) => {
+      setScene(prev => ({ ...prev, elements: [...prev.elements, el] }))
+      setSelectedId(el.id)
+      setSelectedIds(new Set([el.id]))
+    },
+    []
+  )
+
+  const loadTemplateScene = useCallback(
+    (templateScene: Scene) => {
+      setScene(templateScene)
+      setSelectedId(null)
+      setSelectedIds(new Set())
+      setCurrentFrame(0)
+      setPlaying(false)
+    },
+    []
   )
 
   const deleteElement = useCallback(
@@ -133,6 +156,31 @@ export default function SceneComposerPage() {
     },
     [scene.elements]
   )
+
+  const handleSelect = useCallback((id: string | null, additive?: boolean) => {
+    if (!id) {
+      setSelectedId(null)
+      setSelectedIds(new Set())
+      return
+    }
+    if (additive) {
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        if (next.has(id)) { next.delete(id) } else { next.add(id) }
+        return next
+      })
+    } else {
+      setSelectedIds(new Set([id]))
+    }
+    setSelectedId(id)
+  }, [])
+
+  const updateElementKeyframes = useCallback((id: string, keyframes: Keyframe[]) => {
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => (e.id === id ? { ...e, keyframes } : e)),
+    }))
+  }, [])
 
   // ── Data Binding ──────────────────────────────────────────────────────────
 
@@ -306,6 +354,18 @@ export default function SceneComposerPage() {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
+      // Undo/Redo
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault()
+        redo()
+        return
+      }
+
       // Timeline shortcuts
       if (e.key === ' ' && showTimeline) {
         e.preventDefault()
@@ -363,7 +423,7 @@ export default function SceneComposerPage() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedId, scene.elements, deleteElement, duplicateElement, updateElement, showTimeline, currentFrame, addKeyframe])
+  }, [selectedId, scene.elements, deleteElement, duplicateElement, updateElement, showTimeline, currentFrame, addKeyframe, undo, redo])
 
   // ── Zoom ─────────────────────────────────────────────────────────────────
 
@@ -412,6 +472,18 @@ export default function SceneComposerPage() {
       await exportWebM(scene, pct => setExportProgress(pct))
     } catch (err) {
       console.error('Export WebM error:', err)
+    }
+    setExporting(false)
+    setExportProgress(0)
+  }
+
+  async function handleExportMP4() {
+    setExporting(true)
+    setShowExportMenu(false)
+    try {
+      await exportMP4(scene, pct => setExportProgress(pct))
+    } catch (err) {
+      console.error('Export MP4 error:', err)
     }
     setExporting(false)
     setExportProgress(0)
@@ -506,6 +578,26 @@ export default function SceneComposerPage() {
           />
         </div>
 
+        {/* Undo/Redo */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className="px-1.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white text-xs transition disabled:opacity-30 disabled:cursor-default"
+            title="Undo (\u2318Z)"
+          >
+            {'\u21a9'}
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            className="px-1.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white text-xs transition disabled:opacity-30 disabled:cursor-default"
+            title="Redo (\u2318\u21e7Z)"
+          >
+            {'\u21aa'}
+          </button>
+        </div>
+
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -589,6 +681,9 @@ export default function SceneComposerPage() {
               <button onClick={handleExportWebM} className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700 transition">
                 WebM Video
               </button>
+              <button onClick={handleExportMP4} className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700 transition">
+                MP4 Video (H.264)
+              </button>
               <div className="border-t border-zinc-700 my-1" />
               <button onClick={handleExportJSON} className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-700 transition">
                 JSON Config
@@ -602,7 +697,7 @@ export default function SceneComposerPage() {
       <div className="flex-1 flex min-h-0">
         {/* Left: Element Library */}
         <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-          <ElementLibrary onAdd={addElement} />
+          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} />
         </div>
 
         {/* Center: Canvas */}
@@ -610,8 +705,9 @@ export default function SceneComposerPage() {
           <SceneCanvas
             scene={displayScene}
             selectedId={selectedId}
+            selectedIds={selectedIds}
             zoom={zoom}
-            onSelect={setSelectedId}
+            onSelect={handleSelect}
             onUpdateElement={updateElement}
             canvasRef={canvasRef}
           />
@@ -628,7 +724,9 @@ export default function SceneComposerPage() {
               onFetchBinding={() => fetchBinding(selectedElement.id)}
               onDelete={() => deleteElement(selectedElement.id)}
               onDuplicate={() => duplicateElement(selectedElement.id)}
+              onUpdateKeyframes={kfs => updateElementKeyframes(selectedElement.id, kfs)}
               bindingLoading={bindingLoading}
+              fps={scene.fps || 30}
             />
           </div>
         )}
