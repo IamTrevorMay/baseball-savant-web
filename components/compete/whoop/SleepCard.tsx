@@ -32,11 +32,18 @@ export default function SleepCard({ sleepData }: Props) {
     { label: 'Awake', ms: latest.awake_duration_ms || 0, color: 'bg-zinc-600' },
   ]
 
+  // Try to extract sleep needed from raw_data
+  const rawScore = (latest.raw_data as { score?: { sleep_needed?: { baseline_milli?: number; need_from_sleep_debt_milli?: number; need_from_recent_strain_milli?: number } } })?.score
+  const sleepNeeded = rawScore?.sleep_needed
+  const neededMs = sleepNeeded
+    ? (sleepNeeded.baseline_milli || 0) + (sleepNeeded.need_from_sleep_debt_milli || 0) + (sleepNeeded.need_from_recent_strain_milli || 0)
+    : null
+
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-      <h3 className="text-sm font-semibold text-white mb-4">Sleep</h3>
+      <h3 className="text-sm font-semibold text-white mb-4">Latest Sleep</h3>
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 mb-4 justify-center">
         <div className="text-center">
           <div className="text-lg font-bold text-white">{msToHours(latest.total_duration_ms)}</div>
           <div className="text-[10px] text-zinc-500">Duration</div>
@@ -53,12 +60,31 @@ export default function SleepCard({ sleepData }: Props) {
           </div>
           <div className="text-[10px] text-zinc-500">Efficiency</div>
         </div>
+        {latest.respiratory_rate !== null && (
+          <div className="text-center">
+            <div className="text-lg font-bold text-white">{latest.respiratory_rate.toFixed(1)}</div>
+            <div className="text-[10px] text-zinc-500">Resp Rate</div>
+          </div>
+        )}
       </div>
+
+      {/* Sleep needed vs actual */}
+      {neededMs && neededMs > 0 && totalMs > 0 && (
+        <div className="mb-4 text-center">
+          <span className="text-[10px] text-zinc-500">
+            {msToHours(totalMs)} of {msToHours(neededMs)} needed
+            {totalMs >= neededMs
+              ? <span className="text-green-400 ml-1">✓</span>
+              : <span className="text-amber-400 ml-1">({msToHours(neededMs - totalMs)} short)</span>
+            }
+          </span>
+        </div>
+      )}
 
       {/* Stacked bar */}
       {totalMs > 0 && (
         <div>
-          <div className="flex rounded-full overflow-hidden h-3 mb-2">
+          <div className="flex rounded-full overflow-hidden h-4 mb-2">
             {stages.map(s => {
               const pct = (s.ms / totalMs) * 100
               if (pct < 1) return null
@@ -71,7 +97,7 @@ export default function SleepCard({ sleepData }: Props) {
               )
             })}
           </div>
-          <div className="flex gap-3 justify-center">
+          <div className="flex gap-3 justify-center flex-wrap">
             {stages.map(s => (
               <div key={s.label} className="flex items-center gap-1">
                 <div className={`w-2 h-2 rounded-full ${s.color}`} />
