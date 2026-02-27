@@ -4,8 +4,9 @@ import PitchUsage from '../charts/PitchUsage'
 import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
 import ExitVeloLaunchAngle from '../charts/ExitVeloLaunchAngle'
 import SprayChart from '../charts/SprayChart'
+import type { LahmanBattingSeason } from '@/lib/lahman-stats'
 
-interface Props { data: any[]; info: any }
+interface Props { data: any[]; info: any; lahmanBatting?: LahmanBattingSeason[] }
 
 type StatsMode = 'traditional' | 'advanced' | 'vsPitchType'
 
@@ -165,12 +166,29 @@ function calcTotals(rows: any[], cols: {k:string,l:string}[]): any {
   return totals
 }
 
-export default function HitterOverviewTab({ data, info }: Props) {
+export default function HitterOverviewTab({ data, info, lahmanBatting = [] }: Props) {
   const [mode, setMode] = useState<StatsMode>('traditional')
 
-  const tradRows = calcTraditionalByYear(data)
+  const statcastTradRows = calcTraditionalByYear(data)
   const advRows = calcAdvancedByYear(data)
   const vsPitchRows = calcVsPitchType(data)
+
+  // Add Lahman-only rows for years without Statcast
+  const statcastYears = new Set(statcastTradRows.map(r => r.year))
+  const lahmanOnlyRows = lahmanBatting
+    .filter(s => !statcastYears.has(s.year))
+    .map(s => ({
+      year: s.year, pitches: 0, games: s.g ?? 0, pa: s.pa ?? 0,
+      h: s.h ?? 0, '2b': s.doubles ?? 0, '3b': s.triples ?? 0,
+      hr: s.hr ?? 0, bb: s.bb ?? 0, k: s.so ?? 0, hbp: s.hbp ?? 0,
+      ba: s.ba != null ? s.ba.toFixed(3) : '—',
+      obp: s.obp != null ? s.obp.toFixed(3) : '—',
+      slg: s.slg != null ? s.slg.toFixed(3) : '—',
+      ops: s.ops != null ? s.ops.toFixed(3) : '—',
+      _lahmanOnly: true,
+    }))
+
+  const tradRows = [...statcastTradRows, ...lahmanOnlyRows].sort((a, b) => b.year - a.year)
 
   const tradCols = [
     { k:"year", l:"Year" }, { k:"games", l:"G" }, { k:"pa", l:"PA" },

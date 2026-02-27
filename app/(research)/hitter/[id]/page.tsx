@@ -13,7 +13,9 @@ import HitterSplitsTab from '@/components/dashboard/HitterSplitsTab'
 import HitterGameLogTab from '@/components/dashboard/HitterGameLogTab'
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
+import PlayerBadges from '@/components/PlayerBadges'
 import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
+import type { LahmanPlayerData } from '@/lib/lahman-stats'
 
 interface HitterInfo {
   player_name: string; batter: number; total_pitches: number
@@ -58,6 +60,9 @@ export default function HitterDashboard() {
   // Model tabs
   const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
 
+  // Lahman historical data
+  const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
+
   // Search bar state
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
@@ -94,8 +99,12 @@ export default function HitterDashboard() {
       .from('batter_summary').select('*').eq('batter', batterId).single()
     if (pData) setInfo(pData as HitterInfo)
 
-    // Load pitches
-    await fetchData()
+    // Load pitches + Lahman data in parallel
+    const lahmanPromise = fetch(`/api/lahman/player?mlb_id=${batterId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.player) setLahmanData(d) })
+      .catch(() => {})
+    await Promise.all([fetchData(), lahmanPromise])
     setLoading(false)
   }
 
@@ -245,7 +254,9 @@ export default function HitterDashboard() {
                 <span>{info.total_pitches.toLocaleString()} pitches seen</span>
                 <span>{info.games.toLocaleString()} games</span>
                 <span>{info.first_date} — {info.last_date}</span>
+                {lahmanData?.player?.debut && <span>Debut: {lahmanData.player.debut}</span>}
               </div>
+              {lahmanData && <PlayerBadges awards={lahmanData.awards} allstars={lahmanData.allstars} hof={lahmanData.hof} />}
             </div>
           </div>
           <GenerateReportDropdown playerId={info.batter} playerName={info.player_name} playerData={allData} dashboardType="hitting" />
@@ -278,7 +289,7 @@ export default function HitterDashboard() {
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          {tab === 'overview' && <HitterOverviewTab data={data} info={info} />}
+          {tab === 'overview' && <HitterOverviewTab data={data} info={info} lahmanBatting={lahmanData?.batting} />}
           {tab === 'viz' && <LocationTab data={data} />}
           {tab === 'results' && <ResultsTab data={data} />}
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="hitter" />}

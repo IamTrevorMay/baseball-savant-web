@@ -16,7 +16,9 @@ import PitchLogTab from "@/components/dashboard/PitchLogTab"
 import SplitsTab from "@/components/dashboard/SplitsTab"
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
+import PlayerBadges from '@/components/PlayerBadges'
 import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
+import type { LahmanPlayerData } from '@/lib/lahman-stats'
 
 interface PlayerInfo {
   player_name: string; pitcher: number; total_pitches: number
@@ -65,6 +67,9 @@ export default function PlayerDashboard() {
   // Model tabs
   const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
 
+  // Lahman historical data
+  const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
+
   // Search bar state
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
@@ -104,12 +109,19 @@ export default function PlayerDashboard() {
     // Load pitches
     await fetchData()
 
-    // Fetch MLB official stats (W/L/ERA etc)
+    // Fetch MLB official stats and Lahman data in parallel
     try {
-      const mlbRes = await fetch(`/api/mlbstats?pitcher=${pitcherId}`)
+      const [mlbRes, lahmanRes] = await Promise.all([
+        fetch(`/api/mlbstats?pitcher=${pitcherId}`),
+        fetch(`/api/lahman/player?mlb_id=${pitcherId}`),
+      ])
       const mlbData = await mlbRes.json()
       if (mlbData.seasons) setMlbStats(mlbData.seasons)
-    } catch (e) { console.error("MLB stats fetch failed:", e) }
+      if (lahmanRes.ok) {
+        const ld = await lahmanRes.json()
+        if (ld.player) setLahmanData(ld)
+      }
+    } catch (e) { console.error("Stats fetch failed:", e) }
     setLoading(false)
   }
 
@@ -258,7 +270,9 @@ export default function PlayerDashboard() {
                 <span>{info.total_pitches.toLocaleString()} pitches</span>
                 <span>{info.games.toLocaleString()} games</span>
                 <span>{info.first_date} — {info.last_date}</span>
+                {lahmanData?.player?.debut && <span>Debut: {lahmanData.player.debut}</span>}
               </div>
+              {lahmanData && <PlayerBadges awards={lahmanData.awards} allstars={lahmanData.allstars} hof={lahmanData.hof} />}
             </div>
           </div>
           <GenerateReportDropdown playerId={info.pitcher} playerName={info.player_name} playerData={allData} dashboardType="pitching" />
@@ -290,7 +304,7 @@ export default function PlayerDashboard() {
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} />}
+          {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} lahmanPitching={lahmanData?.pitching} />}
           {tab === 'movement' && <MovementTab data={data} />}
           {tab === 'viz' && <LocationTab data={data} />}
           {tab === 'velocity' && <VelocityTab data={data} />}

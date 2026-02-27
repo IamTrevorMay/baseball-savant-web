@@ -5,6 +5,7 @@ const NAV_LINKS = [
   { href: '/home', label: 'Home' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
+  { href: '/leaders', label: 'Leaders' },
   { href: '/reports', label: 'Reports' },
   { href: '/umpire', label: 'Umpires' },
   { href: '/explore', label: 'Explore' },

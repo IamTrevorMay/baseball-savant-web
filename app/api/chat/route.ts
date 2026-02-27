@@ -98,6 +98,19 @@ Key columns:
 There is also a materialized view: player_summary
 - player_name, pitcher, total_pitches, games, first_date, last_date, avg_velo, avg_spin, team, pitch_types (array), latest_season
 
+LAHMAN HISTORICAL DATABASE:
+In addition to Statcast data, there is a Lahman database with historical baseball stats from 1871-present.
+- lahman_people: ~20k players. Columns: lahman_id (PK), mlb_id (crosswalk), name_first, name_last, birth_year, debut, final_game, bats, throws
+- lahman_batting: ~112k season batting records. Columns: lahman_id, year, stint, team_id, lg_id, g, ab, r, h, doubles, triples, hr, rbi, sb, cs, bb, so, ibb, hbp, sh, sf, gidp
+- lahman_pitching: ~50k season pitching records. Columns: lahman_id, year, stint, team_id, lg_id, w, l, g, gs, cg, sho, sv, ipouts, h, er, hr, bb, so, era, ibb, wp, hbp, bk, bfp, gf, r
+- lahman_batting_calc: View aggregating stints, includes pa, ba, obp, slg, ops
+- lahman_pitching_calc: View aggregating stints, includes ip, era, whip, k9, bb9, hr9, k_pct, bb_pct
+- lahman_awards: Award records (MVP, Cy Young, etc). Columns: lahman_id, award_id, year, lg_id
+- lahman_allstars: All-Star selections. Columns: lahman_id, year, lg_id
+- lahman_halloffame: HOF voting. Columns: lahman_id, year, voted_by, ballots, needed, votes, inducted, category
+
+Use Lahman tables for historical/all-time questions (e.g., "most career HRs", "who won MVP in 1995"). Use Statcast pitches table for pitch-level analysis (2015+).
+
 IMPORTANT QUERY GUIDELINES:
 - Always use LIMIT to prevent huge results (max 100 rows for display)
 - For aggregations, use GROUP BY with appropriate metrics
@@ -118,7 +131,7 @@ When responding:
 const tools: Anthropic.Tool[] = [
   {
     name: 'query_database',
-    description: 'Execute a read-only SQL query against the Statcast pitches database. Use this for any data retrieval, aggregation, filtering, or analysis. Always include LIMIT clause (max 100 for row-level, 500 for aggregated). The database has 7.4M+ rows so be specific with WHERE clauses.',
+    description: 'Execute a read-only SQL query against the database (Statcast pitches + Lahman historical tables). Use this for any data retrieval, aggregation, filtering, or analysis. Always include LIMIT clause (max 100 for row-level, 500 for aggregated). The pitches table has 7.4M+ rows so be specific with WHERE clauses. Lahman tables are available for historical queries.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -130,7 +143,18 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'search_players',
-    description: 'Search for players by name. Returns player info including team, pitch types, total pitches, and avg velocity.',
+    description: 'Search for Statcast-era players by name. Returns player info including team, pitch types, total pitches, and avg velocity.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Player name or partial name to search for.' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'search_historical_players',
+    description: 'Search for historical players in the Lahman database by name. Returns all-time players from 1871-present with their lahman_id and mlb_id (if available).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -227,6 +251,12 @@ export async function POST(req: NextRequest) {
           } else if (block.name === 'search_players') {
             const input = block.input as { name: string }
             const { data, error } = await supabase.rpc('search_players', { search_term: input.name, result_limit: 5 })
+            result = JSON.stringify(error ? { error: error.message } : { players: data })
+          } else if (block.name === 'search_historical_players') {
+            const input = block.input as { name: string }
+            const safeName = input.name.replace(/'/g, "''")
+            const searchSql = `SELECT lahman_id, mlb_id, name_first, name_last, birth_year, debut, final_game, bats, throws FROM lahman_people WHERE (name_last || ', ' || name_first) % '${safeName}' OR LOWER(name_last) LIKE LOWER('${safeName}%') OR LOWER(name_first || ' ' || name_last) LIKE LOWER('%${safeName}%') ORDER BY similarity(name_last || ', ' || name_first, '${safeName}') DESC LIMIT 10`
+            const { data, error } = await supabase.rpc('run_query', { query_text: searchSql })
             result = JSON.stringify(error ? { error: error.message } : { players: data })
           } else if (block.name === 'test_formula') {
             const input = block.input as { formula: string }

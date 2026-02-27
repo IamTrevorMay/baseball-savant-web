@@ -5,8 +5,9 @@ import PitchMovement from '../charts/PitchMovement'
 import VelocityDistribution from '../charts/VelocityDistribution'
 import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
+import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 
-interface Props { data: any[]; info: any; mlbStats?: any[] }
+interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[] }
 
 type StatsMode = 'traditional' | 'advanced' | 'arsenal'
 
@@ -194,21 +195,59 @@ function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any
   return totals
 }
 
-export default function OverviewTab({ data, info, mlbStats = [] }: Props) {
+export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching = [] }: Props) {
   const [mode, setMode] = useState<StatsMode>('traditional')
 
   const tradRows = calcTraditionalByYear(data)
   const advRows = calcAdvancedByYear(data)
   const arsenalRows = calcArsenal(data)
 
+  // Build Lahman-only rows for years without Statcast data
+  const statcastYears = new Set(tradRows.map(r => r.year))
+  const lahmanOnlyRows = lahmanPitching
+    .filter(s => !statcastYears.has(s.year))
+    .map(s => ({
+      year: s.year, pitches: 0, games: s.g ?? 0, pa: s.bfp ?? 0,
+      ip: s.ipouts != null ? `${Math.floor(s.ipouts / 3)}.${s.ipouts % 3}` : '—',
+      h: s.h ?? 0, '2b': 0, '3b': 0, hr: s.hr ?? 0, bb: s.bb ?? 0, k: s.so ?? 0, hbp: s.hbp ?? 0,
+      ba: '—', obp: '—', slg: '—',
+      kPct: s.bfp && s.bfp > 0 ? (((s.so ?? 0) / s.bfp) * 100).toFixed(1) : '—',
+      bbPct: s.bfp && s.bfp > 0 ? (((s.bb ?? 0) / s.bfp) * 100).toFixed(1) : '—',
+      whiffPct: '—', csPct: '—',
+      w: s.w ?? '—', l: s.l ?? '—',
+      era: s.era != null ? s.era.toFixed(2) : '—',
+      sv: s.sv ?? '—', gs: s.gs ?? '—',
+      whip: s.whip != null ? s.whip.toFixed(2) : '—',
+      _lahmanOnly: true,
+    }))
+
   // Merge MLB official stats into traditional rows
-  const mergedTradRows = tradRows.map(r => {
-    const mlb = mlbStats.find((s: any) => Number(s.year) === r.year)
-    return { ...r, w: mlb?.w ?? "—", l: mlb?.l ?? "—", era: mlb?.era ?? "—", sv: mlb?.sv ?? "—", gs: mlb?.gs ?? "—", whip: mlb?.whip ?? "—" }
-  })
+  const mergedTradRows = [
+    ...tradRows.map(r => {
+      const mlb = mlbStats.find((s: any) => Number(s.year) === r.year)
+      const lahman = lahmanPitching.find(s => s.year === r.year)
+      return {
+        ...r,
+        w: mlb?.w ?? lahman?.w ?? "—",
+        l: mlb?.l ?? lahman?.l ?? "—",
+        era: mlb?.era ?? (lahman?.era != null ? lahman.era.toFixed(2) : "—"),
+        sv: mlb?.sv ?? lahman?.sv ?? "—",
+        gs: mlb?.gs ?? lahman?.gs ?? "—",
+        whip: mlb?.whip ?? (lahman?.whip != null ? lahman.whip.toFixed(2) : "—"),
+      }
+    }),
+    ...lahmanOnlyRows,
+  ].sort((a, b) => b.year - a.year)
+
   const mergedAdvRows = advRows.map(r => {
     const mlb = mlbStats.find((s: any) => Number(s.year) === r.year)
-    return { ...r, k9: mlb?.k9 ?? "—", bb9: mlb?.bb9 ?? "—", hr9: mlb?.hr9 ?? "—" }
+    const lahman = lahmanPitching.find(s => s.year === r.year)
+    return {
+      ...r,
+      k9: mlb?.k9 ?? (lahman?.k9 != null ? lahman.k9.toFixed(1) : "—"),
+      bb9: mlb?.bb9 ?? (lahman?.bb9 != null ? lahman.bb9.toFixed(1) : "—"),
+      hr9: mlb?.hr9 ?? (lahman?.hr9 != null ? lahman.hr9.toFixed(1) : "—"),
+    }
   })
 
 
