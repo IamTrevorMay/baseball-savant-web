@@ -11,12 +11,14 @@ export async function GET(req: NextRequest) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
   if (!code || !state || state !== storedState) {
+    console.error('WHOOP callback: state validation failed', { code: !!code, state: !!state, storedState: !!storedState, match: state === storedState })
     return NextResponse.redirect(`${siteUrl}/compete/whoop?error=invalid_state`)
   }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
+    console.error('WHOOP callback: user not authenticated')
     return NextResponse.redirect(`${siteUrl}/compete/whoop?error=unauthorized`)
   }
 
@@ -28,6 +30,7 @@ export async function GET(req: NextRequest) {
     .single()
 
   if (!athlete) {
+    console.error('WHOOP callback: no athlete profile for user', user.id)
     return NextResponse.redirect(`${siteUrl}/compete/whoop?error=no_profile`)
   }
 
