@@ -104,6 +104,9 @@ export async function exchangeWhoopCode(code: string): Promise<{
 }
 
 async function refreshWhoopToken(tokenRow: WhoopTokenRow): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  if (!tokenRow.encrypted_refresh_token) {
+    throw new Error('No refresh token available — user must re-authenticate')
+  }
   const currentRefreshToken = decrypt(tokenRow.encrypted_refresh_token)
 
   const res = await fetch(WHOOP_TOKEN_URL, {
@@ -149,7 +152,7 @@ export async function whoopFetch(athleteId: string, path: string, params?: URLSe
 
   // Check if token is expired (with 60s buffer)
   const expiresAt = new Date(tokenRow.token_expires_at).getTime()
-  if (Date.now() > expiresAt - 60_000) {
+  if (Date.now() > expiresAt - 60_000 && tokenRow.encrypted_refresh_token) {
     const refreshed = await refreshWhoopToken(tokenRow)
     accessToken = refreshed.access_token
   }
@@ -159,8 +162,8 @@ export async function whoopFetch(athleteId: string, path: string, params?: URLSe
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
-  // If 401, try refreshing token once
-  if (res.status === 401) {
+  // If 401, try refreshing token once (only if refresh token exists)
+  if (res.status === 401 && tokenRow.encrypted_refresh_token) {
     const refreshed = await refreshWhoopToken(tokenRow)
     res = await fetch(url, {
       headers: { Authorization: `Bearer ${refreshed.access_token}` },
