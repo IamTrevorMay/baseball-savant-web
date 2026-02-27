@@ -1,7 +1,9 @@
 'use client'
 
 import { ScheduleEvent } from '@/lib/compete/schedule-types'
+import { WhoopCycleRow } from '@/lib/compete/whoop-types'
 import EventDetail from './EventDetail'
+import RecoveryBadge from '@/components/compete/whoop/RecoveryBadge'
 
 interface Props {
   currentDate: Date
@@ -9,6 +11,7 @@ interface Props {
   onToggleChecklist: (eventId: string, itemId: string, checked: boolean) => void
   onEditEvent: (event: ScheduleEvent) => void
   onDeleteEvent: (eventId: string) => void
+  whoopRecovery?: Map<string, WhoopCycleRow>
 }
 
 function getWeekDates(date: Date) {
@@ -25,7 +28,7 @@ function getWeekDates(date: Date) {
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export default function CalendarWeek({ currentDate, events, onToggleChecklist, onEditEvent, onDeleteEvent }: Props) {
+export default function CalendarWeek({ currentDate, events, onToggleChecklist, onEditEvent, onDeleteEvent, whoopRecovery }: Props) {
   const weekDates = getWeekDates(currentDate)
   const today = new Date().toISOString().split('T')[0]
 
@@ -41,12 +44,16 @@ export default function CalendarWeek({ currentDate, events, onToggleChecklist, o
         const dayEvents = eventsByDate.get(date) || []
         const isToday = date === today
         const dayNum = new Date(date + 'T00:00:00').getDate()
+        const recovery = whoopRecovery?.get(date)
 
         return (
           <div key={date} className="min-h-[200px]">
             <div className={`text-center mb-2 ${isToday ? 'text-amber-400' : 'text-zinc-500'}`}>
               <div className="text-[10px] font-medium">{DOW[i]}</div>
               <div className={`text-lg font-bold ${isToday ? 'text-amber-400' : 'text-zinc-300'}`}>{dayNum}</div>
+              {recovery && (
+                <RecoveryBadge score={recovery.recovery_score} state={recovery.recovery_state} size="sm" />
+              )}
             </div>
             <div className="space-y-2">
               {dayEvents.length === 0 ? (

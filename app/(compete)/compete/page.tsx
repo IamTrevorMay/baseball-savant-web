@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { WhoopCycleRow } from '@/lib/compete/whoop-types'
 
 interface AthleteProfile {
   id: string
@@ -54,6 +55,7 @@ export default function CompeteDashboard() {
   const [athlete, setAthlete] = useState<AthleteProfile | null>(null)
   const [needsSetup, setNeedsSetup] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [whoopCycle, setWhoopCycle] = useState<WhoopCycleRow | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Onboarding form
@@ -73,6 +75,17 @@ export default function CompeteDashboard() {
       setNeedsSetup(profileRes.needsSetup)
       setNotifications(notifRes.notifications || [])
       setLoading(false)
+
+      // Fetch today's WHOOP data if connected
+      if (profileRes.athlete?.whoop_connected) {
+        const today = new Date().toISOString().split('T')[0]
+        fetch(`/api/compete/whoop/data?from=${today}&to=${today}&type=cycles`)
+          .then(r => r.json())
+          .then(data => {
+            const cycles = data.cycles || []
+            if (cycles.length > 0) setWhoopCycle(cycles[cycles.length - 1])
+          })
+      }
     })
   }, [])
 
@@ -231,29 +244,43 @@ export default function CompeteDashboard() {
           </div>
         </div>
 
-        {/* Whoop Recovery Card (Stub) */}
+        {/* Whoop Recovery Card */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-white">Recovery</h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">WHOOP</span>
           </div>
-          {athlete?.whoop_connected ? (
+          {athlete?.whoop_connected && whoopCycle ? (
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-green-400">78%</div>
+              <div className={`rounded-lg p-3 text-center ${
+                whoopCycle.recovery_state === 'green' ? 'bg-green-500/10' :
+                whoopCycle.recovery_state === 'yellow' ? 'bg-yellow-500/10' : 'bg-red-500/10'
+              }`}>
+                <div className={`text-2xl font-bold ${
+                  whoopCycle.recovery_state === 'green' ? 'text-green-400' :
+                  whoopCycle.recovery_state === 'yellow' ? 'text-yellow-400' : 'text-red-400'
+                }`}>
+                  {whoopCycle.recovery_score !== null ? `${Math.round(whoopCycle.recovery_score)}%` : '—'}
+                </div>
                 <div className="text-[10px] text-zinc-500 mt-0.5">Recovery</div>
               </div>
               <div className="bg-blue-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-blue-400">62</div>
+                <div className="text-2xl font-bold text-blue-400">
+                  {whoopCycle.hrv_rmssd !== null ? Math.round(whoopCycle.hrv_rmssd) : '—'}
+                </div>
                 <div className="text-[10px] text-zinc-500 mt-0.5">HRV (ms)</div>
               </div>
               <div className="bg-amber-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-amber-400">14.2</div>
+                <div className="text-2xl font-bold text-amber-400">
+                  {whoopCycle.strain_score !== null ? whoopCycle.strain_score.toFixed(1) : '—'}
+                </div>
                 <div className="text-[10px] text-zinc-500 mt-0.5">Strain</div>
               </div>
               <div className="bg-purple-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-purple-400">7.8h</div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Sleep</div>
+                <div className="text-2xl font-bold text-purple-400">
+                  {whoopCycle.resting_heart_rate !== null ? Math.round(whoopCycle.resting_heart_rate) : '—'}
+                </div>
+                <div className="text-[10px] text-zinc-500 mt-0.5">RHR (bpm)</div>
               </div>
             </div>
           ) : (
@@ -263,9 +290,16 @@ export default function CompeteDashboard() {
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
                 </svg>
               </div>
-              <p className="text-xs text-zinc-500 mb-3">Connect Whoop to see recovery data</p>
-              <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition">
-                Connect Whoop
+              <p className="text-xs text-zinc-500 mb-3">Connect WHOOP to see recovery data</p>
+              <button
+                onClick={async () => {
+                  const res = await fetch('/api/compete/whoop/connect')
+                  const data = await res.json()
+                  if (data.url) window.location.href = data.url
+                }}
+                className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-[11px] text-zinc-400 hover:text-white transition"
+              >
+                Connect WHOOP
               </button>
             </div>
           )}

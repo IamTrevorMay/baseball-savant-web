@@ -1,12 +1,15 @@
 'use client'
 
 import { ScheduleEvent } from '@/lib/compete/schedule-types'
+import { WhoopCycleRow } from '@/lib/compete/whoop-types'
+import RecoveryBadge from '@/components/compete/whoop/RecoveryBadge'
 
 interface Props {
   currentDate: Date
   events: ScheduleEvent[]
   selectedDate: string | null
   onSelectDate: (date: string) => void
+  whoopRecovery?: Map<string, WhoopCycleRow>
 }
 
 function getMonthDays(year: number, month: number) {
@@ -47,7 +50,7 @@ function getMonthDays(year: number, month: number) {
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export default function CalendarMonth({ currentDate, events, selectedDate, onSelectDate }: Props) {
+export default function CalendarMonth({ currentDate, events, selectedDate, onSelectDate, whoopRecovery }: Props) {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const days = getMonthDays(year, month)
@@ -73,6 +76,7 @@ export default function CalendarMonth({ currentDate, events, selectedDate, onSel
           const dayEvents = eventsByDate.get(date) || []
           const isToday = date === today
           const isSelected = date === selectedDate
+          const recovery = whoopRecovery?.get(date)
 
           return (
             <button
@@ -105,6 +109,11 @@ export default function CalendarMonth({ currentDate, events, selectedDate, onSel
                   />
                 ))}
               </div>
+              {recovery && (
+                <div className="absolute bottom-1 right-1">
+                  <RecoveryBadge score={recovery.recovery_score} state={recovery.recovery_state} size="sm" />
+                </div>
+              )}
             </button>
           )
         })}

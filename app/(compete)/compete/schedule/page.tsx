@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { ScheduleEvent, ThrowingTemplate, WorkoutTemplate, ViewMode } from '@/lib/compete/schedule-types'
+import { WhoopCycleRow } from '@/lib/compete/whoop-types'
 import CalendarMonth from '@/components/compete/schedule/CalendarMonth'
 import CalendarWeek from '@/components/compete/schedule/CalendarWeek'
 import EventDetail from '@/components/compete/schedule/EventDetail'
@@ -32,6 +33,7 @@ export default function SchedulePage() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [events, setEvents] = useState<ScheduleEvent[]>([])
   const [templates, setTemplates] = useState<{ throwing: ThrowingTemplate[]; workout: WorkoutTemplate[] }>({ throwing: [], workout: [] })
+  const [whoopRecovery, setWhoopRecovery] = useState<Map<string, WhoopCycleRow>>(new Map())
   const [loading, setLoading] = useState(true)
 
   // Interaction state
@@ -41,9 +43,21 @@ export default function SchedulePage() {
 
   const fetchEvents = useCallback(async () => {
     const range = viewMode === 'month' ? getMonthRange(currentDate) : getWeekRange(currentDate)
-    const res = await fetch(`/api/compete/schedule?from=${range.from}&to=${range.to}`)
-    const data = await res.json()
-    setEvents(data.events || [])
+    const [schedRes, whoopRes] = await Promise.all([
+      fetch(`/api/compete/schedule?from=${range.from}&to=${range.to}`),
+      fetch(`/api/compete/whoop/data?from=${range.from}&to=${range.to}&type=cycles`),
+    ])
+    const schedData = await schedRes.json()
+    setEvents(schedData.events || [])
+
+    const whoopData = await whoopRes.json()
+    if (whoopData.connected && whoopData.cycles) {
+      const map = new Map<string, WhoopCycleRow>()
+      for (const c of whoopData.cycles as WhoopCycleRow[]) {
+        map.set(c.cycle_date, c)
+      }
+      setWhoopRecovery(map)
+    }
     setLoading(false)
   }, [viewMode, currentDate])
 
@@ -212,6 +226,7 @@ export default function SchedulePage() {
                   events={events}
                   selectedDate={selectedDate}
                   onSelectDate={setSelectedDate}
+                  whoopRecovery={whoopRecovery}
                 />
               </div>
 
@@ -262,6 +277,7 @@ export default function SchedulePage() {
               onToggleChecklist={handleToggleChecklist}
               onEditEvent={setEditingEvent}
               onDeleteEvent={handleDelete}
+              whoopRecovery={whoopRecovery}
             />
           )}
 
@@ -279,6 +295,14 @@ export default function SchedulePage() {
               <div className="w-2 h-2 rounded-full bg-green-500" />
               <span className="text-[10px] text-zinc-500">Completed</span>
             </div>
+            {whoopRecovery.size > 0 && (
+              <div className="flex items-center gap-1.5">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+                <span className="text-[10px] text-zinc-500">Recovery</span>
+              </div>
+            )}
           </div>
         </>
       )}
