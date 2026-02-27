@@ -258,6 +258,11 @@ interface PitchEntry {
   pitchColor: string
   mode: 'player' | 'custom'
   customPitch?: any
+  plateX?: number
+  plateZ?: number
+  gameYear?: number
+  dateFrom?: string
+  dateTo?: string
 }
 
 function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
@@ -334,6 +339,40 @@ function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUp
             options={PITCH_TYPES}
           />
           <ClrField label="Color" value={pt.pitchColor || '#06b6d4'} onChange={v => updatePitch(idx, { pitchColor: v })} />
+
+          {/* Zone location */}
+          <div className="mt-1.5 pt-1.5 border-t border-zinc-800/50">
+            <div className="text-[10px] text-zinc-600 mb-1">Plate Location (ft)</div>
+            <div className="grid grid-cols-2 gap-2">
+              <NumField label="H" value={pt.plateX ?? 0} onChange={v => updatePitch(idx, { plateX: v })} step={0.1} min={-2} max={2} />
+              <NumField label="V" value={pt.plateZ ?? 0} onChange={v => updatePitch(idx, { plateZ: v })} step={0.1} min={-2} max={2} />
+            </div>
+          </div>
+
+          {/* Date filters */}
+          {pt.mode !== 'custom' && (
+            <div className="mt-1.5 pt-1.5 border-t border-zinc-800/50">
+              <div className="text-[10px] text-zinc-600 mb-1">Data Filter</div>
+              <NumField label="Season" value={pt.gameYear ?? 0} onChange={v => updatePitch(idx, { gameYear: v || undefined })} min={2015} max={2025} />
+              <label className="flex flex-col gap-0.5 mt-1">
+                <span className="text-[10px] text-zinc-600">Date Range</span>
+                <div className="flex gap-1">
+                  <input
+                    type="date"
+                    value={pt.dateFrom || ''}
+                    onChange={e => updatePitch(idx, { dateFrom: e.target.value || undefined })}
+                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-300 focus:border-cyan-600 outline-none"
+                  />
+                  <input
+                    type="date"
+                    value={pt.dateTo || ''}
+                    onChange={e => updatePitch(idx, { dateTo: e.target.value || undefined })}
+                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-[10px] text-zinc-300 focus:border-cyan-600 outline-none"
+                  />
+                </div>
+              </label>
+            </div>
+          )}
         </Section>
       ))}
 

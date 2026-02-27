@@ -19,12 +19,16 @@ export async function GET(req: NextRequest) {
 
     const gameYear = sp.get('gameYear')
     const pitchType = sp.get('pitchType')
+    const dateFrom = sp.get('dateFrom')
+    const dateTo = sp.get('dateTo')
     const kinematics = sp.get('kinematics') === 'true'
 
     // Build WHERE clauses
     const where: string[] = [`pitcher = ${parseInt(playerId)}`]
     if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
     if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+    if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+    if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
     const whereClause = `WHERE ${where.join(' AND ')}`
 
     if (kinematics) {

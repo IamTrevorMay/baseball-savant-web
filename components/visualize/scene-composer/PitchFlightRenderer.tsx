@@ -17,6 +17,11 @@ interface PitchEntry {
   pitchColor: string
   mode: 'player' | 'custom'
   customPitch?: any
+  plateX?: number   // horizontal offset in feet (- = inside to RHH, + = outside)
+  plateZ?: number   // vertical offset in feet (- = lower, + = higher)
+  gameYear?: number
+  dateFrom?: string
+  dateTo?: string
 }
 
 interface Props {
@@ -53,7 +58,25 @@ function normalizePitches(p: Record<string, any>): PitchEntry[] {
     pitchColor: p.pitchColor ?? '#06b6d4',
     mode: p.mode ?? 'player',
     customPitch: p.customPitch ?? null,
+    plateX: 0, plateZ: 0,
   }]
+}
+
+/** Apply plate offset: linearly interpolate offset from 0 at release to full at plate */
+function applyPlateOffset(
+  trajectory: { x: number; y: number; z: number; t: number }[],
+  plateX: number,
+  plateZ: number
+): { x: number; y: number; z: number; t: number }[] {
+  if (plateX === 0 && plateZ === 0) return trajectory
+  if (trajectory.length < 2) return trajectory
+  const totalT = trajectory[trajectory.length - 1].t
+  if (totalT === 0) return trajectory
+  return trajectory.map(pt => ({
+    ...pt,
+    x: pt.x + (pt.t / totalT) * plateX,
+    z: pt.z + (pt.t / totalT) * plateZ,
+  }))
 }
 
 export default function PitchFlightRenderer({ props: p, width, height }: Props) {
@@ -80,6 +103,9 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
           playerId: String(pt.playerId),
           kinematics: 'true',
           ...(pt.pitchType && { pitchType: pt.pitchType }),
+          ...(pt.gameYear && { gameYear: String(pt.gameYear) }),
+          ...(pt.dateFrom && { dateFrom: pt.dateFrom }),
+          ...(pt.dateTo && { dateTo: pt.dateTo }),
         })
         try {
           const r = await fetch(`/api/scene-stats?${params}`)
@@ -105,7 +131,7 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
 
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(pitches.map(pt => ({ id: pt.id, playerId: pt.playerId, pitchType: pt.pitchType, mode: pt.mode })))])
+  }, [JSON.stringify(pitches.map(pt => ({ id: pt.id, playerId: pt.playerId, pitchType: pt.pitchType, mode: pt.mode, gameYear: pt.gameYear, dateFrom: pt.dateFrom, dateTo: pt.dateTo })))])
 
   const getKinematics = useCallback((pt: PitchEntry): PitchKinematics => {
     if (pt.mode === 'custom' && pt.customPitch) {
@@ -129,10 +155,14 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
     const camera = p.viewMode === 'pitcher' ? PITCHER_CAM : CATCHER_CAM
     const loopDur = (p.loopDuration || 1.5) * 1000
 
-    // Precompute trajectories for all pitches
+    // Precompute trajectories for all pitches (with plate offset applied)
     const trajectories = pitches.map(pt => ({
       pitch: pt,
-      trajectory: computeTrajectory(getKinematics(pt), 60),
+      trajectory: applyPlateOffset(
+        computeTrajectory(getKinematics(pt), 60),
+        pt.plateX || 0,
+        pt.plateZ || 0
+      ),
     }))
 
     const maxTotalTime = Math.max(
@@ -330,7 +360,7 @@ export function drawPitchFlightStatic(
   // Draw each pitch
   for (const pt of pitches) {
     const kinData = kinOverrides?.[pt.id] || DEFAULT_FF
-    const trajectory = computeTrajectory(kinData, 60)
+    const trajectory = applyPlateOffset(computeTrajectory(kinData, 60), pt.plateX || 0, pt.plateZ || 0)
     const color = pt.pitchColor || '#06b6d4'
 
     // Full trail
