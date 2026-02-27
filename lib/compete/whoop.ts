@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import {
   WhoopCycle,
+  WhoopRecovery,
   WhoopSleep,
   WhoopWorkout,
   WhoopPaginatedResponse,
@@ -193,6 +194,10 @@ export async function fetchSleep(athleteId: string, startDate: string, endDate: 
   return fetchPaginated<WhoopSleep>(athleteId, '/activity/sleep', startDate, endDate)
 }
 
+export async function fetchRecovery(athleteId: string, startDate: string, endDate: string) {
+  return fetchPaginated<WhoopRecovery>(athleteId, '/recovery', startDate, endDate)
+}
+
 export async function fetchWorkouts(athleteId: string, startDate: string, endDate: string) {
   return fetchPaginated<WhoopWorkout>(athleteId, '/activity/workout', startDate, endDate)
 }
@@ -203,28 +208,37 @@ export async function syncWhoopData(athleteId: string, days = 30) {
   const endDate = new Date().toISOString().split('T')[0]
   const startDate = new Date(Date.now() - days * 86_400_000).toISOString().split('T')[0]
 
-  // Fetch all data types in parallel
-  const [cycles, sleeps, workouts] = await Promise.all([
+  // Fetch all data types in parallel (recovery is a separate endpoint from cycles)
+  const [cycles, recoveries, sleeps, workouts] = await Promise.all([
     fetchCycles(athleteId, startDate, endDate),
+    fetchRecovery(athleteId, startDate, endDate),
     fetchSleep(athleteId, startDate, endDate),
     fetchWorkouts(athleteId, startDate, endDate),
   ])
 
-  // Upsert cycles
+  // Build a map of cycle_id -> recovery score for joining
+  const recoveryByCycleId = new Map(
+    recoveries.map(r => [r.cycle_id, r])
+  )
+
+  // Upsert cycles with recovery data joined in
   if (cycles.length > 0) {
-    const rows = cycles.map(c => ({
-      athlete_id: athleteId,
-      whoop_cycle_id: String(c.id),
-      cycle_date: c.start.split('T')[0],
-      recovery_score: c.recovery?.recovery_score ?? null,
-      recovery_state: recoveryStateFromScore(c.recovery?.recovery_score ?? null),
-      hrv_rmssd: c.recovery?.hrv_rmssd_milli ?? null,
-      resting_heart_rate: c.recovery?.resting_heart_rate ?? null,
-      strain_score: c.score?.strain ?? null,
-      spo2_pct: c.recovery?.spo2_percentage ?? null,
-      skin_temp_celsius: c.recovery?.skin_temp_celsius ?? null,
-      raw_data: c,
-    }))
+    const rows = cycles.map(c => {
+      const recovery = recoveryByCycleId.get(c.id)
+      return {
+        athlete_id: athleteId,
+        whoop_cycle_id: String(c.id),
+        cycle_date: c.start.split('T')[0],
+        recovery_score: recovery?.score?.recovery_score ?? null,
+        recovery_state: recoveryStateFromScore(recovery?.score?.recovery_score ?? null),
+        hrv_rmssd: recovery?.score?.hrv_rmssd_milli ?? null,
+        resting_heart_rate: recovery?.score?.resting_heart_rate ?? null,
+        strain_score: c.score?.strain ?? null,
+        spo2_pct: recovery?.score?.spo2_percentage ?? null,
+        skin_temp_celsius: recovery?.score?.skin_temp_celsius ?? null,
+        raw_data: { cycle: c, recovery },
+      }
+    })
     await supabaseAdmin.from('whoop_cycles').upsert(rows, { onConflict: 'athlete_id,whoop_cycle_id' })
   }
 

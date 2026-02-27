@@ -80,6 +80,16 @@ export interface WhoopWorkout {
   score?: WhoopWorkoutScore
 }
 
+export interface WhoopRecovery {
+  cycle_id: number
+  sleep_id: number
+  user_id: number
+  created_at: string
+  updated_at: string
+  score_state: string
+  score?: WhoopRecoveryScore
+}
+
 export interface WhoopPaginatedResponse<T> {
   records: T[]
   next_token?: string
