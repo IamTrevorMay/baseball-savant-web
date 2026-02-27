@@ -85,8 +85,8 @@ export async function exchangeWhoopCode(code: string): Promise<{
     throw new Error(`WHOOP token response not JSON: ${text.slice(0, 200)}`)
   }
 
-  if (!data.access_token) {
-    throw new Error(`WHOOP token response missing access_token: ${text.slice(0, 200)}`)
+  if (!data.access_token || !data.refresh_token) {
+    throw new Error(`WHOOP token response missing tokens: ${text.slice(0, 200)}`)
   }
 
   // Fetch user profile to get whoop_user_id
