@@ -22,6 +22,13 @@ interface PitchEntry {
   gameYear?: number
   dateFrom?: string
   dateTo?: string
+  showInKey?: boolean // default true
+}
+
+const PITCH_TYPE_LABELS: Record<string, string> = {
+  FF: '4-Seam', SI: 'Sinker', FC: 'Cutter', SL: 'Slider',
+  CU: 'Curve', CH: 'Changeup', FS: 'Splitter', KC: 'Knuckle Curve',
+  ST: 'Sweeper', SV: 'Slurve',
 }
 
 interface Props {
@@ -266,20 +273,46 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
         }
       }
 
-      // Labels — show all pitcher names
-      const names = pitches
-        .filter(pt => pt.playerName)
-        .map(pt => pt.playerName)
-      if (names.length > 0) {
-        ctx.font = '500 11px -apple-system, system-ui, sans-serif'
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'top'
-        names.forEach((name, i) => {
-          ctx.fillStyle = pitches[i]?.pitchColor || 'rgba(255,255,255,0.5)'
-          ctx.globalAlpha = 0.7
-          ctx.fillText(name, 8, 8 + i * 16)
-        })
-        ctx.globalAlpha = 1
+      // Key / Legend
+      if (p.showKey !== false) {
+        const keyPitches = pitches.filter(pt => pt.showInKey !== false)
+        if (keyPitches.length > 0) {
+          const fontSize = Math.max(10, Math.min(13, height * 0.035))
+          const lineH = fontSize + 5
+          const dotR = fontSize * 0.3
+          const padX = 8
+          const padY = 6
+          const keyH = keyPitches.length * lineH + padY * 2
+          const keyW = Math.min(width * 0.45, 200)
+
+          // Background
+          ctx.fillStyle = 'rgba(0,0,0,0.5)'
+          ctx.globalAlpha = 0.8
+          const rx = width - keyW - 8
+          const ry = 8
+          ctx.beginPath()
+          ctx.roundRect(rx, ry, keyW, keyH, 6)
+          ctx.fill()
+          ctx.globalAlpha = 1
+
+          // Entries
+          ctx.font = `500 ${fontSize}px -apple-system, system-ui, sans-serif`
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'middle'
+          keyPitches.forEach((pt, i) => {
+            const cy = ry + padY + i * lineH + lineH / 2
+            // Color dot
+            ctx.fillStyle = pt.pitchColor || '#06b6d4'
+            ctx.beginPath()
+            ctx.arc(rx + padX + dotR, cy, dotR, 0, Math.PI * 2)
+            ctx.fill()
+            // Label: "PlayerName — PitchType"
+            const typeLabel = PITCH_TYPE_LABELS[pt.pitchType] || pt.pitchType
+            const label = pt.playerName ? `${pt.playerName} — ${typeLabel}` : typeLabel
+            ctx.fillStyle = 'rgba(255,255,255,0.8)'
+            ctx.fillText(label, rx + padX + dotR * 2 + 6, cy, keyW - padX * 2 - dotR * 2 - 6)
+          })
+        }
       }
 
       if (p.animate) {
@@ -387,6 +420,44 @@ export function drawPitchFlightStatic(
       ctx.beginPath()
       ctx.arc(sp.x + x, sp.y + y, ballR, 0, Math.PI * 2)
       ctx.fill()
+    }
+  }
+
+  // Key / Legend
+  if (p.showKey !== false) {
+    const keyPitches = pitches.filter(pt => pt.showInKey !== false)
+    if (keyPitches.length > 0) {
+      const fontSize = Math.max(10, Math.min(13, h * 0.035))
+      const lineH = fontSize + 5
+      const dotR = fontSize * 0.3
+      const padX = 8
+      const padY = 6
+      const keyH = keyPitches.length * lineH + padY * 2
+      const keyW = Math.min(w * 0.45, 200)
+
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'
+      ctx.globalAlpha = 0.8
+      const rx = x + w - keyW - 8
+      const ry = y + 8
+      ctx.beginPath()
+      ctx.roundRect(rx, ry, keyW, keyH, 6)
+      ctx.fill()
+      ctx.globalAlpha = 1
+
+      ctx.font = `500 ${fontSize}px -apple-system, system-ui, sans-serif`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      keyPitches.forEach((pt, i) => {
+        const cy = ry + padY + i * lineH + lineH / 2
+        ctx.fillStyle = pt.pitchColor || '#06b6d4'
+        ctx.beginPath()
+        ctx.arc(rx + padX + dotR, cy, dotR, 0, Math.PI * 2)
+        ctx.fill()
+        const typeLabel = PITCH_TYPE_LABELS[pt.pitchType] || pt.pitchType
+        const label = pt.playerName ? `${pt.playerName} — ${typeLabel}` : typeLabel
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'
+        ctx.fillText(label, rx + padX + dotR * 2 + 6, cy, keyW - padX * 2 - dotR * 2 - 6)
+      })
     }
   }
 

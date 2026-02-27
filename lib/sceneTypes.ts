@@ -92,10 +92,10 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
     w: 400, h: 300,
     props: {
       pitches: [
-        { id: 'p1', playerId: null, playerName: '', pitchType: 'FF', pitchColor: '#06b6d4', mode: 'player', customPitch: null },
+        { id: 'p1', playerId: null, playerName: '', pitchType: 'FF', pitchColor: '#06b6d4', mode: 'player', customPitch: null, showInKey: true },
       ],
       viewMode: 'catcher', showZone: true, animate: true,
-      bgColor: '#09090b', showGrid: true, loopDuration: 1.5,
+      bgColor: '#09090b', showGrid: true, loopDuration: 1.5, showKey: true,
     },
   },
 }

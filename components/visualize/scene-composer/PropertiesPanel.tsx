@@ -263,6 +263,7 @@ interface PitchEntry {
   gameYear?: number
   dateFrom?: string
   dateTo?: string
+  showInKey?: boolean
 }
 
 function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
@@ -373,6 +374,7 @@ function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUp
               </label>
             </div>
           )}
+          <BoolField label="Show in Key" value={pt.showInKey !== false} onChange={v => updatePitch(idx, { showInKey: v })} />
         </Section>
       ))}
 
@@ -397,6 +399,7 @@ function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUp
             { value: 'pitcher', label: "Pitcher's View" },
           ]}
         />
+        <BoolField label="Show Key" value={p.showKey !== false} onChange={v => onUpdateProps({ showKey: v })} />
         <BoolField label="Strike Zone" value={p.showZone ?? true} onChange={v => onUpdateProps({ showZone: v })} />
         <BoolField label="Animate" value={p.animate ?? true} onChange={v => onUpdateProps({ animate: v })} />
         <BoolField label="Grid" value={p.showGrid ?? true} onChange={v => onUpdateProps({ showGrid: v })} />
