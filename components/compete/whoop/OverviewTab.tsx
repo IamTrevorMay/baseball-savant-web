@@ -34,7 +34,7 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
   return (
     <div className="space-y-4">
       {/* Today Hero */}
-      <TodayHero cycle={todayCycle} sleep={todaySleep} todayEvents={todayEvents} />
+      <TodayHero cycle={todayCycle} sleep={todaySleep} todayEvents={todayEvents} allCycles={cycles} allSleep={sleep} />
 
       {/* Trend Charts Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

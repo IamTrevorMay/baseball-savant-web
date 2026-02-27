@@ -1,6 +1,6 @@
 'use client'
 
-import { WhoopCycleRow, WhoopSleepRow } from '@/lib/compete/whoop-types'
+import { WhoopCycleRow, WhoopSleepRow, computeReadiness, readinessStateFromScore } from '@/lib/compete/whoop-types'
 import { ScheduleEvent } from '@/lib/compete/schedule-types'
 import Link from 'next/link'
 
@@ -8,6 +8,8 @@ interface Props {
   cycle: WhoopCycleRow | null
   sleep: WhoopSleepRow | null
   todayEvents: ScheduleEvent[]
+  allCycles?: WhoopCycleRow[]
+  allSleep?: WhoopSleepRow[]
 }
 
 /* ── SVG Circular Gauge ── */
@@ -17,7 +19,7 @@ function CircularGauge({
   color,
   label,
   display,
-  size = 120,
+  size = 90,
 }: {
   value: number | null
   max: number
@@ -26,44 +28,30 @@ function CircularGauge({
   display: string
   size?: number
 }) {
-  const radius = (size - 12) / 2
+  const strokeW = 6
+  const radius = (size - strokeW) / 2
   const circumference = 2 * Math.PI * radius
   const pct = value !== null ? Math.min(value / max, 1) : 0
   const offset = circumference * (1 - pct)
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <svg width={size} height={size} className="-rotate-90">
-        {/* Background ring */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#27272a"
-          strokeWidth={8}
-        />
-        {/* Progress arc */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={value !== null ? color : '#3f3f46'}
-          strokeWidth={8}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="transition-all duration-700 ease-out"
-        />
-      </svg>
-      {/* Center text (absolutely positioned over SVG) */}
-      <div className="relative -mt-[calc(var(--size)*0.5+0.375rem)]" style={{ '--size': `${size}px` } as React.CSSProperties}>
-        <div className="flex flex-col items-center justify-center" style={{ width: size, height: size }}>
-          <span className="text-2xl font-bold text-white">{display}</span>
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90 absolute inset-0">
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#27272a" strokeWidth={strokeW} />
+          <circle
+            cx={size / 2} cy={size / 2} r={radius} fill="none"
+            stroke={value !== null ? color : '#3f3f46'}
+            strokeWidth={strokeW} strokeLinecap="round"
+            strokeDasharray={circumference} strokeDashoffset={offset}
+            className="transition-all duration-700 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-bold text-white leading-none">{display}</span>
         </div>
       </div>
-      <span className="text-[11px] text-zinc-400 -mt-2">{label}</span>
+      <span className="text-[10px] text-zinc-400 mt-1">{label}</span>
     </div>
   )
 }
@@ -121,7 +109,13 @@ function ScheduleEventRow({ event }: { event: ScheduleEvent }) {
 }
 
 /* ── Main Component ── */
-export default function TodayHero({ cycle, sleep, todayEvents }: Props) {
+export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], allSleep = [] }: Props) {
+  // Readiness gauge
+  const readinessScore = computeReadiness(cycle, sleep, allCycles, allSleep)
+  const readinessState = readinessStateFromScore(readinessScore)
+  const readinessColor = readinessState === 'green' ? '#14b8a6'
+    : readinessState === 'yellow' ? '#eab308' : readinessState === 'red' ? '#ef4444' : '#14b8a6'
+
   // Recovery gauge
   const recoveryScore = cycle?.recovery_score ?? null
   const recoveryColor = cycle?.recovery_state === 'green' ? '#22c55e'
@@ -141,9 +135,16 @@ export default function TodayHero({ cycle, sleep, todayEvents }: Props) {
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-      {/* Three Gauges */}
-      <div className="flex justify-center gap-8 sm:gap-12 mb-6">
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      {/* Four Gauges */}
+      <div className="flex justify-center gap-4 sm:gap-8 mb-4">
+        <CircularGauge
+          value={readinessScore}
+          max={100}
+          color={readinessColor}
+          label="Readiness"
+          display={readinessScore !== null ? `${readinessScore}%` : '—'}
+        />
         <CircularGauge
           value={recoveryScore}
           max={100}
@@ -168,7 +169,7 @@ export default function TodayHero({ cycle, sleep, todayEvents }: Props) {
       </div>
 
       {/* Secondary Metric Pills */}
-      <div className="flex justify-center gap-2 flex-wrap mb-5">
+      <div className="flex justify-center gap-2 flex-wrap mb-3">
         <StatPill
           label="HRV"
           value={cycle?.hrv_rmssd !== null && cycle?.hrv_rmssd !== undefined ? `${Math.round(cycle.hrv_rmssd)}` : '—'}

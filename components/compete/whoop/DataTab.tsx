@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { WhoopCycleRow, WhoopSleepRow, WhoopWorkoutRow } from '@/lib/compete/whoop-types'
+import { WhoopCycleRow, WhoopSleepRow, WhoopWorkoutRow, computeReadiness, readinessStateFromScore } from '@/lib/compete/whoop-types'
 
 type SubTab = 'cycles' | 'sleep' | 'workouts'
 
@@ -31,14 +31,33 @@ function StateBadge({ state }: { state: string | null }) {
   )
 }
 
-function CyclesTable({ cycles }: { cycles: WhoopCycleRow[] }) {
+function ReadinessBadge({ score }: { score: number | null }) {
+  if (score === null) return <span className="text-zinc-600">—</span>
+  const state = readinessStateFromScore(score)
+  const colors = state === 'green'
+    ? 'bg-teal-500/20 text-teal-400'
+    : state === 'yellow'
+    ? 'bg-yellow-500/20 text-yellow-400'
+    : 'bg-red-500/20 text-red-400'
+  return (
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${colors}`}>
+      {score}%
+    </span>
+  )
+}
+
+function CyclesTable({ cycles, sleep }: { cycles: WhoopCycleRow[]; sleep: WhoopSleepRow[] }) {
   const sorted = [...cycles].sort((a, b) => b.cycle_date.localeCompare(a.cycle_date))
+  const sleepByDate = new Map<string, WhoopSleepRow>()
+  for (const s of sleep) sleepByDate.set(s.sleep_date, s)
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-[10px] text-zinc-500 border-b border-zinc-800">
             <th className="text-left py-2 px-2 font-medium">Date</th>
+            <th className="text-center py-2 px-2 font-medium">Readiness</th>
             <th className="text-right py-2 px-2 font-medium">Recovery</th>
             <th className="text-center py-2 px-2 font-medium">State</th>
             <th className="text-right py-2 px-2 font-medium">HRV</th>
@@ -49,30 +68,35 @@ function CyclesTable({ cycles }: { cycles: WhoopCycleRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map(c => (
-            <tr key={c.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition">
-              <td className="py-2 px-2 text-zinc-300">{c.cycle_date}</td>
-              <td className="py-2 px-2 text-right text-white font-medium">
-                {c.recovery_score !== null ? `${Math.round(c.recovery_score)}%` : '—'}
-              </td>
-              <td className="py-2 px-2 text-center"><StateBadge state={c.recovery_state} /></td>
-              <td className="py-2 px-2 text-right text-zinc-300">
-                {c.hrv_rmssd !== null ? Math.round(c.hrv_rmssd) : '—'}
-              </td>
-              <td className="py-2 px-2 text-right text-zinc-300">
-                {c.resting_heart_rate !== null ? Math.round(c.resting_heart_rate) : '—'}
-              </td>
-              <td className="py-2 px-2 text-right text-zinc-300">
-                {c.strain_score !== null ? c.strain_score.toFixed(1) : '—'}
-              </td>
-              <td className="py-2 px-2 text-right text-zinc-300">
-                {c.spo2_pct !== null ? `${c.spo2_pct.toFixed(0)}%` : '—'}
-              </td>
-              <td className="py-2 px-2 text-right text-zinc-300">
-                {c.skin_temp_celsius !== null ? `${c.skin_temp_celsius.toFixed(1)}°C` : '—'}
-              </td>
-            </tr>
-          ))}
+          {sorted.map(c => {
+            const matchingSleep = sleepByDate.get(c.cycle_date) ?? null
+            const readiness = computeReadiness(c, matchingSleep, cycles, sleep)
+            return (
+              <tr key={c.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition">
+                <td className="py-2 px-2 text-zinc-300">{c.cycle_date}</td>
+                <td className="py-2 px-2 text-center"><ReadinessBadge score={readiness} /></td>
+                <td className="py-2 px-2 text-right text-white font-medium">
+                  {c.recovery_score !== null ? `${Math.round(c.recovery_score)}%` : '—'}
+                </td>
+                <td className="py-2 px-2 text-center"><StateBadge state={c.recovery_state} /></td>
+                <td className="py-2 px-2 text-right text-zinc-300">
+                  {c.hrv_rmssd !== null ? Math.round(c.hrv_rmssd) : '—'}
+                </td>
+                <td className="py-2 px-2 text-right text-zinc-300">
+                  {c.resting_heart_rate !== null ? Math.round(c.resting_heart_rate) : '—'}
+                </td>
+                <td className="py-2 px-2 text-right text-zinc-300">
+                  {c.strain_score !== null ? c.strain_score.toFixed(1) : '—'}
+                </td>
+                <td className="py-2 px-2 text-right text-zinc-300">
+                  {c.spo2_pct !== null ? `${c.spo2_pct.toFixed(0)}%` : '—'}
+                </td>
+                <td className="py-2 px-2 text-right text-zinc-300">
+                  {c.skin_temp_celsius !== null ? `${c.skin_temp_celsius.toFixed(1)}°C` : '—'}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       {sorted.length === 0 && (
@@ -202,7 +226,7 @@ export default function DataTab({ cycles, sleep, workouts }: Props) {
       </div>
 
       {/* Table content */}
-      {subTab === 'cycles' && <CyclesTable cycles={cycles} />}
+      {subTab === 'cycles' && <CyclesTable cycles={cycles} sleep={sleep} />}
       {subTab === 'sleep' && <SleepTable sleep={sleep} />}
       {subTab === 'workouts' && <WorkoutsTable workouts={workouts} />}
     </div>

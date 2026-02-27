@@ -40,7 +40,7 @@ export default function CalendarWeek({ currentDate, events, onToggleComplete, on
   }
 
   return (
-    <div className="grid grid-cols-7 gap-0">
+    <div className="grid grid-cols-7 border-l border-t border-zinc-700">
       {weekDates.map((date, i) => {
         const dayEvents = eventsByDate.get(date) || []
         const isToday = date === today
@@ -50,11 +50,13 @@ export default function CalendarWeek({ currentDate, events, onToggleComplete, on
         return (
           <div
             key={date}
-            className={`min-h-[300px] p-2 ${i < 6 ? 'border-r border-zinc-700' : ''}`}
+            className="min-h-[420px] p-2 border-r border-b border-zinc-700"
           >
-            <div className={`text-center mb-2 ${isToday ? 'text-amber-400' : 'text-zinc-500'}`}>
-              <div className="text-[10px] font-medium">{DOW[i]}</div>
-              <div className={`text-lg font-bold ${isToday ? 'text-amber-400' : 'text-zinc-300'}`}>{dayNum}</div>
+            <div className={`flex items-center justify-between mb-3 pb-2 border-b border-zinc-800`}>
+              <div className={isToday ? 'text-amber-400' : 'text-zinc-500'}>
+                <span className="text-[10px] font-medium mr-1">{DOW[i]}</span>
+                <span className={`text-base font-bold ${isToday ? 'text-amber-400' : 'text-zinc-300'}`}>{dayNum}</span>
+              </div>
               {recovery && (
                 <RecoveryBadge score={recovery.recovery_score} state={recovery.recovery_state} size="sm" />
               )}

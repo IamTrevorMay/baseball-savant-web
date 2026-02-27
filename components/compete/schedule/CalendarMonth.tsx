@@ -81,12 +81,12 @@ export default function CalendarMonth({ currentDate, events, selectedDate, onSel
 
   return (
     <div>
-      <div className="grid grid-cols-7 mb-1">
+      <div className="grid grid-cols-7 border-b border-zinc-700">
         {DOW.map(d => (
-          <div key={d} className="text-center text-[10px] text-zinc-600 font-medium py-1">{d}</div>
+          <div key={d} className="text-center text-[10px] text-zinc-500 font-medium py-2">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-[2px] bg-zinc-800/50 rounded-lg overflow-hidden">
+      <div className="grid grid-cols-7 border-l border-zinc-700">
         {days.map(({ date, day, inMonth }) => {
           const dayEvents = eventsByDate.get(date) || []
           const isToday = date === today
@@ -100,18 +100,24 @@ export default function CalendarMonth({ currentDate, events, selectedDate, onSel
               key={date}
               onClick={() => onSelectDate(date)}
               className={`
-                relative min-h-[100px] p-1.5 text-left transition-colors
+                relative min-h-[120px] p-1.5 text-left transition-colors border-r border-b border-zinc-700
                 ${inMonth ? 'bg-zinc-900' : 'bg-zinc-950/50'}
-                ${isSelected ? 'ring-1 ring-amber-500/50' : ''}
+                ${isSelected ? 'ring-1 ring-inset ring-amber-500/60' : ''}
                 hover:bg-zinc-800/80
               `}
             >
-              <span className={`
-                text-sm font-medium block mb-1
-                ${!inMonth ? 'text-zinc-700' : isToday ? 'text-amber-400' : 'text-zinc-400'}
-              `}>
-                {day}
-              </span>
+              {/* Top row: date left, recovery right */}
+              <div className="flex items-start justify-between mb-1">
+                <span className={`
+                  text-xs font-medium leading-none
+                  ${!inMonth ? 'text-zinc-700' : isToday ? 'text-amber-400 font-bold' : 'text-zinc-400'}
+                `}>
+                  {day}
+                </span>
+                {recovery && (
+                  <RecoveryBadge score={recovery.recovery_score} state={recovery.recovery_state} size="sm" />
+                )}
+              </div>
               <div className="space-y-0.5">
                 {visibleEvents.map(evt => (
                   <EventBar key={evt.id} event={evt} />
@@ -120,11 +126,6 @@ export default function CalendarMonth({ currentDate, events, selectedDate, onSel
                   <div className="text-[9px] text-zinc-600 px-1">+{overflowCount} more</div>
                 )}
               </div>
-              {recovery && (
-                <div className="absolute bottom-1 right-1">
-                  <RecoveryBadge score={recovery.recovery_score} state={recovery.recovery_state} size="sm" />
-                </div>
-              )}
             </button>
           )
         })}

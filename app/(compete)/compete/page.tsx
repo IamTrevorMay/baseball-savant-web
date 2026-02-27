@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { WhoopCycleRow } from '@/lib/compete/whoop-types'
+import { WhoopCycleRow, WhoopSleepRow, computeReadiness, readinessStateFromScore } from '@/lib/compete/whoop-types'
 
 interface AthleteProfile {
   id: string
@@ -56,6 +56,9 @@ export default function CompeteDashboard() {
   const [needsSetup, setNeedsSetup] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [whoopCycle, setWhoopCycle] = useState<WhoopCycleRow | null>(null)
+  const [whoopSleep, setWhoopSleep] = useState<WhoopSleepRow | null>(null)
+  const [allCycles, setAllCycles] = useState<WhoopCycleRow[]>([])
+  const [allSleep, setAllSleep] = useState<WhoopSleepRow[]>([])
   const [loading, setLoading] = useState(true)
 
   // Onboarding form
@@ -76,14 +79,20 @@ export default function CompeteDashboard() {
       setNotifications(notifRes.notifications || [])
       setLoading(false)
 
-      // Fetch today's WHOOP data if connected
+      // Fetch WHOOP data if connected (30 days for readiness rank-order context)
       if (profileRes.athlete?.whoop_connected) {
         const today = new Date().toISOString().split('T')[0]
-        fetch(`/api/compete/whoop/data?from=${today}&to=${today}&type=cycles`)
+        const from = new Date(Date.now() - 30 * 86_400_000).toISOString().split('T')[0]
+        fetch(`/api/compete/whoop/data?from=${from}&to=${today}&type=all`)
           .then(r => r.json())
           .then(data => {
             const cycles = data.cycles || []
+            const sleepArr = data.sleep || []
+            setAllCycles(cycles)
+            setAllSleep(sleepArr)
             if (cycles.length > 0) setWhoopCycle(cycles[cycles.length - 1])
+            const todaySleepRow = sleepArr.find((s: WhoopSleepRow) => s.sleep_date === today) ?? (sleepArr.length > 0 ? sleepArr[sleepArr.length - 1] : null)
+            setWhoopSleep(todaySleepRow)
           })
       }
     })
@@ -244,46 +253,50 @@ export default function CompeteDashboard() {
           </div>
         </div>
 
-        {/* Whoop Recovery Card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-white">Recovery</h3>
+        {/* WHOOP Gauges Widget */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-white">Today</h3>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">WHOOP</span>
           </div>
-          {athlete?.whoop_connected && whoopCycle ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div className={`rounded-lg p-3 text-center ${
-                whoopCycle.recovery_state === 'green' ? 'bg-green-500/10' :
-                whoopCycle.recovery_state === 'yellow' ? 'bg-yellow-500/10' : 'bg-red-500/10'
-              }`}>
-                <div className={`text-2xl font-bold ${
-                  whoopCycle.recovery_state === 'green' ? 'text-green-400' :
-                  whoopCycle.recovery_state === 'yellow' ? 'text-yellow-400' : 'text-red-400'
-                }`}>
-                  {whoopCycle.recovery_score !== null ? `${Math.round(whoopCycle.recovery_score)}%` : '—'}
+          {athlete?.whoop_connected && whoopCycle ? (() => {
+            const readiness = computeReadiness(whoopCycle, whoopSleep, allCycles, allSleep)
+            const rState = readinessStateFromScore(readiness)
+            const readinessColor = rState === 'green' ? '#14b8a6' : rState === 'yellow' ? '#eab308' : rState === 'red' ? '#ef4444' : '#14b8a6'
+            const recoveryColor = whoopCycle.recovery_state === 'green' ? '#22c55e' : whoopCycle.recovery_state === 'yellow' ? '#eab308' : '#ef4444'
+            const sleepScore = whoopSleep?.sleep_score ?? null
+            const gaugeSize = 76
+            const strokeW = 5
+            const radius = (gaugeSize - strokeW) / 2
+            const circ = 2 * Math.PI * radius
+
+            function MiniGauge({ value, max, color, label, display }: { value: number | null; max: number; color: string; label: string; display: string }) {
+              const pct = value !== null ? Math.min(value / max, 1) : 0
+              const off = circ * (1 - pct)
+              return (
+                <div className="flex flex-col items-center">
+                  <div className="relative" style={{ width: gaugeSize, height: gaugeSize }}>
+                    <svg width={gaugeSize} height={gaugeSize} className="-rotate-90 absolute inset-0">
+                      <circle cx={gaugeSize / 2} cy={gaugeSize / 2} r={radius} fill="none" stroke="#27272a" strokeWidth={strokeW} />
+                      <circle cx={gaugeSize / 2} cy={gaugeSize / 2} r={radius} fill="none" stroke={value !== null ? color : '#3f3f46'} strokeWidth={strokeW} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={off} className="transition-all duration-700 ease-out" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-sm font-bold text-white leading-none">{display}</span>
+                    </div>
+                  </div>
+                  <span className="text-[9px] text-zinc-400 mt-1">{label}</span>
                 </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Recovery</div>
+              )
+            }
+
+            return (
+              <div className="flex justify-center gap-4">
+                <MiniGauge value={readiness} max={100} color={readinessColor} label="Readiness" display={readiness !== null ? `${readiness}%` : '—'} />
+                <MiniGauge value={whoopCycle.recovery_score} max={100} color={recoveryColor} label="Recovery" display={whoopCycle.recovery_score !== null ? `${Math.round(whoopCycle.recovery_score)}%` : '—'} />
+                <MiniGauge value={sleepScore} max={100} color="#3b82f6" label="Sleep" display={sleepScore !== null ? `${Math.round(sleepScore)}%` : '—'} />
               </div>
-              <div className="bg-blue-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-blue-400">
-                  {whoopCycle.hrv_rmssd !== null ? Math.round(whoopCycle.hrv_rmssd) : '—'}
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">HRV (ms)</div>
-              </div>
-              <div className="bg-amber-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-amber-400">
-                  {whoopCycle.strain_score !== null ? whoopCycle.strain_score.toFixed(1) : '—'}
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">Strain</div>
-              </div>
-              <div className="bg-purple-500/10 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-purple-400">
-                  {whoopCycle.resting_heart_rate !== null ? Math.round(whoopCycle.resting_heart_rate) : '—'}
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">RHR (bpm)</div>
-              </div>
-            </div>
-          ) : (
+            )
+          })() : (
             <div className="flex flex-col items-center justify-center py-6 text-center">
               <div className="w-10 h-10 rounded-full bg-zinc-800 text-zinc-600 flex items-center justify-center mb-3">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
