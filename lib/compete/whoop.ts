@@ -73,12 +73,21 @@ export async function exchangeWhoopCode(code: string): Promise<{
     }),
   })
 
+  const text = await res.text()
   if (!res.ok) {
-    const text = await res.text()
     throw new Error(`WHOOP token exchange failed: ${res.status} ${text}`)
   }
 
-  const data = await res.json()
+  let data: Record<string, unknown>
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error(`WHOOP token response not JSON: ${text.slice(0, 200)}`)
+  }
+
+  if (!data.access_token) {
+    throw new Error(`WHOOP token response missing access_token: ${text.slice(0, 200)}`)
+  }
 
   // Fetch user profile to get whoop_user_id
   const profileRes = await fetch(`${WHOOP_API_BASE}/user/profile/basic`, {
@@ -87,9 +96,9 @@ export async function exchangeWhoopCode(code: string): Promise<{
   const profile = await profileRes.json()
 
   return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in: data.expires_in,
+    access_token: data.access_token as string,
+    refresh_token: data.refresh_token as string,
+    expires_in: data.expires_in as number,
     whoop_user_id: String(profile.user_id),
   }
 }
