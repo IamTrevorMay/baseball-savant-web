@@ -188,7 +188,10 @@ async function fetchPaginated<T>(athleteId: string, path: string, startDate: str
     if (nextToken) params.set('nextToken', nextToken)
 
     const res = await whoopFetch(athleteId, path, params)
-    if (!res.ok) throw new Error(`WHOOP API error: ${res.status}`)
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`WHOOP API error ${res.status} on ${path}: ${body.slice(0, 300)}`)
+    }
 
     const data: WhoopPaginatedResponse<T> = await res.json()
     allRecords.push(...data.records)
