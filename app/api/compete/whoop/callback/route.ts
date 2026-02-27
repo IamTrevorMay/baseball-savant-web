@@ -3,24 +3,27 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { exchangeWhoopCode, encrypt } from '@/lib/compete/whoop'
 
+function fail(siteUrl: string, error: string, detail?: string) {
+  const params = new URLSearchParams({ error })
+  if (detail) params.set('detail', detail)
+  return NextResponse.redirect(`${siteUrl}/compete/whoop?${params.toString()}`)
+}
+
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code')
   const state = req.nextUrl.searchParams.get('state')
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
   if (!code || !state) {
-    console.error('WHOOP callback: missing code or state')
-    return NextResponse.redirect(`${siteUrl}/compete/whoop?error=invalid_request`)
+    return fail(siteUrl, 'missing_code_or_state')
   }
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    console.error('WHOOP callback: user not authenticated')
-    return NextResponse.redirect(`${siteUrl}/compete/whoop?error=unauthorized`)
+    return fail(siteUrl, 'unauthorized')
   }
 
-  // Get athlete profile and verify state from DB
   const { data: athlete } = await supabaseAdmin
     .from('athlete_profiles')
     .select('id, oauth_state')
@@ -28,20 +31,16 @@ export async function GET(req: NextRequest) {
     .single()
 
   if (!athlete) {
-    console.error('WHOOP callback: no athlete profile for user', user.id)
-    return NextResponse.redirect(`${siteUrl}/compete/whoop?error=no_profile`)
+    return fail(siteUrl, 'no_profile')
   }
 
   if (athlete.oauth_state !== state) {
-    console.error('WHOOP callback: state mismatch', { expected: !!athlete.oauth_state, got: !!state })
-    return NextResponse.redirect(`${siteUrl}/compete/whoop?error=invalid_state`)
+    return fail(siteUrl, 'invalid_state', `db=${!!athlete.oauth_state}_url=${!!state}`)
   }
 
   try {
-    console.error('WHOOP exchange: redirect_uri=' + `${siteUrl}/api/compete/whoop/callback`)
     const tokens = await exchangeWhoopCode(code)
 
-    // Upsert encrypted tokens
     const { error: upsertError } = await supabaseAdmin.from('whoop_tokens').upsert({
       athlete_id: athlete.id,
       whoop_user_id: tokens.whoop_user_id,
@@ -52,24 +51,21 @@ export async function GET(req: NextRequest) {
     }, { onConflict: 'athlete_id' })
 
     if (upsertError) {
-      console.error('WHOOP callback: token upsert failed', upsertError)
-      return NextResponse.redirect(`${siteUrl}/compete/whoop?error=db_error`)
+      return fail(siteUrl, 'db_upsert', upsertError.message)
     }
 
-    // Mark whoop_connected and clear oauth_state
     const { error: updateError } = await supabaseAdmin
       .from('athlete_profiles')
       .update({ whoop_connected: true, oauth_state: null })
       .eq('id', athlete.id)
 
     if (updateError) {
-      console.error('WHOOP callback: profile update failed', updateError)
+      return fail(siteUrl, 'db_update', updateError.message)
     }
 
-    return NextResponse.redirect(`${siteUrl}/compete/whoop`)
+    return NextResponse.redirect(`${siteUrl}/compete/whoop?success=1`)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('WHOOP exchange failed: ' + msg)
-    return NextResponse.redirect(`${siteUrl}/compete/whoop?error=exchange_failed`)
+    return fail(siteUrl, 'exchange_failed', msg.slice(0, 200))
   }
 }
