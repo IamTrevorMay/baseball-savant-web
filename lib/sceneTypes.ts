@@ -91,10 +91,11 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   'pitch-flight': {
     w: 400, h: 300,
     props: {
-      playerId: null, playerName: '', pitchType: 'FF',
+      pitches: [
+        { id: 'p1', playerId: null, playerName: '', pitchType: 'FF', pitchColor: '#06b6d4', mode: 'player', customPitch: null },
+      ],
       viewMode: 'catcher', showZone: true, animate: true,
-      bgColor: '#09090b', showGrid: true, customPitch: null,
-      pitchColor: '#06b6d4', loopDuration: 1.5, mode: 'player',
+      bgColor: '#09090b', showGrid: true, loopDuration: 1.5,
     },
   },
 }

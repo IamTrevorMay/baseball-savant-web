@@ -111,19 +111,23 @@ function PlayerImageRenderer({ props: p, width, height }: { props: Record<string
   )
 }
 
-function ComparisonBarRenderer({ props: p }: { props: Record<string, any> }) {
+function ComparisonBarRenderer({ props: p, height }: { props: Record<string, any>; height: number }) {
   const pct = Math.min(100, Math.max(0, (p.value / p.maxValue) * 100))
+  const labelSize = Math.max(10, Math.min(16, height * 0.28))
+  const barH = Math.max(6, height * 0.35)
+  const gap = Math.max(2, height * 0.06)
+
   return (
-    <div className="w-full h-full flex flex-col justify-center gap-1.5">
+    <div className="w-full h-full flex flex-col justify-center px-1" style={{ gap }}>
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-zinc-400 font-medium">{p.label}</span>
+        <span className="text-zinc-400 font-medium" style={{ fontSize: labelSize }}>{p.label}</span>
         {p.showValue && (
-          <span className="text-[11px] text-white font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <span className="text-white font-bold" style={{ fontSize: labelSize, fontVariantNumeric: 'tabular-nums' }}>
             {p.value}
           </span>
         )}
       </div>
-      <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden">
+      <div className="w-full bg-zinc-800 rounded-full overflow-hidden" style={{ height: barH }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: p.color }} />
       </div>
     </div>
@@ -141,7 +145,7 @@ function renderElementContent(el: SceneElement) {
     case 'player-image':
       return <PlayerImageRenderer props={el.props} width={el.width} height={el.height} />
     case 'comparison-bar':
-      return <ComparisonBarRenderer props={el.props} />
+      return <ComparisonBarRenderer props={el.props} height={el.height} />
     case 'pitch-flight':
       return <PitchFlightRenderer props={el.props} width={el.width} height={el.height} />
     default:
@@ -239,7 +243,7 @@ export default function SceneCanvas({ scene, selectedId, zoom, onSelect, onUpdat
           transform: `scale(${zoom})`,
           transformOrigin: 'center center',
         }}
-        onClick={e => {
+        onMouseDown={e => {
           if (e.target === e.currentTarget) onSelect(null)
         }}
       >

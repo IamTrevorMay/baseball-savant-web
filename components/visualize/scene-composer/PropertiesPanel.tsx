@@ -248,51 +248,123 @@ function DataBindingSection({ binding, onUpdateBinding, onFetch, loading }: {
 
 // ── Pitch Flight Section ────────────────────────────────────────────────────
 
+const DEFAULT_PITCH_COLORS = ['#06b6d4', '#f97316', '#a855f7', '#22c55e', '#ef4444', '#eab308', '#ec4899', '#3b82f6']
+
+interface PitchEntry {
+  id: string
+  playerId: number | null
+  playerName: string
+  pitchType: string
+  pitchColor: string
+  mode: 'player' | 'custom'
+  customPitch?: any
+}
+
 function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  // Normalize legacy single-pitch into array
+  const pitches: PitchEntry[] = (p.pitches && Array.isArray(p.pitches) && p.pitches.length > 0)
+    ? p.pitches
+    : [{ id: 'p1', playerId: p.playerId ?? null, playerName: p.playerName ?? '', pitchType: p.pitchType ?? 'FF', pitchColor: p.pitchColor ?? '#06b6d4', mode: p.mode ?? 'player', customPitch: p.customPitch ?? null }]
+
+  function updatePitch(idx: number, updates: Partial<PitchEntry>) {
+    const next = pitches.map((pt, i) => i === idx ? { ...pt, ...updates } : pt)
+    onUpdateProps({ pitches: next })
+  }
+
+  function addPitch() {
+    const colorIdx = pitches.length % DEFAULT_PITCH_COLORS.length
+    const newPitch: PitchEntry = {
+      id: Math.random().toString(36).slice(2, 8),
+      playerId: null, playerName: '', pitchType: 'FF',
+      pitchColor: DEFAULT_PITCH_COLORS[colorIdx],
+      mode: 'player', customPitch: null,
+    }
+    onUpdateProps({ pitches: [...pitches, newPitch] })
+  }
+
+  function removePitch(idx: number) {
+    if (pitches.length <= 1) return
+    onUpdateProps({ pitches: pitches.filter((_, i) => i !== idx) })
+  }
+
   return (
-    <Section title="Pitch Flight">
-      <SelField
-        label="Mode"
-        value={p.mode || 'player'}
-        onChange={v => onUpdateProps({ mode: v })}
-        options={[
-          { value: 'player', label: 'Player Data' },
-          { value: 'custom', label: 'Custom Pitch' },
-        ]}
-      />
-      {p.mode !== 'custom' && (
-        <>
-          <PlayerPicker
-            label="Pick pitcher..."
-            onSelect={(id, name) => onUpdateProps({ playerId: id, playerName: name })}
+    <>
+      {/* Per-pitch controls */}
+      {pitches.map((pt, idx) => (
+        <Section key={pt.id} title={`Pitch ${idx + 1}`}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: pt.pitchColor }} />
+              <span className="text-[10px] text-zinc-400">{pt.playerName || 'No pitcher'}</span>
+            </div>
+            {pitches.length > 1 && (
+              <button
+                onClick={() => removePitch(idx)}
+                className="text-[10px] text-zinc-500 hover:text-red-400 transition px-1"
+                title="Remove pitch"
+              >
+                {'\u2715'}
+              </button>
+            )}
+          </div>
+          <SelField
+            label="Mode"
+            value={pt.mode || 'player'}
+            onChange={v => updatePitch(idx, { mode: v as 'player' | 'custom' })}
+            options={[
+              { value: 'player', label: 'Player Data' },
+              { value: 'custom', label: 'Custom Pitch' },
+            ]}
           />
-          {p.playerName && (
-            <div className="text-[10px] text-cyan-400/70 truncate">{p.playerName}</div>
+          {pt.mode !== 'custom' && (
+            <>
+              <PlayerPicker
+                label="Pick pitcher..."
+                onSelect={(id, name) => updatePitch(idx, { playerId: id, playerName: name })}
+              />
+              {pt.playerName && (
+                <div className="text-[10px] text-cyan-400/70 truncate">{pt.playerName}</div>
+              )}
+            </>
           )}
-        </>
-      )}
-      <SelField
-        label="Pitch Type"
-        value={p.pitchType || 'FF'}
-        onChange={v => onUpdateProps({ pitchType: v })}
-        options={PITCH_TYPES}
-      />
-      <SelField
-        label="View"
-        value={p.viewMode || 'catcher'}
-        onChange={v => onUpdateProps({ viewMode: v })}
-        options={[
-          { value: 'catcher', label: "Catcher's View" },
-          { value: 'pitcher', label: "Pitcher's View" },
-        ]}
-      />
-      <BoolField label="Strike Zone" value={p.showZone ?? true} onChange={v => onUpdateProps({ showZone: v })} />
-      <BoolField label="Animate" value={p.animate ?? true} onChange={v => onUpdateProps({ animate: v })} />
-      <BoolField label="Grid" value={p.showGrid ?? true} onChange={v => onUpdateProps({ showGrid: v })} />
-      <ClrField label="Ball Color" value={p.pitchColor || '#06b6d4'} onChange={v => onUpdateProps({ pitchColor: v })} />
-      <ClrField label="BG Color" value={p.bgColor || '#09090b'} onChange={v => onUpdateProps({ bgColor: v })} />
-      <NumField label="Loop (s)" value={p.loopDuration || 1.5} onChange={v => onUpdateProps({ loopDuration: v })} min={0.5} max={5} step={0.1} />
-    </Section>
+          <SelField
+            label="Pitch Type"
+            value={pt.pitchType || 'FF'}
+            onChange={v => updatePitch(idx, { pitchType: v })}
+            options={PITCH_TYPES}
+          />
+          <ClrField label="Color" value={pt.pitchColor || '#06b6d4'} onChange={v => updatePitch(idx, { pitchColor: v })} />
+        </Section>
+      ))}
+
+      {/* Add pitch button */}
+      <div className="mb-3">
+        <button
+          onClick={addPitch}
+          className="w-full px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 border-dashed text-[11px] text-zinc-400 hover:text-cyan-400 hover:border-cyan-600/40 transition"
+        >
+          + Add Pitch
+        </button>
+      </div>
+
+      {/* Shared settings */}
+      <Section title="Display">
+        <SelField
+          label="View"
+          value={p.viewMode || 'catcher'}
+          onChange={v => onUpdateProps({ viewMode: v })}
+          options={[
+            { value: 'catcher', label: "Catcher's View" },
+            { value: 'pitcher', label: "Pitcher's View" },
+          ]}
+        />
+        <BoolField label="Strike Zone" value={p.showZone ?? true} onChange={v => onUpdateProps({ showZone: v })} />
+        <BoolField label="Animate" value={p.animate ?? true} onChange={v => onUpdateProps({ animate: v })} />
+        <BoolField label="Grid" value={p.showGrid ?? true} onChange={v => onUpdateProps({ showGrid: v })} />
+        <ClrField label="BG Color" value={p.bgColor || '#09090b'} onChange={v => onUpdateProps({ bgColor: v })} />
+        <NumField label="Loop (s)" value={p.loopDuration || 1.5} onChange={v => onUpdateProps({ loopDuration: v })} min={0.5} max={5} step={0.1} />
+      </Section>
+    </>
   )
 }
 

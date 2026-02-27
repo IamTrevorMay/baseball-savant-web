@@ -7,8 +7,17 @@ import {
   simulatedPitchToKinematics,
   type PitchKinematics,
   type Camera,
-  type TrajectoryPoint,
 } from '@/lib/trajectoryPhysics'
+
+interface PitchEntry {
+  id: string
+  playerId: number | null
+  playerName: string
+  pitchType: string
+  pitchColor: string
+  mode: 'player' | 'custom'
+  customPitch?: any
+}
 
 interface Props {
   props: Record<string, any>
@@ -17,70 +26,93 @@ interface Props {
 }
 
 // Strike zone dimensions in feet
-const ZONE_LEFT = -17 / 24   // -8.5 inches from center
-const ZONE_RIGHT = 17 / 24   // +8.5 inches from center
-const ZONE_BOT = 1.5          // avg bottom of zone
-const ZONE_TOP = 3.5          // avg top of zone
-const PLATE_Y = 17 / 12       // front of home plate
+const ZONE_LEFT = -17 / 24
+const ZONE_RIGHT = 17 / 24
+const ZONE_BOT = 1.5
+const ZONE_TOP = 3.5
+const PLATE_Y = 17 / 12
 
 const CATCHER_CAM: Camera = { x: 0, y: -4, z: 2.5, fov: 45 }
 const PITCHER_CAM: Camera = { x: 0, y: 55, z: 6, fov: 30 }
 
-// Default 4-seam kinematics for fallback
 const DEFAULT_FF: PitchKinematics = {
   vx0: 3.5, vy0: -132, vz0: -6.2,
   ax: -8, ay: 28, az: -15,
   release_pos_x: -1.5, release_pos_z: 5.8, release_extension: 6.2,
 }
 
+/** Normalize legacy single-pitch props into pitches array */
+function normalizePitches(p: Record<string, any>): PitchEntry[] {
+  if (p.pitches && Array.isArray(p.pitches) && p.pitches.length > 0) return p.pitches
+  // Legacy: single pitch props at top level
+  return [{
+    id: 'legacy',
+    playerId: p.playerId ?? null,
+    playerName: p.playerName ?? '',
+    pitchType: p.pitchType ?? 'FF',
+    pitchColor: p.pitchColor ?? '#06b6d4',
+    mode: p.mode ?? 'player',
+    customPitch: p.customPitch ?? null,
+  }]
+}
+
 export default function PitchFlightRenderer({ props: p, width, height }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const frameRef = useRef(0)
   const rafRef = useRef<number>(0)
-  const [kin, setKin] = useState<PitchKinematics | null>(null)
+  const [kinMap, setKinMap] = useState<Record<string, PitchKinematics>>({})
   const [loading, setLoading] = useState(false)
 
-  // Fetch kinematics for player mode
+  const pitches = normalizePitches(p)
+
+  // Fetch kinematics for all player-mode pitches
   useEffect(() => {
-    if (p.mode === 'custom' || !p.playerId) {
-      setKin(null)
+    const playerPitches = pitches.filter(pt => pt.mode !== 'custom' && pt.playerId)
+    if (playerPitches.length === 0) {
+      setKinMap({})
       return
     }
     let cancelled = false
     setLoading(true)
-    const params = new URLSearchParams({
-      playerId: String(p.playerId),
-      kinematics: 'true',
-      ...(p.pitchType && { pitchType: p.pitchType }),
-    })
-    fetch(`/api/scene-stats?${params}`)
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return
-        const rows = data.kinematics || []
-        const match = rows.find((r: any) => r.pitch_type === p.pitchType) || rows[0]
-        if (match) {
-          setKin({
-            vx0: Number(match.vx0), vy0: Number(match.vy0), vz0: Number(match.vz0),
-            ax: Number(match.ax), ay: Number(match.ay), az: Number(match.az),
-            release_pos_x: Number(match.release_pos_x), release_pos_z: Number(match.release_pos_z),
-            release_extension: Number(match.release_extension),
-          })
-        } else {
-          setKin(DEFAULT_FF)
-        }
-      })
-      .catch(() => { if (!cancelled) setKin(DEFAULT_FF) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [p.playerId, p.pitchType, p.mode])
 
-  const getKinematics = useCallback((): PitchKinematics => {
-    if (p.mode === 'custom' && p.customPitch) {
-      return simulatedPitchToKinematics(p.customPitch)
+    Promise.all(
+      playerPitches.map(async (pt) => {
+        const params = new URLSearchParams({
+          playerId: String(pt.playerId),
+          kinematics: 'true',
+          ...(pt.pitchType && { pitchType: pt.pitchType }),
+        })
+        try {
+          const r = await fetch(`/api/scene-stats?${params}`)
+          const data = await r.json()
+          const rows = data.kinematics || []
+          const match = rows.find((r: any) => r.pitch_type === pt.pitchType) || rows[0]
+          if (match) {
+            return [pt.id, {
+              vx0: Number(match.vx0), vy0: Number(match.vy0), vz0: Number(match.vz0),
+              ax: Number(match.ax), ay: Number(match.ay), az: Number(match.az),
+              release_pos_x: Number(match.release_pos_x), release_pos_z: Number(match.release_pos_z),
+              release_extension: Number(match.release_extension),
+            }] as [string, PitchKinematics]
+          }
+        } catch {}
+        return [pt.id, DEFAULT_FF] as [string, PitchKinematics]
+      })
+    ).then(entries => {
+      if (!cancelled) setKinMap(Object.fromEntries(entries))
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(pitches.map(pt => ({ id: pt.id, playerId: pt.playerId, pitchType: pt.pitchType, mode: pt.mode })))])
+
+  const getKinematics = useCallback((pt: PitchEntry): PitchKinematics => {
+    if (pt.mode === 'custom' && pt.customPitch) {
+      return simulatedPitchToKinematics(pt.customPitch)
     }
-    return kin || DEFAULT_FF
-  }, [p.mode, p.customPitch, kin])
+    return kinMap[pt.id] || DEFAULT_FF
+  }, [kinMap])
 
   // Main render loop
   useEffect(() => {
@@ -95,10 +127,18 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
     ctx.scale(dpr, dpr)
 
     const camera = p.viewMode === 'pitcher' ? PITCHER_CAM : CATCHER_CAM
-    const kinData = getKinematics()
-    const trajectory = computeTrajectory(kinData, 60)
-    const totalTime = trajectory.length > 0 ? trajectory[trajectory.length - 1].t : 0.4
     const loopDur = (p.loopDuration || 1.5) * 1000
+
+    // Precompute trajectories for all pitches
+    const trajectories = pitches.map(pt => ({
+      pitch: pt,
+      trajectory: computeTrajectory(getKinematics(pt), 60),
+    }))
+
+    const maxTotalTime = Math.max(
+      ...trajectories.map(t => t.trajectory.length > 0 ? t.trajectory[t.trajectory.length - 1].t : 0.4)
+    )
+
     let lastTime = 0
 
     function draw(timestamp: number) {
@@ -143,68 +183,73 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
         ctx.stroke()
       }
 
-      // Trajectory progress
+      // Animation progress
       let progress = 1
       if (p.animate) {
         const elapsed = (timestamp - lastTime) % loopDur
-        // Ball travels for totalTime ratio of the loop, then pause
-        const travelPct = Math.min(1, totalTime / (loopDur / 1000))
+        const travelPct = Math.min(1, maxTotalTime / (loopDur / 1000))
         const phase = elapsed / loopDur
-        if (phase < travelPct) {
-          progress = phase / travelPct
-        } else {
-          progress = 1
+        progress = phase < travelPct ? phase / travelPct : 1
+      }
+
+      // Draw each pitch trajectory
+      for (const { pitch: pt, trajectory } of trajectories) {
+        const endIdx = Math.floor(progress * (trajectory.length - 1))
+        const color = pt.pitchColor || '#06b6d4'
+
+        // Trail
+        ctx.lineWidth = 2
+        ctx.strokeStyle = color
+        ctx.globalAlpha = 0.5
+        ctx.beginPath()
+        let started = false
+        for (let i = 0; i <= endIdx; i++) {
+          const sp = projectToScreen(trajectory[i], camera, width, height)
+          if (!started) { ctx.moveTo(sp.x, sp.y); started = true }
+          else ctx.lineTo(sp.x, sp.y)
+        }
+        ctx.stroke()
+        ctx.globalAlpha = 1
+
+        // Ball
+        if (endIdx >= 0 && endIdx < trajectory.length) {
+          const ballPt = trajectory[endIdx]
+          const sp = projectToScreen(ballPt, camera, width, height)
+          const ballR = Math.max(3, sp.scale * 0.12)
+
+          // Glow
+          const grad = ctx.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, ballR * 3)
+          grad.addColorStop(0, color)
+          grad.addColorStop(1, 'transparent')
+          ctx.fillStyle = grad
+          ctx.globalAlpha = 0.4
+          ctx.beginPath()
+          ctx.arc(sp.x, sp.y, ballR * 3, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.globalAlpha = 1
+
+          // Ball solid
+          ctx.fillStyle = '#ffffff'
+          ctx.beginPath()
+          ctx.arc(sp.x, sp.y, ballR, 0, Math.PI * 2)
+          ctx.fill()
         }
       }
 
-      const endIdx = Math.floor(progress * (trajectory.length - 1))
-
-      // Trail
-      ctx.lineWidth = 2
-      ctx.strokeStyle = p.pitchColor || '#06b6d4'
-      ctx.globalAlpha = 0.5
-      ctx.beginPath()
-      let started = false
-      for (let i = 0; i <= endIdx; i++) {
-        const pt = trajectory[i]
-        const sp = projectToScreen(pt, camera, width, height)
-        if (!started) { ctx.moveTo(sp.x, sp.y); started = true }
-        else ctx.lineTo(sp.x, sp.y)
-      }
-      ctx.stroke()
-      ctx.globalAlpha = 1
-
-      // Ball
-      if (endIdx >= 0 && endIdx < trajectory.length) {
-        const ballPt = trajectory[endIdx]
-        const sp = projectToScreen(ballPt, camera, width, height)
-        const ballR = Math.max(3, sp.scale * 0.12)
-
-        // Glow
-        const grad = ctx.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, ballR * 3)
-        grad.addColorStop(0, p.pitchColor || '#06b6d4')
-        grad.addColorStop(1, 'transparent')
-        ctx.fillStyle = grad
-        ctx.globalAlpha = 0.4
-        ctx.beginPath()
-        ctx.arc(sp.x, sp.y, ballR * 3, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.globalAlpha = 1
-
-        // Ball solid
-        ctx.fillStyle = '#ffffff'
-        ctx.beginPath()
-        ctx.arc(sp.x, sp.y, ballR, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // Label
-      if (p.playerName) {
+      // Labels — show all pitcher names
+      const names = pitches
+        .filter(pt => pt.playerName)
+        .map(pt => pt.playerName)
+      if (names.length > 0) {
         ctx.font = '500 11px -apple-system, system-ui, sans-serif'
-        ctx.fillStyle = 'rgba(255,255,255,0.5)'
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
-        ctx.fillText(p.playerName, 8, 8)
+        names.forEach((name, i) => {
+          ctx.fillStyle = pitches[i]?.pitchColor || 'rgba(255,255,255,0.5)'
+          ctx.globalAlpha = 0.7
+          ctx.fillText(name, 8, 8 + i * 16)
+        })
+        ctx.globalAlpha = 1
       }
 
       if (p.animate) {
@@ -218,7 +263,8 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [width, height, p.viewMode, p.showZone, p.animate, p.showGrid, p.bgColor, p.pitchColor, p.loopDuration, p.playerName, p.mode, getKinematics])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height, p.viewMode, p.showZone, p.animate, p.showGrid, p.bgColor, p.loopDuration, JSON.stringify(pitches), getKinematics])
 
   if (loading) {
     return (
@@ -237,19 +283,17 @@ export default function PitchFlightRenderer({ props: p, width, height }: Props) 
 }
 
 /**
- * Static render for PNG export — draws final frame of trajectory onto a canvas context.
+ * Static render for PNG export — draws all pitch trajectories onto a canvas context.
  */
 export function drawPitchFlightStatic(
   ctx: CanvasRenderingContext2D,
   el: { x: number; y: number; width: number; height: number; props: Record<string, any> },
-  kinOverride?: PitchKinematics
+  kinOverrides?: Record<string, PitchKinematics>
 ) {
   const p = el.props
   const { x, y, width: w, height: h } = el
   const camera = p.viewMode === 'pitcher' ? PITCHER_CAM : CATCHER_CAM
-
-  const kinData = kinOverride || DEFAULT_FF
-  const trajectory = computeTrajectory(kinData, 60)
+  const pitches = normalizePitches(p)
 
   ctx.save()
 
@@ -283,30 +327,37 @@ export function drawPitchFlightStatic(
     ctx.stroke()
   }
 
-  // Full trail
-  ctx.lineWidth = 2
-  ctx.strokeStyle = p.pitchColor || '#06b6d4'
-  ctx.globalAlpha = 0.6
-  ctx.beginPath()
-  let started = false
-  for (const pt of trajectory) {
-    const sp = projectToScreen(pt, camera, w, h)
-    if (!started) { ctx.moveTo(sp.x + x, sp.y + y); started = true }
-    else ctx.lineTo(sp.x + x, sp.y + y)
-  }
-  ctx.stroke()
-  ctx.globalAlpha = 1
+  // Draw each pitch
+  for (const pt of pitches) {
+    const kinData = kinOverrides?.[pt.id] || DEFAULT_FF
+    const trajectory = computeTrajectory(kinData, 60)
+    const color = pt.pitchColor || '#06b6d4'
 
-  // Final ball position
-  if (trajectory.length > 0) {
-    const last = trajectory[trajectory.length - 1]
-    const sp = projectToScreen(last, camera, w, h)
-    const ballR = Math.max(4, sp.scale * 0.12)
-
-    ctx.fillStyle = '#ffffff'
+    // Full trail
+    ctx.lineWidth = 2
+    ctx.strokeStyle = color
+    ctx.globalAlpha = 0.6
     ctx.beginPath()
-    ctx.arc(sp.x + x, sp.y + y, ballR, 0, Math.PI * 2)
-    ctx.fill()
+    let started = false
+    for (const point of trajectory) {
+      const sp = projectToScreen(point, camera, w, h)
+      if (!started) { ctx.moveTo(sp.x + x, sp.y + y); started = true }
+      else ctx.lineTo(sp.x + x, sp.y + y)
+    }
+    ctx.stroke()
+    ctx.globalAlpha = 1
+
+    // Final ball position
+    if (trajectory.length > 0) {
+      const last = trajectory[trajectory.length - 1]
+      const sp = projectToScreen(last, camera, w, h)
+      const ballR = Math.max(4, sp.scale * 0.12)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.arc(sp.x + x, sp.y + y, ballR, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
 
   ctx.restore()
