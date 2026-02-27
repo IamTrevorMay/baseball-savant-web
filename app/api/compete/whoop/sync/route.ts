@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
     const result = await syncWhoopData(athlete.id, days)
     return NextResponse.json({ success: true, synced: result })
   } catch (err) {
-    console.error('WHOOP sync error:', err)
-    return NextResponse.json({ error: 'Sync failed' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('WHOOP sync error:', msg)
+    return NextResponse.json({ error: 'Sync failed', detail: msg }, { status: 500 })
   }
 }
