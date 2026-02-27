@@ -1,13 +1,27 @@
 'use client'
 
-import { SceneElement } from '@/lib/sceneTypes'
+import { useState } from 'react'
+import { SceneElement, DataBinding } from '@/lib/sceneTypes'
+import { SCENE_METRICS } from '@/lib/reportMetrics'
+import PlayerPicker from '@/components/visualize/PlayerPicker'
+
+const PITCH_TYPES = [
+  { value: 'FF', label: 'Four-Seam' }, { value: 'SI', label: 'Sinker' },
+  { value: 'FC', label: 'Cutter' }, { value: 'SL', label: 'Slider' },
+  { value: 'CU', label: 'Curveball' }, { value: 'CH', label: 'Changeup' },
+  { value: 'FS', label: 'Splitter' }, { value: 'KC', label: 'Knuckle Curve' },
+  { value: 'ST', label: 'Sweeper' }, { value: 'SV', label: 'Slurve' },
+]
 
 interface Props {
   element: SceneElement
   onUpdate: (updates: Partial<SceneElement>) => void
   onUpdateProps: (propUpdates: Record<string, any>) => void
+  onUpdateBinding: (binding: DataBinding | undefined) => void
+  onFetchBinding: () => void
   onDelete: () => void
   onDuplicate: () => void
+  bindingLoading?: boolean
 }
 
 // ── Field Helpers ────────────────────────────────────────────────────────────
@@ -102,10 +116,192 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+// ── Player Image Section ─────────────────────────────────────────────────────
+
+function PlayerImageSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const imgUrl = p.playerId
+    ? `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`
+    : null
+
+  return (
+    <>
+      <Section title="Player">
+        <PlayerPicker
+          label="Search player..."
+          onSelect={(id, name) => onUpdateProps({ playerId: id, playerName: name })}
+        />
+        {p.playerId && (
+          <div className="flex items-center gap-2 mt-1 p-1.5 rounded bg-zinc-800/80 border border-zinc-700/50">
+            <img src={imgUrl!} alt={p.playerName} className="w-8 h-8 rounded object-cover" />
+            <div className="min-w-0">
+              <div className="text-[11px] text-zinc-200 truncate">{p.playerName}</div>
+              <div className="text-[10px] text-zinc-500 font-mono">ID: {p.playerId}</div>
+            </div>
+          </div>
+        )}
+        <ClrField label="Border" value={p.borderColor} onChange={v => onUpdateProps({ borderColor: v })} />
+        <BoolField label="Show Label" value={p.showLabel} onChange={v => onUpdateProps({ showLabel: v })} />
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-[10px] text-zinc-500 hover:text-zinc-300 transition mt-1"
+        >
+          {showAdvanced ? '\u25B4 Hide' : '\u25BE Advanced'} manual ID
+        </button>
+        {showAdvanced && (
+          <div className="space-y-2 mt-1 pl-2 border-l border-zinc-700/50">
+            <TxtField label="Name" value={p.playerName} onChange={v => onUpdateProps({ playerName: v })} />
+            <NumField label="MLB ID" value={p.playerId || 0} onChange={v => onUpdateProps({ playerId: v || null })} />
+          </div>
+        )}
+      </Section>
+    </>
+  )
+}
+
+// ── Data Binding Section ─────────────────────────────────────────────────────
+
+function DataBindingSection({ binding, onUpdateBinding, onFetch, loading }: {
+  binding?: DataBinding
+  onUpdateBinding: (b: DataBinding | undefined) => void
+  onFetch: () => void
+  loading?: boolean
+}) {
+  const [source, setSource] = useState<'manual' | 'statcast' | 'lahman'>(binding?.source || 'manual')
+
+  function updateField(field: string, value: any) {
+    const base: DataBinding = binding || { playerId: 0, playerName: '', metric: 'avg_velo', source: 'statcast' }
+    onUpdateBinding({ ...base, [field]: value })
+  }
+
+  return (
+    <Section title="Data Binding">
+      <SelField
+        label="Source"
+        value={source}
+        onChange={v => {
+          const s = v as 'manual' | 'statcast' | 'lahman'
+          setSource(s)
+          if (s === 'manual') { onUpdateBinding(undefined) }
+          else { updateField('source', s) }
+        }}
+        options={[
+          { value: 'manual', label: 'Manual' },
+          { value: 'statcast', label: 'Statcast' },
+          { value: 'lahman', label: 'Lahman' },
+        ]}
+      />
+      {source !== 'manual' && (
+        <>
+          <PlayerPicker
+            label="Pick player..."
+            onSelect={(id, name) => {
+              updateField('playerId', id)
+              updateField('playerName', name)
+              onUpdateBinding({ ...(binding || { playerId: 0, playerName: '', metric: 'avg_velo', source }), playerId: id, playerName: name })
+            }}
+          />
+          {binding?.playerName && (
+            <div className="text-[10px] text-cyan-400/70 truncate">{binding.playerName}</div>
+          )}
+          {source === 'statcast' && (
+            <>
+              <SelField
+                label="Metric"
+                value={binding?.metric || 'avg_velo'}
+                onChange={v => updateField('metric', v)}
+                options={SCENE_METRICS}
+              />
+              <NumField
+                label="Year"
+                value={binding?.gameYear || 2024}
+                onChange={v => updateField('gameYear', v)}
+                min={2015} max={2025}
+              />
+              <SelField
+                label="Pitch Type"
+                value={binding?.pitchType || ''}
+                onChange={v => updateField('pitchType', v || undefined)}
+                options={[{ value: '', label: 'All' }, ...PITCH_TYPES]}
+              />
+            </>
+          )}
+          {source === 'lahman' && (
+            <TxtField
+              label="Lahman Stat"
+              value={binding?.lahmanStat || 'era'}
+              onChange={v => updateField('lahmanStat', v)}
+            />
+          )}
+          <button
+            onClick={onFetch}
+            disabled={!binding?.playerId || loading}
+            className="w-full mt-1 px-3 py-1.5 rounded bg-cyan-600/20 border border-cyan-600/50 text-[11px] font-medium text-cyan-300 hover:bg-cyan-600/30 transition disabled:opacity-40"
+          >
+            {loading ? 'Fetching...' : 'Fetch & Apply'}
+          </button>
+        </>
+      )}
+    </Section>
+  )
+}
+
+// ── Pitch Flight Section ────────────────────────────────────────────────────
+
+function PitchFlightSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  return (
+    <Section title="Pitch Flight">
+      <SelField
+        label="Mode"
+        value={p.mode || 'player'}
+        onChange={v => onUpdateProps({ mode: v })}
+        options={[
+          { value: 'player', label: 'Player Data' },
+          { value: 'custom', label: 'Custom Pitch' },
+        ]}
+      />
+      {p.mode !== 'custom' && (
+        <>
+          <PlayerPicker
+            label="Pick pitcher..."
+            onSelect={(id, name) => onUpdateProps({ playerId: id, playerName: name })}
+          />
+          {p.playerName && (
+            <div className="text-[10px] text-cyan-400/70 truncate">{p.playerName}</div>
+          )}
+        </>
+      )}
+      <SelField
+        label="Pitch Type"
+        value={p.pitchType || 'FF'}
+        onChange={v => onUpdateProps({ pitchType: v })}
+        options={PITCH_TYPES}
+      />
+      <SelField
+        label="View"
+        value={p.viewMode || 'catcher'}
+        onChange={v => onUpdateProps({ viewMode: v })}
+        options={[
+          { value: 'catcher', label: "Catcher's View" },
+          { value: 'pitcher', label: "Pitcher's View" },
+        ]}
+      />
+      <BoolField label="Strike Zone" value={p.showZone ?? true} onChange={v => onUpdateProps({ showZone: v })} />
+      <BoolField label="Animate" value={p.animate ?? true} onChange={v => onUpdateProps({ animate: v })} />
+      <BoolField label="Grid" value={p.showGrid ?? true} onChange={v => onUpdateProps({ showGrid: v })} />
+      <ClrField label="Ball Color" value={p.pitchColor || '#06b6d4'} onChange={v => onUpdateProps({ pitchColor: v })} />
+      <ClrField label="BG Color" value={p.bgColor || '#09090b'} onChange={v => onUpdateProps({ bgColor: v })} />
+      <NumField label="Loop (s)" value={p.loopDuration || 1.5} onChange={v => onUpdateProps({ loopDuration: v })} min={0.5} max={5} step={0.1} />
+    </Section>
+  )
+}
+
 // ── Panel ────────────────────────────────────────────────────────────────────
 
-export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onDelete, onDuplicate }: Props) {
+export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, bindingLoading }: Props) {
   const p = element.props
+  const b = element.dataBinding
+  const showBinding = element.type === 'stat-card' || element.type === 'comparison-bar'
 
   return (
     <div className="p-3 text-xs">
@@ -200,12 +396,7 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onDe
 
       {/* Player Image */}
       {element.type === 'player-image' && (
-        <Section title="Player">
-          <TxtField label="Name" value={p.playerName} onChange={v => onUpdateProps({ playerName: v })} />
-          <NumField label="MLB ID" value={p.playerId || 0} onChange={v => onUpdateProps({ playerId: v || null })} />
-          <ClrField label="Border" value={p.borderColor} onChange={v => onUpdateProps({ borderColor: v })} />
-          <BoolField label="Show Label" value={p.showLabel} onChange={v => onUpdateProps({ showLabel: v })} />
-        </Section>
+        <PlayerImageSection p={p} onUpdateProps={onUpdateProps} />
       )}
 
       {/* Comparison Bar */}
@@ -217,6 +408,21 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onDe
           <ClrField label="Color" value={p.color} onChange={v => onUpdateProps({ color: v })} />
           <BoolField label="Show Value" value={p.showValue} onChange={v => onUpdateProps({ showValue: v })} />
         </Section>
+      )}
+
+      {/* Pitch Flight */}
+      {element.type === 'pitch-flight' && (
+        <PitchFlightSection p={p} onUpdateProps={onUpdateProps} />
+      )}
+
+      {/* Data Binding */}
+      {showBinding && (
+        <DataBindingSection
+          binding={b}
+          onUpdateBinding={onUpdateBinding}
+          onFetch={onFetchBinding}
+          loading={bindingLoading}
+        />
       )}
 
       {/* Layer */}

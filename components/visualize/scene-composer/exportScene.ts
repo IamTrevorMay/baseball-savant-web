@@ -1,4 +1,6 @@
 import { Scene, SceneElement } from '@/lib/sceneTypes'
+import { interpolateScene } from '@/lib/sceneInterpolation'
+import { drawPitchFlightStatic } from './PitchFlightRenderer'
 
 // ── Canvas helpers ───────────────────────────────────────────────────────────
 
@@ -265,6 +267,9 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
       case 'comparison-bar':
         drawComparisonBar(ctx, el)
         break
+      case 'pitch-flight':
+        drawPitchFlightStatic(ctx, el)
+        break
     }
 
     ctx.restore()
@@ -287,4 +292,134 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
 // Export scene as JSON (for import into After Effects via Bodymovin or custom script)
 export function exportSceneJSON(scene: Scene): string {
   return JSON.stringify(scene, null, 2)
+}
+
+// ── Render single frame (for animation export) ─────────────────────────────
+
+async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement('canvas')
+  canvas.width = scene.width
+  canvas.height = scene.height
+  const ctx = canvas.getContext('2d')!
+
+  ctx.fillStyle = scene.background
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  const elements = interpolateScene(scene.elements, frame)
+  const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex)
+
+  for (const el of sorted) {
+    ctx.save()
+    ctx.globalAlpha = el.opacity
+
+    if (el.rotation) {
+      ctx.translate(el.x + el.width / 2, el.y + el.height / 2)
+      ctx.rotate((el.rotation * Math.PI) / 180)
+      ctx.translate(-(el.x + el.width / 2), -(el.y + el.height / 2))
+    }
+
+    switch (el.type) {
+      case 'stat-card': drawStatCard(ctx, el); break
+      case 'text': drawText(ctx, el); break
+      case 'shape': drawShape(ctx, el); break
+      case 'player-image': await drawPlayerImage(ctx, el); break
+      case 'comparison-bar': drawComparisonBar(ctx, el); break
+      case 'pitch-flight': drawPitchFlightStatic(ctx, el); break
+    }
+
+    ctx.restore()
+  }
+
+  return canvas
+}
+
+// ── Image Sequence Export (ZIP) ─────────────────────────────────────────────
+
+export async function exportImageSequence(
+  scene: Scene,
+  onProgress?: (pct: number) => void,
+): Promise<void> {
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  const fps = scene.fps || 30
+  const duration = scene.duration || 5
+  const totalFrames = fps * duration
+
+  for (let f = 0; f <= totalFrames; f++) {
+    const canvas = await renderFrame(scene, f)
+    const blob = await new Promise<Blob>((resolve) => {
+      canvas.toBlob(b => resolve(b!), 'image/png')
+    })
+    const padded = String(f).padStart(5, '0')
+    zip.file(`frame_${padded}.png`, blob)
+    onProgress?.(((f + 1) / (totalFrames + 1)) * 100)
+  }
+
+  const content = await zip.generateAsync({ type: 'blob' })
+  const url = URL.createObjectURL(content)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${scene.name.replace(/\s+/g, '-').toLowerCase()}-sequence.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// ── WebM Video Export ───────────────────────────────────────────────────────
+
+export async function exportWebM(
+  scene: Scene,
+  onProgress?: (pct: number) => void,
+): Promise<void> {
+  const fps = scene.fps || 30
+  const duration = scene.duration || 5
+  const totalFrames = fps * duration
+
+  // Create a persistent canvas for the MediaRecorder
+  const canvas = document.createElement('canvas')
+  canvas.width = scene.width
+  canvas.height = scene.height
+  const ctx = canvas.getContext('2d')!
+
+  const stream = canvas.captureStream(0) // manual frame control
+  const recorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp9',
+    videoBitsPerSecond: 8_000_000,
+  })
+  const chunks: Blob[] = []
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
+
+  const done = new Promise<void>(resolve => {
+    recorder.onstop = () => resolve()
+  })
+
+  recorder.start()
+
+  for (let f = 0; f <= totalFrames; f++) {
+    const frameCanvas = await renderFrame(scene, f)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(frameCanvas, 0, 0)
+
+    // Request a frame from the stream
+    const track = stream.getVideoTracks()[0] as any
+    if (track?.requestFrame) track.requestFrame()
+
+    // Wait for frame timing
+    await new Promise(r => setTimeout(r, 1000 / fps))
+    onProgress?.(((f + 1) / (totalFrames + 1)) * 100)
+  }
+
+  recorder.stop()
+  await done
+
+  const blob = new Blob(chunks, { type: 'video/webm' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${scene.name.replace(/\s+/g, '-').toLowerCase()}.webm`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }

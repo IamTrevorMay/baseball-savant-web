@@ -1,4 +1,28 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight'
+
+// ── Data Binding ────────────────────────────────────────────────────────────
+
+export interface DataBinding {
+  playerId: number
+  playerName: string
+  metric: string
+  source: 'statcast' | 'lahman'
+  gameYear?: number
+  pitchType?: string
+  lahmanStat?: string
+}
+
+// ── Animation ───────────────────────────────────────────────────────────────
+
+export type EasingFunction = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+
+export interface Keyframe {
+  frame: number
+  props: Partial<{ x: number; y: number; width: number; height: number; opacity: number; rotation: number }>
+  easing: EasingFunction
+}
+
+// ── Scene Element ───────────────────────────────────────────────────────────
 
 export interface SceneElement {
   id: string
@@ -12,7 +36,13 @@ export interface SceneElement {
   zIndex: number
   locked: boolean
   props: Record<string, any>
+  dataBinding?: DataBinding
+  enterFrame?: number
+  exitFrame?: number
+  keyframes?: Keyframe[]
 }
+
+// ── Scene ───────────────────────────────────────────────────────────────────
 
 export interface Scene {
   id: string
@@ -21,7 +51,12 @@ export interface Scene {
   height: number
   background: string
   elements: SceneElement[]
+  savedId?: string
+  duration?: number // seconds, default 5
+  fps?: number      // default 30
 }
+
+// ── Catalog ─────────────────────────────────────────────────────────────────
 
 export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; icon: string }[] = [
   { type: 'stat-card', name: 'Stat Card', desc: 'Bold stat with label', icon: '#' },
@@ -29,6 +64,7 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'shape', name: 'Shape', desc: 'Rectangle or circle', icon: '\u25a1' },
   { type: 'player-image', name: 'Player', desc: 'MLB headshot', icon: '\u25c9' },
   { type: 'comparison-bar', name: 'Stat Bar', desc: 'Horizontal bar', icon: '\u25ac' },
+  { type: 'pitch-flight', name: 'Pitch Flight', desc: 'Animated trajectory', icon: '\u2312' },
 ]
 
 const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string, any> }> = {
@@ -51,6 +87,15 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   'comparison-bar': {
     w: 400, h: 48,
     props: { label: 'Fastball', value: 96.2, maxValue: 105, color: '#06b6d4', showValue: true },
+  },
+  'pitch-flight': {
+    w: 400, h: 300,
+    props: {
+      playerId: null, playerName: '', pitchType: 'FF',
+      viewMode: 'catcher', showZone: true, animate: true,
+      bgColor: '#09090b', showGrid: true, customPitch: null,
+      pitchColor: '#06b6d4', loopDuration: 1.5, mode: 'player',
+    },
   },
 }
 
@@ -81,6 +126,8 @@ export function createDefaultScene(): Scene {
     height: 1080,
     background: '#09090b',
     elements: [],
+    duration: 5,
+    fps: 30,
   }
 }
 

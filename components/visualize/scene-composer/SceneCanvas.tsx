@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { Scene, SceneElement } from '@/lib/sceneTypes'
+import PitchFlightRenderer from './PitchFlightRenderer'
 
 // ── Element Renderers ──────────────────────────────────────────────────────────
 
@@ -141,6 +142,8 @@ function renderElementContent(el: SceneElement) {
       return <PlayerImageRenderer props={el.props} width={el.width} height={el.height} />
     case 'comparison-bar':
       return <ComparisonBarRenderer props={el.props} />
+    case 'pitch-flight':
+      return <PitchFlightRenderer props={el.props} width={el.width} height={el.height} />
     default:
       return <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 text-xs">Unknown</div>
   }
