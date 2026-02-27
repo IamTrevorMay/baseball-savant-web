@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    console.error('WHOOP exchange: redirect_uri=' + `${siteUrl}/api/compete/whoop/callback`)
     const tokens = await exchangeWhoopCode(code)
 
     // Upsert encrypted tokens
@@ -67,7 +68,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(`${siteUrl}/compete/whoop`)
   } catch (err) {
-    console.error('WHOOP OAuth callback error:', err)
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('WHOOP exchange failed: ' + msg)
     return NextResponse.redirect(`${siteUrl}/compete/whoop?error=exchange_failed`)
   }
 }
