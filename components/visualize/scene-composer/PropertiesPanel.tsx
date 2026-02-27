@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SceneElement, DataBinding } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
@@ -747,12 +747,147 @@ function TeamColorSection({ element, onUpdate, onUpdateProps }: { element: Scene
   )
 }
 
+// ── Google Font Loader ──────────────────────────────────────────────────────
+
+const GOOGLE_FONTS = [
+  { value: '', label: 'System Default' },
+  { value: 'Inter', label: 'Inter' },
+  { value: 'Oswald', label: 'Oswald' },
+  { value: 'Bebas Neue', label: 'Bebas Neue' },
+  { value: 'Roboto Condensed', label: 'Roboto Condensed' },
+  { value: 'Montserrat', label: 'Montserrat' },
+  { value: 'Playfair Display', label: 'Playfair Display' },
+  { value: 'Source Code Pro', label: 'Source Code Pro' },
+  { value: 'Righteous', label: 'Righteous' },
+  { value: 'Anton', label: 'Anton' },
+]
+
+const _loadedFontLinks = new Set<string>()
+
+function useGoogleFont(family: string) {
+  useEffect(() => {
+    if (!family || _loadedFontLinks.has(family)) return
+    _loadedFontLinks.add(family)
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@400;500;600;700;800;900&display=swap`
+    document.head.appendChild(link)
+  }, [family])
+}
+
+// ── Collapsible Section ─────────────────────────────────────────────────────
+
+function CollapsibleSection({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border-b border-zinc-800 pb-3 mb-3">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-[10px] uppercase tracking-wider text-zinc-500 font-medium mb-2 hover:text-zinc-300 transition"
+      >
+        {title}
+        <span className="text-[10px]">{open ? '\u25B4' : '\u25BE'}</span>
+      </button>
+      {open && <div className="space-y-2">{children}</div>}
+    </div>
+  )
+}
+
+// ── Style Section (universal) ───────────────────────────────────────────────
+
+function StyleSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  const hasShadow = (p.shadowBlur || 0) > 0
+  const hasBorder = (p.borderWidth || 0) > 0
+
+  return (
+    <CollapsibleSection title="Style">
+      {/* Drop Shadow */}
+      <div className="text-[10px] text-zinc-600 font-medium">Drop Shadow</div>
+      <NumField label="Blur" value={p.shadowBlur || 0} onChange={v => onUpdateProps({ shadowBlur: v })} min={0} max={50} />
+      {hasShadow && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <NumField label="X" value={p.shadowOffsetX || 0} onChange={v => onUpdateProps({ shadowOffsetX: v })} min={-20} max={20} />
+            <NumField label="Y" value={p.shadowOffsetY ?? 4} onChange={v => onUpdateProps({ shadowOffsetY: v })} min={-20} max={20} />
+          </div>
+          <ClrField label="Color" value={p.shadowColor || '#000000'} onChange={v => onUpdateProps({ shadowColor: v })} />
+        </>
+      )}
+
+      {/* Border */}
+      <div className="text-[10px] text-zinc-600 font-medium mt-2">Border</div>
+      <NumField label="Width" value={p.borderWidth || 0} onChange={v => onUpdateProps({ borderWidth: v })} min={0} max={20} />
+      {hasBorder && (
+        <ClrField label="Color" value={p.borderColor || '#06b6d4'} onChange={v => onUpdateProps({ borderColor: v })} />
+      )}
+      <NumField label="Radius" value={p.borderRadius ?? 12} onChange={v => onUpdateProps({ borderRadius: v })} min={0} max={100} />
+
+      {/* Background */}
+      <div className="text-[10px] text-zinc-600 font-medium mt-2">Background</div>
+      <ClrField label="Color" value={p.bgColor || ''} onChange={v => onUpdateProps({ bgColor: v })} />
+      <NumField label="Opacity" value={p.bgOpacity ?? 1} onChange={v => onUpdateProps({ bgOpacity: Math.min(1, Math.max(0, v)) })} min={0} max={1} step={0.05} />
+
+      {/* Backdrop Blur */}
+      <div className="text-[10px] text-zinc-600 font-medium mt-2">Backdrop Blur</div>
+      <NumField label="Amount" value={p.blurAmount || 0} onChange={v => onUpdateProps({ blurAmount: v })} min={0} max={30} />
+    </CollapsibleSection>
+  )
+}
+
+// ── Typography Section (text types) ─────────────────────────────────────────
+
+const TEXT_TYPES = new Set(['text', 'stat-card', 'ticker', 'comparison-bar'])
+
+function TypographySection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  useGoogleFont(p.fontFamily || '')
+  const hasTextShadow = (p.textShadowBlur || 0) > 0
+
+  return (
+    <CollapsibleSection title="Typography">
+      <SelField
+        label="Font"
+        value={p.fontFamily || ''}
+        onChange={v => onUpdateProps({ fontFamily: v })}
+        options={GOOGLE_FONTS}
+      />
+      <SelField
+        label="Transform"
+        value={p.textTransform || 'none'}
+        onChange={v => onUpdateProps({ textTransform: v })}
+        options={[
+          { value: 'none', label: 'None' },
+          { value: 'uppercase', label: 'UPPERCASE' },
+          { value: 'lowercase', label: 'lowercase' },
+          { value: 'capitalize', label: 'Capitalize' },
+        ]}
+      />
+
+      {/* Text Shadow */}
+      <div className="text-[10px] text-zinc-600 font-medium mt-2">Text Shadow</div>
+      <NumField label="Blur" value={p.textShadowBlur || 0} onChange={v => onUpdateProps({ textShadowBlur: v })} min={0} max={30} />
+      {hasTextShadow && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <NumField label="X" value={p.textShadowOffsetX || 0} onChange={v => onUpdateProps({ textShadowOffsetX: v })} min={-10} max={10} />
+            <NumField label="Y" value={p.textShadowOffsetY || 0} onChange={v => onUpdateProps({ textShadowOffsetY: v })} min={-10} max={10} />
+          </div>
+          <ClrField label="Color" value={p.textShadowColor || '#06b6d4'} onChange={v => onUpdateProps({ textShadowColor: v })} />
+        </>
+      )}
+    </CollapsibleSection>
+  )
+}
+
 // ── Panel ────────────────────────────────────────────────────────────────────
 
 export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30 }: Props) {
   const p = element.props
   const b = element.dataBinding
   const showBinding = element.type === 'stat-card' || element.type === 'comparison-bar'
+  const showTypography = TEXT_TYPES.has(element.type)
+
+  // Load Google Font for live preview
+  useGoogleFont(p.fontFamily || '')
 
   return (
     <div className="p-3 text-xs">
@@ -782,6 +917,12 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
         <NumField label="Rotation" value={element.rotation} onChange={v => onUpdate({ rotation: v })} />
         <NumField label="Opacity" value={element.opacity} onChange={v => onUpdate({ opacity: Math.min(1, Math.max(0, v)) })} min={0} max={1} step={0.05} />
       </Section>
+
+      {/* Universal Style */}
+      <StyleSection p={p} onUpdateProps={onUpdateProps} />
+
+      {/* Typography (text types only) */}
+      {showTypography && <TypographySection p={p} onUpdateProps={onUpdateProps} />}
 
       {/* Stat Card */}
       {element.type === 'stat-card' && (
@@ -857,6 +998,7 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
           <NumField label="Value" value={p.value} onChange={v => onUpdateProps({ value: v })} step={0.1} />
           <NumField label="Max" value={p.maxValue} onChange={v => onUpdateProps({ maxValue: v })} step={0.1} />
           <ClrField label="Color" value={p.color} onChange={v => onUpdateProps({ color: v })} />
+          <ClrField label="Track BG" value={p.barBgColor || '#27272a'} onChange={v => onUpdateProps({ barBgColor: v })} />
           <BoolField label="Show Value" value={p.showValue} onChange={v => onUpdateProps({ showValue: v })} />
         </Section>
       )}

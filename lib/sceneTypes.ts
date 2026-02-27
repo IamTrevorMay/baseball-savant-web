@@ -69,30 +69,46 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'ticker', name: 'Ticker', desc: 'Scrolling text crawl', icon: '\u21c4' },
 ]
 
+// ── Shared style defaults ───────────────────────────────────────────────────
+
+const UNIVERSAL_STYLE = {
+  bgColor: '', bgOpacity: 1,
+  shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 4, shadowColor: '#000000',
+  borderWidth: 0, borderColor: '#06b6d4', borderRadius: 12,
+  blurAmount: 0,
+}
+
+const TEXT_STYLE = {
+  fontFamily: '', textTransform: 'none',
+  textShadowBlur: 0, textShadowColor: '#06b6d4',
+  textShadowOffsetX: 0, textShadowOffsetY: 0,
+}
+
 const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string, any> }> = {
   'stat-card': {
     w: 280, h: 160,
-    props: { label: 'ERA', value: '2.89', sublabel: '2024', color: '#06b6d4', fontSize: 48, variant: 'glass' },
+    props: { ...UNIVERSAL_STYLE, ...TEXT_STYLE, label: 'ERA', value: '2.89', sublabel: '2024', color: '#06b6d4', fontSize: 48, variant: 'glass', bgColor: 'transparent' },
   },
   'text': {
     w: 400, h: 80,
-    props: { text: 'Title Text', fontSize: 36, fontWeight: 700, color: '#ffffff', textAlign: 'center' },
+    props: { ...UNIVERSAL_STYLE, ...TEXT_STYLE, text: 'Title Text', fontSize: 36, fontWeight: 700, color: '#ffffff', textAlign: 'center', bgColor: 'transparent', borderRadius: 0 },
   },
   'shape': {
     w: 200, h: 200,
-    props: { shape: 'rect', fill: '#18181b', stroke: '#06b6d4', strokeWidth: 1, borderRadius: 12 },
+    props: { ...UNIVERSAL_STYLE, shape: 'rect', fill: '#18181b', stroke: '#06b6d4', strokeWidth: 1, borderRadius: 12 },
   },
   'player-image': {
     w: 180, h: 220,
-    props: { playerId: null, playerName: '', borderColor: '#06b6d4', showLabel: true },
+    props: { ...UNIVERSAL_STYLE, playerId: null, playerName: '', borderColor: '#06b6d4', showLabel: true, bgColor: 'transparent' },
   },
   'comparison-bar': {
     w: 400, h: 48,
-    props: { label: 'Fastball', value: 96.2, maxValue: 105, color: '#06b6d4', showValue: true },
+    props: { ...UNIVERSAL_STYLE, ...TEXT_STYLE, label: 'Fastball', value: 96.2, maxValue: 105, color: '#06b6d4', showValue: true, barBgColor: '#27272a', bgColor: 'transparent', borderRadius: 0 },
   },
   'pitch-flight': {
     w: 400, h: 300,
     props: {
+      ...UNIVERSAL_STYLE,
       pitches: [
         { id: 'p1', playerId: null, playerName: '', pitchType: 'FF', pitchColor: '#06b6d4', mode: 'player', customPitch: null, showInKey: true },
       ],
@@ -103,6 +119,7 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   'stadium': {
     w: 500, h: 400,
     props: {
+      ...UNIVERSAL_STYLE,
       hits: [
         { id: 'h1', batterId: null, batterName: '', eventFilter: '', bbTypeFilter: '', color: '#06b6d4', showInKey: true },
       ],
@@ -114,6 +131,7 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   'ticker': {
     w: 800, h: 48,
     props: {
+      ...UNIVERSAL_STYLE, ...TEXT_STYLE,
       text: 'Breaking: Player Name hits 3 home runs in tonight\'s game \u2022 Team clinches playoff spot \u2022 Trade deadline approaching',
       fontSize: 20, fontWeight: 600, color: '#ffffff',
       bgColor: '#09090b', speed: 60, direction: 'left',

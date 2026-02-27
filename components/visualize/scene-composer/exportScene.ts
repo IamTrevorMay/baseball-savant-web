@@ -32,24 +32,128 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif'
 
+function getFontStack(family?: string): string {
+  if (!family) return FONT
+  return `"${family}", ${FONT}`
+}
+
+const _loadedFonts = new Set<string>()
+
+async function ensureGoogleFont(family: string): Promise<void> {
+  if (!family || _loadedFonts.has(family)) return
+  try {
+    const url = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@400;500;600;700;800;900&display=swap`
+    const resp = await fetch(url)
+    const css = await resp.text()
+    // Extract font-face URLs and load via FontFace API
+    const urlMatch = css.match(/url\(([^)]+)\)/g)
+    if (urlMatch) {
+      for (const u of urlMatch.slice(0, 3)) {
+        const src = u.slice(4, -1).replace(/'/g, '')
+        try {
+          const face = new FontFace(family, `url(${src})`)
+          const loaded = await face.load()
+          ;(document.fonts as any).add(loaded)
+        } catch { /* skip variant */ }
+      }
+    }
+    _loadedFonts.add(family)
+  } catch { /* font load failed, fall back to system */ }
+}
+
+function applyTextTransform(text: string, transform?: string): string {
+  if (!transform || transform === 'none') return text
+  switch (transform) {
+    case 'uppercase': return text.toUpperCase()
+    case 'lowercase': return text.toLowerCase()
+    case 'capitalize': return text.replace(/\b\w/g, c => c.toUpperCase())
+    default: return text
+  }
+}
+
+function applyUniversalShadow(ctx: CanvasRenderingContext2D, p: Record<string, any>) {
+  if (p.shadowBlur > 0) {
+    ctx.shadowColor = p.shadowColor || '#000000'
+    ctx.shadowBlur = p.shadowBlur
+    ctx.shadowOffsetX = p.shadowOffsetX || 0
+    ctx.shadowOffsetY = p.shadowOffsetY || 0
+  }
+}
+
+function resetShadow(ctx: CanvasRenderingContext2D) {
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetX = 0
+  ctx.shadowOffsetY = 0
+}
+
+function drawUniversalBorder(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  if (p.borderWidth > 0) {
+    ctx.strokeStyle = p.borderColor || '#06b6d4'
+    ctx.lineWidth = p.borderWidth
+    const r = p.borderRadius ?? 12
+    roundRect(ctx, el.x, el.y, el.width, el.height, r)
+    ctx.stroke()
+  }
+}
+
+function drawUniversalBg(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  if (p.bgColor && p.bgColor !== 'transparent') {
+    const opacity = p.bgOpacity ?? 1
+    if (opacity < 1) {
+      const hex = p.bgColor.replace('#', '')
+      const r = parseInt(hex.substring(0, 2), 16) || 0
+      const g = parseInt(hex.substring(2, 4), 16) || 0
+      const b = parseInt(hex.substring(4, 6), 16) || 0
+      ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`
+    } else {
+      ctx.fillStyle = p.bgColor
+    }
+    const rad = p.borderRadius ?? 12
+    roundRect(ctx, el.x, el.y, el.width, el.height, rad)
+    ctx.fill()
+  }
+}
+
 // ── Element renderers ────────────────────────────────────────────────────────
 
 function drawStatCard(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
   const pad = 20
+  const radius = p.borderRadius ?? 12
+  const font = getFontStack(p.fontFamily)
 
   ctx.save()
 
-  // Background
-  if (p.variant === 'outline') {
+  // Background — use bgColor if set, otherwise variant defaults
+  if (p.bgColor && p.bgColor !== 'transparent') {
+    const opacity = p.bgOpacity ?? 1
+    if (opacity < 1) {
+      const hex = p.bgColor.replace('#', '')
+      const r = parseInt(hex.substring(0, 2), 16) || 0
+      const g = parseInt(hex.substring(2, 4), 16) || 0
+      const b = parseInt(hex.substring(4, 6), 16) || 0
+      ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`
+    } else {
+      ctx.fillStyle = p.bgColor
+    }
+    roundRect(ctx, x, y, w, h, radius)
+    ctx.fill()
+    // Accent bar
+    ctx.fillStyle = p.color
+    if (p.variant === 'glass') ctx.fillRect(x, y + 10, 3, h - 20)
+    else if (p.variant !== 'outline') ctx.fillRect(x, y, w, 3)
+  } else if (p.variant === 'outline') {
     ctx.strokeStyle = p.color
     ctx.lineWidth = 2
-    roundRect(ctx, x, y, w, h, 12)
+    roundRect(ctx, x, y, w, h, radius)
     ctx.stroke()
   } else {
     ctx.fillStyle = p.variant === 'glass' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.7)'
-    roundRect(ctx, x, y, w, h, 12)
+    roundRect(ctx, x, y, w, h, radius)
     ctx.fill()
 
     // Accent bar
@@ -61,38 +165,51 @@ function drawStatCard(ctx: CanvasRenderingContext2D, el: SceneElement) {
     }
   }
 
+  // Text shadow helper
+  const applyTxtShadow = () => {
+    if (p.textShadowBlur > 0) {
+      ctx.shadowColor = p.textShadowColor || '#06b6d4'
+      ctx.shadowBlur = p.textShadowBlur
+      ctx.shadowOffsetX = p.textShadowOffsetX || 0
+      ctx.shadowOffsetY = p.textShadowOffsetY || 0
+    }
+  }
+
   // Label
   const labelSize = Math.max(11, p.fontSize * 0.26)
-  ctx.font = `600 ${labelSize}px ${FONT}`
+  ctx.font = `600 ${labelSize}px ${font}`
   ctx.fillStyle = '#a1a1aa'
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   const labelY = y + pad
-  ctx.fillText(p.label.toUpperCase(), x + pad, labelY)
+  applyTxtShadow()
+  ctx.fillText(applyTextTransform(p.label.toUpperCase(), p.textTransform), x + pad, labelY)
 
   // Value
-  ctx.font = `bold ${p.fontSize}px ${FONT}`
+  ctx.font = `bold ${p.fontSize}px ${font}`
   ctx.fillStyle = p.color
   const valueY = labelY + labelSize + 6
-  ctx.fillText(p.value, x + pad, valueY)
+  ctx.fillText(applyTextTransform(p.value, p.textTransform), x + pad, valueY)
 
   // Sublabel
   if (p.sublabel) {
     const subSize = Math.max(11, p.fontSize * 0.28)
-    ctx.font = `400 ${subSize}px ${FONT}`
+    ctx.font = `400 ${subSize}px ${font}`
     ctx.fillStyle = '#71717a'
-    ctx.fillText(p.sublabel, x + pad, valueY + p.fontSize + 6)
+    ctx.fillText(applyTextTransform(p.sublabel, p.textTransform), x + pad, valueY + p.fontSize + 6)
   }
 
+  resetShadow(ctx)
   ctx.restore()
 }
 
 function drawText(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
+  const font = getFontStack(p.fontFamily)
 
   ctx.save()
-  ctx.font = `${p.fontWeight} ${p.fontSize}px ${FONT}`
+  ctx.font = `${p.fontWeight} ${p.fontSize}px ${font}`
   ctx.fillStyle = p.color
   ctx.textBaseline = 'middle'
 
@@ -101,7 +218,17 @@ function drawText(ctx: CanvasRenderingContext2D, el: SceneElement) {
   else if (p.textAlign === 'right') { tx = x + w; ctx.textAlign = 'right' }
   else { ctx.textAlign = 'left' }
 
-  ctx.fillText(p.text, tx, y + h / 2)
+  // Text shadow
+  if (p.textShadowBlur > 0) {
+    ctx.shadowColor = p.textShadowColor || '#06b6d4'
+    ctx.shadowBlur = p.textShadowBlur
+    ctx.shadowOffsetX = p.textShadowOffsetX || 0
+    ctx.shadowOffsetY = p.textShadowOffsetY || 0
+  }
+
+  const text = applyTextTransform(p.text, p.textTransform)
+  ctx.fillText(text, tx, y + h / 2)
+  resetShadow(ctx)
   ctx.restore()
 }
 
@@ -135,12 +262,15 @@ async function drawPlayerImage(ctx: CanvasRenderingContext2D, el: SceneElement) 
   const { x, y, width: w, height: h } = el
   const imgH = p.showLabel && p.playerName ? h - 28 : h
 
+  const borderW = p.borderWidth > 0 ? p.borderWidth : 2
+  const radius = p.borderRadius ?? 12
+
   ctx.save()
 
   // Border
   ctx.strokeStyle = p.borderColor
-  ctx.lineWidth = 2
-  roundRect(ctx, x, y, w, imgH, 12)
+  ctx.lineWidth = borderW
+  roundRect(ctx, x, y, w, imgH, radius)
   ctx.stroke()
 
   // Image
@@ -149,7 +279,7 @@ async function drawPlayerImage(ctx: CanvasRenderingContext2D, el: SceneElement) 
       const imgUrl = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`
       const img = await loadImage(imgUrl)
       ctx.save()
-      roundRect(ctx, x + 1, y + 1, w - 2, imgH - 2, 11)
+      roundRect(ctx, x + 1, y + 1, w - 2, imgH - 2, Math.max(0, radius - 1))
       ctx.clip()
       // Cover fit
       const imgRatio = img.width / img.height
@@ -167,12 +297,12 @@ async function drawPlayerImage(ctx: CanvasRenderingContext2D, el: SceneElement) 
     } catch {
       // Placeholder
       ctx.fillStyle = '#27272a'
-      roundRect(ctx, x + 1, y + 1, w - 2, imgH - 2, 11)
+      roundRect(ctx, x + 1, y + 1, w - 2, imgH - 2, Math.max(0, radius - 1))
       ctx.fill()
     }
   } else {
     ctx.fillStyle = '#27272a'
-    roundRect(ctx, x + 1, y + 1, w - 2, imgH - 2, 11)
+    roundRect(ctx, x + 1, y + 1, w - 2, imgH - 2, Math.max(0, radius - 1))
     ctx.fill()
   }
 
@@ -192,28 +322,40 @@ function drawComparisonBar(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
   const pct = Math.min(1, Math.max(0, p.value / p.maxValue))
+  const font = getFontStack(p.fontFamily)
+  const barBg = p.barBgColor || '#27272a'
 
   ctx.save()
 
+  // Text shadow
+  if (p.textShadowBlur > 0) {
+    ctx.shadowColor = p.textShadowColor || '#06b6d4'
+    ctx.shadowBlur = p.textShadowBlur
+    ctx.shadowOffsetX = p.textShadowOffsetX || 0
+    ctx.shadowOffsetY = p.textShadowOffsetY || 0
+  }
+
   // Label
-  ctx.font = `500 11px ${FONT}`
+  ctx.font = `500 11px ${font}`
   ctx.fillStyle = '#a1a1aa'
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
-  ctx.fillText(p.label, x, y)
+  ctx.fillText(applyTextTransform(p.label, p.textTransform), x, y)
 
   // Value
   if (p.showValue) {
-    ctx.font = `bold 11px ${FONT}`
+    ctx.font = `bold 11px ${font}`
     ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'right'
-    ctx.fillText(String(p.value), x + w, y)
+    ctx.fillText(applyTextTransform(String(p.value), p.textTransform), x + w, y)
   }
+
+  resetShadow(ctx)
 
   // Bar background
   const barY = y + 20
   const barH = Math.max(6, h - 26)
-  ctx.fillStyle = '#27272a'
+  ctx.fillStyle = barBg
   roundRect(ctx, x, barY, w, barH, barH / 2)
   ctx.fill()
 
@@ -230,6 +372,7 @@ function drawComparisonBar(ctx: CanvasRenderingContext2D, el: SceneElement) {
 function drawTicker(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
+  const font = getFontStack(p.fontFamily)
 
   ctx.save()
 
@@ -240,13 +383,21 @@ function drawTicker(ctx: CanvasRenderingContext2D, el: SceneElement) {
   }
 
   // Text (render static for export — show first visible portion)
-  const text = p.text || ''
+  const text = applyTextTransform(p.text || '', p.textTransform)
   const sep = p.separator || ' \u2022 '
   const fullText = `${text}${sep}${text}${sep}`
-  ctx.font = `${p.fontWeight || 600} ${p.fontSize || 20}px ${FONT}`
+  ctx.font = `${p.fontWeight || 600} ${p.fontSize || 20}px ${font}`
   ctx.fillStyle = p.color || '#ffffff'
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
+
+  // Text shadow
+  if (p.textShadowBlur > 0) {
+    ctx.shadowColor = p.textShadowColor || '#06b6d4'
+    ctx.shadowBlur = p.textShadowBlur
+    ctx.shadowOffsetX = p.textShadowOffsetX || 0
+    ctx.shadowOffsetY = p.textShadowOffsetY || 0
+  }
 
   ctx.save()
   ctx.beginPath()
@@ -255,6 +406,7 @@ function drawTicker(ctx: CanvasRenderingContext2D, el: SceneElement) {
   ctx.fillText(fullText, x + 8, y + h / 2)
   ctx.restore()
 
+  resetShadow(ctx)
   ctx.restore()
 }
 
@@ -265,6 +417,13 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
   canvas.width = scene.width
   canvas.height = scene.height
   const ctx = canvas.getContext('2d')!
+
+  // Pre-load Google Fonts
+  const fontFamilies = new Set<string>()
+  for (const el of scene.elements) {
+    if (el.props.fontFamily) fontFamilies.add(el.props.fontFamily)
+  }
+  await Promise.all([...fontFamilies].map(f => ensureGoogleFont(f)))
 
   // Background
   ctx.fillStyle = scene.background
@@ -282,6 +441,16 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
       ctx.rotate((el.rotation * Math.PI) / 180)
       ctx.translate(-(el.x + el.width / 2), -(el.y + el.height / 2))
     }
+
+    // Universal shadow (applied to the first fill/stroke of the element)
+    applyUniversalShadow(ctx, el.props)
+
+    // Universal background
+    drawUniversalBg(ctx, el)
+    resetShadow(ctx)
+
+    // Re-apply shadow for element content
+    applyUniversalShadow(ctx, el.props)
 
     switch (el.type) {
       case 'stat-card':
@@ -309,6 +478,11 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
         drawTicker(ctx, el)
         break
     }
+
+    resetShadow(ctx)
+
+    // Universal border (drawn last, on top)
+    drawUniversalBorder(ctx, el)
 
     ctx.restore()
   }
@@ -356,6 +530,11 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
       ctx.translate(-(el.x + el.width / 2), -(el.y + el.height / 2))
     }
 
+    applyUniversalShadow(ctx, el.props)
+    drawUniversalBg(ctx, el)
+    resetShadow(ctx)
+    applyUniversalShadow(ctx, el.props)
+
     switch (el.type) {
       case 'stat-card': drawStatCard(ctx, el); break
       case 'text': drawText(ctx, el); break
@@ -366,6 +545,9 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
       case 'stadium': await drawStadiumStatic(ctx, el); break
       case 'ticker': drawTicker(ctx, el); break
     }
+
+    resetShadow(ctx)
+    drawUniversalBorder(ctx, el)
 
     ctx.restore()
   }

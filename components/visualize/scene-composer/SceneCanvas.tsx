@@ -34,6 +34,13 @@ function TickerRenderer({ props: p, width, height }: { props: Record<string, any
   const text = p.text || 'Ticker text here'
   const doubled = `${text}${p.separator || ' \u2022 '}${text}${p.separator || ' \u2022 '}`
 
+  const textStyle: React.CSSProperties = {}
+  if (p.fontFamily) textStyle.fontFamily = `"${p.fontFamily}", sans-serif`
+  if (p.textTransform && p.textTransform !== 'none') textStyle.textTransform = p.textTransform as any
+  if (p.textShadowBlur > 0) {
+    textStyle.textShadow = `${p.textShadowOffsetX || 0}px ${p.textShadowOffsetY || 0}px ${p.textShadowBlur}px ${p.textShadowColor || '#06b6d4'}`
+  }
+
   return (
     <div
       className="w-full h-full overflow-hidden flex items-center"
@@ -47,6 +54,7 @@ function TickerRenderer({ props: p, width, height }: { props: Record<string, any
           fontWeight: p.fontWeight || 600,
           color: p.color || '#ffffff',
           transform: `translateX(${offset % (width * 2)}px)`,
+          ...textStyle,
         }}
       >
         {doubled}
@@ -58,7 +66,7 @@ function TickerRenderer({ props: p, width, height }: { props: Record<string, any
 // ── Element Renderers ──────────────────────────────────────────────────────────
 
 function StatCardRenderer({ props: p }: { props: Record<string, any> }) {
-  const styles: Record<string, React.CSSProperties> = {
+  const variantStyles: Record<string, React.CSSProperties> = {
     glass: {
       background: 'rgba(255,255,255,0.04)',
       backdropFilter: 'blur(16px)',
@@ -75,24 +83,37 @@ function StatCardRenderer({ props: p }: { props: Record<string, any> }) {
       border: `2px solid ${p.color}`,
     },
   }
-  const style = styles[p.variant] || styles.glass
+  const style = { ...(variantStyles[p.variant] || variantStyles.glass) }
+  // Override background if bgColor is explicitly set (non-transparent, non-empty)
+  if (p.bgColor && p.bgColor !== 'transparent') {
+    style.background = p.bgColor
+  }
+  const radius = p.borderRadius ?? 12
+
+  // Text styles
+  const textStyle: React.CSSProperties = {}
+  if (p.fontFamily) textStyle.fontFamily = `"${p.fontFamily}", sans-serif`
+  if (p.textTransform && p.textTransform !== 'none') textStyle.textTransform = p.textTransform as any
+  if (p.textShadowBlur > 0) {
+    textStyle.textShadow = `${p.textShadowOffsetX || 0}px ${p.textShadowOffsetY || 0}px ${p.textShadowBlur}px ${p.textShadowColor || '#06b6d4'}`
+  }
 
   return (
-    <div className="w-full h-full rounded-xl flex flex-col justify-center px-5 overflow-hidden" style={style}>
+    <div className="w-full h-full flex flex-col justify-center px-5 overflow-hidden" style={{ ...style, borderRadius: radius }}>
       <div
         className="font-semibold uppercase tracking-wider text-zinc-400"
-        style={{ fontSize: Math.max(10, p.fontSize * 0.26) }}
+        style={{ fontSize: Math.max(10, p.fontSize * 0.26), ...textStyle }}
       >
         {p.label}
       </div>
       <div
         className="font-bold leading-none mt-1"
-        style={{ fontSize: p.fontSize, color: p.color, fontVariantNumeric: 'tabular-nums' }}
+        style={{ fontSize: p.fontSize, color: p.color, fontVariantNumeric: 'tabular-nums', ...textStyle }}
       >
         {p.value}
       </div>
       {p.sublabel && (
-        <div className="text-zinc-500 mt-1.5" style={{ fontSize: Math.max(10, p.fontSize * 0.28) }}>
+        <div className="text-zinc-500 mt-1.5" style={{ fontSize: Math.max(10, p.fontSize * 0.28), ...textStyle }}>
           {p.sublabel}
         </div>
       )}
@@ -101,6 +122,13 @@ function StatCardRenderer({ props: p }: { props: Record<string, any> }) {
 }
 
 function TextRenderer({ props: p }: { props: Record<string, any> }) {
+  const textStyle: React.CSSProperties = {}
+  if (p.fontFamily) textStyle.fontFamily = `"${p.fontFamily}", sans-serif`
+  if (p.textTransform && p.textTransform !== 'none') textStyle.textTransform = p.textTransform as any
+  if (p.textShadowBlur > 0) {
+    textStyle.textShadow = `${p.textShadowOffsetX || 0}px ${p.textShadowOffsetY || 0}px ${p.textShadowBlur}px ${p.textShadowColor || '#06b6d4'}`
+  }
+
   return (
     <div
       className="w-full h-full flex items-center overflow-hidden"
@@ -116,6 +144,7 @@ function TextRenderer({ props: p }: { props: Record<string, any> }) {
           textAlign: p.textAlign,
           width: '100%',
           lineHeight: 1.2,
+          ...textStyle,
         }}
       >
         {p.text}
@@ -142,12 +171,14 @@ function PlayerImageRenderer({ props: p, width, height }: { props: Record<string
     ? `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`
     : null
   const imgH = p.showLabel && p.playerName ? height - 28 : height
+  const imgBorderW = p.borderWidth > 0 ? p.borderWidth : 2
+  const imgRadius = p.borderRadius ?? 12
 
   return (
     <div className="w-full h-full flex flex-col items-center">
       <div
-        className="flex-1 w-full flex items-center justify-center overflow-hidden rounded-xl"
-        style={{ border: `2px solid ${p.borderColor}`, height: imgH }}
+        className="flex-1 w-full flex items-center justify-center overflow-hidden"
+        style={{ border: `${imgBorderW}px solid ${p.borderColor}`, height: imgH, borderRadius: imgRadius }}
       >
         {imgUrl ? (
           <img src={imgUrl} alt={p.playerName} className="w-full h-full object-cover" />
@@ -167,18 +198,26 @@ function ComparisonBarRenderer({ props: p, height }: { props: Record<string, any
   const labelSize = Math.max(10, Math.min(16, height * 0.28))
   const barH = Math.max(6, height * 0.35)
   const gap = Math.max(2, height * 0.06)
+  const barBg = p.barBgColor || '#27272a'
+
+  const textStyle: React.CSSProperties = {}
+  if (p.fontFamily) textStyle.fontFamily = `"${p.fontFamily}", sans-serif`
+  if (p.textTransform && p.textTransform !== 'none') textStyle.textTransform = p.textTransform as any
+  if (p.textShadowBlur > 0) {
+    textStyle.textShadow = `${p.textShadowOffsetX || 0}px ${p.textShadowOffsetY || 0}px ${p.textShadowBlur}px ${p.textShadowColor || '#06b6d4'}`
+  }
 
   return (
     <div className="w-full h-full flex flex-col justify-center px-1" style={{ gap }}>
       <div className="flex items-center justify-between">
-        <span className="text-zinc-400 font-medium" style={{ fontSize: labelSize }}>{p.label}</span>
+        <span className="text-zinc-400 font-medium" style={{ fontSize: labelSize, ...textStyle }}>{p.label}</span>
         {p.showValue && (
-          <span className="text-white font-bold" style={{ fontSize: labelSize, fontVariantNumeric: 'tabular-nums' }}>
+          <span className="text-white font-bold" style={{ fontSize: labelSize, fontVariantNumeric: 'tabular-nums', ...textStyle }}>
             {p.value}
           </span>
         )}
       </div>
-      <div className="w-full bg-zinc-800 rounded-full overflow-hidden" style={{ height: barH }}>
+      <div className="w-full rounded-full overflow-hidden" style={{ height: barH, backgroundColor: barBg }}>
         <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: p.color }} />
       </div>
     </div>
@@ -454,21 +493,57 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
         {[...scene.elements].sort((a, b) => a.zIndex - b.zIndex).map(el => {
           const selected = allSelected.has(el.id)
           const isPrimary = el.id === selectedId
+          const p = el.props
+
+          // Universal style props
+          const wrapperStyle: React.CSSProperties = {
+            left: el.x,
+            top: el.y,
+            width: el.width,
+            height: el.height,
+            opacity: el.opacity,
+            transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+            zIndex: el.zIndex,
+            outline: selected ? `2px solid ${isPrimary ? '#06b6d4' : '#06b6d480'}` : undefined,
+            outlineOffset: 2,
+          }
+
+          if (p.shadowBlur > 0) {
+            wrapperStyle.boxShadow = `${p.shadowOffsetX || 0}px ${p.shadowOffsetY || 0}px ${p.shadowBlur}px ${p.shadowColor || '#000000'}`
+          }
+          if (p.borderWidth > 0) {
+            wrapperStyle.border = `${p.borderWidth}px solid ${p.borderColor || '#06b6d4'}`
+          }
+          if (p.borderRadius > 0) {
+            wrapperStyle.borderRadius = `${p.borderRadius}px`
+          }
+          if (p.blurAmount > 0) {
+            wrapperStyle.backdropFilter = `blur(${p.blurAmount}px)`
+            wrapperStyle.WebkitBackdropFilter = `blur(${p.blurAmount}px)`
+          }
+          if (p.bgColor && p.bgColor !== 'transparent') {
+            const opacity = p.bgOpacity ?? 1
+            if (opacity < 1) {
+              // Convert hex to rgba
+              const hex = p.bgColor.replace('#', '')
+              const r = parseInt(hex.substring(0, 2), 16) || 0
+              const g = parseInt(hex.substring(2, 4), 16) || 0
+              const b2 = parseInt(hex.substring(4, 6), 16) || 0
+              wrapperStyle.backgroundColor = `rgba(${r},${g},${b2},${opacity})`
+            } else {
+              wrapperStyle.backgroundColor = p.bgColor
+            }
+          }
+          // Overflow hidden to clip content to border radius
+          if (p.borderRadius > 0 || p.borderWidth > 0) {
+            wrapperStyle.overflow = 'hidden'
+          }
+
           return (
             <div
               key={el.id}
               className={`absolute select-none ${el.locked ? 'cursor-default' : drag?.type === 'move' && drag.id === el.id ? 'cursor-grabbing' : 'cursor-grab'}`}
-              style={{
-                left: el.x,
-                top: el.y,
-                width: el.width,
-                height: el.height,
-                opacity: el.opacity,
-                transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-                zIndex: el.zIndex,
-                outline: selected ? `2px solid ${isPrimary ? '#06b6d4' : '#06b6d480'}` : undefined,
-                outlineOffset: 2,
-              }}
+              style={wrapperStyle}
               onMouseDown={e => handleMouseDown(e, el.id)}
             >
               {renderElementContent(el)}
