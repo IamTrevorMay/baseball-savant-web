@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+    const { data, error } = await supabase.rpc('run_query', { query_text: sql.trim() })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ rows: data || [], stat, type, category, label: statDef.label })
   } catch (e: any) {
