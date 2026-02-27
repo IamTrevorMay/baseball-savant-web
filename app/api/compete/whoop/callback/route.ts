@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
       athlete_id: athlete.id,
       whoop_user_id: tokens.whoop_user_id,
       encrypted_access_token: encrypt(tokens.access_token),
-      encrypted_refresh_token: encrypt(tokens.refresh_token),
+      encrypted_refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
       token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'athlete_id' })

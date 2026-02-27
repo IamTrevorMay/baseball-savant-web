@@ -57,7 +57,7 @@ export function getWhoopAuthUrl(state: string): string {
 
 export async function exchangeWhoopCode(code: string): Promise<{
   access_token: string
-  refresh_token: string
+  refresh_token: string | null
   expires_in: number
   whoop_user_id: string
 }> {
@@ -85,8 +85,8 @@ export async function exchangeWhoopCode(code: string): Promise<{
     throw new Error(`WHOOP token response not JSON: ${text.slice(0, 200)}`)
   }
 
-  if (!data.access_token || !data.refresh_token) {
-    throw new Error(`WHOOP token response missing tokens: ${text.slice(0, 200)}`)
+  if (!data.access_token) {
+    throw new Error(`WHOOP token response missing access_token: ${text.slice(0, 200)}`)
   }
 
   // Fetch user profile to get whoop_user_id
@@ -97,7 +97,7 @@ export async function exchangeWhoopCode(code: string): Promise<{
 
   return {
     access_token: data.access_token as string,
-    refresh_token: data.refresh_token as string,
+    refresh_token: (data.refresh_token as string) || null,
     expires_in: data.expires_in as number,
     whoop_user_id: String(profile.user_id),
   }
