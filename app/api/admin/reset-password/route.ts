@@ -21,9 +21,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 })
   }
 
-  const origin = new URL(request.url).origin
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
   const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo: `${siteUrl}/auth/callback`,
   })
 
   if (error) {
