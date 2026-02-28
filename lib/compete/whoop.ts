@@ -137,9 +137,10 @@ async function refreshWhoopToken(tokenRow: WhoopTokenRow): Promise<{ access_toke
   return data
 }
 
-// ---- Authenticated WHOOP API fetch ----
+// ---- Token management ----
 
-export async function whoopFetch(athleteId: string, path: string, params?: URLSearchParams): Promise<Response> {
+// Ensure we have a valid access token (refresh if needed). Call once before parallel fetches.
+export async function ensureValidToken(athleteId: string): Promise<string> {
   const { data: tokenRow } = await supabaseAdmin
     .from('whoop_tokens')
     .select('*')
@@ -157,16 +158,26 @@ export async function whoopFetch(athleteId: string, path: string, params?: URLSe
     accessToken = refreshed.access_token
   }
 
+  return accessToken
+}
+
+// ---- Authenticated WHOOP API fetch ----
+
+export async function whoopFetch(athleteId: string, path: string, params?: URLSearchParams, accessToken?: string): Promise<Response> {
+  if (!accessToken) {
+    accessToken = await ensureValidToken(athleteId)
+  }
+
   const url = `${WHOOP_API_BASE}${path}${params ? '?' + params.toString() : ''}`
   let res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
-  // If 401, try refreshing token once (only if refresh token exists)
-  if (res.status === 401 && tokenRow.encrypted_refresh_token) {
-    const refreshed = await refreshWhoopToken(tokenRow)
+  // If 401, try refreshing token once
+  if (res.status === 401) {
+    const freshToken = await ensureValidToken(athleteId)
     res = await fetch(url, {
-      headers: { Authorization: `Bearer ${refreshed.access_token}` },
+      headers: { Authorization: `Bearer ${freshToken}` },
     })
   }
 
@@ -175,7 +186,7 @@ export async function whoopFetch(athleteId: string, path: string, params?: URLSe
 
 // ---- Paginated data fetchers ----
 
-async function fetchPaginated<T>(athleteId: string, path: string, startDate: string, endDate: string): Promise<T[]> {
+async function fetchPaginated<T>(athleteId: string, path: string, startDate: string, endDate: string, accessToken: string): Promise<T[]> {
   const allRecords: T[] = []
   let nextToken: string | undefined
 
@@ -187,7 +198,7 @@ async function fetchPaginated<T>(athleteId: string, path: string, startDate: str
     })
     if (nextToken) params.set('nextToken', nextToken)
 
-    const res = await whoopFetch(athleteId, path, params)
+    const res = await whoopFetch(athleteId, path, params, accessToken)
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       throw new Error(`WHOOP API error ${res.status} on ${path}: ${body.slice(0, 300)}`)
@@ -201,34 +212,37 @@ async function fetchPaginated<T>(athleteId: string, path: string, startDate: str
   return allRecords
 }
 
-export async function fetchCycles(athleteId: string, startDate: string, endDate: string) {
-  return fetchPaginated<WhoopCycle>(athleteId, '/cycle', startDate, endDate)
+export async function fetchCycles(athleteId: string, startDate: string, endDate: string, accessToken: string) {
+  return fetchPaginated<WhoopCycle>(athleteId, '/cycle', startDate, endDate, accessToken)
 }
 
-export async function fetchSleep(athleteId: string, startDate: string, endDate: string) {
-  return fetchPaginated<WhoopSleep>(athleteId, '/activity/sleep', startDate, endDate)
+export async function fetchSleep(athleteId: string, startDate: string, endDate: string, accessToken: string) {
+  return fetchPaginated<WhoopSleep>(athleteId, '/activity/sleep', startDate, endDate, accessToken)
 }
 
-export async function fetchRecovery(athleteId: string, startDate: string, endDate: string) {
-  return fetchPaginated<WhoopRecovery>(athleteId, '/recovery', startDate, endDate)
+export async function fetchRecovery(athleteId: string, startDate: string, endDate: string, accessToken: string) {
+  return fetchPaginated<WhoopRecovery>(athleteId, '/recovery', startDate, endDate, accessToken)
 }
 
-export async function fetchWorkouts(athleteId: string, startDate: string, endDate: string) {
-  return fetchPaginated<WhoopWorkout>(athleteId, '/activity/workout', startDate, endDate)
+export async function fetchWorkouts(athleteId: string, startDate: string, endDate: string, accessToken: string) {
+  return fetchPaginated<WhoopWorkout>(athleteId, '/activity/workout', startDate, endDate, accessToken)
 }
 
 // ---- Sync/Upsert helpers ----
 
-export async function syncWhoopData(athleteId: string, days = 30) {
+export async function syncWhoopData(athleteId: string, days = 365) {
   const endDate = new Date().toISOString().split('T')[0]
   const startDate = new Date(Date.now() - days * 86_400_000).toISOString().split('T')[0]
 
-  // Fetch all data types in parallel
+  // Refresh token ONCE before parallel fetches to avoid race conditions
+  const accessToken = await ensureValidToken(athleteId)
+
+  // Fetch all data types in parallel using the same valid token
   const [cycles, recoveries, sleeps, workouts] = await Promise.all([
-    fetchCycles(athleteId, startDate, endDate),
-    fetchRecovery(athleteId, startDate, endDate),
-    fetchSleep(athleteId, startDate, endDate),
-    fetchWorkouts(athleteId, startDate, endDate),
+    fetchCycles(athleteId, startDate, endDate, accessToken),
+    fetchRecovery(athleteId, startDate, endDate, accessToken),
+    fetchSleep(athleteId, startDate, endDate, accessToken),
+    fetchWorkouts(athleteId, startDate, endDate, accessToken),
   ])
 
   // Build a map of cycle_id -> recovery for joining

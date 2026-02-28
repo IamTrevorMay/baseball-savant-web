@@ -66,7 +66,7 @@ export default function WhoopPage() {
       await fetch('/api/compete/whoop/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: range }),
+        body: JSON.stringify({ days: 365 }),
       })
       await fetchData()
     } catch {
