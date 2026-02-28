@@ -181,8 +181,8 @@ export function readinessStateFromScore(score: number | null): 'green' | 'yellow
 }
 
 const READINESS_METRICS: { key: string; weight: number; extract: (cycle: WhoopCycleRow | null, sleep: WhoopSleepRow | null) => number | null }[] = [
-  { key: 'time_in_bed', weight: 1.85, extract: (_, s) => s?.total_duration_ms ?? null },
-  { key: 'hrv', weight: 1.7, extract: (c, _) => c?.hrv_rmssd ?? null },
+  { key: 'time_in_bed', weight: 1.75, extract: (_, s) => s?.total_duration_ms ?? null },
+  { key: 'hrv', weight: 1.75, extract: (c, _) => c?.hrv_rmssd ?? null },
   { key: 'time_asleep', weight: 1.3, extract: (_, s) => (s?.total_duration_ms != null && s?.awake_duration_ms != null) ? s.total_duration_ms - s.awake_duration_ms : null },
   { key: 'light_sleep', weight: 1.0, extract: (_, s) => s?.light_duration_ms ?? null },
   { key: 'deep_sleep', weight: 1.0475, extract: (_, s) => s?.sws_duration_ms ?? null },
