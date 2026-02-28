@@ -6,6 +6,7 @@ import ResearchNav from '@/components/ResearchNav'
 import FilterEngine, { ActiveFilter, applyFiltersToData, FILTER_CATALOG } from '@/components/FilterEngine'
 import ReportTile, { TileConfig, defaultTile } from '@/components/reports/ReportTile'
 import { computeStuffProfile, generateSimilarStuffFilters, applyOverlayRules, type StuffProfile, type OverlayRule } from '@/lib/overlayEngine'
+import { enrichData } from '@/lib/enrichData'
 import OverlayTemplateBuilder from '@/components/reports/OverlayTemplateBuilder'
 
 interface RosterPlayer { id: number; name: string; position: string }
@@ -242,33 +243,6 @@ function ReportsPageInner() {
     setLoading(false)
   }
 
-  function enrichData(rows: any[]) {
-    rows.forEach((p: any) => {
-      if (p.vz0 != null && p.vy0 != null && p.az != null && p.ay != null && p.release_extension != null) {
-        const t = (-p.vy0 - Math.sqrt(p.vy0 * p.vy0 - 2 * p.ay * (50 - p.release_extension))) / p.ay
-        p.vaa = Math.atan2(p.vz0 + p.az * t, -(p.vy0 + p.ay * t)) * (180 / Math.PI)
-      }
-      if (p.vx0 != null && p.vy0 != null && p.ax != null && p.ay != null && p.release_extension != null) {
-        const t = (-p.vy0 - Math.sqrt(p.vy0 * p.vy0 - 2 * p.ay * (50 - p.release_extension))) / p.ay
-        p.haa = Math.atan2(p.vx0 + p.ax * t, -(p.vy0 + p.ay * t)) * (180 / Math.PI)
-      }
-      if (p.pfx_x != null) p.pfx_x_in = +(p.pfx_x * 12).toFixed(1)
-      if (p.pfx_z != null) p.pfx_z_in = +(p.pfx_z * 12).toFixed(1)
-      if (p.inning_topbot === 'Top') p.vs_team = p.away_team
-      else if (p.inning_topbot === 'Bot') p.vs_team = p.home_team
-      if (p.balls != null && p.strikes != null) p.count = `${p.balls}-${p.strikes}`
-      const r1 = p.on_1b != null, r2 = p.on_2b != null, r3 = p.on_3b != null
-      if (!r1 && !r2 && !r3) p.base_situation = 'Bases Empty'
-      else if (r1 && !r2 && !r3) p.base_situation = 'Runner on 1st'
-      else if (!r1 && r2 && !r3) p.base_situation = 'Runner on 2nd'
-      else if (!r1 && !r2 && r3) p.base_situation = 'Runner on 3rd'
-      else if (r1 && r2 && !r3) p.base_situation = 'Runners 1st & 2nd'
-      else if (r1 && !r2 && r3) p.base_situation = 'Runners 1st & 3rd'
-      else if (!r1 && r2 && r3) p.base_situation = 'Runners 2nd & 3rd'
-      else if (r1 && r2 && r3) p.base_situation = 'Bases Loaded'
-    })
-  }
-
   function buildOptions(rows: any[]) {
     const bo = (col: string) => [...new Set(rows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
     setOptionsCache({
@@ -440,7 +414,12 @@ function ReportsPageInner() {
           description: pushDesc.trim() || null,
           player_name: currentPlayerName || null,
           subject_type: subjectType,
-          metadata: { tiles: tiles.map(t => ({ id: t.id, viz: t.viz, title: t.title })), filters: globalFilters },
+          metadata: {
+            tiles,
+            filters: globalFilters,
+            player_id: selectedPlayer?.id || null,
+            columns,
+          },
         }),
       })
       const data = await res.json()

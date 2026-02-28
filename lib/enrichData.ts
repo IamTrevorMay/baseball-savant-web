@@ -70,6 +70,24 @@ export function enrichData(
     if (p.batter && batterNames[p.batter]) {
       p.batter_name = batterNames[p.batter]
     }
+
+    // ------------------------------------------------------------------
+    // Count string (e.g. "0-2")
+    // ------------------------------------------------------------------
+    if (p.balls != null && p.strikes != null) p.count = `${p.balls}-${p.strikes}`
+
+    // ------------------------------------------------------------------
+    // Base situation label
+    // ------------------------------------------------------------------
+    const r1 = p.on_1b != null, r2 = p.on_2b != null, r3 = p.on_3b != null
+    if (!r1 && !r2 && !r3) p.base_situation = 'Bases Empty'
+    else if (r1 && !r2 && !r3) p.base_situation = 'Runner on 1st'
+    else if (!r1 && r2 && !r3) p.base_situation = 'Runner on 2nd'
+    else if (!r1 && !r2 && r3) p.base_situation = 'Runner on 3rd'
+    else if (r1 && r2 && !r3) p.base_situation = 'Runners 1st & 2nd'
+    else if (r1 && !r2 && r3) p.base_situation = 'Runners 1st & 3rd'
+    else if (!r1 && r2 && r3) p.base_situation = 'Runners 2nd & 3rd'
+    else if (r1 && r2 && r3) p.base_situation = 'Bases Loaded'
   })
 
   return rows
