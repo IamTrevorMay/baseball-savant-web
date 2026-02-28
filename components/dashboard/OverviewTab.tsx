@@ -151,6 +151,8 @@ function calcArsenal(data: any[]) {
     const cs = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
     const evs = pitches.filter(p => p.launch_speed != null).map(p => p.launch_speed)
     const xbas = pitches.map(p => p.estimated_ba_using_speedangle).filter((v: any) => v != null)
+    const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
+    const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a,b) => a+b,0)/arr.length : null
     const f = (v: number|null, d=1) => v != null ? v.toFixed(d) : '—'
@@ -163,6 +165,8 @@ function calcArsenal(data: any[]) {
       ext: f(avg(exts)), armAngle: f(avg(arms)),
       whiffPct: pct(whiffs, swings), csPct: pct(cs, pitches.length),
       avgEV: f(avg(evs)), xBA: f(avg(xbas), 3),
+      brink: f(avg(brinks)),
+      cluster: f(avg(clusters)),
     }
   }).sort((a, b) => b.count - a.count)
 }
@@ -170,7 +174,7 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
@@ -280,6 +284,8 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:'ext', l:'Ext' }, { k:'armAngle', l:'Arm°' },
     { k:'whiffPct', l:'Whiff%' }, { k:'csPct', l:'CSt%' },
     { k:'avgEV', l:'EV' }, { k:'xBA', l:'xBA' },
+    { k:'brink', l:'Brink' },
+    { k:'cluster', l:'Cluster' },
   ]
 
   const activeRows = mode === 'traditional' ? mergedTradRows : mode === 'advanced' ? mergedAdvRows : arsenalRows
@@ -295,6 +301,8 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (['avgVelo','maxVelo'].includes(k)) return 'text-amber-400'
     if (['avgSpin'].includes(k)) return 'text-sky-400'
     if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
+    if (k === 'brink') return 'text-teal-400'
+    if (k === 'cluster') return 'text-teal-400'
     if (['avgEV','maxEV','avgLA','gbPct','fbPct','ldPct','puPct'].includes(k)) return 'text-orange-400'
     if (['zonePct'].includes(k)) return 'text-sky-400'
     if (['fip','xfip','xera','siera'].includes(k)) return 'text-cyan-400'

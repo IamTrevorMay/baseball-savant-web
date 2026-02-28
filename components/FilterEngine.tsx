@@ -76,6 +76,8 @@ export const FILTER_CATALOG: FilterDef[] = [
   { key: "haa", label: "Horizontal Approach Angle", category: "Pitch", type: "range" },
   { key: "batter_name", label: "vs Batter", category: "Matchup", type: "multi" },
   { key: "vs_team", label: "vs Team", category: "Matchup", type: "multi" },
+  { key: "brink", label: "Brink (edge dist, in)", category: "Location", type: "range" },
+  { key: "cluster", label: "Cluster (loc spread, in)", category: "Location", type: "range" },
 ]
 
 // ── Active Filter State ──────────────────────────────────────────────────────

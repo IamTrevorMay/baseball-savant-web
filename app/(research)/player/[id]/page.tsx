@@ -182,11 +182,38 @@ export default function PlayerDashboard() {
         // Movement in inches
         if (p.pfx_x != null) p.pfx_x_in = +(p.pfx_x * 12).toFixed(1)
         if (p.pfx_z != null) p.pfx_z_in = +(p.pfx_z * 12).toFixed(1)
+        // Brink — signed distance to nearest strike zone edge (inches)
+        if (p.plate_x != null && p.plate_z != null && p.sz_top != null && p.sz_bot != null) {
+          const dLeft = p.plate_x + 0.83, dRight = 0.83 - p.plate_x
+          const dBot = p.plate_z - p.sz_bot, dTop = p.sz_top - p.plate_z
+          p.brink = +(Math.min(dLeft, dRight, dBot, dTop) * 12).toFixed(1)
+        }
         // vs Team (batting team)
         if (p.inning_topbot === "Top") p.vs_team = p.away_team
         else if (p.inning_topbot === "Bot") p.vs_team = p.home_team
         // Batter name
         if (p.batter && batterNames[p.batter]) p.batter_name = batterNames[p.batter]
+      })
+      // Cluster — distance from pitch-type centroid (inches)
+      const cBuckets: Record<string, { sx: number; sz: number; n: number }> = {}
+      allRows.forEach((p: any) => {
+        if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
+          if (!cBuckets[p.pitch_name]) cBuckets[p.pitch_name] = { sx: 0, sz: 0, n: 0 }
+          cBuckets[p.pitch_name].sx += p.plate_x
+          cBuckets[p.pitch_name].sz += p.plate_z
+          cBuckets[p.pitch_name].n++
+        }
+      })
+      const cCentroids: Record<string, { cx: number; cz: number }> = {}
+      for (const name in cBuckets) {
+        const b = cBuckets[name]
+        cCentroids[name] = { cx: b.sx / b.n, cz: b.sz / b.n }
+      }
+      allRows.forEach((p: any) => {
+        if (p.pitch_name && p.plate_x != null && p.plate_z != null && cCentroids[p.pitch_name]) {
+          const c = cCentroids[p.pitch_name]
+          p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
+        }
       })
       setAllData(allRows)
       setData(allRows)

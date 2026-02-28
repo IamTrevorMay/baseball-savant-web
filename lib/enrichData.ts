@@ -6,6 +6,8 @@
  *   haa          Horizontal Approach Angle (degrees)
  *   pfx_x_in     Horizontal movement (inches, from feet)
  *   pfx_z_in     Vertical movement (inches, from feet)
+ *   brink        Signed distance to nearest strike zone edge (inches)
+ *   cluster      Distance from pitch-type centroid (inches)
  *   vs_team      Batting team (derived from inning_topbot)
  *   batter_name  Batter display name (from lookup map)
  */
@@ -13,6 +15,24 @@ export function enrichData(
   rows: any[],
   batterNames: Record<number, string> = {}
 ): any[] {
+  // ------------------------------------------------------------------
+  // Pre-pass: compute pitch-type centroids for Cluster metric
+  // ------------------------------------------------------------------
+  const centroids: Record<string, { cx: number; cz: number }> = {}
+  const buckets: Record<string, { sx: number; sz: number; n: number }> = {}
+  rows.forEach((p: any) => {
+    if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
+      if (!buckets[p.pitch_name]) buckets[p.pitch_name] = { sx: 0, sz: 0, n: 0 }
+      buckets[p.pitch_name].sx += p.plate_x
+      buckets[p.pitch_name].sz += p.plate_z
+      buckets[p.pitch_name].n++
+    }
+  })
+  for (const name in buckets) {
+    const b = buckets[name]
+    centroids[name] = { cx: b.sx / b.n, cz: b.sz / b.n }
+  }
+
   rows.forEach((p: any) => {
     // ------------------------------------------------------------------
     // Vertical Approach Angle (degrees)
@@ -56,6 +76,26 @@ export function enrichData(
     // ------------------------------------------------------------------
     if (p.pfx_x != null) p.pfx_x_in = +(p.pfx_x * 12).toFixed(1)
     if (p.pfx_z != null) p.pfx_z_in = +(p.pfx_z * 12).toFixed(1)
+
+    // ------------------------------------------------------------------
+    // Brink — signed distance to nearest strike zone edge (inches)
+    // Positive = inside zone, negative = outside, 0 = on edge.
+    // ------------------------------------------------------------------
+    if (p.plate_x != null && p.plate_z != null && p.sz_top != null && p.sz_bot != null) {
+      const dLeft  = p.plate_x + 0.83
+      const dRight = 0.83 - p.plate_x
+      const dBot   = p.plate_z - p.sz_bot
+      const dTop   = p.sz_top - p.plate_z
+      p.brink = +(Math.min(dLeft, dRight, dBot, dTop) * 12).toFixed(1)
+    }
+
+    // ------------------------------------------------------------------
+    // Cluster — distance from pitch-type centroid (inches)
+    // ------------------------------------------------------------------
+    if (p.pitch_name && p.plate_x != null && p.plate_z != null && centroids[p.pitch_name]) {
+      const c = centroids[p.pitch_name]
+      p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
+    }
 
     // ------------------------------------------------------------------
     // vs_team — the team currently batting
