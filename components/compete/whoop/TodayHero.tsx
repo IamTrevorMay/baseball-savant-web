@@ -57,11 +57,27 @@ function CircularGauge({
   )
 }
 
+/* ── Baseline color helper ── */
+function baselineColor(todayVal: number | null, historical: (number | null)[], invert = false): string {
+  if (todayVal === null) return 'text-white'
+  const valid = historical.filter((v): v is number => v !== null)
+  if (valid.length < 3) return 'text-white'
+  const avg = valid.reduce((a, b) => a + b, 0) / valid.length
+  if (avg === 0) return 'text-white'
+  let pctDiff = ((todayVal - avg) / Math.abs(avg)) * 100
+  if (invert) pctDiff = -pctDiff
+  if (pctDiff > 10) return 'text-emerald-400'
+  if (pctDiff > 0.01) return 'text-green-300'
+  if (pctDiff >= -0.01) return 'text-yellow-400'
+  if (pctDiff >= -10) return 'text-orange-400'
+  return 'text-red-400'
+}
+
 /* ── Stat Pill ── */
-function StatPill({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function StatPill({ label, value, unit, valueColor }: { label: string; value: string; unit?: string; valueColor?: string }) {
   return (
     <div className="bg-zinc-800/60 rounded-lg px-3 py-2 text-center min-w-[70px]">
-      <div className="text-sm font-semibold text-white">
+      <div className={`text-sm font-semibold ${valueColor || 'text-white'}`}>
         {value}
         {unit && <span className="text-[10px] text-zinc-500 ml-0.5">{unit}</span>}
       </div>
@@ -229,30 +245,41 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
       {/* Secondary Metric Pills */}
       <div className="flex justify-center gap-2 flex-wrap mb-3">
         <StatPill
+          label="Time in Bed"
+          value={sleep?.total_duration_ms ? `${(sleep.total_duration_ms / 3_600_000).toFixed(1)}` : '—'}
+          unit="hrs"
+          valueColor={baselineColor(sleep?.total_duration_ms ?? null, allSleep.map(s => s.total_duration_ms))}
+        />
+        <StatPill
           label="HRV"
           value={cycle?.hrv_rmssd !== null && cycle?.hrv_rmssd !== undefined ? `${Math.round(cycle.hrv_rmssd)}` : '—'}
           unit="ms"
+          valueColor={baselineColor(cycle?.hrv_rmssd ?? null, allCycles.map(c => c.hrv_rmssd))}
         />
         <StatPill
           label="RHR"
           value={cycle?.resting_heart_rate !== null && cycle?.resting_heart_rate !== undefined ? `${Math.round(cycle.resting_heart_rate)}` : '—'}
           unit="bpm"
+          valueColor={baselineColor(cycle?.resting_heart_rate ?? null, allCycles.map(c => c.resting_heart_rate), true)}
         />
         <StatPill
           label="SpO2"
           value={cycle?.spo2_pct !== null && cycle?.spo2_pct !== undefined ? `${cycle.spo2_pct.toFixed(0)}` : '—'}
           unit="%"
+          valueColor={baselineColor(cycle?.spo2_pct ?? null, allCycles.map(c => c.spo2_pct))}
         />
         <StatPill
           label="Skin Temp"
           value={cycle?.skin_temp_celsius !== null && cycle?.skin_temp_celsius !== undefined ? `${cycle.skin_temp_celsius.toFixed(1)}` : '—'}
           unit="°C"
+          valueColor={baselineColor(cycle?.skin_temp_celsius ?? null, allCycles.map(c => c.skin_temp_celsius), true)}
         />
         {sleep?.respiratory_rate !== null && sleep?.respiratory_rate !== undefined && (
           <StatPill
             label="Resp Rate"
             value={sleep.respiratory_rate.toFixed(1)}
             unit="rpm"
+            valueColor={baselineColor(sleep.respiratory_rate, allSleep.map(s => s.respiratory_rate), true)}
           />
         )}
       </div>
