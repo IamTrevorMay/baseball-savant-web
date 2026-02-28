@@ -6,7 +6,7 @@ const TABS = [
   { label: 'Dashboard', href: '/compete' },
   { label: 'Today', href: '/compete/today' },
   { label: 'Schedule', href: '/compete/schedule' },
-  { label: 'WHOOP', href: '/compete/whoop' },
+  { label: 'Monitor', href: '/compete/whoop' },
   { label: 'Reports', href: '/compete/reports' },
   { label: 'Messages', href: '/compete/messages' },
 ]

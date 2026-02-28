@@ -57,7 +57,7 @@ function CyclesTable({ cycles, sleep }: { cycles: WhoopCycleRow[]; sleep: WhoopS
         <thead>
           <tr className="text-[10px] text-zinc-500 border-b border-zinc-800">
             <th className="text-left py-2 px-2 font-medium">Date</th>
-            <th className="text-center py-2 px-2 font-medium">Readiness</th>
+            <th className="text-center py-2 px-2 font-medium">Prepare</th>
             <th className="text-right py-2 px-2 font-medium">Recovery</th>
             <th className="text-center py-2 px-2 font-medium">State</th>
             <th className="text-right py-2 px-2 font-medium">HRV</th>

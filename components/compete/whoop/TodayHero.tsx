@@ -10,6 +10,7 @@ interface Props {
   todayEvents: ScheduleEvent[]
   allCycles?: WhoopCycleRow[]
   allSleep?: WhoopSleepRow[]
+  sleepData?: WhoopSleepRow[]
 }
 
 /* ── SVG Circular Gauge ── */
@@ -108,13 +109,62 @@ function ScheduleEventRow({ event }: { event: ScheduleEvent }) {
   )
 }
 
+/* ── Sleep Stage Bar (inline) ── */
+function SleepStageBar({ sleep }: { sleep: WhoopSleepRow }) {
+  const totalMs = sleep.total_duration_ms || 0
+  if (totalMs === 0) return null
+
+  const stages = [
+    { label: 'REM', ms: sleep.rem_duration_ms || 0, color: 'bg-cyan-500' },
+    { label: 'Deep', ms: sleep.sws_duration_ms || 0, color: 'bg-blue-600' },
+    { label: 'Light', ms: sleep.light_duration_ms || 0, color: 'bg-blue-400' },
+    { label: 'Awake', ms: sleep.awake_duration_ms || 0, color: 'bg-zinc-600' },
+  ]
+
+  function msToHours(ms: number): string {
+    const hours = ms / 3_600_000
+    if (hours < 1) return `${Math.round(ms / 60_000)}m`
+    return `${hours.toFixed(1)}h`
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-medium text-zinc-400">Latest Sleep</h4>
+        <span className="text-[10px] text-zinc-500">{msToHours(totalMs)}</span>
+      </div>
+      <div className="flex rounded-full overflow-hidden h-3 mb-2">
+        {stages.map(s => {
+          const pct = (s.ms / totalMs) * 100
+          if (pct < 1) return null
+          return (
+            <div
+              key={s.label}
+              className={`${s.color} transition-all`}
+              style={{ width: `${pct}%` }}
+            />
+          )
+        })}
+      </div>
+      <div className="flex gap-3 justify-center flex-wrap">
+        {stages.map(s => (
+          <div key={s.label} className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${s.color}`} />
+            <span className="text-[10px] text-zinc-500">{s.label} {msToHours(s.ms)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ── Main Component ── */
-export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], allSleep = [] }: Props) {
-  // Readiness gauge
-  const readinessScore = computeReadiness(cycle, sleep, allCycles, allSleep)
-  const readinessState = readinessStateFromScore(readinessScore)
-  const readinessColor = readinessState === 'green' ? '#14b8a6'
-    : readinessState === 'yellow' ? '#eab308' : readinessState === 'red' ? '#ef4444' : '#14b8a6'
+export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], allSleep = [], sleepData = [] }: Props) {
+  // Prepare gauge (formerly Readiness)
+  const prepareScore = computeReadiness(cycle, sleep, allCycles, allSleep)
+  const prepareState = readinessStateFromScore(prepareScore)
+  const prepareColor = prepareState === 'green' ? '#14b8a6'
+    : prepareState === 'yellow' ? '#eab308' : prepareState === 'red' ? '#ef4444' : '#14b8a6'
 
   // Recovery gauge
   const recoveryScore = cycle?.recovery_score ?? null
@@ -125,25 +175,26 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
   const sleepScore = sleep?.sleep_score ?? null
   const totalHours = sleep?.total_duration_ms ? (sleep.total_duration_ms / 3_600_000).toFixed(1) : null
 
-  // Strain gauge
+  // Strain & Calories (bottom section, orange)
   const strainScore = cycle?.strain_score ?? null
+  const kilojoules = cycle?.kilojoule ?? null
+  const calories = kilojoules !== null ? Math.round(kilojoules * 0.239006) : null
 
-  function msToHours(ms: number | null): string {
-    if (!ms) return '—'
-    const hours = ms / 3_600_000
-    return `${hours.toFixed(1)}h`
-  }
+  // Latest sleep for stage bar
+  const latestSleep = sleepData.length > 0 ? sleepData[sleepData.length - 1] : sleep
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      {/* Four Gauges */}
+      <h3 className="text-xs font-medium text-zinc-400 mb-3 text-center">Today</h3>
+
+      {/* Top Section: Three Gauges (no Strain) */}
       <div className="flex justify-center gap-4 sm:gap-8 mb-4">
         <CircularGauge
-          value={readinessScore}
+          value={prepareScore}
           max={100}
-          color={readinessColor}
-          label="Readiness"
-          display={readinessScore !== null ? `${readinessScore}%` : '—'}
+          color={prepareColor}
+          label="Prepare"
+          display={prepareScore !== null ? `${prepareScore}%` : '—'}
         />
         <CircularGauge
           value={recoveryScore}
@@ -158,13 +209,6 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
           color="#3b82f6"
           label={totalHours ? `${totalHours}h sleep` : 'Sleep'}
           display={sleepScore !== null ? `${Math.round(sleepScore)}%` : '—'}
-        />
-        <CircularGauge
-          value={strainScore}
-          max={21}
-          color="#f59e0b"
-          label="Strain"
-          display={strainScore !== null ? strainScore.toFixed(1) : '—'}
         />
       </div>
 
@@ -199,9 +243,36 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
         )}
       </div>
 
+      {/* Latest Sleep Bar */}
+      {latestSleep && (
+        <div className="border-t border-zinc-800 pt-3 mb-3">
+          <SleepStageBar sleep={latestSleep} />
+        </div>
+      )}
+
+      {/* Bottom Section: Strain & Calories (orange) */}
+      <div className="border-t border-zinc-800 pt-3">
+        <div className="flex justify-center gap-4 sm:gap-8">
+          <CircularGauge
+            value={strainScore}
+            max={21}
+            color="#f97316"
+            label="Strain"
+            display={strainScore !== null ? strainScore.toFixed(1) : '—'}
+          />
+          <CircularGauge
+            value={calories}
+            max={4000}
+            color="#f97316"
+            label="Calories"
+            display={calories !== null ? `${calories}` : '—'}
+          />
+        </div>
+      </div>
+
       {/* Today's Schedule */}
       {todayEvents.length > 0 && (
-        <div className="border-t border-zinc-800 pt-4">
+        <div className="border-t border-zinc-800 pt-4 mt-3">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-xs font-medium text-zinc-400">Today&apos;s Schedule</h4>
             <Link href="/compete/schedule" className="text-[10px] text-zinc-600 hover:text-zinc-400 transition">

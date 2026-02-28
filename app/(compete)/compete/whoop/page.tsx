@@ -103,7 +103,7 @@ export default function WhoopPage() {
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-4">
           <div>
-            <h1 className="text-xl font-bold text-white">WHOOP</h1>
+            <h1 className="text-xl font-bold text-white">Monitor</h1>
             <p className="text-sm text-zinc-500 mt-0.5">Recovery, sleep & strain tracking</p>
           </div>
           {/* Tab toggle */}

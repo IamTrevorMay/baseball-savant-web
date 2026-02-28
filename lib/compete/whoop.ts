@@ -263,6 +263,7 @@ export async function syncWhoopData(athleteId: string, days = 365) {
         hrv_rmssd: recovery?.score?.hrv_rmssd_milli ?? null,
         resting_heart_rate: recovery?.score?.resting_heart_rate ?? null,
         strain_score: c.score?.strain ?? null,
+        kilojoule: c.score?.kilojoule ?? null,
         spo2_pct: recovery?.score?.spo2_percentage ?? null,
         skin_temp_celsius: recovery?.score?.skin_temp_celsius ?? null,
         raw_data: { cycle: c, recovery },

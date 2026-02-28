@@ -257,7 +257,7 @@ export default function CompeteDashboard() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-white">Today</h3>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">WHOOP</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">Monitor</span>
           </div>
           {athlete?.whoop_connected && whoopCycle ? (() => {
             const readiness = computeReadiness(whoopCycle, whoopSleep, allCycles, allSleep)
@@ -291,7 +291,7 @@ export default function CompeteDashboard() {
 
             return (
               <div className="flex justify-center gap-4">
-                <MiniGauge value={readiness} max={100} color={readinessColor} label="Readiness" display={readiness !== null ? `${readiness}%` : '—'} />
+                <MiniGauge value={readiness} max={100} color={readinessColor} label="Prepare" display={readiness !== null ? `${readiness}%` : '—'} />
                 <MiniGauge value={whoopCycle.recovery_score} max={100} color={recoveryColor} label="Recovery" display={whoopCycle.recovery_score !== null ? `${Math.round(whoopCycle.recovery_score)}%` : '—'} />
                 <MiniGauge value={sleepScore} max={100} color="#3b82f6" label="Sleep" display={sleepScore !== null ? `${Math.round(sleepScore)}%` : '—'} />
               </div>
