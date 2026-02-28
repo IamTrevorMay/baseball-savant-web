@@ -4,7 +4,6 @@ import { WhoopCycleRow, WhoopSleepRow, WhoopWorkoutRow, computeReadiness } from 
 import { ScheduleEvent } from '@/lib/compete/schedule-types'
 import TodayHero from './TodayHero'
 import MetricTrend from './MetricTrend'
-import SleepCard from './SleepCard'
 import StrainCard from './StrainCard'
 
 interface Props {
@@ -14,9 +13,10 @@ interface Props {
   todayCycle: WhoopCycleRow | null
   todaySleep: WhoopSleepRow | null
   todayEvents: ScheduleEvent[]
+  onGraphClick?: (graphKey: string) => void
 }
 
-export default function OverviewTab({ cycles, sleep, workouts, todayCycle, todaySleep, todayEvents }: Props) {
+export default function OverviewTab({ cycles, sleep, workouts, todayCycle, todaySleep, todayEvents, onGraphClick }: Props) {
   // Recovery trend data with color-coded markers
   const recoveryData = cycles.map(c => ({ date: c.cycle_date, value: c.recovery_score }))
   const recoveryColors = cycles.map(c => {
@@ -46,37 +46,49 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
 
       {/* Trend Charts Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MetricTrend
-          data={recoveryData}
-          color="#22c55e"
-          title="Recovery"
-          unit="%"
-          markerColors={recoveryColors}
-          referenceLines={[
-            { y: 67, color: '#22c55e' },
-            { y: 34, color: '#ef4444' },
-          ]}
-          secondary={{ data: prepareData, color: '#14b8a6', label: 'Prepare' }}
-        />
-        <MetricTrend
-          data={hrvData}
-          color="#3b82f6"
-          title="HRV"
-          unit="ms"
-        />
-        <MetricTrend
-          data={strainData}
-          color="#f59e0b"
-          title="Strain"
-          chartType="bar"
-        />
+        <div
+          className={onGraphClick ? 'cursor-pointer rounded-xl transition hover:ring-1 hover:ring-zinc-700' : ''}
+          onClick={() => onGraphClick?.('recovery')}
+        >
+          <MetricTrend
+            data={recoveryData}
+            color="#22c55e"
+            title="Recovery"
+            unit="%"
+            markerColors={recoveryColors}
+            referenceLines={[
+              { y: 67, color: '#22c55e' },
+              { y: 34, color: '#ef4444' },
+            ]}
+            secondary={{ data: prepareData, color: '#14b8a6', label: 'Prepare' }}
+          />
+        </div>
+        <div
+          className={onGraphClick ? 'cursor-pointer rounded-xl transition hover:ring-1 hover:ring-zinc-700' : ''}
+          onClick={() => onGraphClick?.('hrv')}
+        >
+          <MetricTrend
+            data={hrvData}
+            color="#3b82f6"
+            title="HRV"
+            unit="ms"
+          />
+        </div>
+        <div
+          className={onGraphClick ? 'cursor-pointer rounded-xl transition hover:ring-1 hover:ring-zinc-700' : ''}
+          onClick={() => onGraphClick?.('strain')}
+        >
+          <MetricTrend
+            data={strainData}
+            color="#f59e0b"
+            title="Strain"
+            chartType="bar"
+          />
+        </div>
       </div>
 
-      {/* Sleep & Workouts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <SleepCard sleepData={sleep} />
-        <StrainCard workouts={workouts} />
-      </div>
+      {/* Workouts */}
+      <StrainCard workouts={workouts} />
     </div>
   )
 }

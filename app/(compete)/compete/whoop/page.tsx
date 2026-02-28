@@ -6,9 +6,10 @@ import { ScheduleEvent } from '@/lib/compete/schedule-types'
 import WhoopConnect from '@/components/compete/whoop/WhoopConnect'
 import OverviewTab from '@/components/compete/whoop/OverviewTab'
 import DataTab from '@/components/compete/whoop/DataTab'
+import GraphsTab from '@/components/compete/whoop/GraphsTab'
 
 type RangeOption = 7 | 14 | 30 | 90
-type ActiveTab = 'overview' | 'data'
+type ActiveTab = 'overview' | 'data' | 'graphs'
 
 export default function WhoopPage() {
   const [connected, setConnected] = useState<boolean | null>(null)
@@ -18,6 +19,7 @@ export default function WhoopPage() {
   const [sleep, setSleep] = useState<WhoopSleepRow[]>([])
   const [workouts, setWorkouts] = useState<WhoopWorkoutRow[]>([])
   const [todayEvents, setTodayEvents] = useState<ScheduleEvent[]>([])
+  const [selectedGraph, setSelectedGraph] = useState('recovery')
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
 
@@ -108,7 +110,7 @@ export default function WhoopPage() {
           </div>
           {/* Tab toggle */}
           <div className="flex bg-zinc-800 rounded-lg p-0.5 ml-2">
-            {(['overview', 'data'] as ActiveTab[]).map(tab => (
+            {(['overview', 'graphs', 'data'] as ActiveTab[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -166,6 +168,14 @@ export default function WhoopPage() {
           todayCycle={todayCycle}
           todaySleep={todaySleep}
           todayEvents={todayEvents}
+          onGraphClick={(key) => { setSelectedGraph(key); setActiveTab('graphs') }}
+        />
+      ) : activeTab === 'graphs' ? (
+        <GraphsTab
+          cycles={cycles}
+          sleep={sleep}
+          selectedGraph={selectedGraph}
+          onSelectGraph={setSelectedGraph}
         />
       ) : (
         <DataTab
