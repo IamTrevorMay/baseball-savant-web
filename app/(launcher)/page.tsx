@@ -79,14 +79,31 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string; icon
   purple:  { bg: 'hover:bg-purple-500/5',  text: 'text-purple-400',  border: 'hover:border-purple-500/40',  iconBg: 'bg-purple-500/15' },
   amber:   { bg: 'hover:bg-amber-500/5',   text: 'text-amber-400',   border: 'hover:border-amber-500/40',   iconBg: 'bg-amber-500/15' },
   cyan:    { bg: 'hover:bg-cyan-500/5',   text: 'text-cyan-400',   border: 'hover:border-cyan-500/40',   iconBg: 'bg-cyan-500/15' },
+  red:     { bg: 'hover:bg-red-500/5',    text: 'text-red-400',    border: 'hover:border-red-500/40',    iconBg: 'bg-red-500/15' },
+}
+
+const ADMIN_TOOL = {
+  id: 'admin',
+  name: 'Admin',
+  description: 'Platform settings and user management',
+  href: '/admin',
+  color: 'red',
+  icon: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  ),
+  available: true,
 }
 
 function LauncherContent() {
-  const { user, permissions, loading } = useAuth()
+  const { user, profile, permissions, loading } = useAuth()
   const searchParams = useSearchParams()
   const denied = searchParams.get('denied')
   // If no user session (preview mode or not logged in), show all tools as accessible
   const effectivePermissions = user ? permissions : ['research', 'mechanics', 'models', 'compete', 'visualize']
+  const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
+  const visibleTools = isAdmin ? [...TOOLS, ADMIN_TOOL] : TOOLS
 
   if (loading) {
     return (
@@ -114,8 +131,8 @@ function LauncherContent() {
 
       {/* Tool Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {TOOLS.map(tool => {
-          const hasAccess = effectivePermissions.includes(tool.id)
+        {visibleTools.map(tool => {
+          const hasAccess = tool.id === 'admin' || effectivePermissions.includes(tool.id)
           const colors = COLOR_MAP[tool.color]
           const locked = !hasAccess && tool.available
 

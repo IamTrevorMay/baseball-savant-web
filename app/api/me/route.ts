@@ -23,5 +23,14 @@ export async function GET() {
     permissions = perms?.map((p: any) => p.tool) ?? []
   }
 
+  // Mark pending invitation as accepted on first login
+  if (user.email) {
+    await supabaseAdmin
+      .from('invitations')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('email', user.email)
+      .is('accepted_at', null)
+  }
+
   return NextResponse.json({ profile, permissions })
 }
