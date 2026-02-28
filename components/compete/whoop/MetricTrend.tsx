@@ -9,6 +9,12 @@ interface DataPoint {
   value: number | null
 }
 
+interface SecondaryTrace {
+  data: DataPoint[]
+  color: string
+  label: string
+}
+
 interface Props {
   data: DataPoint[]
   color: string
@@ -18,6 +24,7 @@ interface Props {
   chartType?: 'line' | 'bar'
   markerColors?: string[]
   referenceLines?: { y: number; color: string }[]
+  secondary?: SecondaryTrace
 }
 
 export default function MetricTrend({
@@ -29,6 +36,7 @@ export default function MetricTrend({
   chartType = 'line',
   markerColors,
   referenceLines,
+  secondary,
 }: Props) {
   const dates = data.map(d => d.date)
   const values = data.map(d => d.value)
@@ -67,7 +75,22 @@ export default function MetricTrend({
           size: 5,
         },
         hovertemplate: `%{x}<br>${title}: %{y:.1f}${unit}<extra></extra>`,
+        name: title,
       }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const secondaryTrace: Record<string, any> | null = secondary && secondary.data.length > 0
+    ? {
+        x: secondary.data.map(d => d.date),
+        y: secondary.data.map(d => d.value),
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { color: secondary.color, width: 1.5 },
+        marker: { color: secondary.color, size: 5 },
+        name: secondary.label,
+        hovertemplate: `%{x}<br>${secondary.label}: %{y:.1f}${unit}<extra></extra>`,
+      }
+    : null
 
   const shapes = (referenceLines || []).map(rl => ({
     type: 'line' as const,
@@ -90,7 +113,7 @@ export default function MetricTrend({
         )}
       </div>
       <Plot
-        data={[trace]}
+        data={secondaryTrace ? [trace, secondaryTrace] : [trace]}
         layout={{
           height,
           margin: { t: 5, r: 10, b: 30, l: 35 },
@@ -109,6 +132,8 @@ export default function MetricTrend({
           },
           shapes,
           bargap: 0.3,
+          showlegend: !!secondaryTrace,
+          legend: secondaryTrace ? { font: { size: 9, color: '#71717a' }, x: 0, y: 1.15, orientation: 'h' as const } : undefined,
         }}
         config={{ displayModeBar: false, responsive: true }}
         className="w-full"

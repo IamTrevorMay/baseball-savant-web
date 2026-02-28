@@ -187,8 +187,8 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
       <h3 className="text-xs font-medium text-zinc-400 mb-3 text-center">Today</h3>
 
-      {/* Top Section: Three Gauges (no Strain) */}
-      <div className="flex justify-center gap-4 sm:gap-8 mb-4">
+      {/* Gauges */}
+      <div className="flex justify-center gap-4 sm:gap-6 mb-4 flex-wrap">
         <CircularGauge
           value={prepareScore}
           max={100}
@@ -209,6 +209,20 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
           color="#3b82f6"
           label={totalHours ? `${totalHours}h sleep` : 'Sleep'}
           display={sleepScore !== null ? `${Math.round(sleepScore)}%` : '—'}
+        />
+        <CircularGauge
+          value={strainScore}
+          max={21}
+          color="#f97316"
+          label="Strain"
+          display={strainScore !== null ? strainScore.toFixed(1) : '—'}
+        />
+        <CircularGauge
+          value={calories}
+          max={4000}
+          color="#f97316"
+          label="Calories"
+          display={calories !== null ? `${calories}` : '—'}
         />
       </div>
 
@@ -245,30 +259,10 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
 
       {/* Latest Sleep Bar */}
       {latestSleep && (
-        <div className="border-t border-zinc-800 pt-3 mb-3">
+        <div className="border-t border-zinc-800 pt-3">
           <SleepStageBar sleep={latestSleep} />
         </div>
       )}
-
-      {/* Bottom Section: Strain & Calories (orange) */}
-      <div className="border-t border-zinc-800 pt-3">
-        <div className="flex justify-center gap-4 sm:gap-8">
-          <CircularGauge
-            value={strainScore}
-            max={21}
-            color="#f97316"
-            label="Strain"
-            display={strainScore !== null ? strainScore.toFixed(1) : '—'}
-          />
-          <CircularGauge
-            value={calories}
-            max={4000}
-            color="#f97316"
-            label="Calories"
-            display={calories !== null ? `${calories}` : '—'}
-          />
-        </div>
-      </div>
 
       {/* Today's Schedule */}
       {todayEvents.length > 0 && (

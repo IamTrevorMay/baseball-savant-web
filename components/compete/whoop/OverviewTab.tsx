@@ -1,6 +1,6 @@
 'use client'
 
-import { WhoopCycleRow, WhoopSleepRow, WhoopWorkoutRow } from '@/lib/compete/whoop-types'
+import { WhoopCycleRow, WhoopSleepRow, WhoopWorkoutRow, computeReadiness } from '@/lib/compete/whoop-types'
 import { ScheduleEvent } from '@/lib/compete/schedule-types'
 import TodayHero from './TodayHero'
 import MetricTrend from './MetricTrend'
@@ -23,6 +23,14 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
     if (c.recovery_state === 'green') return '#22c55e'
     if (c.recovery_state === 'yellow') return '#eab308'
     return '#ef4444'
+  })
+
+  // Prepare trend data (computed per-cycle using full history for percentile context)
+  const sleepByDate = new Map(sleep.map(s => [s.sleep_date, s]))
+  const prepareData = cycles.map(c => {
+    const matchingSleep = sleepByDate.get(c.cycle_date) ?? null
+    const score = computeReadiness(c, matchingSleep, cycles, sleep)
+    return { date: c.cycle_date, value: score }
   })
 
   // HRV trend
@@ -48,6 +56,7 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
             { y: 67, color: '#22c55e' },
             { y: 34, color: '#ef4444' },
           ]}
+          secondary={{ data: prepareData, color: '#14b8a6', label: 'Prepare' }}
         />
         <MetricTrend
           data={hrvData}
