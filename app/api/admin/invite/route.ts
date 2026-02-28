@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   // Send invite via Supabase auth
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
   const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${siteUrl}/auth/callback`,
+    redirectTo: `${siteUrl}/auth/callback?next=/set-password`,
   })
   if (inviteError) {
     return NextResponse.json({ error: inviteError.message }, { status: 500 })
