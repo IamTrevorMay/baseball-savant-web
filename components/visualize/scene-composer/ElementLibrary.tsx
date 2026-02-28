@@ -6,6 +6,80 @@ import { SCENE_TEMPLATES, TEXT_PRESETS, loadElementPresets, deleteElementPreset,
 
 type Tab = 'elements' | 'templates' | 'presets'
 
+const CATEGORY_META: { key: string; label: string; icon: string }[] = [
+  { key: 'pitcher', label: 'Pitcher', icon: '\u26be' },
+  { key: 'batter', label: 'Batter', icon: '\ud83c\udfcf' },
+  { key: 'comparison', label: 'Comparison', icon: 'VS' },
+  { key: 'team', label: 'Team', icon: '\ud83c\udfc6' },
+  { key: 'social', label: 'Social Media', icon: '\ud83d\udcf1' },
+  { key: 'broadcast', label: 'Broadcast', icon: '\ud83d\udcfa' },
+  { key: 'advanced', label: 'Advanced', icon: '\u2605' },
+]
+
+function TemplatesTab({ onLoad }: { onLoad: (t: SceneTemplate) => void }) {
+  const [openCats, setOpenCats] = useState<Set<string>>(new Set(['pitcher']))
+
+  function toggleCat(key: string) {
+    setOpenCats(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const grouped = CATEGORY_META.map(cat => ({
+    ...cat,
+    templates: SCENE_TEMPLATES.filter(t => t.category === cat.key),
+  }))
+
+  return (
+    <>
+      <p className="text-[10px] text-zinc-600 mb-3">Click to load a template. Customize after loading.</p>
+      <div className="space-y-1">
+        {grouped.map(cat => (
+          <div key={cat.key}>
+            <button
+              onClick={() => toggleCat(cat.key)}
+              className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-800/60 transition group"
+            >
+              <span className="w-6 h-6 rounded bg-zinc-800 text-zinc-500 flex items-center justify-center text-[10px] shrink-0 group-hover:bg-cyan-600/20 group-hover:text-cyan-400 transition">
+                {cat.icon}
+              </span>
+              <span className="text-[11px] font-medium text-zinc-300 group-hover:text-white transition flex-1 text-left truncate">
+                {cat.label}
+              </span>
+              <span className="text-[9px] text-zinc-600 shrink-0">{cat.templates.length}</span>
+              <span className="text-[10px] text-zinc-600 shrink-0">{openCats.has(cat.key) ? '\u25B4' : '\u25BE'}</span>
+            </button>
+            {openCats.has(cat.key) && (
+              <div className="ml-2 pl-2 border-l border-zinc-800/60 space-y-1 mt-1 mb-2">
+                {cat.templates.map(template => (
+                  <button
+                    key={template.id}
+                    onClick={() => onLoad(template)}
+                    className="w-full text-left px-2.5 py-2 rounded-lg bg-zinc-800/30 border border-zinc-800/50 hover:border-emerald-600/40 hover:bg-zinc-800 transition group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded bg-zinc-700/40 text-zinc-500 flex items-center justify-center text-[10px] shrink-0 group-hover:bg-emerald-600/20 group-hover:text-emerald-400 transition">
+                        {template.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-medium text-zinc-300 group-hover:text-white transition leading-tight">{template.name}</div>
+                        <div className="text-[9px] text-zinc-600 leading-tight mt-0.5">{template.description} &middot; {template.width}&times;{template.height}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 interface Props {
   onAdd: (type: ElementType) => void
   onAddElement?: (el: SceneElement) => void
@@ -14,7 +88,6 @@ interface Props {
 
 export default function ElementLibrary({ onAdd, onAddElement, onLoadScene }: Props) {
   const [tab, setTab] = useState<Tab>('elements')
-  const [templateCategory, setTemplateCategory] = useState<string>('all')
   const [elementPresets, setElementPresets] = useState<SavedElementPreset[]>(() => loadElementPresets())
 
   function handleLoadTemplate(template: SceneTemplate) {
@@ -108,50 +181,7 @@ export default function ElementLibrary({ onAdd, onAddElement, onLoadScene }: Pro
 
         {/* ── Templates Tab ─────────────────────────────────────────────── */}
         {tab === 'templates' && (
-          <>
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium mb-2">Scene Templates</div>
-            <p className="text-[10px] text-zinc-600 mb-3">Click to load a prebuilt scene. Customize players and stats after loading.</p>
-
-            {/* Category filter */}
-            <div className="flex gap-1 mb-3 flex-wrap">
-              {['all', 'pitcher', 'batter', 'comparison', 'social', 'overlay'].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setTemplateCategory(cat)}
-                  className={`px-2 py-1 rounded text-[10px] transition ${
-                    templateCategory === cat
-                      ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-600/40'
-                      : 'bg-zinc-800 text-zinc-500 border border-zinc-700 hover:text-zinc-300'
-                  }`}
-                >
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-1.5">
-              {SCENE_TEMPLATES
-                .filter(t => templateCategory === 'all' || t.category === templateCategory)
-                .map(template => (
-                <button
-                  key={template.id}
-                  onClick={() => handleLoadTemplate(template)}
-                  className="w-full text-left px-3 py-2.5 rounded-lg bg-zinc-800/50 border border-zinc-800 hover:border-emerald-600/40 hover:bg-zinc-800 transition group"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded bg-zinc-700/60 text-zinc-400 flex items-center justify-center text-sm group-hover:bg-emerald-600/20 group-hover:text-emerald-400 transition">
-                      {template.icon}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-zinc-200 group-hover:text-white transition">{template.name}</div>
-                      <div className="text-[10px] text-zinc-600 truncate">{template.description}</div>
-                      <div className="text-[9px] text-zinc-700 mt-0.5">{template.width}{'\u00d7'}{template.height}</div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </>
+          <TemplatesTab onLoad={handleLoadTemplate} />
         )}
 
         {/* ── Presets Tab ───────────────────────────────────────────────── */}
