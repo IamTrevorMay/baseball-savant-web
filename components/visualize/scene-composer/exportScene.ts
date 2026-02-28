@@ -426,8 +426,10 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
   await Promise.all([...fontFamilies].map(f => ensureGoogleFont(f)))
 
   // Background
-  ctx.fillStyle = scene.background
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  if (scene.background && scene.background !== 'transparent') {
+    ctx.fillStyle = scene.background
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
 
   // Sort by zIndex and draw
   const sorted = [...scene.elements].sort((a, b) => a.zIndex - b.zIndex)
@@ -514,8 +516,10 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
   canvas.height = scene.height
   const ctx = canvas.getContext('2d')!
 
-  ctx.fillStyle = scene.background
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  if (scene.background && scene.background !== 'transparent') {
+    ctx.fillStyle = scene.background
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
 
   const elements = interpolateScene(scene.elements, frame)
   const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex)

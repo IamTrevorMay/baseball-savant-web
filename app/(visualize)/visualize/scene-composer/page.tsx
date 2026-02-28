@@ -570,12 +570,32 @@ export default function SceneComposerPage() {
         {/* Background */}
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-zinc-500">BG</span>
-          <input
-            type="color"
-            value={scene.background}
-            onChange={e => setScene(prev => ({ ...prev, background: e.target.value }))}
-            className="w-6 h-6 rounded cursor-pointer bg-transparent border border-zinc-700"
-          />
+          {scene.background === 'transparent' ? (
+            <button
+              onClick={() => setScene(prev => ({ ...prev, background: '#09090b' }))}
+              className="w-6 h-6 rounded border border-zinc-700 text-[8px] text-zinc-500 hover:text-zinc-300 transition"
+              style={{ background: 'repeating-conic-gradient(#27272a 0% 25%, #18181b 0% 50%) 50% / 8px 8px' }}
+              title="Transparent — click to set solid"
+            />
+          ) : (
+            <input
+              type="color"
+              value={scene.background}
+              onChange={e => setScene(prev => ({ ...prev, background: e.target.value }))}
+              className="w-6 h-6 rounded cursor-pointer bg-transparent border border-zinc-700"
+            />
+          )}
+          <button
+            onClick={() => setScene(prev => ({ ...prev, background: prev.background === 'transparent' ? '#09090b' : 'transparent' }))}
+            className={`px-1.5 py-0.5 rounded text-[9px] border transition ${
+              scene.background === 'transparent'
+                ? 'bg-cyan-600/20 border-cyan-600/40 text-cyan-300'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+            }`}
+            title="Toggle transparent background"
+          >
+            {scene.background === 'transparent' ? 'Clear' : 'Clear'}
+          </button>
         </div>
 
         {/* Undo/Redo */}

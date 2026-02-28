@@ -454,7 +454,11 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
         style={{
           width: scene.width,
           height: scene.height,
-          backgroundColor: scene.background,
+          backgroundColor: scene.background === 'transparent' ? undefined : scene.background,
+          ...(scene.background === 'transparent' ? {
+            backgroundImage: 'repeating-conic-gradient(#27272a 0% 25%, #18181b 0% 50%)',
+            backgroundSize: '20px 20px',
+          } : {}),
           transform: `scale(${zoom})`,
           transformOrigin: 'center center',
         }}
