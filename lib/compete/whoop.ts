@@ -49,7 +49,7 @@ export function getWhoopAuthUrl(state: string): string {
     client_id: process.env.WHOOP_CLIENT_ID!,
     redirect_uri: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/compete/whoop/callback`,
     response_type: 'code',
-    scope: 'read:recovery read:cycles read:sleep read:workout read:profile',
+    scope: 'offline read:recovery read:cycles read:sleep read:workout read:profile',
     state,
   })
   return `${WHOOP_AUTH_URL}?${params.toString()}`
