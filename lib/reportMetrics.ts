@@ -5,7 +5,7 @@
 export const METRICS: Record<string, string> = {
   // Counting
   pitches: 'COUNT(*)',
-  pa: "COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END)",
+  pa: "COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END)",
   games: 'COUNT(DISTINCT game_pk)',
   // Averages
   avg_velo: 'ROUND(AVG(release_speed)::numeric, 1)',
@@ -21,8 +21,8 @@ export const METRICS: Record<string, string> = {
   avg_la: 'ROUND(AVG(launch_angle)::numeric, 1)',
   avg_dist: 'ROUND(AVG(hit_distance_sc)::numeric, 0)',
   // Rates
-  k_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END), 0), 1)",
-  bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END), 0), 1)",
+  k_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
+  bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
   whiff_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip'), 0), 1)",
   csw_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'called_strike') / NULLIF(COUNT(*), 0), 1)",
   zone_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)",
@@ -30,7 +30,7 @@ export const METRICS: Record<string, string> = {
   // Batting
   ba: "ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   slg: "ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  obp: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END), 0), 3)",
+  obp: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 3)",
   // Expected
   avg_xba: 'ROUND(AVG(estimated_ba_using_speedangle)::numeric, 3)',
   avg_xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
@@ -52,11 +52,11 @@ export const METRICS: Record<string, string> = {
   k_count: "COUNT(*) FILTER (WHERE events LIKE '%strikeout%')",
   hbp_count: "COUNT(*) FILTER (WHERE events = 'hit_by_pitch')",
   // Rate — additional
-  k_minus_bb: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END), 0) - 100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END), 0), 1)",
+  k_minus_bb: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) - 100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
   swstr_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%') / NULLIF(COUNT(*), 0), 1)",
   hard_hit_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1)",
   barrel_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 98 AND launch_angle BETWEEN 8 AND 32) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1)",
-  ops: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END), 0) + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
+  ops: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','hit_into_play','foul_bunt')) / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','foul_bunt')), 0), 1)",
   z_swing_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play')) / NULLIF(COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9), 0), 1)",
   o_contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('foul','foul_tip','hit_into_play','foul_bunt')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','foul_bunt'))), 0), 1)",

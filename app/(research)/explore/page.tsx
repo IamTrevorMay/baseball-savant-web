@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import ResearchNav from '@/components/ResearchNav'
 import FilterEngine, { ActiveFilter, FILTER_CATALOG } from '@/components/FilterEngine'
@@ -17,11 +18,23 @@ const VIEWS: { key: View; label: string }[] = [
   { key: 'defence', label: 'Defence' },
 ]
 
-const currentYear = new Date().getFullYear().toString()
+// Default to current year, but fall back to previous year if season hasn't started
+const now = new Date()
+const currentYear = (now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear()).toString()
+
+const VALID_VIEWS = new Set(['pitching', 'hitting', 'team', 'defence'])
 
 export default function ExplorePage() {
-  const [view, setView] = useState<View>('pitching')
-  const [statSet, setStatSet] = useState<StatSet>('traditional')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Read initial state from URL params
+  const initView = (VALID_VIEWS.has(searchParams.get('view') || '') ? searchParams.get('view') : 'pitching') as View
+  const initTab = searchParams.get('tab') as StatSet | null
+  const validTab = initTab && STAT_SETS[initView]?.some(s => s.key === initTab) ? initTab : (STAT_SETS[initView]?.[0]?.key || 'traditional')
+
+  const [view, setView] = useState<View>(initView)
+  const [statSet, setStatSet] = useState<StatSet>(validTab)
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([
     { def: FILTER_CATALOG.find(f => f.key === 'game_year')!, values: [currentYear] },
   ])
@@ -32,8 +45,8 @@ export default function ExplorePage() {
   const [sortBy, setSortBy] = useState('pitches')
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC')
   const [page, setPage] = useState(0)
-  const [qualifier, setQualifier] = useState(defaultQualifier('pitching'))
-  const [batterNames, setBatterNames] = useState<Record<number, string>>({})
+  const [qualifier, setQualifier] = useState(defaultQualifier(initView))
+  const batterNamesRef = useRef<Record<number, string>>({})
   const limit = 50
   const fetchRef = useRef(0)
 
@@ -120,28 +133,20 @@ export default function ExplorePage() {
         // For hitting view, resolve batter names
         if (view === 'hitting' && fetchedRows.length > 0) {
           const ids = [...new Set(fetchedRows.map((r: any) => r.batter).filter(Boolean))] as number[]
-          const uncached = ids.filter(id => !batterNames[id])
+          const uncached = ids.filter(id => !batterNamesRef.current[id])
           if (uncached.length > 0) {
             const { data: players } = await supabase
               .from('players')
               .select('id, name')
               .in('id', uncached)
             if (players) {
-              const newNames = { ...batterNames }
-              players.forEach((p: any) => { newNames[p.id] = p.name })
-              setBatterNames(newNames)
-              // Merge into rows
-              fetchedRows = fetchedRows.map((r: any) => ({
-                ...r,
-                _batter_name: newNames[r.batter] || batterNames[r.batter] || `ID ${r.batter}`,
-              }))
+              players.forEach((p: any) => { batterNamesRef.current[p.id] = p.name })
             }
-          } else {
-            fetchedRows = fetchedRows.map((r: any) => ({
-              ...r,
-              _batter_name: batterNames[r.batter] || `ID ${r.batter}`,
-            }))
           }
+          fetchedRows = fetchedRows.map((r: any) => ({
+            ...r,
+            _batter_name: batterNamesRef.current[r.batter] || `ID ${r.batter}`,
+          }))
         }
 
         setRows(fetchedRows)
@@ -150,11 +155,19 @@ export default function ExplorePage() {
       if (id === fetchRef.current) setRows([])
     }
     if (id === fetchRef.current) setLoading(false)
-  }, [view, statSet, activeFilters, sortBy, sortDir, page, qualifier, batterNames])
+  }, [view, statSet, activeFilters, sortBy, sortDir, page, qualifier])
 
   useEffect(() => {
     if (!initialLoading) fetchData()
   }, [fetchData, initialLoading])
+
+  // Sync view + tab to URL params
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', view)
+    params.set('tab', statSet)
+    router.replace(`?${params.toString()}`, { scroll: false })
+  }, [view, statSet])
 
   // When view changes, reset statSet and qualifier
   function handleViewChange(v: View) {

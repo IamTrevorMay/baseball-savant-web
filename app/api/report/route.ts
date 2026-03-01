@@ -115,10 +115,11 @@ export async function POST(req: NextRequest) {
     const mp = parseInt(minPitches)
     if (mp > 0) havingParts.push(`COUNT(*) >= ${mp}`)
     const mpa = parseInt(minPA)
-    if (mpa > 0) havingParts.push(`COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END) >= ${mpa}`)
+    if (mpa > 0) havingParts.push(`COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) >= ${mpa}`)
     const havingClause = havingParts.length > 0 ? `HAVING ${havingParts.join(' AND ')}` : ''
 
-    const safeSortBy = METRICS[sortBy] ? sortBy : metrics[0] || 'pitches'
+    // Allow sorting by metrics OR group-by columns
+    const safeSortBy = (METRICS[sortBy] || GROUP_COLS[sortBy]) ? sortBy : metrics[0] || 'pitches'
     const safeSortDir = sortDir === 'ASC' ? 'ASC' : 'DESC'
     const orderClause = `ORDER BY ${safeSortBy} ${safeSortDir}`
     const safeLimit = Math.min(Math.max(parseInt(limit), 1), 1000)
