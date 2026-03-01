@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import ResearchNav from '@/components/ResearchNav'
 import FilterEngine, { ActiveFilter, FILTER_CATALOG } from '@/components/FilterEngine'
 import {
-  View, StatSet, STAT_SETS, COLUMNS, TRITON_COLUMNS,
+  View, StatSet, STAT_SETS, COLUMNS, TRITON_RAW_COLUMNS, TRITON_PLUS_COLUMNS,
   getMetricsForStatSet, getGroupBy, filtersToReportFormat,
   formatValue, getCellColor, defaultQualifier,
   type ColumnDef,
@@ -84,7 +84,7 @@ export default function ExplorePage() {
     const id = ++fetchRef.current
 
     try {
-      if (statSet === 'triton') {
+      if (statSet === 'triton_raw' || statSet === 'triton_plus') {
         // Triton uses separate API
         const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
         const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
@@ -99,6 +99,7 @@ export default function ExplorePage() {
             sortDir,
             limit,
             offset: page * limit,
+            mode: statSet === 'triton_raw' ? 'raw' : 'plus',
           }),
         })
         const data = await res.json()
@@ -195,12 +196,14 @@ export default function ExplorePage() {
   }
 
   // Get the visible columns (hide empty isGroup columns like pitcher/batter IDs)
-  const allCols = statSet === 'triton' ? TRITON_COLUMNS : (COLUMNS[`${view}:${statSet}`] || [])
+  const allCols = statSet === 'triton_raw' ? TRITON_RAW_COLUMNS
+    : statSet === 'triton_plus' ? TRITON_PLUS_COLUMNS
+    : (COLUMNS[`${view}:${statSet}`] || [])
   const visibleCols = allCols.filter(c => c.label !== '')
 
   function handleRowClick(row: any, col: ColumnDef) {
     if (!col.isName) return
-    if (view === 'pitching' || statSet === 'triton') {
+    if (view === 'pitching' || statSet === 'triton_raw' || statSet === 'triton_plus') {
       const id = row.pitcher
       if (id) window.location.href = `/player/${id}`
     } else if (view === 'hitting') {

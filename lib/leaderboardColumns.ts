@@ -5,7 +5,7 @@ import type { ActiveFilter } from '@/components/FilterEngine'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type View = 'pitching' | 'hitting' | 'team' | 'defence'
-export type StatSet = 'traditional' | 'advanced' | 'stuff' | 'battedball' | 'discipline' | 'triton'
+export type StatSet = 'traditional' | 'advanced' | 'stuff' | 'battedball' | 'discipline' | 'triton_raw' | 'triton_plus'
 
 export interface ColumnDef {
   key: string          // metric key or group key (e.g. 'player_name', 'avg_velo')
@@ -25,7 +25,8 @@ export const STAT_SETS: Record<View, { key: StatSet; label: string }[]> = {
     { key: 'stuff', label: 'Stuff/Arsenal' },
     { key: 'battedball', label: 'Batted Ball' },
     { key: 'discipline', label: 'Plate Discipline' },
-    { key: 'triton', label: 'Triton' },
+    { key: 'triton_raw', label: 'Triton' },
+    { key: 'triton_plus', label: 'Triton+' },
   ],
   hitting: [
     { key: 'traditional', label: 'Traditional' },
@@ -153,26 +154,74 @@ export const COLUMNS: Record<string, ColumnDef[]> = {
   'team:discipline': [teamCol, pitches, zonePct, chasePct, whiffPct, swstrPct, cswPct, contactPct, zSwingPct, oContactPct],
 }
 
-// ── Triton columns (special — uses different API) ────────────────────────────
-export const TRITON_COLUMNS: ColumnDef[] = [
+// ── Triton pitch types & per-pitch-type column generation ─────────────────────
+export const TRITON_PITCH_TYPES = [
+  { abbrev: 'ff', name: '4-Seam Fastball', label: 'FF' },
+  { abbrev: 'si', name: 'Sinker', label: 'SI' },
+  { abbrev: 'fc', name: 'Cutter', label: 'FC' },
+  { abbrev: 'sl', name: 'Slider', label: 'SL' },
+  { abbrev: 'sw', name: 'Sweeper', label: 'SW' },
+  { abbrev: 'cu', name: 'Curveball', label: 'CU' },
+  { abbrev: 'ch', name: 'Changeup', label: 'CH' },
+  { abbrev: 'fs', name: 'Split-Finger', label: 'FS' },
+  { abbrev: 'kc', name: 'Knuckle Curve', label: 'KC' },
+  { abbrev: 'sv', name: 'Slurve', label: 'SV' },
+] as const
+
+const RAW_METRICS = [
+  { suffix: 'brink', label: 'Brink' },
+  { suffix: 'cluster', label: 'Cluster' },
+  { suffix: 'hdev', label: 'HDev' },
+  { suffix: 'vdev', label: 'VDev' },
+  { suffix: 'missfire', label: 'Miss' },
+  { suffix: 'waste_pct', label: 'Waste%' },
+]
+
+const PLUS_METRICS = [
+  { suffix: 'brink_plus', label: 'Brink+', hasPlus: true },
+  { suffix: 'cluster_plus', label: 'Cluster+', hasPlus: true },
+  { suffix: 'hdev_plus', label: 'HDev+', hasPlus: true },
+  { suffix: 'vdev_plus', label: 'VDev+', hasPlus: true },
+  { suffix: 'missfire_plus', label: 'Miss+', hasPlus: true },
+  { suffix: 'waste_pct', label: 'Waste%', hasPlus: false },
+]
+
+export const TRITON_RAW_COLUMNS: ColumnDef[] = [
+  { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+  { key: 'pitcher', label: '', colorClass: '', isGroup: true },
+  { key: 'pitches', label: 'Pitches', colorClass: 'text-zinc-400', format: 'int' },
+  ...TRITON_PITCH_TYPES.flatMap(pt =>
+    RAW_METRICS.map(m => ({
+      key: `${pt.abbrev}_${m.suffix}`,
+      label: `${pt.label} ${m.label}`,
+      colorClass: m.suffix === 'waste_pct' ? 'text-red-400' : 'text-zinc-300',
+      format: 'dec1' as const,
+    }))
+  ),
+]
+
+export const TRITON_PLUS_COLUMNS: ColumnDef[] = [
   { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
   { key: 'pitcher', label: '', colorClass: '', isGroup: true },
   { key: 'pitches', label: 'Pitches', colorClass: 'text-zinc-400', format: 'int' },
   { key: 'cmd_plus', label: 'Cmd+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
   { key: 'rpcom_plus', label: 'RPCom+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
-  { key: 'brink_plus', label: 'Brink+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
-  { key: 'cluster_plus', label: 'Cluster+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
-  { key: 'hdev_plus', label: 'HDev+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
-  { key: 'vdev_plus', label: 'VDev+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
-  { key: 'missfire_plus', label: 'Missfire+', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) },
-  { key: 'waste_pct', label: 'Waste%', colorClass: 'text-red-400', format: 'dec1' },
+  ...TRITON_PITCH_TYPES.flatMap(pt =>
+    PLUS_METRICS.map(m => ({
+      key: `${pt.abbrev}_${m.suffix}`,
+      label: `${pt.label} ${m.label}`,
+      colorClass: m.suffix === 'waste_pct' ? 'text-red-400' : '',
+      format: 'dec1' as const,
+      ...(m.hasPlus ? { conditionalColor: (v: number) => plusColor(v) } : {}),
+    }))
+  ),
 ]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Get metric keys needed for a stat set (excludes group-by columns) */
 export function getMetricsForStatSet(view: View, statSet: StatSet): string[] {
-  if (statSet === 'triton') return [] // triton uses separate API
+  if (statSet === 'triton_raw' || statSet === 'triton_plus') return [] // triton uses separate API
   const cols = COLUMNS[`${view}:${statSet}`] || []
   return cols.filter(c => !c.isGroup && c.key !== '_batter_name').map(c => c.key)
 }
