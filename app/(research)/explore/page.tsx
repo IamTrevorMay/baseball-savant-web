@@ -87,7 +87,7 @@ export default function ExplorePage() {
       if (statSet === 'triton') {
         // Triton uses separate API
         const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
-        const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : new Date().getFullYear()
+        const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
 
         const res = await fetch('/api/leaderboard-triton', {
           method: 'POST',
@@ -290,8 +290,15 @@ export default function ExplorePage() {
               </button>
             ))}
             <div className="flex-1" />
-            {/* Row count + pagination */}
+            {/* Refresh + Row count + pagination */}
             <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+              <button onClick={() => fetchData()} disabled={loading}
+                title="Refresh data"
+                className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 disabled:opacity-30 transition">
+                <svg className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
               {loading && <span className="text-emerald-400 animate-pulse">Loading...</span>}
               <span>{rows.length} rows</span>
               <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}
