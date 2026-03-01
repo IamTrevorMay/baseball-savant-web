@@ -3,9 +3,10 @@ import { useMemo, useState } from 'react'
 import {
   SAVANT_PERCENTILES, BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
   computePercentile, percentileColor, computePlus, plusToPercentile,
+  computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
 
-type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
+type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'command' | 'rpcom'
 
 interface Props { data: any[] }
 
@@ -128,12 +129,40 @@ export default function PercentileTab({ data }: Props) {
         missfireRows.push({ name, value: avgM, plus, pctile: plusToPercentile(plus) })
       }
     }
+    // Composite metrics per pitch type
+    const commandRows: PlusRow[] = []
+    const rpcomRows: PlusRow[] = []
+    for (const [name, pitches] of Object.entries(groups)) {
+      const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
+      const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
+      const hdevs = pitches.map(p => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
+      const ab = avgArr(brinks), ac = avgArr(clusters), ah = avgArr(hdevs), av = avgArr(vdevs), am = avgArr(missfires)
+      const bL = BRINK_LEAGUE[name], cL = CLUSTER_LEAGUE[name], hL = HDEV_LEAGUE[name], vL = VDEV_LEAGUE[name], mL = MISSFIRE_LEAGUE[name]
+      if (ab != null && ac != null && am != null && bL && cL && mL) {
+        const bp = Math.round(computePlus(ab, bL.mean, bL.stddev))
+        const cp = Math.round(100 - (computePlus(ac, cL.mean, cL.stddev) - 100))
+        const mp = Math.round(100 - (computePlus(am, mL.mean, mL.stddev) - 100))
+        const cmd = computeCommandPlus(bp, cp, mp)
+        commandRows.push({ name, value: cmd, plus: cmd, pctile: plusToPercentile(cmd) })
+        if (ah != null && av != null && hL && vL) {
+          const hp = Math.round(100 - (computePlus(ah, hL.mean, hL.stddev) - 100))
+          const vp = Math.round(100 - (computePlus(av, vL.mean, vL.stddev) - 100))
+          const rpc = computeRPComPlus(bp, cp, hp, vp, mp)
+          rpcomRows.push({ name, value: rpc, plus: rpc, pctile: plusToPercentile(rpc) })
+        }
+      }
+    }
+
     return {
       brinkRows: brinkRows.sort((a, b) => b.pctile - a.pctile),
       clusterRows: clusterRows.sort((a, b) => b.pctile - a.pctile),
       hdevRows: hdevRows.sort((a, b) => b.pctile - a.pctile),
       vdevRows: vdevRows.sort((a, b) => b.pctile - a.pctile),
       missfireRows: missfireRows.sort((a, b) => b.pctile - a.pctile),
+      commandRows: commandRows.sort((a, b) => b.pctile - a.pctile),
+      rpcomRows: rpcomRows.sort((a, b) => b.pctile - a.pctile),
     }
   }, [data])
 
@@ -149,13 +178,15 @@ export default function PercentileTab({ data }: Props) {
     { key: 'hdev', title: 'HDev+', desc: 'Percentile rank — higher = tighter horizontal spread', rows: plusStats.hdevRows },
     { key: 'vdev', title: 'VDev+', desc: 'Percentile rank — higher = tighter vertical spread', rows: plusStats.vdevRows },
     { key: 'missfire', title: 'Missfire+', desc: 'Percentile rank — higher = misses stay closer to zone', rows: plusStats.missfireRows },
+    { key: 'command', title: 'Command+', desc: 'Percentile rank — theory-weighted composite (40% Brink+ + 30% Cluster+ + 30% Missfire+)', rows: plusStats.commandRows },
+    { key: 'rpcom', title: 'RPCom+', desc: 'Percentile rank — run prevention composite weighted by correlation with xwOBA-against', rows: plusStats.rpcomRows },
   ]
 
   return (
     <div className="space-y-4">
       {/* View toggle */}
       <div className="flex gap-1 flex-wrap">
-        {([['rankings', 'Rankings'], ['brink', 'Brink+'], ['cluster', 'Cluster+'], ['hdev', 'HDev+'], ['vdev', 'VDev+'], ['missfire', 'Missfire+']] as [View, string][]).map(([v, label]) => (
+        {([['rankings', 'Rankings'], ['brink', 'Brink+'], ['cluster', 'Cluster+'], ['hdev', 'HDev+'], ['vdev', 'VDev+'], ['missfire', 'Missfire+'], ['command', 'Cmd+'], ['rpcom', 'RPCom+']] as [View, string][]).map(([v, label]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
               view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'

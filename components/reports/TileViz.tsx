@@ -2,6 +2,10 @@
 import { useMemo, useState } from 'react'
 import Plot from '../PlotWrapper'
 import { COLORS, getPitchColor } from '../chartConfig'
+import {
+  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
+  computePlus, computeCommandPlus, computeRPComPlus,
+} from '@/lib/leagueStats'
 
 // Shared zone shapes for strike zone
 const ZONE_SHAPES = [
@@ -216,6 +220,42 @@ function whiffs(p: any[]) {
   return p.filter(d => (d.description || '').toLowerCase().includes('swinging_strike'))
 }
 
+type PlusKey = 'brinkPlus' | 'clusterPlus' | 'hdevPlus' | 'vdevPlus' | 'missfirePlus' | 'commandPlus' | 'rpcomPlus'
+
+function usageWeightedPlus(pitches: any[], metric: PlusKey): number | null {
+  const groups: Record<string, any[]> = {}
+  pitches.forEach(d => { if (d.pitch_name) { if (!groups[d.pitch_name]) groups[d.pitch_name] = []; groups[d.pitch_name].push(d) } })
+  let wtSum = 0, wt = 0
+  for (const [name, pts] of Object.entries(groups)) {
+    const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+    const brinks = pts.map((p: any) => p.brink).filter((v: any) => v != null)
+    const clusters = pts.map((p: any) => p.cluster).filter((v: any) => v != null)
+    const hdevs = pts.map((p: any) => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+    const vdevs = pts.map((p: any) => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+    const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
+    const ab = avgArr(brinks), ac = avgArr(clusters), ah = avgArr(hdevs), av = avgArr(vdevs), am = avgArr(missfires)
+    const bL = BRINK_LEAGUE[name], cL = CLUSTER_LEAGUE[name], hL = HDEV_LEAGUE[name], vL = VDEV_LEAGUE[name], mL = MISSFIRE_LEAGUE[name]
+
+    const bp = ab != null && bL ? Math.round(computePlus(ab, bL.mean, bL.stddev)) : null
+    const cp = ac != null && cL ? Math.round(100 - (computePlus(ac, cL.mean, cL.stddev) - 100)) : null
+    const hp = ah != null && hL ? Math.round(100 - (computePlus(ah, hL.mean, hL.stddev) - 100)) : null
+    const vp = av != null && vL ? Math.round(100 - (computePlus(av, vL.mean, vL.stddev) - 100)) : null
+    const mp = am != null && mL ? Math.round(100 - (computePlus(am, mL.mean, mL.stddev) - 100)) : null
+
+    let val: number | null = null
+    if (metric === 'brinkPlus') val = bp
+    else if (metric === 'clusterPlus') val = cp
+    else if (metric === 'hdevPlus') val = hp
+    else if (metric === 'vdevPlus') val = vp
+    else if (metric === 'missfirePlus') val = mp
+    else if (metric === 'commandPlus' && bp != null && cp != null && mp != null) val = computeCommandPlus(bp, cp, mp)
+    else if (metric === 'rpcomPlus' && bp != null && cp != null && hp != null && vp != null && mp != null) val = computeRPComPlus(bp, cp, hp, vp, mp)
+
+    if (val != null) { wtSum += val * pts.length; wt += pts.length }
+  }
+  return wt > 0 ? Math.round(wtSum / wt) : null
+}
+
 export interface CustomColDef {
   key: string
   label: string
@@ -251,6 +291,20 @@ export const CUSTOM_COL_CATALOG: CustomColDef[] = [
   { key: 'max_ev', label: 'Max EV', category: 'Batted Ball', compute: p => { const v = p.map((d: any) => d.launch_speed).filter(Boolean); return v.length ? Math.max(...v) : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'la', label: 'LA', category: 'Batted Ball', compute: p => avg(p, 'launch_angle'), fmt: v => v === null ? '\u2014' : v.toFixed(1) + '\u00b0' },
   { key: 'gb_pct', label: 'GB%', category: 'Batted Ball', compute: p => { const bbe = p.filter((d: any) => d.bb_type); const gb = bbe.filter((d: any) => d.bb_type === 'ground_ball'); return bbe.length ? 100 * gb.length / bbe.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  // Command — Raw
+  { key: 'brink_raw', label: 'Brink', category: 'Command', compute: p => avg(p, 'brink'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'cluster_raw', label: 'Cluster', category: 'Command', compute: p => avg(p, 'cluster'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'hdev_raw', label: 'HDev', category: 'Command', compute: p => { const v = p.map((d: any) => d.hdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'vdev_raw', label: 'VDev', category: 'Command', compute: p => { const v = p.map((d: any) => d.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'missfire_raw', label: 'Missfire', category: 'Command', compute: p => { const b = p.map((d: any) => d.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return b.length ? b.reduce((a: number, b: number) => a + b, 0) / b.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  // Command — Plus stats (usage-weighted across pitch types)
+  { key: 'brink_plus', label: 'Brink+', category: 'Command', compute: p => usageWeightedPlus(p, 'brinkPlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'cluster_plus', label: 'Cluster+', category: 'Command', compute: p => usageWeightedPlus(p, 'clusterPlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'hdev_plus', label: 'HDev+', category: 'Command', compute: p => usageWeightedPlus(p, 'hdevPlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'vdev_plus', label: 'VDev+', category: 'Command', compute: p => usageWeightedPlus(p, 'vdevPlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'missfire_plus', label: 'Missfire+', category: 'Command', compute: p => usageWeightedPlus(p, 'missfirePlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'command_plus', label: 'Cmd+', category: 'Command', compute: p => usageWeightedPlus(p, 'commandPlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'rpcom_plus', label: 'RPCom+', category: 'Command', compute: p => usageWeightedPlus(p, 'rpcomPlus'), fmt: v => v === null ? '\u2014' : String(v) },
 ]
 
 // Create model column definitions from deployed model metadata
