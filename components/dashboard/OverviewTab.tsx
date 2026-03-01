@@ -6,8 +6,8 @@ import VelocityDistribution from '../charts/VelocityDistribution'
 import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
 import {
-  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
-  computePlus, computeCommandPlus, computeRPComPlus,
+  getLeagueBaseline, computePlus, computeCommandPlus, computeRPComPlus,
+  computeYearWeightedPlus,
 } from '@/lib/leagueStats'
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 
@@ -100,19 +100,23 @@ function calcAdvancedByYear(data: any[]) {
 
     const dres = pitches.map(p => p.delta_run_exp).filter((v: any) => v != null)
 
-    // Compute usage-weighted Command+ and RPCom+ across pitch types
+    // Compute usage-weighted Command+ and RPCom+ across pitch types (year-aware)
     const ptGroups: Record<string, any[]> = {}
     pitches.forEach(p => { if (p.pitch_name) { if (!ptGroups[p.pitch_name]) ptGroups[p.pitch_name] = []; ptGroups[p.pitch_name].push(p) } })
+    const ptAvg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
     let cmdWtSum = 0, cmdWt = 0, rpcWtSum = 0, rpcWt = 0
     Object.entries(ptGroups).forEach(([ptName, pts]) => {
-      const ptAvg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+      // These are already single-year pitches (from calcAdvancedByYear grouping)
+      const yr = Number(year)
       const brinks = pts.map((p: any) => p.brink).filter((v: any) => v != null)
       const clusters = pts.map((p: any) => p.cluster).filter((v: any) => v != null)
       const hdevs = pts.map((p: any) => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const vdevs = pts.map((p: any) => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
       const ab = ptAvg(brinks), ac = ptAvg(clusters), ah = ptAvg(hdevs), av = ptAvg(vdevs), am = ptAvg(missfires)
-      const bL = BRINK_LEAGUE[ptName], cL = CLUSTER_LEAGUE[ptName], hL = HDEV_LEAGUE[ptName], vL = VDEV_LEAGUE[ptName], mL = MISSFIRE_LEAGUE[ptName]
+      const bL = getLeagueBaseline('brink', ptName, yr), cL = getLeagueBaseline('cluster', ptName, yr)
+      const hL = getLeagueBaseline('hdev', ptName, yr), vL = getLeagueBaseline('vdev', ptName, yr)
+      const mL = getLeagueBaseline('missfire', ptName, yr)
       if (ab != null && ac != null && am != null && bL && cL && mL) {
         const bp = Math.round(computePlus(ab, bL.mean, bL.stddev))
         const cp = Math.round(100 - (computePlus(ac, cL.mean, cL.stddev) - 100))
@@ -195,11 +199,11 @@ function calcArsenal(data: any[]) {
 
     const avgBrink = avg(brinks)
     const avgCluster = avg(clusters)
-    const brinkLeague = BRINK_LEAGUE[name]
-    const clusterLeague = CLUSTER_LEAGUE[name]
-    const brinkPlus = avgBrink != null && brinkLeague ? Math.round(computePlus(avgBrink, brinkLeague.mean, brinkLeague.stddev)) : null
-    // Lower cluster = tighter = better, so invert
-    const clusterPlus = avgCluster != null && clusterLeague ? Math.round(100 - (computePlus(avgCluster, clusterLeague.mean, clusterLeague.stddev) - 100)) : null
+    const ptAvgFn = (arr: number[]) => arr.length ? arr.reduce((a: number, b: number) => a + b, 0) / arr.length : null
+    const brinkPlus = computeYearWeightedPlus(pitches, name, 'brink',
+      pts => { const v = pts.map((p: any) => p.brink).filter((x: any) => x != null); return ptAvgFn(v) })
+    const clusterPlus = computeYearWeightedPlus(pitches, name, 'cluster',
+      pts => { const v = pts.map((p: any) => p.cluster).filter((x: any) => x != null); return ptAvgFn(v) }, true)
 
     return {
       name, count: pitches.length, usagePct: pct(pitches.length, total),

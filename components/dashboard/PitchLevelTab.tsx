@@ -1,11 +1,12 @@
 'use client'
 import { useMemo } from 'react'
 import {
-  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE, computePlus,
-  computeCommandPlus, computeRPComPlus,
+  computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
 
 interface Props { data: any[] }
+
+const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
 export default function PitchLevelTab({ data }: Props) {
   const rows = useMemo(() => {
@@ -18,34 +19,29 @@ export default function PitchLevelTab({ data }: Props) {
     })
 
     return Object.entries(groups).map(([name, pitches]) => {
-      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
-
       const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
       const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
       const hdevs = pitches.map(p => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
-      // Missfire: for pitches outside the zone (brink < 0), distance from closest edge
       const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
 
-      const avgBrink = avg(brinks)
-      const avgCluster = avg(clusters)
-      const avgHdev = avg(hdevs)
-      const avgVdev = avg(vdevs)
-      const avgMissfire = avg(missfires)
+      const avgBrink = avgArr(brinks)
+      const avgCluster = avgArr(clusters)
+      const avgHdev = avgArr(hdevs)
+      const avgVdev = avgArr(vdevs)
+      const avgMissfire = avgArr(missfires)
 
-      // Plus stats
-      const brinkL = BRINK_LEAGUE[name]
-      const clusterL = CLUSTER_LEAGUE[name]
-      const hdevL = HDEV_LEAGUE[name]
-      const vdevL = VDEV_LEAGUE[name]
-      const missfireL = MISSFIRE_LEAGUE[name]
-
-      const brinkPlus = avgBrink != null && brinkL ? Math.round(computePlus(avgBrink, brinkL.mean, brinkL.stddev)) : null
-      // Lower = tighter = better, so invert for cluster, hdev, vdev, missfire
-      const clusterPlus = avgCluster != null && clusterL ? Math.round(100 - (computePlus(avgCluster, clusterL.mean, clusterL.stddev) - 100)) : null
-      const hdevPlus = avgHdev != null && hdevL ? Math.round(100 - (computePlus(avgHdev, hdevL.mean, hdevL.stddev) - 100)) : null
-      const vdevPlus = avgVdev != null && vdevL ? Math.round(100 - (computePlus(avgVdev, vdevL.mean, vdevL.stddev) - 100)) : null
-      const missfirePlus = avgMissfire != null && missfireL ? Math.round(100 - (computePlus(avgMissfire, missfireL.mean, missfireL.stddev) - 100)) : null
+      // Year-weighted plus stats
+      const brinkPlus = computeYearWeightedPlus(pitches, name, 'brink',
+        pts => { const v = pts.map((p: any) => p.brink).filter((x: any) => x != null); return avgArr(v) })
+      const clusterPlus = computeYearWeightedPlus(pitches, name, 'cluster',
+        pts => { const v = pts.map((p: any) => p.cluster).filter((x: any) => x != null); return avgArr(v) }, true)
+      const hdevPlus = computeYearWeightedPlus(pitches, name, 'hdev',
+        pts => { const v = pts.map((p: any) => p.hdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
+      const vdevPlus = computeYearWeightedPlus(pitches, name, 'vdev',
+        pts => { const v = pts.map((p: any) => p.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
+      const missfirePlus = computeYearWeightedPlus(pitches, name, 'missfire',
+        pts => { const b = pts.map((p: any) => p.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return avgArr(b) }, true)
 
       const commandPlus = brinkPlus != null && clusterPlus != null && missfirePlus != null
         ? String(computeCommandPlus(brinkPlus, clusterPlus, missfirePlus)) : '—'

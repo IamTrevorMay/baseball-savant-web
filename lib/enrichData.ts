@@ -16,16 +16,17 @@ export function enrichData(
   batterNames: Record<number, string> = {}
 ): any[] {
   // ------------------------------------------------------------------
-  // Pre-pass: compute pitch-type centroids for Cluster metric
+  // Pre-pass: compute year-partitioned pitch-type centroids for Cluster/HDev/VDev
   // ------------------------------------------------------------------
   const centroids: Record<string, { cx: number; cz: number }> = {}
   const buckets: Record<string, { sx: number; sz: number; n: number }> = {}
   rows.forEach((p: any) => {
     if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
-      if (!buckets[p.pitch_name]) buckets[p.pitch_name] = { sx: 0, sz: 0, n: 0 }
-      buckets[p.pitch_name].sx += p.plate_x
-      buckets[p.pitch_name].sz += p.plate_z
-      buckets[p.pitch_name].n++
+      const key = p.game_year != null ? `${p.game_year}::${p.pitch_name}` : p.pitch_name
+      if (!buckets[key]) buckets[key] = { sx: 0, sz: 0, n: 0 }
+      buckets[key].sx += p.plate_x
+      buckets[key].sz += p.plate_z
+      buckets[key].n++
     }
   })
   for (const name in buckets) {
@@ -90,11 +91,16 @@ export function enrichData(
     }
 
     // ------------------------------------------------------------------
-    // Cluster — distance from pitch-type centroid (inches)
+    // Cluster / HDev / VDev — distance from year-partitioned pitch-type centroid (inches)
     // ------------------------------------------------------------------
-    if (p.pitch_name && p.plate_x != null && p.plate_z != null && centroids[p.pitch_name]) {
-      const c = centroids[p.pitch_name]
-      p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
+    if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
+      const key = p.game_year != null ? `${p.game_year}::${p.pitch_name}` : p.pitch_name
+      const c = centroids[key]
+      if (c) {
+        p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
+        p.hdev = +((c.cx - p.plate_x) * 12).toFixed(1)
+        p.vdev = +((p.plate_z - c.cz) * 12).toFixed(1)
+      }
     }
 
     // ------------------------------------------------------------------

@@ -1,12 +1,11 @@
 'use client'
 import { useMemo, useState } from 'react'
 import {
-  SAVANT_PERCENTILES, BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
-  computePercentile, percentileColor, computePlus, plusToPercentile,
-  computeCommandPlus, computeRPComPlus,
+  SAVANT_PERCENTILES,
+  computePercentile, percentileColor,
 } from '@/lib/leagueStats'
 
-type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'command' | 'rpcom'
+type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
 
 interface Props { data: any[] }
 
@@ -77,20 +76,20 @@ export default function PercentileTab({ data }: Props) {
     return results
   }, [data])
 
-  // Brink+ / Cluster+ per pitch type
-  const plusStats = useMemo(() => {
+  // Raw command metrics per pitch type
+  const rawMetrics = useMemo(() => {
     const groups: Record<string, any[]> = {}
     data.forEach(d => { if (d.pitch_name) { if (!groups[d.pitch_name]) groups[d.pitch_name] = []; groups[d.pitch_name].push(d) } })
 
-    type PlusRow = { name: string; value: number; plus: number; pctile: number }
-    const brinkRows: PlusRow[] = []
-    const clusterRows: PlusRow[] = []
-    const hdevRows: PlusRow[] = []
-    const vdevRows: PlusRow[] = []
-    const missfireRows: PlusRow[] = []
-
+    type MetricRow = { name: string; value: number; count: number }
     const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
+    const brinkRows: MetricRow[] = []
+    const clusterRows: MetricRow[] = []
+    const hdevRows: MetricRow[] = []
+    const vdevRows: MetricRow[] = []
+    const missfireRows: MetricRow[] = []
+
     for (const [name, pitches] of Object.entries(groups)) {
       const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
       const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
@@ -98,71 +97,24 @@ export default function PercentileTab({ data }: Props) {
       const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
 
-      if (brinks.length > 0 && BRINK_LEAGUE[name]) {
-        const avg = brinks.reduce((a: number, b: number) => a + b, 0) / brinks.length
-        const league = BRINK_LEAGUE[name]
-        const plus = Math.round(computePlus(avg, league.mean, league.stddev))
-        brinkRows.push({ name, value: avg, plus, pctile: plusToPercentile(plus) })
-      }
-      if (clusters.length > 0 && CLUSTER_LEAGUE[name]) {
-        const avg = clusters.reduce((a: number, b: number) => a + b, 0) / clusters.length
-        const league = CLUSTER_LEAGUE[name]
-        const plus = Math.round(100 - (computePlus(avg, league.mean, league.stddev) - 100))
-        clusterRows.push({ name, value: avg, plus, pctile: plusToPercentile(plus) })
-      }
-      const avgH = avgArr(hdevs)
-      if (avgH != null && HDEV_LEAGUE[name]) {
-        const league = HDEV_LEAGUE[name]
-        const plus = Math.round(100 - (computePlus(avgH, league.mean, league.stddev) - 100))
-        hdevRows.push({ name, value: avgH, plus, pctile: plusToPercentile(plus) })
-      }
-      const avgV = avgArr(vdevs)
-      if (avgV != null && VDEV_LEAGUE[name]) {
-        const league = VDEV_LEAGUE[name]
-        const plus = Math.round(100 - (computePlus(avgV, league.mean, league.stddev) - 100))
-        vdevRows.push({ name, value: avgV, plus, pctile: plusToPercentile(plus) })
-      }
-      const avgM = avgArr(missfires)
-      if (avgM != null && MISSFIRE_LEAGUE[name]) {
-        const league = MISSFIRE_LEAGUE[name]
-        const plus = Math.round(100 - (computePlus(avgM, league.mean, league.stddev) - 100))
-        missfireRows.push({ name, value: avgM, plus, pctile: plusToPercentile(plus) })
-      }
-    }
-    // Composite metrics per pitch type
-    const commandRows: PlusRow[] = []
-    const rpcomRows: PlusRow[] = []
-    for (const [name, pitches] of Object.entries(groups)) {
-      const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
-      const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
-      const hdevs = pitches.map(p => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
-      const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
-      const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
-      const ab = avgArr(brinks), ac = avgArr(clusters), ah = avgArr(hdevs), av = avgArr(vdevs), am = avgArr(missfires)
-      const bL = BRINK_LEAGUE[name], cL = CLUSTER_LEAGUE[name], hL = HDEV_LEAGUE[name], vL = VDEV_LEAGUE[name], mL = MISSFIRE_LEAGUE[name]
-      if (ab != null && ac != null && am != null && bL && cL && mL) {
-        const bp = Math.round(computePlus(ab, bL.mean, bL.stddev))
-        const cp = Math.round(100 - (computePlus(ac, cL.mean, cL.stddev) - 100))
-        const mp = Math.round(100 - (computePlus(am, mL.mean, mL.stddev) - 100))
-        const cmd = computeCommandPlus(bp, cp, mp)
-        commandRows.push({ name, value: cmd, plus: cmd, pctile: plusToPercentile(cmd) })
-        if (ah != null && av != null && hL && vL) {
-          const hp = Math.round(100 - (computePlus(ah, hL.mean, hL.stddev) - 100))
-          const vp = Math.round(100 - (computePlus(av, vL.mean, vL.stddev) - 100))
-          const rpc = computeRPComPlus(bp, cp, hp, vp, mp)
-          rpcomRows.push({ name, value: rpc, plus: rpc, pctile: plusToPercentile(rpc) })
-        }
-      }
+      const ab = avgArr(brinks)
+      if (ab != null) brinkRows.push({ name, value: ab, count: pitches.length })
+      const ac = avgArr(clusters)
+      if (ac != null) clusterRows.push({ name, value: ac, count: pitches.length })
+      const ah = avgArr(hdevs)
+      if (ah != null) hdevRows.push({ name, value: ah, count: pitches.length })
+      const av = avgArr(vdevs)
+      if (av != null) vdevRows.push({ name, value: av, count: pitches.length })
+      const am = avgArr(missfires)
+      if (am != null) missfireRows.push({ name, value: am, count: pitches.length })
     }
 
     return {
-      brinkRows: brinkRows.sort((a, b) => b.pctile - a.pctile),
-      clusterRows: clusterRows.sort((a, b) => b.pctile - a.pctile),
-      hdevRows: hdevRows.sort((a, b) => b.pctile - a.pctile),
-      vdevRows: vdevRows.sort((a, b) => b.pctile - a.pctile),
-      missfireRows: missfireRows.sort((a, b) => b.pctile - a.pctile),
-      commandRows: commandRows.sort((a, b) => b.pctile - a.pctile),
-      rpcomRows: rpcomRows.sort((a, b) => b.pctile - a.pctile),
+      brinkRows: brinkRows.sort((a, b) => b.value - a.value),
+      clusterRows: clusterRows.sort((a, b) => a.value - b.value),
+      hdevRows: hdevRows.sort((a, b) => a.value - b.value),
+      vdevRows: vdevRows.sort((a, b) => a.value - b.value),
+      missfireRows: missfireRows.sort((a, b) => a.value - b.value),
     }
   }, [data])
 
@@ -172,21 +124,20 @@ export default function PercentileTab({ data }: Props) {
     return v.toFixed(1) + (unit ? ' ' + unit : '')
   }
 
-  const plusViews: { key: View; title: string; desc: string; rows: { name: string; value: number; plus: number; pctile: number }[] }[] = [
-    { key: 'brink', title: 'Brink+', desc: 'Percentile rank — higher = closer to zone edges', rows: plusStats.brinkRows },
-    { key: 'cluster', title: 'Cluster+', desc: 'Percentile rank — higher = tighter clustering', rows: plusStats.clusterRows },
-    { key: 'hdev', title: 'HDev+', desc: 'Percentile rank — higher = tighter horizontal spread', rows: plusStats.hdevRows },
-    { key: 'vdev', title: 'VDev+', desc: 'Percentile rank — higher = tighter vertical spread', rows: plusStats.vdevRows },
-    { key: 'missfire', title: 'Missfire+', desc: 'Percentile rank — higher = misses stay closer to zone', rows: plusStats.missfireRows },
-    { key: 'command', title: 'Command+', desc: 'Percentile rank — theory-weighted composite (40% Brink+ + 30% Cluster+ + 30% Missfire+)', rows: plusStats.commandRows },
-    { key: 'rpcom', title: 'RPCom+', desc: 'Percentile rank — run prevention composite weighted by correlation with xwOBA-against', rows: plusStats.rpcomRows },
+  type MetricView = { key: View; title: string; desc: string; unit: string; rows: { name: string; value: number; count: number }[]; higherBetter: boolean }
+  const metricViews: MetricView[] = [
+    { key: 'brink', title: 'Brink', desc: 'Avg signed distance to nearest strike zone edge (in) — higher = pitches closer to edges', unit: 'in', rows: rawMetrics.brinkRows, higherBetter: true },
+    { key: 'cluster', title: 'Cluster', desc: 'Avg distance from pitch-type centroid (in) — lower = tighter clustering', unit: 'in', rows: rawMetrics.clusterRows, higherBetter: false },
+    { key: 'hdev', title: 'HDev', desc: 'Avg absolute horizontal deviation from centroid (in) — lower = tighter horizontal spread', unit: 'in', rows: rawMetrics.hdevRows, higherBetter: false },
+    { key: 'vdev', title: 'VDev', desc: 'Avg absolute vertical deviation from centroid (in) — lower = tighter vertical spread', unit: 'in', rows: rawMetrics.vdevRows, higherBetter: false },
+    { key: 'missfire', title: 'Missfire', desc: 'Avg distance of outside-zone pitches from closest zone edge (in) — lower = misses stay closer', unit: 'in', rows: rawMetrics.missfireRows, higherBetter: false },
   ]
 
   return (
     <div className="space-y-4">
       {/* View toggle */}
       <div className="flex gap-1 flex-wrap">
-        {([['rankings', 'Rankings'], ['brink', 'Brink+'], ['cluster', 'Cluster+'], ['hdev', 'HDev+'], ['vdev', 'VDev+'], ['missfire', 'Missfire+'], ['command', 'Cmd+'], ['rpcom', 'RPCom+']] as [View, string][]).map(([v, label]) => (
+        {([['rankings', 'Rankings'], ['brink', 'Brink'], ['cluster', 'Cluster'], ['hdev', 'HDev'], ['vdev', 'VDev'], ['missfire', 'Missfire']] as [View, string][]).map(([v, label]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
               view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
@@ -224,31 +175,31 @@ export default function PercentileTab({ data }: Props) {
         </div>
       )}
 
-      {/* Plus stat percentile views */}
-      {plusViews.map(pv => view === pv.key && (
-        <div key={pv.key} className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">{pv.title} by Pitch Type</h3>
-          <p className="text-[11px] text-zinc-500 mb-4">{pv.desc}</p>
+      {/* Raw metric views by pitch type */}
+      {metricViews.map(mv => view === mv.key && (
+        <div key={mv.key} className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">{mv.title} by Pitch Type</h3>
+          <p className="text-[11px] text-zinc-500 mb-4">{mv.desc}</p>
           <div className="space-y-2">
-            {pv.rows.map(r => {
-              const color = percentileColor(r.pctile)
+            {mv.rows.map((r, i) => {
+              const maxVal = Math.max(...mv.rows.map(x => Math.abs(x.value)))
+              const barPct = maxVal > 0 ? (Math.abs(r.value) / maxVal) * 100 : 0
+              // Color: best at top (teal), worst at bottom (orange). Since rows are pre-sorted best-first:
+              const t = mv.rows.length > 1 ? i / (mv.rows.length - 1) : 0
+              const barColor = `rgb(${Math.round(20 + t * 200)},${Math.round(184 - t * 100)},${Math.round(166 - t * 100)})`
               return (
                 <div key={r.name} className="flex items-center gap-3 h-8">
                   <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{r.name}</span>
-                  <span className="w-10 text-xs font-mono text-zinc-500 text-right shrink-0">{r.value.toFixed(1)}</span>
+                  <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}"</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
-                    <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
-                    <div className="h-full rounded transition-all" style={{ width: `${r.pctile}%`, backgroundColor: color, opacity: 0.8 }} />
+                    <div className="h-full rounded transition-all" style={{ width: `${barPct}%`, backgroundColor: barColor, opacity: 0.8 }} />
                   </div>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: color }}>
-                    {r.pctile}
-                  </div>
+                  <span className="w-12 text-[10px] font-mono text-zinc-500 text-right shrink-0">{r.count.toLocaleString()}</span>
                 </div>
               )
             })}
           </div>
-          {pv.rows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
+          {mv.rows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
         </div>
       ))}
     </div>

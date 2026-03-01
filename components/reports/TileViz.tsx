@@ -3,8 +3,7 @@ import { useMemo, useState } from 'react'
 import Plot from '../PlotWrapper'
 import { COLORS, getPitchColor } from '../chartConfig'
 import {
-  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
-  computePlus, computeCommandPlus, computeRPComPlus,
+  computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
 
 // Shared zone shapes for strike zone
@@ -225,22 +224,20 @@ type PlusKey = 'brinkPlus' | 'clusterPlus' | 'hdevPlus' | 'vdevPlus' | 'missfire
 function usageWeightedPlus(pitches: any[], metric: PlusKey): number | null {
   const groups: Record<string, any[]> = {}
   pitches.forEach(d => { if (d.pitch_name) { if (!groups[d.pitch_name]) groups[d.pitch_name] = []; groups[d.pitch_name].push(d) } })
+  const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
   let wtSum = 0, wt = 0
   for (const [name, pts] of Object.entries(groups)) {
-    const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
-    const brinks = pts.map((p: any) => p.brink).filter((v: any) => v != null)
-    const clusters = pts.map((p: any) => p.cluster).filter((v: any) => v != null)
-    const hdevs = pts.map((p: any) => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
-    const vdevs = pts.map((p: any) => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
-    const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
-    const ab = avgArr(brinks), ac = avgArr(clusters), ah = avgArr(hdevs), av = avgArr(vdevs), am = avgArr(missfires)
-    const bL = BRINK_LEAGUE[name], cL = CLUSTER_LEAGUE[name], hL = HDEV_LEAGUE[name], vL = VDEV_LEAGUE[name], mL = MISSFIRE_LEAGUE[name]
-
-    const bp = ab != null && bL ? Math.round(computePlus(ab, bL.mean, bL.stddev)) : null
-    const cp = ac != null && cL ? Math.round(100 - (computePlus(ac, cL.mean, cL.stddev) - 100)) : null
-    const hp = ah != null && hL ? Math.round(100 - (computePlus(ah, hL.mean, hL.stddev) - 100)) : null
-    const vp = av != null && vL ? Math.round(100 - (computePlus(av, vL.mean, vL.stddev) - 100)) : null
-    const mp = am != null && mL ? Math.round(100 - (computePlus(am, mL.mean, mL.stddev) - 100)) : null
+    // Year-weighted plus per pitch type
+    const bp = computeYearWeightedPlus(pts, name, 'brink',
+      p => { const v = p.map((d: any) => d.brink).filter((x: any) => x != null); return avgArr(v) })
+    const cp = computeYearWeightedPlus(pts, name, 'cluster',
+      p => { const v = p.map((d: any) => d.cluster).filter((x: any) => x != null); return avgArr(v) }, true)
+    const hp = computeYearWeightedPlus(pts, name, 'hdev',
+      p => { const v = p.map((d: any) => d.hdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
+    const vp = computeYearWeightedPlus(pts, name, 'vdev',
+      p => { const v = p.map((d: any) => d.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
+    const mp = computeYearWeightedPlus(pts, name, 'missfire',
+      p => { const b = p.map((d: any) => d.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return avgArr(b) }, true)
 
     let val: number | null = null
     if (metric === 'brinkPlus') val = bp

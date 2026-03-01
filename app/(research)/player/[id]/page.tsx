@@ -198,14 +198,15 @@ export default function PlayerDashboard() {
         // Batter name
         if (p.batter && batterNames[p.batter]) p.batter_name = batterNames[p.batter]
       })
-      // Cluster — distance from pitch-type centroid (inches)
+      // Cluster / HDev / VDev — distance from year-partitioned pitch-type centroid (inches)
       const cBuckets: Record<string, { sx: number; sz: number; n: number }> = {}
       allRows.forEach((p: any) => {
         if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
-          if (!cBuckets[p.pitch_name]) cBuckets[p.pitch_name] = { sx: 0, sz: 0, n: 0 }
-          cBuckets[p.pitch_name].sx += p.plate_x
-          cBuckets[p.pitch_name].sz += p.plate_z
-          cBuckets[p.pitch_name].n++
+          const key = p.game_year != null ? `${p.game_year}::${p.pitch_name}` : p.pitch_name
+          if (!cBuckets[key]) cBuckets[key] = { sx: 0, sz: 0, n: 0 }
+          cBuckets[key].sx += p.plate_x
+          cBuckets[key].sz += p.plate_z
+          cBuckets[key].n++
         }
       })
       const cCentroids: Record<string, { cx: number; cz: number }> = {}
@@ -214,13 +215,14 @@ export default function PlayerDashboard() {
         cCentroids[name] = { cx: b.sx / b.n, cz: b.sz / b.n }
       }
       allRows.forEach((p: any) => {
-        if (p.pitch_name && p.plate_x != null && p.plate_z != null && cCentroids[p.pitch_name]) {
-          const c = cCentroids[p.pitch_name]
-          p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
-          // HDev: signed horizontal deviation from centroid, pitcher POV (positive = pitcher's right)
-          p.hdev = +((c.cx - p.plate_x) * 12).toFixed(1)
-          // VDev: signed vertical deviation from centroid (positive = up)
-          p.vdev = +((p.plate_z - c.cz) * 12).toFixed(1)
+        if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
+          const key = p.game_year != null ? `${p.game_year}::${p.pitch_name}` : p.pitch_name
+          const c = cCentroids[key]
+          if (c) {
+            p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
+            p.hdev = +((c.cx - p.plate_x) * 12).toFixed(1)
+            p.vdev = +((p.plate_z - c.cz) * 12).toFixed(1)
+          }
         }
       })
       setAllData(allRows)
