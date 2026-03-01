@@ -17,6 +17,7 @@ import SplitsTab from "@/components/dashboard/SplitsTab"
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
 import PercentileTab from '@/components/dashboard/PercentileTab'
+import PitchLevelTab from '@/components/dashboard/PitchLevelTab'
 import PlayerBadges from '@/components/PlayerBadges'
 import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
 import type { LahmanPlayerData } from '@/lib/lahman-stats'
@@ -38,6 +39,7 @@ const BASE_TABS = [
   { id: 'splits', label: 'Splits' },
   { id: 'gamelog', label: 'Game Log' },
   { id: 'percentile', label: 'Percentile' },
+  { id: 'pitchlevel', label: 'Pitch Level' },
 ]
 
 const TEAM_COLORS: Record<string, string> = {
@@ -215,6 +217,10 @@ export default function PlayerDashboard() {
         if (p.pitch_name && p.plate_x != null && p.plate_z != null && cCentroids[p.pitch_name]) {
           const c = cCentroids[p.pitch_name]
           p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
+          // HDev: signed horizontal deviation from centroid, pitcher POV (positive = pitcher's right)
+          p.hdev = +((c.cx - p.plate_x) * 12).toFixed(1)
+          // VDev: signed vertical deviation from centroid (positive = up)
+          p.vdev = +((p.plate_z - c.cz) * 12).toFixed(1)
         }
       })
       setAllData(allRows)
@@ -342,6 +348,7 @@ export default function PlayerDashboard() {
           {tab === 'splits' && <SplitsTab data={data} />}
           {tab === 'gamelog' && <GameLogTab data={data} />}
           {tab === 'percentile' && <PercentileTab data={data} />}
+          {tab === 'pitchlevel' && <PitchLevelTab data={data} />}
           {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}
         </div>
       </div>

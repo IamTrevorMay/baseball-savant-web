@@ -25,6 +25,32 @@ export const CLUSTER_LEAGUE: Record<string, { mean: number; stddev: number }> = 
   'Knuckle Curve':   { mean: 13.87, stddev: 1.41 },
 }
 
+// HDev — mean absolute horizontal deviation from pitch-type centroid (inches)
+export const HDEV_LEAGUE: Record<string, { mean: number; stddev: number }> = {
+  '4-Seam Fastball': { mean: 7.53, stddev: 0.74 },
+  'Slider':          { mean: 7.77, stddev: 1.10 },
+  'Sinker':          { mean: 7.55, stddev: 0.80 },
+  'Changeup':        { mean: 7.49, stddev: 1.03 },
+  'Curveball':       { mean: 8.19, stddev: 1.25 },
+  'Cutter':          { mean: 7.29, stddev: 0.86 },
+  'Sweeper':         { mean: 8.74, stddev: 1.30 },
+  'Split-Finger':    { mean: 7.50, stddev: 1.05 },
+  'Knuckle Curve':   { mean: 7.86, stddev: 1.10 },
+}
+
+// VDev — mean absolute vertical deviation from pitch-type centroid (inches)
+export const VDEV_LEAGUE: Record<string, { mean: number; stddev: number }> = {
+  '4-Seam Fastball': { mean: 8.04, stddev: 0.81 },
+  'Slider':          { mean: 8.58, stddev: 1.24 },
+  'Sinker':          { mean: 7.39, stddev: 0.92 },
+  'Changeup':        { mean: 8.64, stddev: 1.39 },
+  'Curveball':       { mean: 9.97, stddev: 1.61 },
+  'Cutter':          { mean: 7.96, stddev: 0.95 },
+  'Sweeper':         { mean: 8.07, stddev: 1.37 },
+  'Split-Finger':    { mean: 9.40, stddev: 1.53 },
+  'Knuckle Curve':   { mean: 10.21, stddev: 1.46 },
+}
+
 // Savant-style percentile breakpoints [p10, p25, p50, p75, p90]
 export const SAVANT_PERCENTILES: Record<string, { label: string; percentiles: number[]; higherBetter: boolean; unit: string }> = {
   avg_velo:   { label: 'Avg Velocity',  unit: 'mph', percentiles: [88.5, 90.8, 93.2, 95.1, 97.0], higherBetter: true },
