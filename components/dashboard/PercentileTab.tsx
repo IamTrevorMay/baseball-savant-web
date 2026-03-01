@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 import {
   SAVANT_PERCENTILES, BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
-  computePercentile, percentileColor, computePlus,
+  computePercentile, percentileColor, computePlus, plusToPercentile,
 } from '@/lib/leagueStats'
 
 type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
@@ -81,11 +81,12 @@ export default function PercentileTab({ data }: Props) {
     const groups: Record<string, any[]> = {}
     data.forEach(d => { if (d.pitch_name) { if (!groups[d.pitch_name]) groups[d.pitch_name] = []; groups[d.pitch_name].push(d) } })
 
-    const brinkRows: { name: string; value: number; plus: number }[] = []
-    const clusterRows: { name: string; value: number; plus: number }[] = []
-    const hdevRows: { name: string; value: number; plus: number }[] = []
-    const vdevRows: { name: string; value: number; plus: number }[] = []
-    const missfireRows: { name: string; value: number; plus: number }[] = []
+    type PlusRow = { name: string; value: number; plus: number; pctile: number }
+    const brinkRows: PlusRow[] = []
+    const clusterRows: PlusRow[] = []
+    const hdevRows: PlusRow[] = []
+    const vdevRows: PlusRow[] = []
+    const missfireRows: PlusRow[] = []
 
     const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
@@ -99,35 +100,40 @@ export default function PercentileTab({ data }: Props) {
       if (brinks.length > 0 && BRINK_LEAGUE[name]) {
         const avg = brinks.reduce((a: number, b: number) => a + b, 0) / brinks.length
         const league = BRINK_LEAGUE[name]
-        brinkRows.push({ name, value: avg, plus: Math.round(computePlus(avg, league.mean, league.stddev)) })
+        const plus = Math.round(computePlus(avg, league.mean, league.stddev))
+        brinkRows.push({ name, value: avg, plus, pctile: plusToPercentile(plus) })
       }
       if (clusters.length > 0 && CLUSTER_LEAGUE[name]) {
         const avg = clusters.reduce((a: number, b: number) => a + b, 0) / clusters.length
         const league = CLUSTER_LEAGUE[name]
-        clusterRows.push({ name, value: avg, plus: Math.round(100 - (computePlus(avg, league.mean, league.stddev) - 100)) })
+        const plus = Math.round(100 - (computePlus(avg, league.mean, league.stddev) - 100))
+        clusterRows.push({ name, value: avg, plus, pctile: plusToPercentile(plus) })
       }
       const avgH = avgArr(hdevs)
       if (avgH != null && HDEV_LEAGUE[name]) {
         const league = HDEV_LEAGUE[name]
-        hdevRows.push({ name, value: avgH, plus: Math.round(100 - (computePlus(avgH, league.mean, league.stddev) - 100)) })
+        const plus = Math.round(100 - (computePlus(avgH, league.mean, league.stddev) - 100))
+        hdevRows.push({ name, value: avgH, plus, pctile: plusToPercentile(plus) })
       }
       const avgV = avgArr(vdevs)
       if (avgV != null && VDEV_LEAGUE[name]) {
         const league = VDEV_LEAGUE[name]
-        vdevRows.push({ name, value: avgV, plus: Math.round(100 - (computePlus(avgV, league.mean, league.stddev) - 100)) })
+        const plus = Math.round(100 - (computePlus(avgV, league.mean, league.stddev) - 100))
+        vdevRows.push({ name, value: avgV, plus, pctile: plusToPercentile(plus) })
       }
       const avgM = avgArr(missfires)
       if (avgM != null && MISSFIRE_LEAGUE[name]) {
         const league = MISSFIRE_LEAGUE[name]
-        missfireRows.push({ name, value: avgM, plus: Math.round(100 - (computePlus(avgM, league.mean, league.stddev) - 100)) })
+        const plus = Math.round(100 - (computePlus(avgM, league.mean, league.stddev) - 100))
+        missfireRows.push({ name, value: avgM, plus, pctile: plusToPercentile(plus) })
       }
     }
     return {
-      brinkRows: brinkRows.sort((a, b) => b.plus - a.plus),
-      clusterRows: clusterRows.sort((a, b) => b.plus - a.plus),
-      hdevRows: hdevRows.sort((a, b) => b.plus - a.plus),
-      vdevRows: vdevRows.sort((a, b) => b.plus - a.plus),
-      missfireRows: missfireRows.sort((a, b) => b.plus - a.plus),
+      brinkRows: brinkRows.sort((a, b) => b.pctile - a.pctile),
+      clusterRows: clusterRows.sort((a, b) => b.pctile - a.pctile),
+      hdevRows: hdevRows.sort((a, b) => b.pctile - a.pctile),
+      vdevRows: vdevRows.sort((a, b) => b.pctile - a.pctile),
+      missfireRows: missfireRows.sort((a, b) => b.pctile - a.pctile),
     }
   }, [data])
 
@@ -137,11 +143,13 @@ export default function PercentileTab({ data }: Props) {
     return v.toFixed(1) + (unit ? ' ' + unit : '')
   }
 
-  const plusColor = (plus: number): string => {
-    // Map plus to percentile-like scale: 80=bad, 100=avg, 120=great
-    const pct = Math.max(0, Math.min(100, ((plus - 80) / 40) * 100))
-    return percentileColor(pct)
-  }
+  const plusViews: { key: View; title: string; desc: string; rows: { name: string; value: number; plus: number; pctile: number }[] }[] = [
+    { key: 'brink', title: 'Brink+', desc: 'Percentile rank — higher = closer to zone edges', rows: plusStats.brinkRows },
+    { key: 'cluster', title: 'Cluster+', desc: 'Percentile rank — higher = tighter clustering', rows: plusStats.clusterRows },
+    { key: 'hdev', title: 'HDev+', desc: 'Percentile rank — higher = tighter horizontal spread', rows: plusStats.hdevRows },
+    { key: 'vdev', title: 'VDev+', desc: 'Percentile rank — higher = tighter vertical spread', rows: plusStats.vdevRows },
+    { key: 'missfire', title: 'Missfire+', desc: 'Percentile rank — higher = misses stay closer to zone', rows: plusStats.missfireRows },
+  ]
 
   return (
     <div className="space-y-4">
@@ -170,7 +178,6 @@ export default function PercentileTab({ data }: Props) {
                   <span className="w-24 text-xs text-zinc-400 text-right shrink-0">{m.label}</span>
                   <span className="w-16 text-xs font-mono text-zinc-300 text-right shrink-0">{formatValue(m.value, m.unit)}</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
-                    {/* 50th percentile dashed line */}
                     <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
                     <div className="h-full rounded transition-all" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.8 }} />
                   </div>
@@ -186,102 +193,33 @@ export default function PercentileTab({ data }: Props) {
         </div>
       )}
 
-      {/* Brink+ view */}
-      {view === 'brink' && (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Brink+ by Pitch Type</h3>
-          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = closer to zone edges</p>
+      {/* Plus stat percentile views */}
+      {plusViews.map(pv => view === pv.key && (
+        <div key={pv.key} className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">{pv.title} by Pitch Type</h3>
+          <p className="text-[11px] text-zinc-500 mb-4">{pv.desc}</p>
           <div className="space-y-2">
-            {plusStats.brinkRows.map(r => (
-              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
-            ))}
+            {pv.rows.map(r => {
+              const color = percentileColor(r.pctile)
+              return (
+                <div key={r.name} className="flex items-center gap-3 h-8">
+                  <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{r.name}</span>
+                  <span className="w-10 text-xs font-mono text-zinc-500 text-right shrink-0">{r.value.toFixed(1)}</span>
+                  <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
+                    <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
+                    <div className="h-full rounded transition-all" style={{ width: `${r.pctile}%`, backgroundColor: color, opacity: 0.8 }} />
+                  </div>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                    style={{ backgroundColor: color }}>
+                    {r.pctile}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          {plusStats.brinkRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
+          {pv.rows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
         </div>
-      )}
-
-      {/* Cluster+ view */}
-      {view === 'cluster' && (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Cluster+ by Pitch Type</h3>
-          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = tighter clustering</p>
-          <div className="space-y-2">
-            {plusStats.clusterRows.map(r => (
-              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
-            ))}
-          </div>
-          {plusStats.clusterRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
-        </div>
-      )}
-
-      {/* HDev+ view */}
-      {view === 'hdev' && (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">HDev+ by Pitch Type</h3>
-          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = tighter horizontal spread</p>
-          <div className="space-y-2">
-            {plusStats.hdevRows.map(r => (
-              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
-            ))}
-          </div>
-          {plusStats.hdevRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
-        </div>
-      )}
-
-      {/* VDev+ view */}
-      {view === 'vdev' && (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">VDev+ by Pitch Type</h3>
-          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = tighter vertical spread</p>
-          <div className="space-y-2">
-            {plusStats.vdevRows.map(r => (
-              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
-            ))}
-          </div>
-          {plusStats.vdevRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
-        </div>
-      )}
-
-      {/* Missfire+ view */}
-      {view === 'missfire' && (
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Missfire+ by Pitch Type</h3>
-          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = misses stay closer to zone</p>
-          <div className="space-y-2">
-            {plusStats.missfireRows.map(r => (
-              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
-            ))}
-          </div>
-          {plusStats.missfireRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PlusBar({ name, plus, value, color }: { name: string; plus: number; value: string; color: string }) {
-  // Bar centered on 100, stretches left (<100) or right (>100)
-  const offset = plus - 100
-  const barWidth = Math.min(Math.abs(offset), 40) // cap visual width
-  const barPct = (barWidth / 40) * 50 // max 50% of container width
-
-  return (
-    <div className="flex items-center gap-3 h-8">
-      <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{name}</span>
-      <span className="w-10 text-xs font-mono text-zinc-500 text-right shrink-0">{value}</span>
-      <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
-        {/* Center line at 100 */}
-        <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
-        {offset >= 0 ? (
-          <div className="absolute h-full rounded-r transition-all" style={{ left: '50%', width: `${barPct}%`, backgroundColor: color, opacity: 0.8 }} />
-        ) : (
-          <div className="absolute h-full rounded-l transition-all" style={{ right: '50%', width: `${barPct}%`, backgroundColor: color, opacity: 0.8 }} />
-        )}
-      </div>
-      <div className="w-10 h-7 rounded flex items-center justify-center text-xs font-bold text-white shrink-0"
-        style={{ backgroundColor: color }}>
-        {plus}
-      </div>
+      ))}
     </div>
   )
 }
