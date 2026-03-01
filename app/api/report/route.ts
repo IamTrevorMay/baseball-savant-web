@@ -8,6 +8,7 @@ const supabase = createClient(
 )
 
 // ── Allowed Group-By Columns ─────────────────────────────────────────────────
+// Values can be bare column names OR CASE expressions (for computed columns)
 const GROUP_COLS: Record<string, string> = {
   player_name: 'player_name',
   pitcher: 'pitcher',
@@ -32,6 +33,9 @@ const GROUP_COLS: Record<string, string> = {
   game_pk: 'game_pk',
   if_fielding_alignment: 'if_fielding_alignment',
   of_fielding_alignment: 'of_fielding_alignment',
+  // Computed team columns
+  pitch_team: "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END",
+  bat_team: "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END",
 }
 
 // ── Allowed Filter Columns ───────────────────────────────────────────────────
@@ -58,7 +62,9 @@ export async function POST(req: NextRequest) {
       sortBy = 'pitches',
       sortDir = 'DESC',
       limit = 100,
-      minPitches = 100,
+      offset = 0,
+      minPitches = 0,
+      minPA = 0,
     } = body
 
     // Validate
@@ -69,18 +75,23 @@ export async function POST(req: NextRequest) {
       if (!GROUP_COLS[g]) return NextResponse.json({ error: `Unknown group: ${g}` }, { status: 400 })
     }
 
-    // Build SELECT
+    // Build SELECT — computed cols get aliased, bare cols stay bare
     const selectParts = [
-      ...groupBy.map((g: string) => GROUP_COLS[g]),
+      ...groupBy.map((g: string) => {
+        const expr = GROUP_COLS[g]
+        return expr.includes(' ') ? `${expr} AS ${g}` : expr
+      }),
       ...metrics.map((m: string) => `${METRICS[m]} AS ${m}`),
     ]
+
+    // Build GROUP BY — use the raw expression (not alias)
+    const groupByExprs = groupBy.map((g: string) => GROUP_COLS[g])
 
     // Build WHERE
     const whereParts: string[] = []
     for (const f of filters) {
       const { column, op, value } = f
       if (!FILTER_COLS.has(column)) continue
-      // Sanitize
       const safeCol = column.replace(/[^a-z_]/g, '')
       if (op === 'in' && Array.isArray(value)) {
         const escaped = value.map((v: any) => `'${String(v).replace(/'/g, "''")}'`).join(',')
@@ -97,12 +108,22 @@ export async function POST(req: NextRequest) {
     }
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : ''
-    const groupClause = `GROUP BY ${groupBy.map((g: string) => GROUP_COLS[g]).join(', ')}`
-    const havingClause = minPitches > 0 ? `HAVING COUNT(*) >= ${parseInt(minPitches)}` : ''
+    const groupClause = `GROUP BY ${groupByExprs.join(', ')}`
+
+    // HAVING — support both minPitches and minPA
+    const havingParts: string[] = []
+    const mp = parseInt(minPitches)
+    if (mp > 0) havingParts.push(`COUNT(*) >= ${mp}`)
+    const mpa = parseInt(minPA)
+    if (mpa > 0) havingParts.push(`COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, '-', at_bat_number) END) >= ${mpa}`)
+    const havingClause = havingParts.length > 0 ? `HAVING ${havingParts.join(' AND ')}` : ''
+
     const safeSortBy = METRICS[sortBy] ? sortBy : metrics[0] || 'pitches'
     const safeSortDir = sortDir === 'ASC' ? 'ASC' : 'DESC'
     const orderClause = `ORDER BY ${safeSortBy} ${safeSortDir}`
-    const limitClause = `LIMIT ${Math.min(Math.max(parseInt(limit), 1), 1000)}`
+    const safeLimit = Math.min(Math.max(parseInt(limit), 1), 1000)
+    const safeOffset = Math.max(parseInt(offset) || 0, 0)
+    const limitClause = `LIMIT ${safeLimit} OFFSET ${safeOffset}`
 
     const sql = `SELECT ${selectParts.join(', ')} FROM pitches ${whereClause} ${groupClause} ${havingClause} ${orderClause} ${limitClause}`
 
