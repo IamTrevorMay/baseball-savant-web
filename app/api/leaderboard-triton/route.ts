@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { supabase } from '@/lib/supabase'
 
 /**
  * Query pre-computed Triton command metrics for the leaderboard.
@@ -56,7 +51,7 @@ export async function POST(req: NextRequest) {
       HAVING SUM(pitches) >= ${safeMinPitches}
       ORDER BY ${safeSortBy} ${safeSortDir} NULLS LAST
       LIMIT ${safeLimit} OFFSET ${safeOffset}
-    `
+    `.trim()
 
     const { data, error } = await supabase.rpc('run_query', { query_text: sql })
     if (error) return NextResponse.json({ error: error.message, sql }, { status: 500 })
