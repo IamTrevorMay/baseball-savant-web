@@ -29,10 +29,24 @@ export async function POST(req: NextRequest) {
     const safeOffset = Math.max(parseInt(String(offset)) || 0, 0)
     const safeSortDir = sortDir === 'ASC' ? 1 : -1
 
+    // Map full pitch names → abbreviations used in column keys
+    const PITCH_NAME_TO_ABBREV: Record<string, string> = {
+      '4-Seam Fastball': 'ff',
+      'Sinker': 'si',
+      'Cutter': 'fc',
+      'Slider': 'sl',
+      'Sweeper': 'sw',
+      'Curveball': 'cu',
+      'Changeup': 'ch',
+      'Split-Finger': 'fs',
+      'Knuckle Curve': 'kc',
+      'Slurve': 'sv',
+    }
+
     // Fetch all rows (one per pitcher × pitch type) for the year
     const sql = `
-      SELECT pitcher, player_name, pitch_type, pitches,
-        brink, cluster, hdev, vdev, missfire, waste_pct,
+      SELECT pitcher, player_name, pitch_name, pitches,
+        avg_brink, avg_cluster, avg_hdev, avg_vdev, avg_missfire, waste_pct,
         brink_plus, cluster_plus, hdev_plus, vdev_plus, missfire_plus,
         cmd_plus, rpcom_plus
       FROM pitcher_season_command
@@ -57,16 +71,16 @@ export async function POST(req: NextRequest) {
         })
       }
       const p = pitcherMap.get(id)!
-      const pt = (row.pitch_type || '').toLowerCase()
+      const pt = PITCH_NAME_TO_ABBREV[row.pitch_name] || (row.pitch_name || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 2)
       const ptPitches = Number(row.pitches) || 0
       p.pitches += ptPitches
 
       if (mode === 'raw') {
-        p[`${pt}_brink`] = row.brink != null ? Number(row.brink) : null
-        p[`${pt}_cluster`] = row.cluster != null ? Number(row.cluster) : null
-        p[`${pt}_hdev`] = row.hdev != null ? Number(row.hdev) : null
-        p[`${pt}_vdev`] = row.vdev != null ? Number(row.vdev) : null
-        p[`${pt}_missfire`] = row.missfire != null ? Number(row.missfire) : null
+        p[`${pt}_brink`] = row.avg_brink != null ? Number(row.avg_brink) : null
+        p[`${pt}_cluster`] = row.avg_cluster != null ? Number(row.avg_cluster) : null
+        p[`${pt}_hdev`] = row.avg_hdev != null ? Number(row.avg_hdev) : null
+        p[`${pt}_vdev`] = row.avg_vdev != null ? Number(row.avg_vdev) : null
+        p[`${pt}_missfire`] = row.avg_missfire != null ? Number(row.avg_missfire) : null
         p[`${pt}_waste_pct`] = row.waste_pct != null ? Number(row.waste_pct) : null
       } else {
         p[`${pt}_brink_plus`] = row.brink_plus != null ? Number(row.brink_plus) : null
