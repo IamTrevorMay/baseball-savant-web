@@ -30,6 +30,7 @@ export default function PitchLevelTab({ data }: Props) {
       const avgHdev = avgArr(hdevs)
       const avgVdev = avgArr(vdevs)
       const avgMissfire = avgArr(missfires)
+      const wastePct = brinks.length > 0 ? (brinks.filter((v: number) => v < -10).length / brinks.length) * 100 : null
 
       // Year-weighted plus stats
       const brinkPlus = computeYearWeightedPlus(pitches, name, 'brink',
@@ -56,6 +57,7 @@ export default function PitchLevelTab({ data }: Props) {
         hdev: avgHdev != null ? avgHdev.toFixed(1) : '—',
         vdev: avgVdev != null ? avgVdev.toFixed(1) : '—',
         missfire: avgMissfire != null ? avgMissfire.toFixed(1) : '—',
+        wastePct: wastePct != null ? wastePct.toFixed(1) + '%' : '—',
         brinkPlus: brinkPlus != null ? String(brinkPlus) : '—',
         clusterPlus: clusterPlus != null ? String(clusterPlus) : '—',
         hdevPlus: hdevPlus != null ? String(hdevPlus) : '—',
@@ -75,6 +77,7 @@ export default function PitchLevelTab({ data }: Props) {
     { k: 'hdev', l: 'HDev' },
     { k: 'vdev', l: 'VDev' },
     { k: 'missfire', l: 'Missfire' },
+    { k: 'wastePct', l: 'Waste%' },
     { k: 'brinkPlus', l: 'Brink+' },
     { k: 'clusterPlus', l: 'Cluster+' },
     { k: 'hdevPlus', l: 'HDev+' },
@@ -88,6 +91,7 @@ export default function PitchLevelTab({ data }: Props) {
     if (k === 'name') return 'text-white font-medium'
     if (k === 'count') return 'text-zinc-400'
     if (['brink', 'cluster', 'hdev', 'vdev', 'missfire'].includes(k)) return 'text-teal-400'
+    if (k === 'wastePct') return 'text-orange-400'
     if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus', 'missfirePlus', 'commandPlus', 'rpcomPlus'].includes(k)) {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
@@ -134,6 +138,7 @@ export default function PitchLevelTab({ data }: Props) {
         <p><span className="text-teal-400 font-medium">HDev</span> — avg horizontal deviation from centroid (in, pitcher POV). Lower = tighter horizontal spread.</p>
         <p><span className="text-teal-400 font-medium">VDev</span> — avg vertical deviation from centroid (in). Lower = tighter vertical spread.</p>
         <p><span className="text-teal-400 font-medium">Missfire</span> — avg distance of outside-zone pitches from closest zone edge (in). Lower = misses stay closer to zone.</p>
+        <p><span className="text-orange-400 font-medium">Waste%</span> — percentage of pitches more than 10\" outside the zone. Lower = fewer wasted pitches.</p>
         <p>Plus stats: 100 = league avg, +10 = 1 stddev better. <span className="text-teal-400">Above 100</span> = better than avg, <span className="text-orange-400">below 100</span> = worse.</p>
         <p><span className="text-teal-400 font-medium">Cmd+</span> — Command+ composite: 40% Brink+ + 30% Cluster+ + 30% Missfire+ (theory-weighted skill).</p>
         <p><span className="text-teal-400 font-medium">RPCom+</span> — Run Prevention Command+: all 5 metrics weighted by correlation with xwOBA-against.</p>
