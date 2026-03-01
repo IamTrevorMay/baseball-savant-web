@@ -5,7 +5,10 @@ import PitchMovement from '../charts/PitchMovement'
 import VelocityDistribution from '../charts/VelocityDistribution'
 import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
-import { BRINK_LEAGUE, CLUSTER_LEAGUE, computePlus } from '@/lib/leagueStats'
+import {
+  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
+  computePlus, computeCommandPlus, computeRPComPlus,
+} from '@/lib/leagueStats'
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 
 interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[] }
@@ -97,6 +100,35 @@ function calcAdvancedByYear(data: any[]) {
 
     const dres = pitches.map(p => p.delta_run_exp).filter((v: any) => v != null)
 
+    // Compute usage-weighted Command+ and RPCom+ across pitch types
+    const ptGroups: Record<string, any[]> = {}
+    pitches.forEach(p => { if (p.pitch_name) { if (!ptGroups[p.pitch_name]) ptGroups[p.pitch_name] = []; ptGroups[p.pitch_name].push(p) } })
+    let cmdWtSum = 0, cmdWt = 0, rpcWtSum = 0, rpcWt = 0
+    Object.entries(ptGroups).forEach(([ptName, pts]) => {
+      const ptAvg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+      const brinks = pts.map((p: any) => p.brink).filter((v: any) => v != null)
+      const clusters = pts.map((p: any) => p.cluster).filter((v: any) => v != null)
+      const hdevs = pts.map((p: any) => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      const vdevs = pts.map((p: any) => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
+      const ab = ptAvg(brinks), ac = ptAvg(clusters), ah = ptAvg(hdevs), av = ptAvg(vdevs), am = ptAvg(missfires)
+      const bL = BRINK_LEAGUE[ptName], cL = CLUSTER_LEAGUE[ptName], hL = HDEV_LEAGUE[ptName], vL = VDEV_LEAGUE[ptName], mL = MISSFIRE_LEAGUE[ptName]
+      if (ab != null && ac != null && am != null && bL && cL && mL) {
+        const bp = Math.round(computePlus(ab, bL.mean, bL.stddev))
+        const cp = Math.round(100 - (computePlus(ac, cL.mean, cL.stddev) - 100))
+        const mp = Math.round(100 - (computePlus(am, mL.mean, mL.stddev) - 100))
+        const w = pts.length
+        cmdWtSum += computeCommandPlus(bp, cp, mp) * w
+        cmdWt += w
+        if (ah != null && av != null && hL && vL) {
+          const hp = Math.round(100 - (computePlus(ah, hL.mean, hL.stddev) - 100))
+          const vp = Math.round(100 - (computePlus(av, vL.mean, vL.stddev) - 100))
+          rpcWtSum += computeRPComPlus(bp, cp, hp, vp, mp) * w
+          rpcWt += w
+        }
+      }
+    })
+
     // Compute IP from outs (same logic as traditional tab)
     const outsEvents = pitches.filter(p => p.events && !['walk','hit_by_pitch','single','double','triple','home_run','catcher_interf','sac_bunt','sac_fly_double_play'].includes(p.events) && !p.events.includes('error'))
     const outsCount = outsEvents.length
@@ -127,6 +159,8 @@ function calcAdvancedByYear(data: any[]) {
       ip: ipDisplay,
       fip: f(fip, 2), xfip: f(xfip, 2), xera: f(xera, 2), siera: f(siera, 2),
       totalRE: f(dres.length ? dres.reduce((a: number, b: number) => a + b, 0) : null, 1),
+      commandPlus: cmdWt > 0 ? String(Math.round(cmdWtSum / cmdWt)) : '—',
+      rpcomPlus: rpcWt > 0 ? String(Math.round(rpcWtSum / rpcWt)) : '—',
     }
   })
 }
@@ -185,7 +219,7 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","commandPlus","rpcomPlus"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
@@ -287,6 +321,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:"fip", l:"FIP" }, { k:"xfip", l:"xFIP" }, { k:"xera", l:"xERA" }, { k:"siera", l:"SIERA" },
     { k:"k9", l:"K/9" }, { k:"bb9", l:"BB/9" }, { k:"hr9", l:"HR/9" },
     { k:"totalRE", l:"RE24" },
+    { k:"commandPlus", l:"Cmd+" }, { k:"rpcomPlus", l:"RPCom+" },
   ]
   const arsenalCols = [
     { k:'name', l:'Pitch' }, { k:'count', l:'#' }, { k:'usagePct', l:'Usage%' },
@@ -316,7 +351,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
     if (k === 'brink') return 'text-teal-400'
     if (k === 'cluster') return 'text-teal-400'
-    if (k === 'brinkPlus' || k === 'clusterPlus') {
+    if (k === 'brinkPlus' || k === 'clusterPlus' || k === 'commandPlus' || k === 'rpcomPlus') {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
       return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'

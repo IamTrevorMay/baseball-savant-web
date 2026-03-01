@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import {
   BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE, computePlus,
+  computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
 
 interface Props { data: any[] }
@@ -46,6 +47,11 @@ export default function PitchLevelTab({ data }: Props) {
       const vdevPlus = avgVdev != null && vdevL ? Math.round(100 - (computePlus(avgVdev, vdevL.mean, vdevL.stddev) - 100)) : null
       const missfirePlus = avgMissfire != null && missfireL ? Math.round(100 - (computePlus(avgMissfire, missfireL.mean, missfireL.stddev) - 100)) : null
 
+      const commandPlus = brinkPlus != null && clusterPlus != null && missfirePlus != null
+        ? String(computeCommandPlus(brinkPlus, clusterPlus, missfirePlus)) : '—'
+      const rpcomPlus = brinkPlus != null && clusterPlus != null && hdevPlus != null && vdevPlus != null && missfirePlus != null
+        ? String(computeRPComPlus(brinkPlus, clusterPlus, hdevPlus, vdevPlus, missfirePlus)) : '—'
+
       return {
         name,
         count: pitches.length,
@@ -59,6 +65,8 @@ export default function PitchLevelTab({ data }: Props) {
         hdevPlus: hdevPlus != null ? String(hdevPlus) : '—',
         vdevPlus: vdevPlus != null ? String(vdevPlus) : '—',
         missfirePlus: missfirePlus != null ? String(missfirePlus) : '—',
+        commandPlus,
+        rpcomPlus,
       }
     }).sort((a, b) => b.count - a.count)
   }, [data])
@@ -76,13 +84,15 @@ export default function PitchLevelTab({ data }: Props) {
     { k: 'hdevPlus', l: 'HDev+' },
     { k: 'vdevPlus', l: 'VDev+' },
     { k: 'missfirePlus', l: 'Missfire+' },
+    { k: 'commandPlus', l: 'Cmd+' },
+    { k: 'rpcomPlus', l: 'RPCom+' },
   ]
 
   const cellColor = (k: string, v: any) => {
     if (k === 'name') return 'text-white font-medium'
     if (k === 'count') return 'text-zinc-400'
     if (['brink', 'cluster', 'hdev', 'vdev', 'missfire'].includes(k)) return 'text-teal-400'
-    if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus', 'missfirePlus'].includes(k)) {
+    if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus', 'missfirePlus', 'commandPlus', 'rpcomPlus'].includes(k)) {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
       return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'
@@ -129,6 +139,8 @@ export default function PitchLevelTab({ data }: Props) {
         <p><span className="text-teal-400 font-medium">VDev</span> — avg vertical deviation from centroid (in). Lower = tighter vertical spread.</p>
         <p><span className="text-teal-400 font-medium">Missfire</span> — avg distance of outside-zone pitches from closest zone edge (in). Lower = misses stay closer to zone.</p>
         <p>Plus stats: 100 = league avg, +10 = 1 stddev better. <span className="text-teal-400">Above 100</span> = better than avg, <span className="text-orange-400">below 100</span> = worse.</p>
+        <p><span className="text-teal-400 font-medium">Cmd+</span> — Command+ composite: 40% Brink+ + 30% Cluster+ + 30% Missfire+ (theory-weighted skill).</p>
+        <p><span className="text-teal-400 font-medium">RPCom+</span> — Run Prevention Command+: all 5 metrics weighted by correlation with xwOBA-against.</p>
       </div>
     </div>
   )

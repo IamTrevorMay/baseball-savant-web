@@ -137,3 +137,29 @@ export function plusToPercentile(plus: number): number {
   const z = (plus - 100) / 10
   return Math.max(1, Math.min(99, Math.round(normalCDF(z) * 100)))
 }
+
+// Command+ weights — theory-weighted, 3 non-redundant components
+// (Cluster+ subsumes HDev+/VDev+ so they are dropped)
+export const COMMAND_WEIGHTS = { brinkPlus: 0.40, clusterPlus: 0.30, missfirePlus: 0.30 }
+
+// RPCom+ weights — outcome-weighted from |corr| with xwOBA-against
+// (pitcher×pitch_type level, 2020–2025, min 50 pitches, n=5680)
+export const RPCOM_WEIGHTS = { brinkPlus: 0.31, clusterPlus: 0.16, hdevPlus: 0.09, vdevPlus: 0.15, missfirePlus: 0.29 }
+
+export function computeCommandPlus(brinkPlus: number, clusterPlus: number, missfirePlus: number): number {
+  return Math.round(
+    COMMAND_WEIGHTS.brinkPlus * brinkPlus +
+    COMMAND_WEIGHTS.clusterPlus * clusterPlus +
+    COMMAND_WEIGHTS.missfirePlus * missfirePlus
+  )
+}
+
+export function computeRPComPlus(brinkPlus: number, clusterPlus: number, hdevPlus: number, vdevPlus: number, missfirePlus: number): number {
+  return Math.round(
+    RPCOM_WEIGHTS.brinkPlus * brinkPlus +
+    RPCOM_WEIGHTS.clusterPlus * clusterPlus +
+    RPCOM_WEIGHTS.hdevPlus * hdevPlus +
+    RPCOM_WEIGHTS.vdevPlus * vdevPlus +
+    RPCOM_WEIGHTS.missfirePlus * missfirePlus
+  )
+}
