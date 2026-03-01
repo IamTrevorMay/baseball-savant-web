@@ -5,6 +5,7 @@ import PitchMovement from '../charts/PitchMovement'
 import VelocityDistribution from '../charts/VelocityDistribution'
 import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
+import { BRINK_LEAGUE, CLUSTER_LEAGUE, computePlus } from '@/lib/leagueStats'
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 
 interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[] }
@@ -158,6 +159,14 @@ function calcArsenal(data: any[]) {
     const f = (v: number|null, d=1) => v != null ? v.toFixed(d) : '—'
     const pct = (n: number, den: number) => den > 0 ? (n/den*100).toFixed(1) : '—'
 
+    const avgBrink = avg(brinks)
+    const avgCluster = avg(clusters)
+    const brinkLeague = BRINK_LEAGUE[name]
+    const clusterLeague = CLUSTER_LEAGUE[name]
+    const brinkPlus = avgBrink != null && brinkLeague ? Math.round(computePlus(avgBrink, brinkLeague.mean, brinkLeague.stddev)) : null
+    // Lower cluster = tighter = better, so invert
+    const clusterPlus = avgCluster != null && clusterLeague ? Math.round(100 - (computePlus(avgCluster, clusterLeague.mean, clusterLeague.stddev) - 100)) : null
+
     return {
       name, count: pitches.length, usagePct: pct(pitches.length, total),
       avgVelo: f(avg(velos)), maxVelo: f(velos.length ? Math.max(...velos) : null),
@@ -165,8 +174,10 @@ function calcArsenal(data: any[]) {
       ext: f(avg(exts)), armAngle: f(avg(arms)),
       whiffPct: pct(whiffs, swings), csPct: pct(cs, pitches.length),
       avgEV: f(avg(evs)), xBA: f(avg(xbas), 3),
-      brink: f(avg(brinks)),
-      cluster: f(avg(clusters)),
+      brink: f(avgBrink),
+      cluster: f(avgCluster),
+      brinkPlus: brinkPlus != null ? String(brinkPlus) : '—',
+      clusterPlus: clusterPlus != null ? String(clusterPlus) : '—',
     }
   }).sort((a, b) => b.count - a.count)
 }
@@ -174,7 +185,7 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
@@ -286,6 +297,8 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:'avgEV', l:'EV' }, { k:'xBA', l:'xBA' },
     { k:'brink', l:'Brink' },
     { k:'cluster', l:'Cluster' },
+    { k:'brinkPlus', l:'Brink+' },
+    { k:'clusterPlus', l:'Cluster+' },
   ]
 
   const activeRows = mode === 'traditional' ? mergedTradRows : mode === 'advanced' ? mergedAdvRows : arsenalRows
@@ -303,6 +316,11 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
     if (k === 'brink') return 'text-teal-400'
     if (k === 'cluster') return 'text-teal-400'
+    if (k === 'brinkPlus' || k === 'clusterPlus') {
+      const n = Number(v)
+      if (isNaN(n)) return 'text-zinc-400'
+      return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'
+    }
     if (['avgEV','maxEV','avgLA','gbPct','fbPct','ldPct','puPct'].includes(k)) return 'text-orange-400'
     if (['zonePct'].includes(k)) return 'text-sky-400'
     if (['fip','xfip','xera','siera'].includes(k)) return 'text-cyan-400'

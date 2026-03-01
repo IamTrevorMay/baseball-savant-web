@@ -16,6 +16,7 @@ import PitchLogTab from "@/components/dashboard/PitchLogTab"
 import SplitsTab from "@/components/dashboard/SplitsTab"
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
+import PercentileTab from '@/components/dashboard/PercentileTab'
 import PlayerBadges from '@/components/PlayerBadges'
 import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
 import type { LahmanPlayerData } from '@/lib/lahman-stats'
@@ -36,6 +37,7 @@ const BASE_TABS = [
   { id: 'pitchlog', label: 'Pitch Log' },
   { id: 'splits', label: 'Splits' },
   { id: 'gamelog', label: 'Game Log' },
+  { id: 'percentile', label: 'Percentile' },
 ]
 
 const TEAM_COLORS: Record<string, string> = {
@@ -339,6 +341,7 @@ export default function PlayerDashboard() {
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}
           {tab === 'splits' && <SplitsTab data={data} />}
           {tab === 'gamelog' && <GameLogTab data={data} />}
+          {tab === 'percentile' && <PercentileTab data={data} />}
           {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}
         </div>
       </div>
