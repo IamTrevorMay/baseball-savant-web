@@ -51,6 +51,19 @@ export const VDEV_LEAGUE: Record<string, { mean: number; stddev: number }> = {
   'Knuckle Curve':   { mean: 10.21, stddev: 1.46 },
 }
 
+// Missfire — avg distance of outside-zone pitches from closest edge (inches)
+export const MISSFIRE_LEAGUE: Record<string, { mean: number; stddev: number }> = {
+  '4-Seam Fastball': { mean: 5.90, stddev: 0.72 },
+  'Slider':          { mean: 7.43, stddev: 1.16 },
+  'Sinker':          { mean: 5.73, stddev: 0.80 },
+  'Changeup':        { mean: 7.49, stddev: 1.25 },
+  'Curveball':       { mean: 8.31, stddev: 1.43 },
+  'Cutter':          { mean: 6.15, stddev: 1.00 },
+  'Sweeper':         { mean: 7.61, stddev: 1.20 },
+  'Split-Finger':    { mean: 8.28, stddev: 1.96 },
+  'Knuckle Curve':   { mean: 8.53, stddev: 1.40 },
+}
+
 // Savant-style percentile breakpoints [p10, p25, p50, p75, p90]
 export const SAVANT_PERCENTILES: Record<string, { label: string; percentiles: number[]; higherBetter: boolean; unit: string }> = {
   avg_velo:   { label: 'Avg Velocity',  unit: 'mph', percentiles: [88.5, 90.8, 93.2, 95.1, 97.0], higherBetter: true },

@@ -1,7 +1,7 @@
 'use client'
 import { useMemo } from 'react'
 import {
-  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, computePlus,
+  BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE, computePlus,
 } from '@/lib/leagueStats'
 
 interface Props { data: any[] }
@@ -23,23 +23,28 @@ export default function PitchLevelTab({ data }: Props) {
       const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
       const hdevs = pitches.map(p => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      // Missfire: for pitches outside the zone (brink < 0), distance from closest edge
+      const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
 
       const avgBrink = avg(brinks)
       const avgCluster = avg(clusters)
       const avgHdev = avg(hdevs)
       const avgVdev = avg(vdevs)
+      const avgMissfire = avg(missfires)
 
       // Plus stats
       const brinkL = BRINK_LEAGUE[name]
       const clusterL = CLUSTER_LEAGUE[name]
       const hdevL = HDEV_LEAGUE[name]
       const vdevL = VDEV_LEAGUE[name]
+      const missfireL = MISSFIRE_LEAGUE[name]
 
       const brinkPlus = avgBrink != null && brinkL ? Math.round(computePlus(avgBrink, brinkL.mean, brinkL.stddev)) : null
-      // Lower = tighter = better, so invert for cluster, hdev, vdev
+      // Lower = tighter = better, so invert for cluster, hdev, vdev, missfire
       const clusterPlus = avgCluster != null && clusterL ? Math.round(100 - (computePlus(avgCluster, clusterL.mean, clusterL.stddev) - 100)) : null
       const hdevPlus = avgHdev != null && hdevL ? Math.round(100 - (computePlus(avgHdev, hdevL.mean, hdevL.stddev) - 100)) : null
       const vdevPlus = avgVdev != null && vdevL ? Math.round(100 - (computePlus(avgVdev, vdevL.mean, vdevL.stddev) - 100)) : null
+      const missfirePlus = avgMissfire != null && missfireL ? Math.round(100 - (computePlus(avgMissfire, missfireL.mean, missfireL.stddev) - 100)) : null
 
       return {
         name,
@@ -48,10 +53,12 @@ export default function PitchLevelTab({ data }: Props) {
         cluster: avgCluster != null ? avgCluster.toFixed(1) : '—',
         hdev: avgHdev != null ? avgHdev.toFixed(1) : '—',
         vdev: avgVdev != null ? avgVdev.toFixed(1) : '—',
+        missfire: avgMissfire != null ? avgMissfire.toFixed(1) : '—',
         brinkPlus: brinkPlus != null ? String(brinkPlus) : '—',
         clusterPlus: clusterPlus != null ? String(clusterPlus) : '—',
         hdevPlus: hdevPlus != null ? String(hdevPlus) : '—',
         vdevPlus: vdevPlus != null ? String(vdevPlus) : '—',
+        missfirePlus: missfirePlus != null ? String(missfirePlus) : '—',
       }
     }).sort((a, b) => b.count - a.count)
   }, [data])
@@ -63,17 +70,19 @@ export default function PitchLevelTab({ data }: Props) {
     { k: 'cluster', l: 'Cluster' },
     { k: 'hdev', l: 'HDev' },
     { k: 'vdev', l: 'VDev' },
+    { k: 'missfire', l: 'Missfire' },
     { k: 'brinkPlus', l: 'Brink+' },
     { k: 'clusterPlus', l: 'Cluster+' },
     { k: 'hdevPlus', l: 'HDev+' },
     { k: 'vdevPlus', l: 'VDev+' },
+    { k: 'missfirePlus', l: 'Missfire+' },
   ]
 
   const cellColor = (k: string, v: any) => {
     if (k === 'name') return 'text-white font-medium'
     if (k === 'count') return 'text-zinc-400'
-    if (['brink', 'cluster', 'hdev', 'vdev'].includes(k)) return 'text-teal-400'
-    if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus'].includes(k)) {
+    if (['brink', 'cluster', 'hdev', 'vdev', 'missfire'].includes(k)) return 'text-teal-400'
+    if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus', 'missfirePlus'].includes(k)) {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
       return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'
@@ -118,6 +127,7 @@ export default function PitchLevelTab({ data }: Props) {
         <p><span className="text-teal-400 font-medium">Cluster</span> — avg distance from pitch-type centroid (in). Lower = tighter grouping.</p>
         <p><span className="text-teal-400 font-medium">HDev</span> — avg horizontal deviation from centroid (in, pitcher POV). Lower = tighter horizontal spread.</p>
         <p><span className="text-teal-400 font-medium">VDev</span> — avg vertical deviation from centroid (in). Lower = tighter vertical spread.</p>
+        <p><span className="text-teal-400 font-medium">Missfire</span> — avg distance of outside-zone pitches from closest zone edge (in). Lower = misses stay closer to zone.</p>
         <p>Plus stats: 100 = league avg, +10 = 1 stddev better. <span className="text-teal-400">Above 100</span> = better than avg, <span className="text-orange-400">below 100</span> = worse.</p>
       </div>
     </div>

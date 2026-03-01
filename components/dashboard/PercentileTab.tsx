@@ -1,11 +1,11 @@
 'use client'
 import { useMemo, useState } from 'react'
 import {
-  SAVANT_PERCENTILES, BRINK_LEAGUE, CLUSTER_LEAGUE,
+  SAVANT_PERCENTILES, BRINK_LEAGUE, CLUSTER_LEAGUE, HDEV_LEAGUE, VDEV_LEAGUE, MISSFIRE_LEAGUE,
   computePercentile, percentileColor, computePlus,
 } from '@/lib/leagueStats'
 
-type View = 'rankings' | 'brink' | 'cluster'
+type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
 
 interface Props { data: any[] }
 
@@ -83,10 +83,18 @@ export default function PercentileTab({ data }: Props) {
 
     const brinkRows: { name: string; value: number; plus: number }[] = []
     const clusterRows: { name: string; value: number; plus: number }[] = []
+    const hdevRows: { name: string; value: number; plus: number }[] = []
+    const vdevRows: { name: string; value: number; plus: number }[] = []
+    const missfireRows: { name: string; value: number; plus: number }[] = []
+
+    const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
     for (const [name, pitches] of Object.entries(groups)) {
       const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
       const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
+      const hdevs = pitches.map(p => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
+      const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
 
       if (brinks.length > 0 && BRINK_LEAGUE[name]) {
         const avg = brinks.reduce((a: number, b: number) => a + b, 0) / brinks.length
@@ -96,11 +104,31 @@ export default function PercentileTab({ data }: Props) {
       if (clusters.length > 0 && CLUSTER_LEAGUE[name]) {
         const avg = clusters.reduce((a: number, b: number) => a + b, 0) / clusters.length
         const league = CLUSTER_LEAGUE[name]
-        // Lower cluster = tighter = better, so invert
         clusterRows.push({ name, value: avg, plus: Math.round(100 - (computePlus(avg, league.mean, league.stddev) - 100)) })
       }
+      const avgH = avgArr(hdevs)
+      if (avgH != null && HDEV_LEAGUE[name]) {
+        const league = HDEV_LEAGUE[name]
+        hdevRows.push({ name, value: avgH, plus: Math.round(100 - (computePlus(avgH, league.mean, league.stddev) - 100)) })
+      }
+      const avgV = avgArr(vdevs)
+      if (avgV != null && VDEV_LEAGUE[name]) {
+        const league = VDEV_LEAGUE[name]
+        vdevRows.push({ name, value: avgV, plus: Math.round(100 - (computePlus(avgV, league.mean, league.stddev) - 100)) })
+      }
+      const avgM = avgArr(missfires)
+      if (avgM != null && MISSFIRE_LEAGUE[name]) {
+        const league = MISSFIRE_LEAGUE[name]
+        missfireRows.push({ name, value: avgM, plus: Math.round(100 - (computePlus(avgM, league.mean, league.stddev) - 100)) })
+      }
     }
-    return { brinkRows: brinkRows.sort((a, b) => b.plus - a.plus), clusterRows: clusterRows.sort((a, b) => b.plus - a.plus) }
+    return {
+      brinkRows: brinkRows.sort((a, b) => b.plus - a.plus),
+      clusterRows: clusterRows.sort((a, b) => b.plus - a.plus),
+      hdevRows: hdevRows.sort((a, b) => b.plus - a.plus),
+      vdevRows: vdevRows.sort((a, b) => b.plus - a.plus),
+      missfireRows: missfireRows.sort((a, b) => b.plus - a.plus),
+    }
   }, [data])
 
   const formatValue = (v: number, unit: string) => {
@@ -118,8 +146,8 @@ export default function PercentileTab({ data }: Props) {
   return (
     <div className="space-y-4">
       {/* View toggle */}
-      <div className="flex gap-1">
-        {([['rankings', 'Rankings'], ['brink', 'Brink+'], ['cluster', 'Cluster+']] as [View, string][]).map(([v, label]) => (
+      <div className="flex gap-1 flex-wrap">
+        {([['rankings', 'Rankings'], ['brink', 'Brink+'], ['cluster', 'Cluster+'], ['hdev', 'HDev+'], ['vdev', 'VDev+'], ['missfire', 'Missfire+']] as [View, string][]).map(([v, label]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
               view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
@@ -183,6 +211,48 @@ export default function PercentileTab({ data }: Props) {
             ))}
           </div>
           {plusStats.clusterRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
+        </div>
+      )}
+
+      {/* HDev+ view */}
+      {view === 'hdev' && (
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">HDev+ by Pitch Type</h3>
+          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = tighter horizontal spread</p>
+          <div className="space-y-2">
+            {plusStats.hdevRows.map(r => (
+              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
+            ))}
+          </div>
+          {plusStats.hdevRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
+        </div>
+      )}
+
+      {/* VDev+ view */}
+      {view === 'vdev' && (
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">VDev+ by Pitch Type</h3>
+          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = tighter vertical spread</p>
+          <div className="space-y-2">
+            {plusStats.vdevRows.map(r => (
+              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
+            ))}
+          </div>
+          {plusStats.vdevRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
+        </div>
+      )}
+
+      {/* Missfire+ view */}
+      {view === 'missfire' && (
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Missfire+ by Pitch Type</h3>
+          <p className="text-[11px] text-zinc-500 mb-4">100 = league avg, higher = misses stay closer to zone</p>
+          <div className="space-y-2">
+            {plusStats.missfireRows.map(r => (
+              <PlusBar key={r.name} name={r.name} plus={r.plus} value={r.value.toFixed(1)} color={plusColor(r.plus)} />
+            ))}
+          </div>
+          {plusStats.missfireRows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
         </div>
       )}
     </div>

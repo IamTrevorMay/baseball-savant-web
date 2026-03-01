@@ -38,7 +38,7 @@ const BASE_TABS = [
   { id: 'pitchlog', label: 'Pitch Log' },
   { id: 'splits', label: 'Splits' },
   { id: 'gamelog', label: 'Game Log' },
-  { id: 'percentile', label: 'Percentile' },
+  { id: 'percentile', label: 'Ranks' },
   { id: 'pitchlevel', label: 'Pitch Level' },
 ]
 
