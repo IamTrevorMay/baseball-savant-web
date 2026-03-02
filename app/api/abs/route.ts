@@ -62,7 +62,7 @@ function gameTypeParam(gt: GameType): string {
 
 // --- Sync action ---
 
-async function syncData(year: number, gameType: GameType = 'R', level: string = 'MLB') {
+export async function syncData(year: number, gameType: GameType = 'R', level: string = 'MLB') {
   const gt = gameTypeParam(gameType)
   const baseUrl = `https://baseballsavant.mlb.com/abs?year=${year}&gameType=${gt}&level=${level}`
   const res = await fetch(baseUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
@@ -168,7 +168,7 @@ async function syncData(year: number, gameType: GameType = 'R', level: string = 
 
   // --- Player leaderboard ---
   // Leaderboard page uses `id` for player_id, `player_name`, `team_abbr`
-  for (const challengeType of ['batter', 'pitcher']) {
+  for (const challengeType of ['batter', 'pitcher', 'catcher']) {
     const leaderUrl = `https://baseballsavant.mlb.com/leaderboard/abs-challenges?year=${year}&challengeType=${challengeType}`
     const lRes = await fetch(leaderUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     if (!lRes.ok) continue

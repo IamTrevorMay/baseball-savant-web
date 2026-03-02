@@ -45,7 +45,7 @@ interface DashboardData {
 
 type Tab = 'daily' | 'breakdowns' | 'teams' | 'leaderboard'
 type DailySource = 'all' | 'batter' | 'fielder'
-type TeamSortField = 'team_abbr' | 'bat_for' | 'fld_for' | 'total_for' | 'bat_against' | 'fld_against' | 'total_against' | 'net'
+type TeamSortField = 'team_abbr' | 'bat_for' | 'fld_for' | 'total_for' | 'bat_against' | 'fld_against' | 'total_against' | 'total' | 'net'
 type PlayerSortField = 'player_name' | 'n_challenges' | 'n_overturns' | 'n_fails' | 'rate_overturns' | 'exp_rate_overturns' | 'overturns_vs_exp' | 'net_net_chal'
 
 const GAME_TYPES = [
@@ -196,6 +196,7 @@ export default function ABSPage() {
         if (teamSort === 'team_abbr') return r.team_abbr
         if (teamSort === 'total_for') return r.bat_for + r.fld_for
         if (teamSort === 'total_against') return r.bat_against + r.fld_against
+        if (teamSort === 'total') return r.bat_for + r.fld_for + r.bat_against + r.fld_against
         if (teamSort === 'net') return (r.bat_for + r.fld_for) - (r.bat_against + r.fld_against)
         return r[teamSort] as number
       }
@@ -351,6 +352,21 @@ function DailyTab({ data, source, setSource }: { data: DashboardData; source: Da
           </button>
         ))}
       </div>
+
+      {rows.length > 0 && (() => {
+        const last = rows[rows.length - 1]
+        return (
+          <div className="mb-4">
+            <div className="text-[11px] text-zinc-500 mb-2 font-medium uppercase tracking-wider">Most Recent Day</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <SummaryCard label="Date" value={last.game_date} />
+              <SummaryCard label="Challenges" value={last.challenges.toLocaleString()} />
+              <SummaryCard label="Overturns" value={last.overturns.toLocaleString()} />
+              <SummaryCard label="Overturn Rate" value={pct(last.overturn_rate)} accent />
+            </div>
+          </div>
+        )
+      })()}
 
       {rows.length === 0 ? (
         <p className="text-zinc-500 text-sm py-8 text-center">No daily data for this source.</p>
@@ -520,6 +536,7 @@ function TeamsTab({ teams, sort, dir, onSort }: {
               {th('Bat Against', 'bat_against')}
               {th('Fld Against', 'fld_against')}
               {th('Total Against', 'total_against')}
+              {th('Total', 'total')}
               {th('Net', 'net')}
             </tr>
           </thead>
@@ -537,6 +554,7 @@ function TeamsTab({ teams, sort, dir, onSort }: {
                   <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{t.bat_against}</td>
                   <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{t.fld_against}</td>
                   <td className="px-3 py-2 text-center tabular-nums text-zinc-300 font-medium">{totalAgainst}</td>
+                  <td className="px-3 py-2 text-center tabular-nums text-white font-bold">{totalFor + totalAgainst}</td>
                   <td className={`px-3 py-2 text-center tabular-nums font-bold ${net > 0 ? 'text-emerald-400' : net < 0 ? 'text-red-400' : 'text-zinc-400'}`}>
                     {net > 0 ? '+' : ''}{net}
                   </td>
@@ -567,10 +585,10 @@ function LeaderboardTab({ players, loading, challengeType, setChallengeType, min
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <span className="text-xs text-zinc-500">Type:</span>
-        {['batter', 'pitcher'].map(ct => (
+        {['batter', 'pitcher', 'catcher'].map(ct => (
           <button key={ct} onClick={() => setChallengeType(ct)}
             className={`px-2.5 py-1 rounded text-xs transition ${challengeType === ct ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/50' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'}`}>
-            {ct === 'batter' ? 'Batter' : 'Pitcher'}
+            {ct === 'batter' ? 'Batter' : ct === 'pitcher' ? 'Pitcher' : 'Catcher'}
           </button>
         ))}
         <span className="text-xs text-zinc-500 ml-2">Min Challenges:</span>
