@@ -11,8 +11,7 @@ export async function POST(req: NextRequest) {
     const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
 
     const { data, error } = await supabase.rpc('run_query', {
-      query_text: `
-        SELECT u.hp_umpire,
+      query_text: `SELECT u.hp_umpire,
           COUNT(DISTINCT u.game_pk) as games,
           MIN(u.game_date)::text as first_date,
           MAX(u.game_date)::text as last_date,
@@ -28,8 +27,7 @@ export async function POST(req: NextRequest) {
           ${seasonFilter} ${pitchSeasonFilter}
         GROUP BY u.hp_umpire
         ORDER BY games DESC
-        LIMIT 50
-      `
+        LIMIT 50`
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
@@ -40,14 +38,12 @@ export async function POST(req: NextRequest) {
     if (!searchQuery) return NextResponse.json([])
 
     const { data, error } = await supabase.rpc('run_query', {
-      query_text: `
-        SELECT hp_umpire, COUNT(DISTINCT game_pk) as games
+      query_text: `SELECT hp_umpire, COUNT(DISTINCT game_pk) as games
         FROM game_umpires
         WHERE LOWER(hp_umpire) LIKE '%${searchQuery}%'
         GROUP BY hp_umpire
         ORDER BY games DESC
-        LIMIT 8
-      `
+        LIMIT 8`
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
