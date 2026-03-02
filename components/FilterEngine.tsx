@@ -78,6 +78,8 @@ export const FILTER_CATALOG: FilterDef[] = [
   { key: "vs_team", label: "vs Team", category: "Matchup", type: "multi" },
   { key: "brink", label: "Brink (edge dist, in)", category: "Location", type: "range" },
   { key: "cluster", label: "Cluster (loc spread, in)", category: "Location", type: "range" },
+  { key: "hdev", label: "HDev (horiz deviation, in)", category: "Location", type: "range" },
+  { key: "vdev", label: "VDev (vert deviation, in)", category: "Location", type: "range" },
 ]
 
 // ── Active Filter State ──────────────────────────────────────────────────────
