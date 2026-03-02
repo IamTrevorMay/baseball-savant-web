@@ -225,9 +225,10 @@ export default function PlayerDashboard() {
           }
         }
       })
-      setAllData(allRows)
-      setData(allRows)
-      setResultCount(allRows.length)
+      const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
+      setAllData(cleaned)
+      setData(cleaned)
+      setResultCount(cleaned.length)
 
       // Build filter options from loaded data
       const buildOpts = (col: string) => [...new Set(allRows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()

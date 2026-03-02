@@ -171,12 +171,13 @@ export default function HitterDashboard() {
         if (p.pitcher && pitcherNames[p.pitcher]) p.pitcher_name = pitcherNames[p.pitcher]
       })
 
-      setAllData(allRows)
-      setData(allRows)
-      setResultCount(allRows.length)
+      const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
+      setAllData(cleaned)
+      setData(cleaned)
+      setResultCount(cleaned.length)
 
       // Build filter options from loaded data
-      const buildOpts = (col: string) => [...new Set(allRows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
+      const buildOpts = (col: string) => [...new Set(cleaned.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
       setOptionsCache({
         game_year: buildOpts("game_year").sort().reverse(),
         pitch_name: buildOpts("pitch_name"),
