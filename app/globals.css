@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Prevent iOS rubber-band bounce */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* iOS standalone safe area padding */
+@supports (padding-top: env(safe-area-inset-top)) {
+  @media (display-mode: standalone) {
+    body {
+      padding-top: env(safe-area-inset-top);
+    }
+  }
+}
+
+/* Disable tap highlight on navigation elements */
+nav a, nav button {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

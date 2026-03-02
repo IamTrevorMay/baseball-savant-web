@@ -16,5 +16,5 @@ export default async function ResearchLayout({ children }: { children: React.Rea
   const isPrivileged = profile?.role === 'owner' || profile?.role === 'admin'
   if (!isPrivileged && !perm) redirect('/?denied=research')
 
-  return <>{children}</>
+  return <div className="pb-20 md:pb-0">{children}</div>
 }

@@ -33,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-zinc-950 text-white pb-20 md:pb-0">
       <header className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/" className="text-zinc-500 hover:text-zinc-300 transition">

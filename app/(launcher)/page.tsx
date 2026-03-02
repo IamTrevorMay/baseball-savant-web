@@ -1,8 +1,8 @@
 'use client'
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import UserMenu from '@/components/UserMenu'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 const TOOLS = [
@@ -99,11 +99,19 @@ const ADMIN_TOOL = {
 function LauncherContent() {
   const { user, profile, permissions, loading } = useAuth()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const denied = searchParams.get('denied')
   // If no user session (preview mode or not logged in), show all tools as accessible
   const effectivePermissions = user ? permissions : ['research', 'mechanics', 'models', 'compete', 'visualize']
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
   const visibleTools = isAdmin ? [...TOOLS, ADMIN_TOOL] : TOOLS
+
+  // In PWA standalone mode, redirect to Compete tab
+  useEffect(() => {
+    if (!loading && user && window.matchMedia('(display-mode: standalone)').matches && !denied) {
+      router.replace('/compete')
+    }
+  }, [loading, user, denied, router])
 
   if (loading) {
     return (
