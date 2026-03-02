@@ -1,4 +1,5 @@
 'use client'
+import Tip from '@/components/Tip'
 
 function calcSplitStats(pitches: any[]) {
   const total = pitches.length
@@ -64,7 +65,7 @@ function SplitTable({ label, splits }: { label: string; splits: { name: string; 
           <tr>
             {cols.map(c => (
               <th key={c.key} className="bg-zinc-800 px-3 py-2 text-zinc-500 font-medium whitespace-nowrap text-right first:text-left">
-                {c.label}
+                <Tip label={c.label} />
               </th>
             ))}
           </tr>

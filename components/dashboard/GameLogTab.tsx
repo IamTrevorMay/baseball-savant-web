@@ -1,4 +1,5 @@
 'use client'
+import Tip from '@/components/Tip'
 
 export default function GameLogTab({ data }: { data: any[] }) {
   // Group by game
@@ -34,15 +35,15 @@ export default function GameLogTab({ data }: { data: any[] }) {
       <table className="w-full">
         <thead>
           <tr className="text-[11px] text-zinc-500 uppercase tracking-wider">
-            <th className="text-left px-4 py-2">Date</th>
+            <th className="text-left px-4 py-2"><Tip label="Date" col="game_date" /></th>
             <th className="text-left px-4 py-2">Matchup</th>
-            <th className="text-right px-4 py-2">Pitches</th>
-            <th className="text-right px-4 py-2">Avg Velo</th>
-            <th className="text-right px-4 py-2">Max Velo</th>
-            <th className="text-right px-4 py-2">K</th>
-            <th className="text-right px-4 py-2">BB</th>
-            <th className="text-right px-4 py-2">Hits</th>
-            <th className="text-right px-4 py-2">Whiff%</th>
+            <th className="text-right px-4 py-2"><Tip label="Pitches" /></th>
+            <th className="text-right px-4 py-2"><Tip label="Avg Velo" /></th>
+            <th className="text-right px-4 py-2"><Tip label="Max Velo" /></th>
+            <th className="text-right px-4 py-2"><Tip label="K" /></th>
+            <th className="text-right px-4 py-2"><Tip label="BB" /></th>
+            <th className="text-right px-4 py-2"><Tip label="H" /></th>
+            <th className="text-right px-4 py-2"><Tip label="Whiff%" /></th>
           </tr>
         </thead>
         <tbody>

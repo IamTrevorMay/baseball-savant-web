@@ -1,5 +1,6 @@
 'use client'
 import type { H2HRecord, ChaseRegion, CountProfile } from '@/lib/engines/types'
+import Tip from '@/components/Tip'
 
 export function H2HTable({ rows }: { rows: H2HRecord[] }) {
   if (!rows.length) return <div className="text-zinc-600 text-xs py-4">No head-to-head data</div>
@@ -9,11 +10,11 @@ export function H2HTable({ rows }: { rows: H2HRecord[] }) {
         <thead>
           <tr className="bg-zinc-800/50">
             <th className="px-3 py-1.5 text-left text-zinc-400 font-medium">Pitch</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">#</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">Whiff%</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">xwOBA</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">Avg EV</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">BA</th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="#" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="Whiff%" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="xwOBA" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="Avg EV" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="BA" /></th>
           </tr>
         </thead>
         <tbody>
@@ -41,9 +42,9 @@ export function ChaseTable({ rows }: { rows: ChaseRegion[] }) {
         <thead>
           <tr className="bg-zinc-800/50">
             <th className="px-3 py-1.5 text-left text-zinc-400 font-medium">Region</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">#</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">Swing%</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">Whiff%</th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="#" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="Swing%" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="Whiff%" /></th>
           </tr>
         </thead>
         <tbody>
@@ -77,10 +78,10 @@ export function CountTable({ rows }: { rows: CountProfile[] }) {
         <thead>
           <tr className="bg-zinc-800/50">
             <th className="px-3 py-1.5 text-left text-zinc-400 font-medium">Count</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">#</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">Swing%</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">Avg EV</th>
-            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium">xwOBA</th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="#" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="Swing%" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="Avg EV" /></th>
+            <th className="px-3 py-1.5 text-right text-zinc-400 font-medium"><Tip label="xwOBA" /></th>
           </tr>
         </thead>
         <tbody>

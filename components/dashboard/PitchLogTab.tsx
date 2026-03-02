@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
-import { colName } from '@/lib/glossary'
+import { colName, colDesc } from '@/lib/glossary'
+import Tip from '@/components/Tip'
 
 const BASE_COLS = [
   'game_date','vs_team','player_col','inning','inning_topbot','balls','strikes','outs_when_up',
@@ -85,7 +86,7 @@ export default function PitchLogTab({ data, mode = 'pitcher' }: { data: any[]; m
                   className={`bg-zinc-800 px-2 py-2 text-right font-medium whitespace-nowrap cursor-pointer hover:text-zinc-200 transition ${
                     sortCol === col ? 'text-emerald-400' : 'text-zinc-500'
                   }`}>
-                  {COL_LABELS[col] || colName(col)} {sortCol === col ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                  <Tip label={COL_LABELS[col] || colName(col)} col={col} /> {sortCol === col ? (sortDir === 'desc' ? '↓' : '↑') : ''}
                 </th>
               ))}
               <th className="bg-zinc-800 px-2 py-2 text-center text-zinc-500 font-medium">Vid</th>

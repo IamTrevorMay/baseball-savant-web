@@ -1,6 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { modernTeamCode } from '@/lib/lahman-stats'
+import Tip from '@/components/Tip'
 
 interface Props {
   rows: any[]
@@ -50,7 +51,7 @@ export default function LeaderboardTable({ rows, type, category, statLabel, load
               {isSeason && <th className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium text-right">Year</th>}
               <th className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium text-right">Team{!isSeason ? 's' : ''}</th>
               {!isSeason && <th className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium text-right">Years</th>}
-              <th className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium text-right">{statLabel}</th>
+              <th className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium text-right"><Tip label={statLabel} /></th>
             </tr>
           </thead>
           <tbody>

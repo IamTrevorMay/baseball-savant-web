@@ -3,6 +3,7 @@ import { RiskGauge } from './RiskGauge'
 import Plot from '@/components/PlotWrapper'
 import { COLORS, BASE_LAYOUT } from '@/components/chartConfig'
 import type { PURIOutput } from '@/lib/engines/types'
+import Tip from '@/components/Tip'
 
 interface RiskDashboardProps {
   result: PURIOutput
@@ -166,15 +167,15 @@ export function RiskDashboard({ result, pitcherName, season }: RiskDashboardProp
             <thead>
               <tr className="text-zinc-500 text-[10px] uppercase tracking-wider border-b border-zinc-800">
                 <th className="text-left px-3 py-2">Date</th>
-                <th className="text-right px-3 py-2">Pitches</th>
-                <th className="text-right px-3 py-2">Avg FB</th>
-                <th className="text-right px-3 py-2">Max FB</th>
-                <th className="text-right px-3 py-2">Inn</th>
-                <th className="text-right px-3 py-2">BF</th>
-                <th className="text-right px-3 py-2">Rest</th>
-                <th className="text-right px-3 py-2">Fade</th>
-                <th className="text-center px-3 py-2">HiLev</th>
-                <th className="text-center px-3 py-2">Flag</th>
+                <th className="text-right px-3 py-2"><Tip label="Pitches" /></th>
+                <th className="text-right px-3 py-2"><Tip label="Avg FB" /></th>
+                <th className="text-right px-3 py-2"><Tip label="Max FB" /></th>
+                <th className="text-right px-3 py-2"><Tip label="Inn" /></th>
+                <th className="text-right px-3 py-2"><Tip label="BF" /></th>
+                <th className="text-right px-3 py-2"><Tip label="Rest" /></th>
+                <th className="text-right px-3 py-2"><Tip label="Fade" /></th>
+                <th className="text-center px-3 py-2"><Tip label="HiLev" /></th>
+                <th className="text-center px-3 py-2"><Tip label="Flag" /></th>
               </tr>
             </thead>
             <tbody>

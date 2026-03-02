@@ -1,4 +1,5 @@
 'use client'
+import Tip from '@/components/Tip'
 
 export default function HitterGameLogTab({ data }: { data: any[] }) {
   // Group by game
@@ -57,7 +58,7 @@ export default function HitterGameLogTab({ data }: { data: any[] }) {
         <thead>
           <tr className="text-[11px] text-zinc-500 uppercase tracking-wider">
             {cols.map(c => (
-              <th key={c.k} className={`px-4 py-2 ${c.k === 'date' || c.k === 'opponent' ? 'text-left' : 'text-right'}`}>{c.l}</th>
+              <th key={c.k} className={`px-4 py-2 ${c.k === 'date' || c.k === 'opponent' ? 'text-left' : 'text-right'}`}><Tip label={c.l} /></th>
             ))}
           </tr>
         </thead>

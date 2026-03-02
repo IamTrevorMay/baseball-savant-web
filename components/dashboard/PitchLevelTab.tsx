@@ -5,6 +5,7 @@ import {
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
   isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
+import Tip from '@/components/Tip'
 
 interface Props { data: any[] }
 
@@ -217,7 +218,7 @@ export default function PitchLevelTab({ data }: Props) {
             <thead>
               <tr>
                 {cols.map(c => (
-                  <th key={c.k} className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium whitespace-nowrap text-right first:text-left">{c.l}</th>
+                  <th key={c.k} className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium whitespace-nowrap text-right first:text-left"><Tip label={c.l} /></th>
                 ))}
               </tr>
             </thead>

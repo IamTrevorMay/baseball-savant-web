@@ -10,6 +10,7 @@ import {
   computeYearWeightedPlus,
 } from '@/lib/leagueStats'
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
+import Tip from '@/components/Tip'
 
 interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[] }
 
@@ -389,7 +390,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
             <thead>
               <tr>
                 {activeCols.map(c => (
-                  <th key={c.k} className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium whitespace-nowrap text-right first:text-left">{c.l}</th>
+                  <th key={c.k} className="bg-zinc-800/50 px-3 py-2 text-zinc-500 font-medium whitespace-nowrap text-right first:text-left"><Tip label={c.l} /></th>
                 ))}
               </tr>
             </thead>
