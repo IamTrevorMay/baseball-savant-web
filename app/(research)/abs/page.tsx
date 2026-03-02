@@ -342,7 +342,15 @@ export default function ABSPage() {
 
       {/* Tab content */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 pb-16">
-        {loading ? (
+        {tab === 'umpires' ? (
+          <UmpiresTab
+            umpires={sortedUmpires} loading={umpiresLoading}
+            minGames={minGames} setMinGames={setMinGames}
+            umpireYear={umpireYear} setUmpireYear={setUmpireYear}
+            umpireGameType={umpireGameType} setUmpireGameType={setUmpireGameType}
+            sort={umpireSort} dir={umpireDir} onSort={handleUmpireSort}
+          />
+        ) : loading ? (
           <div className="flex flex-col items-center py-20 gap-3">
             <div className="w-8 h-8 border-2 border-zinc-700 border-t-emerald-500 rounded-full animate-spin" />
             <p className="text-zinc-500 text-sm">Loading ABS data...</p>
@@ -365,15 +373,6 @@ export default function ABSPage() {
                 challengeType={challengeType} setChallengeType={setChallengeType}
                 minChal={minChal} setMinChal={setMinChal}
                 sort={playerSort} dir={playerDir} onSort={handlePlayerSort}
-              />
-            )}
-            {tab === 'umpires' && (
-              <UmpiresTab
-                umpires={sortedUmpires} loading={umpiresLoading}
-                minGames={minGames} setMinGames={setMinGames}
-                umpireYear={umpireYear} setUmpireYear={setUmpireYear}
-                umpireGameType={umpireGameType} setUmpireGameType={setUmpireGameType}
-                sort={umpireSort} dir={umpireDir} onSort={handleUmpireSort}
               />
             )}
           </>
