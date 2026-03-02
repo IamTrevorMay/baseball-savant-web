@@ -5,7 +5,7 @@ import type { ActiveFilter } from '@/components/FilterEngine'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type View = 'pitching' | 'hitting' | 'team' | 'defence'
-export type StatSet = 'traditional' | 'advanced' | 'stuff' | 'battedball' | 'discipline' | 'triton_raw' | 'triton_plus'
+export type StatSet = 'traditional' | 'advanced' | 'stuff' | 'battedball' | 'discipline' | 'triton_raw' | 'triton_plus' | 'deception'
 
 export interface ColumnDef {
   key: string          // metric key or group key (e.g. 'player_name', 'avg_velo')
@@ -27,6 +27,7 @@ export const STAT_SETS: Record<View, { key: StatSet; label: string }[]> = {
     { key: 'discipline', label: 'Plate Discipline' },
     { key: 'triton_raw', label: 'Triton' },
     { key: 'triton_plus', label: 'Triton+' },
+    { key: 'deception', label: 'Deception' },
   ],
   hitting: [
     { key: 'traditional', label: 'Traditional' },
@@ -217,11 +218,60 @@ export const TRITON_PLUS_COLUMNS: ColumnDef[] = [
   ),
 ]
 
+// ── Deception pitch types & per-pitch-type column generation ──────────────────
+export const DECEPTION_PITCH_TYPES = [
+  { abbrev: 'ff', label: 'FF' },
+  { abbrev: 'si', label: 'SI' },
+  { abbrev: 'fc', label: 'FC' },
+  { abbrev: 'sl', label: 'SL' },
+  { abbrev: 'sw', label: 'SW' },
+  { abbrev: 'cu', label: 'CU' },
+  { abbrev: 'ch', label: 'CH' },
+  { abbrev: 'fs', label: 'FS' },
+  { abbrev: 'kc', label: 'KC' },
+  { abbrev: 'sv', label: 'SV' },
+] as const
+
+function deceptionColor(v: number): string {
+  if (v >= 1.0) return 'text-emerald-300'
+  if (v >= 0.5) return 'text-teal-400'
+  if (v >= 0.0) return 'text-zinc-300'
+  if (v >= -0.5) return 'text-orange-400'
+  return 'text-red-400'
+}
+
+export const DECEPTION_COLUMNS: ColumnDef[] = [
+  { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+  { key: 'pitcher', label: '', colorClass: '', isGroup: true },
+  { key: 'pitches', label: 'Pitches', colorClass: 'text-zinc-400', format: 'int' },
+  // Overall scores
+  { key: 'unique_score', label: 'Unique', colorClass: '', format: 'dec2', conditionalColor: (v) => deceptionColor(v) },
+  { key: 'deception_score', label: 'Deception', colorClass: '', format: 'dec2', conditionalColor: (v) => deceptionColor(v) },
+  { key: 'xdeception_score', label: 'xDeception', colorClass: '', format: 'dec2', conditionalColor: (v) => deceptionColor(v) },
+  // Per pitch type: unique + deception
+  ...DECEPTION_PITCH_TYPES.flatMap(pt => [
+    {
+      key: `${pt.abbrev}_unique`,
+      label: `${pt.label} Uniq`,
+      colorClass: '',
+      format: 'dec2' as const,
+      conditionalColor: (v: number) => deceptionColor(v),
+    },
+    {
+      key: `${pt.abbrev}_deception`,
+      label: `${pt.label} Dec`,
+      colorClass: '',
+      format: 'dec2' as const,
+      conditionalColor: (v: number) => deceptionColor(v),
+    },
+  ]),
+]
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Get metric keys needed for a stat set (excludes group-by columns) */
 export function getMetricsForStatSet(view: View, statSet: StatSet): string[] {
-  if (statSet === 'triton_raw' || statSet === 'triton_plus') return [] // triton uses separate API
+  if (statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') return [] // uses separate API
   const cols = COLUMNS[`${view}:${statSet}`] || []
   return cols.filter(c => !c.isGroup && c.key !== '_batter_name').map(c => c.key)
 }

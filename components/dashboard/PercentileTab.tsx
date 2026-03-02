@@ -1,8 +1,10 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import {
   SAVANT_PERCENTILES,
   computePercentile, percentileColor,
+  isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
 
 type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
@@ -11,6 +13,60 @@ interface Props { data: any[] }
 
 export default function PercentileTab({ data }: Props) {
   const [view, setView] = useState<View>('rankings')
+  const [deceptionVals, setDeceptionVals] = useState<Record<string, number | null>>({
+    unique_score: null, deception_score: null, xdeception_score: null,
+  })
+
+  // Fetch pre-computed deception scores
+  useEffect(() => {
+    const pitcherId = data[0]?.pitcher
+    if (!pitcherId) return
+
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))]
+    if (years.length === 0) return
+
+    async function fetchDeception() {
+      const yearList = years.join(',')
+      const sql = `SELECT pitch_type, pitches, unique_score, deception_score, z_vaa, z_haa, z_vb, z_hb, z_ext FROM pitcher_season_deception WHERE pitcher = ${pitcherId} AND game_year IN (${yearList})`
+      const { data: rows } = await supabase.rpc('run_query', { query_text: sql })
+      if (!rows?.length) return
+
+      let uniqueSum = 0, decSum = 0, totalW = 0
+      const fbZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
+      const osZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
+
+      for (const r of rows) {
+        const w = Number(r.pitches) || 0
+        if (r.unique_score != null) { uniqueSum += Number(r.unique_score) * w; totalW += w }
+        if (r.deception_score != null) { decSum += Number(r.deception_score) * w }
+
+        const bucket = isFastball(r.pitch_type) ? fbZ : osZ
+        if (r.z_vaa != null) {
+          bucket.vaa += Number(r.z_vaa) * w
+          bucket.haa += Number(r.z_haa) * w
+          bucket.vb += Number(r.z_vb) * w
+          bucket.hb += Number(r.z_hb) * w
+          bucket.ext += (Number(r.z_ext) || 0) * w
+          bucket.w += w
+        }
+      }
+
+      let xdec: number | null = null
+      if (fbZ.w > 0 && osZ.w > 0) {
+        xdec = computeXDeceptionScore(
+          { vaa: fbZ.vaa / fbZ.w, haa: fbZ.haa / fbZ.w, vb: fbZ.vb / fbZ.w, hb: fbZ.hb / fbZ.w, ext: fbZ.ext / fbZ.w },
+          { vaa: osZ.vaa / osZ.w, haa: osZ.haa / osZ.w, vb: osZ.vb / osZ.w, hb: osZ.hb / osZ.w, ext: osZ.ext / osZ.w }
+        )
+      }
+
+      setDeceptionVals({
+        unique_score: totalW > 0 ? uniqueSum / totalW : null,
+        deception_score: totalW > 0 ? decSum / totalW : null,
+        xdeception_score: xdec,
+      })
+    }
+    fetchDeception()
+  }, [data])
 
   // Rankings metrics
   const rankings = useMemo(() => {
@@ -62,6 +118,10 @@ export default function PercentileTab({ data }: Props) {
       extension: avg(exts),
       ivb_ff: avg(ffIvbs),
       vaa_ff: avg(ffVaas),
+      // Deception scores from pre-computed table
+      unique_score: deceptionVals.unique_score,
+      deception_score: deceptionVals.deception_score,
+      xdeception_score: deceptionVals.xdeception_score,
     }
 
     const results: { key: string; label: string; value: number; unit: string; pct: number }[] = []
@@ -74,7 +134,7 @@ export default function PercentileTab({ data }: Props) {
       })
     }
     return results
-  }, [data])
+  }, [data, deceptionVals])
 
   // Raw command metrics per pitch type
   const rawMetrics = useMemo(() => {
@@ -190,7 +250,7 @@ export default function PercentileTab({ data }: Props) {
               return (
                 <div key={r.name} className="flex items-center gap-3 h-8">
                   <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{r.name}</span>
-                  <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}"</span>
+                  <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}&quot;</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
                     <div className="h-full rounded transition-all" style={{ width: `${barPct}%`, backgroundColor: barColor, opacity: 0.8 }} />
                   </div>

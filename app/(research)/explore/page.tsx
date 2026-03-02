@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import ResearchNav from '@/components/ResearchNav'
 import FilterEngine, { ActiveFilter, FILTER_CATALOG } from '@/components/FilterEngine'
 import {
-  View, StatSet, STAT_SETS, COLUMNS, TRITON_RAW_COLUMNS, TRITON_PLUS_COLUMNS,
+  View, StatSet, STAT_SETS, COLUMNS, TRITON_RAW_COLUMNS, TRITON_PLUS_COLUMNS, DECEPTION_COLUMNS,
   getMetricsForStatSet, getGroupBy, filtersToReportFormat,
   formatValue, getCellColor, defaultQualifier,
   type ColumnDef,
@@ -84,12 +84,13 @@ export default function ExplorePage() {
     const id = ++fetchRef.current
 
     try {
-      if (statSet === 'triton_raw' || statSet === 'triton_plus') {
-        // Triton uses separate API
+      if (statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
+        // Triton / Deception use separate APIs
         const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
         const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
 
-        const res = await fetch('/api/leaderboard-triton', {
+        const endpoint = statSet === 'deception' ? '/api/leaderboard-deception' : '/api/leaderboard-triton'
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -99,7 +100,7 @@ export default function ExplorePage() {
             sortDir,
             limit,
             offset: page * limit,
-            mode: statSet === 'triton_raw' ? 'raw' : 'plus',
+            ...(statSet !== 'deception' && { mode: statSet === 'triton_raw' ? 'raw' : 'plus' }),
           }),
         })
         const data = await res.json()
@@ -198,12 +199,13 @@ export default function ExplorePage() {
   // Get the visible columns (hide empty isGroup columns like pitcher/batter IDs)
   const allCols = statSet === 'triton_raw' ? TRITON_RAW_COLUMNS
     : statSet === 'triton_plus' ? TRITON_PLUS_COLUMNS
+    : statSet === 'deception' ? DECEPTION_COLUMNS
     : (COLUMNS[`${view}:${statSet}`] || [])
   const visibleCols = allCols.filter(c => c.label !== '')
 
   function handleRowClick(row: any, col: ColumnDef) {
     if (!col.isName) return
-    if (view === 'pitching' || statSet === 'triton_raw' || statSet === 'triton_plus') {
+    if (view === 'pitching' || statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
       const id = row.pitcher
       if (id) window.location.href = `/player/${id}`
     } else if (view === 'hitting') {

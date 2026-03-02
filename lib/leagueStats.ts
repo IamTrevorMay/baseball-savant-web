@@ -495,6 +495,9 @@ export const SAVANT_PERCENTILES: Record<string, { label: string; percentiles: nu
   extension:  { label: 'Extension',     unit: 'ft',  percentiles: [5.8, 6.1, 6.3, 6.6, 6.9],      higherBetter: true },
   ivb_ff:     { label: 'IVB (FF)',      unit: 'in',  percentiles: [12.0, 14.0, 16.0, 18.0, 20.5], higherBetter: true },
   vaa_ff:     { label: 'VAA (FF)',      unit: '°',   percentiles: [-6.8, -6.2, -5.5, -4.9, -4.2], higherBetter: true },
+  unique_score:     { label: 'Unique',      unit: '',  percentiles: [0.44, 0.56, 0.73, 0.93, 1.21], higherBetter: true },
+  deception_score:  { label: 'Deception',   unit: '',  percentiles: [-0.45, -0.22, 0.02, 0.25, 0.48], higherBetter: true },
+  xdeception_score: { label: 'xDeception',  unit: '',  percentiles: [-1.31, -0.58, -0.03, 0.58, 1.11], higherBetter: true },
 }
 
 export function computePercentile(value: number, percentiles: number[], higherBetter: boolean): number {
@@ -608,4 +611,79 @@ export function computeRPComPlus(brinkPlus: number, clusterPlus: number, hdevPlu
     RPCOM_WEIGHTS.vdevPlus * vdevPlus +
     RPCOM_WEIGHTS.missfirePlus * missfirePlus
   )
+}
+
+// ── DECEPTION METRICS ────────────────────────────────────────────────────────
+
+const FASTBALL_TYPES = new Set(['FF', 'SI', 'FC', '4-Seam Fastball', 'Sinker', 'Cutter'])
+
+// Unique weights (absolute z-scores)
+const FB_UNIQUE_W = { vaa: 0.25, vb: 0.15, hb: 0.20, haa: 0.20, ext: 0.20 }
+const OS_UNIQUE_W = { vaa: 0.30, vb: 0.20, hb: 0.25, haa: 0.25 }
+
+// Deception weights (signed z-scores)
+const FB_DECEPTION_W = { vaa: -0.25, ext: 0.35, vb: 0.20, hb: -0.10, haa: -0.10 }
+const OS_DECEPTION_W = { vaa: 0.35, ext: 0.25, vb: 0.20, hb: -0.10, haa: 0.10 }
+
+// xDeception regression coefficients
+const XD_COEFF = {
+  fb_vaa: -1.2219, fb_haa: -0.2740, fb_vb: 0.3830, fb_hb: -0.2684, fb_ext: -0.8779,
+  os_vaa: 1.1265, os_haa: 0.3900, os_vb: 0.0947, os_hb: -0.2621, os_ext: 1.2845,
+}
+
+export function isFastball(pitchType: string): boolean {
+  return FASTBALL_TYPES.has(pitchType)
+}
+
+export interface ZScores {
+  vaa: number | null
+  haa: number | null
+  vb: number | null
+  hb: number | null
+  ext: number | null
+}
+
+export function computeUniqueScore(zScores: ZScores, fb: boolean): number | null {
+  if (fb) {
+    if (zScores.vaa == null || zScores.vb == null || zScores.hb == null || zScores.haa == null || zScores.ext == null) return null
+    return FB_UNIQUE_W.vaa * Math.abs(zScores.vaa) +
+      FB_UNIQUE_W.vb * Math.abs(zScores.vb) +
+      FB_UNIQUE_W.hb * Math.abs(zScores.hb) +
+      FB_UNIQUE_W.haa * Math.abs(zScores.haa) +
+      FB_UNIQUE_W.ext * Math.abs(zScores.ext)
+  } else {
+    if (zScores.vaa == null || zScores.vb == null || zScores.hb == null || zScores.haa == null) return null
+    return OS_UNIQUE_W.vaa * Math.abs(zScores.vaa) +
+      OS_UNIQUE_W.vb * Math.abs(zScores.vb) +
+      OS_UNIQUE_W.hb * Math.abs(zScores.hb) +
+      OS_UNIQUE_W.haa * Math.abs(zScores.haa)
+  }
+}
+
+export function computeDeceptionScore(zScores: ZScores, fb: boolean): number | null {
+  if (fb) {
+    if (zScores.vaa == null || zScores.vb == null || zScores.hb == null || zScores.haa == null || zScores.ext == null) return null
+    return FB_DECEPTION_W.vaa * zScores.vaa +
+      FB_DECEPTION_W.ext * zScores.ext +
+      FB_DECEPTION_W.vb * zScores.vb +
+      FB_DECEPTION_W.hb * zScores.hb +
+      FB_DECEPTION_W.haa * zScores.haa
+  } else {
+    if (zScores.vaa == null || zScores.vb == null || zScores.hb == null || zScores.haa == null) return null
+    return OS_DECEPTION_W.vaa * zScores.vaa +
+      (zScores.ext != null ? OS_DECEPTION_W.ext * zScores.ext : 0) +
+      OS_DECEPTION_W.vb * zScores.vb +
+      OS_DECEPTION_W.hb * zScores.hb +
+      OS_DECEPTION_W.haa * zScores.haa
+  }
+}
+
+export function computeXDeceptionScore(
+  fbZ: { vaa: number; haa: number; vb: number; hb: number; ext: number },
+  osZ: { vaa: number; haa: number; vb: number; hb: number; ext: number }
+): number {
+  return XD_COEFF.fb_vaa * fbZ.vaa + XD_COEFF.fb_haa * fbZ.haa + XD_COEFF.fb_vb * fbZ.vb +
+    XD_COEFF.fb_hb * fbZ.hb + XD_COEFF.fb_ext * fbZ.ext +
+    XD_COEFF.os_vaa * osZ.vaa + XD_COEFF.os_haa * osZ.haa + XD_COEFF.os_vb * osZ.vb +
+    XD_COEFF.os_hb * osZ.hb + XD_COEFF.os_ext * osZ.ext
 }
