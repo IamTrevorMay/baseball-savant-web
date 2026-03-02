@@ -135,12 +135,14 @@ export default function ABSPage() {
   const [playerSort, setPlayerSort] = useState<PlayerSortField>('n_challenges')
   const [playerDir, setPlayerDir] = useState<'asc' | 'desc'>('desc')
 
-  // Umpires tab
+  // Umpires tab — uses pitches data, independent year/gameType
   const [umpires, setUmpires] = useState<UmpireRow[]>([])
   const [umpiresLoading, setUmpiresLoading] = useState(false)
   const [umpireSort, setUmpireSort] = useState<UmpireSortField>('missed_calls')
   const [umpireDir, setUmpireDir] = useState<'asc' | 'desc'>('desc')
   const [minGames, setMinGames] = useState(1)
+  const [umpireYear, setUmpireYear] = useState(2025)
+  const [umpireGameType, setUmpireGameType] = useState('R')
 
   // Load filters
   useEffect(() => {
@@ -186,12 +188,12 @@ export default function ABSPage() {
   const loadUmpires = useCallback(async () => {
     setUmpiresLoading(true)
     try {
-      const d = await api('umpires', { year, gameType, minGames })
+      const d = await api('umpires', { year: umpireYear, gameType: umpireGameType, minGames })
       if (Array.isArray(d)) setUmpires(d)
     } finally {
       setUmpiresLoading(false)
     }
-  }, [year, gameType, minGames])
+  }, [umpireYear, umpireGameType, minGames])
 
   useEffect(() => {
     if (tab === 'umpires') loadUmpires()
@@ -369,6 +371,8 @@ export default function ABSPage() {
               <UmpiresTab
                 umpires={sortedUmpires} loading={umpiresLoading}
                 minGames={minGames} setMinGames={setMinGames}
+                umpireYear={umpireYear} setUmpireYear={setUmpireYear}
+                umpireGameType={umpireGameType} setUmpireGameType={setUmpireGameType}
                 sort={umpireSort} dir={umpireDir} onSort={handleUmpireSort}
               />
             )}
@@ -707,9 +711,11 @@ function missRateColor(rate: number | null): string {
   return 'text-red-400'
 }
 
-function UmpiresTab({ umpires, loading, minGames, setMinGames, sort, dir, onSort }: {
+function UmpiresTab({ umpires, loading, minGames, setMinGames, umpireYear, setUmpireYear, umpireGameType, setUmpireGameType, sort, dir, onSort }: {
   umpires: UmpireRow[]; loading: boolean
   minGames: number; setMinGames: (v: number) => void
+  umpireYear: number; setUmpireYear: (v: number) => void
+  umpireGameType: string; setUmpireGameType: (v: string) => void
   sort: UmpireSortField; dir: 'asc' | 'desc'; onSort: (f: UmpireSortField) => void
 }) {
   const th = (label: string, field: UmpireSortField) => (
@@ -719,9 +725,23 @@ function UmpiresTab({ umpires, loading, minGames, setMinGames, sort, dir, onSort
     </th>
   )
 
+  const pitchYears = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015]
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <select value={umpireYear} onChange={e => setUmpireYear(Number(e.target.value))}
+          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white focus:border-emerald-600 focus:outline-none">
+          {pitchYears.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <div className="flex gap-1">
+          {GAME_TYPES.map(gt => (
+            <button key={gt.value} onClick={() => setUmpireGameType(gt.value)}
+              className={`px-2.5 py-1 rounded text-xs transition ${umpireGameType === gt.value ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/50' : 'bg-zinc-800 text-zinc-400 border border-zinc-700 hover:border-zinc-600'}`}>
+              {gt.label}
+            </button>
+          ))}
+        </div>
         <span className="text-xs text-zinc-500">Min Games:</span>
         <input type="number" value={minGames} onChange={e => setMinGames(Math.max(1, Number(e.target.value)))}
           className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white focus:border-emerald-600 focus:outline-none" />
