@@ -4,6 +4,7 @@ import { WhoopCycleRow, WhoopSleepRow, computeReadiness } from '@/lib/compete/wh
 import MetricTrend from './MetricTrend'
 
 const GRAPHS = [
+  { key: 'prepare', label: 'Prepare' },
   { key: 'recovery', label: 'Recovery' },
   { key: 'hrv', label: 'HRV' },
   { key: 'strain', label: 'Strain' },
@@ -25,6 +26,23 @@ export default function GraphsTab({ cycles, sleep, selectedGraph, onSelectGraph 
 
   function getChartProps() {
     switch (selectedGraph) {
+      case 'prepare': {
+        const prepareData = cycles.map(c => {
+          const matchingSleep = sleepByDate.get(c.cycle_date) ?? null
+          const score = computeReadiness(c, matchingSleep, cycles, sleep)
+          return { date: c.cycle_date, value: score }
+        })
+        return {
+          data: prepareData,
+          color: '#14b8a6',
+          title: 'Prepare',
+          unit: '%',
+          referenceLines: [
+            { y: 67, color: '#22c55e' },
+            { y: 34, color: '#ef4444' },
+          ],
+        }
+      }
       case 'recovery': {
         const data = cycles.map(c => ({ date: c.cycle_date, value: c.recovery_score }))
         const colors = cycles.map(c => {
@@ -32,22 +50,16 @@ export default function GraphsTab({ cycles, sleep, selectedGraph, onSelectGraph 
           if (c.recovery_state === 'yellow') return '#eab308'
           return '#ef4444'
         })
-        const prepareData = cycles.map(c => {
-          const matchingSleep = sleepByDate.get(c.cycle_date) ?? null
-          const score = computeReadiness(c, matchingSleep, cycles, sleep)
-          return { date: c.cycle_date, value: score }
-        })
         return {
           data,
           color: '#22c55e',
-          title: 'Recovery + Prepare',
+          title: 'Recovery',
           unit: '%',
           markerColors: colors,
           referenceLines: [
             { y: 67, color: '#22c55e' },
             { y: 34, color: '#ef4444' },
           ],
-          secondary: { data: prepareData, color: '#14b8a6', label: 'Prepare' },
         }
       }
       case 'hrv':

@@ -180,14 +180,15 @@ export function readinessStateFromScore(score: number | null): 'green' | 'yellow
   return 'red'
 }
 
+// Weights reflect controllability: highest = most controllable
 const READINESS_METRICS: { key: string; weight: number; extract: (cycle: WhoopCycleRow | null, sleep: WhoopSleepRow | null) => number | null }[] = [
-  { key: 'time_in_bed', weight: 1.75, extract: (_, s) => s?.total_duration_ms ?? null },
-  { key: 'hrv', weight: 1.75, extract: (c, _) => c?.hrv_rmssd ?? null },
-  { key: 'time_asleep', weight: 1.3, extract: (_, s) => (s?.total_duration_ms != null && s?.awake_duration_ms != null) ? s.total_duration_ms - s.awake_duration_ms : null },
-  { key: 'light_sleep', weight: 1.0, extract: (_, s) => s?.light_duration_ms ?? null },
-  { key: 'deep_sleep', weight: 1.0475, extract: (_, s) => s?.sws_duration_ms ?? null },
-  { key: 'rem_sleep', weight: 1.0, extract: (_, s) => s?.rem_duration_ms ?? null },
-  { key: 'sleep_efficiency', weight: 1.1, extract: (_, s) => s?.sleep_efficiency ?? null },
+  { key: 'time_in_bed', weight: 2.0, extract: (_, s) => s?.total_duration_ms ?? null },
+  { key: 'time_asleep', weight: 1.75, extract: (_, s) => (s?.total_duration_ms != null && s?.awake_duration_ms != null) ? s.total_duration_ms - s.awake_duration_ms : null },
+  { key: 'sleep_efficiency', weight: 1.5, extract: (_, s) => s?.sleep_efficiency ?? null },
+  { key: 'deep_sleep', weight: 1.0, extract: (_, s) => s?.sws_duration_ms ?? null },
+  { key: 'rem_sleep', weight: 0.75, extract: (_, s) => s?.rem_duration_ms ?? null },
+  { key: 'light_sleep', weight: 0.5, extract: (_, s) => s?.light_duration_ms ?? null },
+  { key: 'hrv', weight: 0.5, extract: (c, _) => c?.hrv_rmssd ?? null },
 ]
 
 export function computeReadiness(

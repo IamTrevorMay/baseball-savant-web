@@ -62,7 +62,22 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
       />
 
       {/* Trend Charts Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          className={onGraphClick ? 'cursor-pointer rounded-xl transition hover:ring-1 hover:ring-zinc-700' : ''}
+          onClick={() => onGraphClick?.('prepare')}
+        >
+          <MetricTrend
+            data={prepareData}
+            color="#14b8a6"
+            title="Prepare"
+            unit="%"
+            referenceLines={[
+              { y: 67, color: '#22c55e' },
+              { y: 34, color: '#ef4444' },
+            ]}
+          />
+        </div>
         <div
           className={onGraphClick ? 'cursor-pointer rounded-xl transition hover:ring-1 hover:ring-zinc-700' : ''}
           onClick={() => onGraphClick?.('recovery')}
@@ -77,7 +92,6 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
               { y: 67, color: '#22c55e' },
               { y: 34, color: '#ef4444' },
             ]}
-            secondary={{ data: prepareData, color: '#14b8a6', label: 'Prepare' }}
           />
         </div>
         <div

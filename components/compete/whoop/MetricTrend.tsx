@@ -107,7 +107,7 @@ export default function MetricTrend({
       <div className="flex items-baseline justify-between mb-1">
         <h4 className="text-xs font-medium text-zinc-400">{title}</h4>
         {avg !== null && (
-          <span className="text-[10px] text-zinc-600">
+          <span className="text-xs font-semibold" style={{ color }}>
             avg {chartType === 'bar' || unit === '' ? avg.toFixed(1) : Math.round(avg)}{unit}
           </span>
         )}
