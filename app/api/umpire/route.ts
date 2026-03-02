@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+// Zone boundary constants (feet)
+// Hard zone edge = 0.83 ft (half plate + ball radius)
+// Shadow buffer = 0.083 ft (1 inch)
+const IN_ZONE = `(ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top)`
+const CORRECT = `((${IN_ZONE} AND p.type = 'S') OR (NOT ${IN_ZONE} AND p.type = 'B'))`
+// Shadow zone: within 1" of zone edge (in expanded but not contracted)
+const EXPANDED = `(ABS(p.plate_x) <= 0.913 AND p.plate_z >= p.sz_bot - 0.083 AND p.plate_z <= p.sz_top + 0.083)`
+const CONTRACTED = `(ABS(p.plate_x) <= 0.747 AND p.plate_z >= p.sz_bot + 0.083 AND p.plate_z <= p.sz_top - 0.083)`
+const NOT_SHADOW = `(NOT (${EXPANDED} AND NOT ${CONTRACTED}))`
+const BASE_WHERE = `p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')`
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { action } = body
@@ -15,15 +26,13 @@ export async function POST(req: NextRequest) {
           COUNT(DISTINCT u.game_pk) as games,
           MIN(u.game_date)::text as first_date,
           MAX(u.game_date)::text as last_date,
-          COUNT(*) FILTER (WHERE p.type IN ('B','S')) as called_pitches,
-          COUNT(*) FILTER (WHERE
-            (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top AND p.type = 'S')
-            OR (NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) AND p.type = 'B')
-          ) as correct_calls
+          COUNT(*) as called_pitches,
+          COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
+          COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
+          COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
         FROM game_umpires u
         JOIN pitches p ON p.game_pk = u.game_pk
-        WHERE p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL
-          AND p.pitch_type NOT IN ('PO', 'IN')
+        WHERE ${BASE_WHERE}
           ${seasonFilter} ${pitchSeasonFilter}
         GROUP BY u.hp_umpire
         ORDER BY games DESC
@@ -55,6 +64,7 @@ export async function POST(req: NextRequest) {
     const season = body.season ? Number(body.season) : null
     const seasonFilter = season ? `AND u.game_date >= '${season}-01-01' AND u.game_date <= '${season}-12-31'` : ''
     const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
+    const umpWhere = `u.hp_umpire = '${umpireName}' AND ${BASE_WHERE} ${seasonFilter} ${pitchSeasonFilter}`
 
     // 1. Summary stats
     const summarySQL = `
@@ -63,21 +73,17 @@ export async function POST(req: NextRequest) {
         MIN(u.game_date)::text as first_date,
         MAX(u.game_date)::text as last_date,
         COUNT(*) as called_pitches,
-        COUNT(*) FILTER (WHERE
-          (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top AND p.type = 'S')
-          OR (NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) AND p.type = 'B')
-        ) as correct_calls,
+        COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
+        COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
+        COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls,
         COUNT(*) FILTER (WHERE p.type = 'S') as called_strikes,
         COUNT(*) FILTER (WHERE p.type = 'B') as called_balls,
-        COUNT(*) FILTER (WHERE ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) as true_strikes,
-        COUNT(*) FILTER (WHERE p.type = 'S' AND NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top)) as incorrect_strikes,
-        COUNT(*) FILTER (WHERE p.type = 'B' AND ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) as incorrect_balls
+        COUNT(*) FILTER (WHERE ${IN_ZONE}) as true_strikes,
+        COUNT(*) FILTER (WHERE p.type = 'S' AND NOT ${IN_ZONE}) as incorrect_strikes,
+        COUNT(*) FILTER (WHERE p.type = 'B' AND ${IN_ZONE}) as incorrect_balls
       FROM game_umpires u
       JOIN pitches p ON p.game_pk = u.game_pk
-      WHERE u.hp_umpire = '${umpireName}'
-        AND p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL
-        AND p.pitch_type NOT IN ('PO', 'IN')
-        ${seasonFilter} ${pitchSeasonFilter}
+      WHERE ${umpWhere}
     `
 
     // 2. Missed calls (for scatter plot)
@@ -85,14 +91,8 @@ export async function POST(req: NextRequest) {
       SELECT p.plate_x, p.plate_z, p.type
       FROM game_umpires u
       JOIN pitches p ON p.game_pk = u.game_pk
-      WHERE u.hp_umpire = '${umpireName}'
-        AND p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL
-        AND p.pitch_type NOT IN ('PO', 'IN')
-        AND NOT (
-          (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top AND p.type = 'S')
-          OR (NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) AND p.type = 'B')
-        )
-        ${seasonFilter} ${pitchSeasonFilter}
+      WHERE ${umpWhere}
+        AND NOT ${CORRECT}
     `
 
     // 3. Zone accuracy grid (3x3 + outside)
@@ -111,16 +111,10 @@ export async function POST(req: NextRequest) {
           ELSE 'outside'
         END as zone_cell,
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE
-          (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top AND p.type = 'S')
-          OR (NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) AND p.type = 'B')
-        ) as correct
+        COUNT(*) FILTER (WHERE ${CORRECT}) as correct
       FROM game_umpires u
       JOIN pitches p ON p.game_pk = u.game_pk
-      WHERE u.hp_umpire = '${umpireName}'
-        AND p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL
-        AND p.pitch_type NOT IN ('PO', 'IN')
-        ${seasonFilter} ${pitchSeasonFilter}
+      WHERE ${umpWhere}
       GROUP BY zone_cell
     `
 
@@ -128,16 +122,12 @@ export async function POST(req: NextRequest) {
     const gameLogSQL = `
       SELECT u.game_pk, u.game_date::text as game_date, u.home_team, u.away_team,
         COUNT(*) as called,
-        COUNT(*) FILTER (WHERE
-          (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top AND p.type = 'S')
-          OR (NOT (ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top) AND p.type = 'B')
-        ) as correct
+        COUNT(*) FILTER (WHERE ${CORRECT}) as correct,
+        COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called,
+        COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct
       FROM game_umpires u
       JOIN pitches p ON p.game_pk = u.game_pk
-      WHERE u.hp_umpire = '${umpireName}'
-        AND p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL
-        AND p.pitch_type NOT IN ('PO', 'IN')
-        ${seasonFilter} ${pitchSeasonFilter}
+      WHERE ${umpWhere}
       GROUP BY u.game_pk, u.game_date, u.home_team, u.away_team
       ORDER BY u.game_date DESC
       LIMIT 200

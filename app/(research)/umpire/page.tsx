@@ -10,7 +10,10 @@ interface UmpireResult {
   last_date: string
   called_pitches: number
   correct_calls: number
-  accuracy: number
+  true_accuracy: number
+  real_called_pitches: number
+  real_correct_calls: number
+  real_accuracy: number
 }
 
 interface UmpireSearchHit {
@@ -24,11 +27,13 @@ function accuracyColor(pct: number): string {
   return 'text-red-400'
 }
 
-function accuracyBg(pct: number): string {
-  if (pct >= 92) return 'bg-emerald-500/20 border-emerald-500/30'
-  if (pct >= 89) return 'bg-yellow-500/20 border-yellow-500/30'
-  return 'bg-red-500/20 border-red-500/30'
+function realAccuracyColor(pct: number): string {
+  if (pct >= 97) return 'text-emerald-400'
+  if (pct >= 95) return 'text-yellow-400'
+  return 'text-red-400'
 }
+
+type SortField = 'games' | 'true_accuracy' | 'real_accuracy' | 'called_pitches'
 
 export default function UmpirePage() {
   const [query, setQuery] = useState('')
@@ -36,7 +41,7 @@ export default function UmpirePage() {
   const [loading, setLoading] = useState(false)
   const [leaderboard, setLeaderboard] = useState<UmpireResult[]>([])
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
-  const [sortField, setSortField] = useState<'games' | 'accuracy' | 'called_pitches'>('games')
+  const [sortField, setSortField] = useState<SortField>('games')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [seasons, setSeasons] = useState<number[]>([])
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
@@ -74,17 +79,24 @@ export default function UmpirePage() {
       }
       const data = await res.json()
       if (data) {
-        const parsed: UmpireResult[] = data.map((row: Record<string, unknown>) => ({
-          hp_umpire: row.hp_umpire as string,
-          games: Number(row.games),
-          first_date: row.first_date as string,
-          last_date: row.last_date as string,
-          called_pitches: Number(row.called_pitches),
-          correct_calls: Number(row.correct_calls),
-          accuracy: Number(row.called_pitches) > 0
-            ? (Number(row.correct_calls) / Number(row.called_pitches)) * 100
-            : 0,
-        }))
+        const parsed: UmpireResult[] = data.map((row: Record<string, unknown>) => {
+          const cp = Number(row.called_pitches)
+          const cc = Number(row.correct_calls)
+          const rcp = Number(row.real_called_pitches)
+          const rcc = Number(row.real_correct_calls)
+          return {
+            hp_umpire: row.hp_umpire as string,
+            games: Number(row.games),
+            first_date: row.first_date as string,
+            last_date: row.last_date as string,
+            called_pitches: cp,
+            correct_calls: cc,
+            true_accuracy: cp > 0 ? (cc / cp) * 100 : 0,
+            real_called_pitches: rcp,
+            real_correct_calls: rcc,
+            real_accuracy: rcp > 0 ? (rcc / rcp) * 100 : 0,
+          }
+        })
         setLeaderboard(parsed)
       }
     } catch (err) {
@@ -125,7 +137,7 @@ export default function UmpirePage() {
     router.push(`/umpire/${encodeURIComponent(name)}`)
   }
 
-  function handleSort(field: 'games' | 'accuracy' | 'called_pitches') {
+  function handleSort(field: SortField) {
     if (sortField === field) {
       setSortDir(prev => prev === 'desc' ? 'asc' : 'desc')
     } else {
@@ -210,9 +222,13 @@ export default function UmpirePage() {
                 className={`px-2 py-1 rounded border transition ${sortField === 'games' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
                 Games{sortArrow('games')}
               </button>
-              <button onClick={() => handleSort('accuracy')}
-                className={`px-2 py-1 rounded border transition ${sortField === 'accuracy' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
-                Accuracy{sortArrow('accuracy')}
+              <button onClick={() => handleSort('true_accuracy')}
+                className={`px-2 py-1 rounded border transition ${sortField === 'true_accuracy' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
+                True Acc{sortArrow('true_accuracy')}
+              </button>
+              <button onClick={() => handleSort('real_accuracy')}
+                className={`px-2 py-1 rounded border transition ${sortField === 'real_accuracy' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
+                Real Acc{sortArrow('real_accuracy')}
               </button>
               <button onClick={() => handleSort('called_pitches')}
                 className={`px-2 py-1 rounded border transition ${sortField === 'called_pitches' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
@@ -242,16 +258,15 @@ export default function UmpirePage() {
                   <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300">HP</div>
                   <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition truncate pr-6">{u.hp_umpire}</span>
                 </div>
-                <div className={`rounded-md border px-3 py-2 mb-3 ${accuracyBg(u.accuracy)}`}>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[11px] text-zinc-400">Accuracy</span>
-                    <span className={`text-lg font-bold tabular-nums ${accuracyColor(u.accuracy)}`}>{u.accuracy.toFixed(1)}%</span>
+                {/* Dual accuracy display */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="rounded-md border px-2 py-1.5 bg-zinc-800/50 border-zinc-700/50">
+                    <div className="text-[10px] text-zinc-500 mb-0.5">True Accuracy</div>
+                    <div className={`text-base font-bold tabular-nums ${accuracyColor(u.true_accuracy)}`}>{u.true_accuracy.toFixed(1)}%</div>
                   </div>
-                  <div className="mt-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${u.accuracy >= 92 ? 'bg-emerald-500' : u.accuracy >= 89 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                      style={{ width: `${Math.max(0, (u.accuracy - 80) * 5)}%` }}
-                    />
+                  <div className="rounded-md border px-2 py-1.5 bg-zinc-800/50 border-zinc-700/50">
+                    <div className="text-[10px] text-zinc-500 mb-0.5">Real Accuracy</div>
+                    <div className={`text-base font-bold tabular-nums ${realAccuracyColor(u.real_accuracy)}`}>{u.real_accuracy.toFixed(1)}%</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
@@ -281,6 +296,12 @@ export default function UmpirePage() {
             ))}
           </div>
         )}
+
+        {/* Legend */}
+        <div className="mt-6 text-[11px] text-zinc-600 space-y-1 px-1">
+          <p><span className="text-zinc-400 font-medium">True Accuracy</span> — correct calls / all called pitches (hard zone boundaries)</p>
+          <p><span className="text-zinc-400 font-medium">Real Accuracy</span> — correct calls / non-shadow pitches (excludes pitches within 1&quot; of zone edge)</p>
+        </div>
       </div>
     </div>
   )

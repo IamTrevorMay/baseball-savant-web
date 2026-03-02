@@ -12,7 +12,10 @@ interface UmpireSummary {
   last_date: string
   called_pitches: number
   correct_calls: number
-  accuracy: number
+  true_accuracy: number
+  real_called_pitches: number
+  real_correct_calls: number
+  real_accuracy: number
   called_strikes: number
   called_balls: number
   true_strikes: number
@@ -28,7 +31,10 @@ interface GameRow {
   away_team: string
   called: number
   correct: number
-  accuracy: number
+  true_accuracy: number
+  real_called: number
+  real_correct: number
+  real_accuracy: number
 }
 
 interface MissedCall {
@@ -42,6 +48,20 @@ interface ZoneCell {
   total: number
   correct: number
 }
+
+function accColor(pct: number): string {
+  if (pct >= 92) return 'text-emerald-400'
+  if (pct >= 89) return 'text-yellow-400'
+  return 'text-red-400'
+}
+
+function realAccColor(pct: number): string {
+  if (pct >= 97) return 'text-emerald-400'
+  if (pct >= 95) return 'text-yellow-400'
+  return 'text-red-400'
+}
+
+type GameSortField = 'game_date' | 'true_accuracy' | 'real_accuracy' | 'called'
 
 export default function UmpireScorecardPage() {
   const params = useParams()
@@ -58,7 +78,7 @@ export default function UmpireScorecardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearch, setShowSearch] = useState(false)
-  const [gameSortField, setGameSortField] = useState<'game_date' | 'accuracy' | 'called'>('game_date')
+  const [gameSortField, setGameSortField] = useState<GameSortField>('game_date')
   const [gameSortDir, setGameSortDir] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => { loadData() }, [umpireName, selectedSeason])
@@ -80,19 +100,24 @@ export default function UmpireScorecardPage() {
 
       if (data.summary) {
         const s = data.summary
-        const calledPitches = Number(s.called_pitches)
-        const correctCalls = Number(s.correct_calls)
+        const cp = Number(s.called_pitches)
+        const cc = Number(s.correct_calls)
+        const rcp = Number(s.real_called_pitches)
+        const rcc = Number(s.real_correct_calls)
         setSummary({
           games: Number(s.games),
           first_date: s.first_date,
           last_date: s.last_date,
-          called_pitches: calledPitches,
-          correct_calls: correctCalls,
-          accuracy: calledPitches > 0 ? (correctCalls / calledPitches) * 100 : 0,
+          called_pitches: cp,
+          correct_calls: cc,
+          true_accuracy: cp > 0 ? (cc / cp) * 100 : 0,
+          real_called_pitches: rcp,
+          real_correct_calls: rcc,
+          real_accuracy: rcp > 0 ? (rcc / rcp) * 100 : 0,
           called_strikes: Number(s.called_strikes),
           called_balls: Number(s.called_balls),
           true_strikes: Number(s.true_strikes),
-          true_balls: calledPitches - Number(s.true_strikes),
+          true_balls: cp - Number(s.true_strikes),
           incorrect_strikes: Number(s.incorrect_strikes),
           incorrect_balls: Number(s.incorrect_balls),
         })
@@ -104,15 +129,24 @@ export default function UmpireScorecardPage() {
       setZoneGrid(data.zoneGrid || [])
       setSeasons(data.seasons || [])
 
-      const gameRows: GameRow[] = (data.gameLog || []).map((g: any) => ({
-        game_pk: Number(g.game_pk),
-        game_date: g.game_date,
-        home_team: g.home_team,
-        away_team: g.away_team,
-        called: Number(g.called),
-        correct: Number(g.correct),
-        accuracy: Number(g.called) > 0 ? (Number(g.correct) / Number(g.called)) * 100 : 0,
-      }))
+      const gameRows: GameRow[] = (data.gameLog || []).map((g: any) => {
+        const called = Number(g.called)
+        const correct = Number(g.correct)
+        const realCalled = Number(g.real_called)
+        const realCorrect = Number(g.real_correct)
+        return {
+          game_pk: Number(g.game_pk),
+          game_date: g.game_date,
+          home_team: g.home_team,
+          away_team: g.away_team,
+          called,
+          correct,
+          true_accuracy: called > 0 ? (correct / called) * 100 : 0,
+          real_called: realCalled,
+          real_correct: realCorrect,
+          real_accuracy: realCalled > 0 ? (realCorrect / realCalled) * 100 : 0,
+        }
+      })
       setGames(gameRows)
     } catch (err) {
       console.error('Failed to load scorecard:', err)
@@ -139,12 +173,12 @@ export default function UmpireScorecardPage() {
   const incorrectStrikes = missedCalls.filter(p => p.type === 'S')
   const incorrectBalls = missedCalls.filter(p => p.type === 'B')
 
-  function handleGameSort(field: 'game_date' | 'accuracy' | 'called') {
+  function handleGameSort(field: GameSortField) {
     if (gameSortField === field) {
       setGameSortDir(prev => prev === 'desc' ? 'asc' : 'desc')
     } else {
       setGameSortField(field)
-      setGameSortDir(field === 'accuracy' ? 'asc' : 'desc')
+      setGameSortDir(field === 'game_date' ? 'desc' : 'desc')
     }
   }
 
@@ -222,8 +256,17 @@ export default function UmpireScorecardPage() {
                 {seasons.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             )}
-            <div className={`text-3xl font-bold tabular-nums ${summary.accuracy >= 92 ? 'text-emerald-400' : summary.accuracy >= 89 ? 'text-yellow-400' : 'text-red-400'}`}>
-              {summary.accuracy.toFixed(1)}%
+            <div className="text-right">
+              <div className={`text-2xl font-bold tabular-nums ${accColor(summary.true_accuracy)}`}>
+                {summary.true_accuracy.toFixed(1)}%
+              </div>
+              <div className="text-[10px] text-zinc-500">True Accuracy</div>
+            </div>
+            <div className="text-right">
+              <div className={`text-2xl font-bold tabular-nums ${realAccColor(summary.real_accuracy)}`}>
+                {summary.real_accuracy.toFixed(1)}%
+              </div>
+              <div className="text-[10px] text-zinc-500">Real Accuracy</div>
             </div>
           </div>
         </div>
@@ -234,18 +277,20 @@ export default function UmpireScorecardPage() {
         <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             {[
-              { label: 'Accuracy', value: `${summary.accuracy.toFixed(1)}%`, color: summary.accuracy >= 92 ? 'text-emerald-400' : summary.accuracy >= 89 ? 'text-yellow-400' : 'text-red-400' },
+              { label: 'True Accuracy', value: `${summary.true_accuracy.toFixed(1)}%`, color: accColor(summary.true_accuracy) },
+              { label: 'Real Accuracy', value: `${summary.real_accuracy.toFixed(1)}%`, color: realAccColor(summary.real_accuracy) },
               { label: 'Called Pitches', value: summary.called_pitches.toLocaleString(), color: 'text-white' },
+              { label: 'Shadow Pitches', value: (summary.called_pitches - summary.real_called_pitches).toLocaleString(), color: 'text-zinc-400' },
               { label: 'Correct Calls', value: summary.correct_calls.toLocaleString(), color: 'text-emerald-400' },
               { label: 'Missed Calls', value: (summary.called_pitches - summary.correct_calls).toLocaleString(), color: 'text-red-400' },
               { label: 'Bad Strikes', value: summary.incorrect_strikes.toLocaleString(), color: 'text-orange-400' },
               { label: 'Bad Balls', value: summary.incorrect_balls.toLocaleString(), color: 'text-sky-400' },
             ].map(c => (
               <div key={c.label} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
-                <div className="text-[11px] text-zinc-500 uppercase tracking-wider mb-1">{c.label}</div>
-                <div className={`text-xl font-bold tabular-nums ${c.color}`}>{c.value}</div>
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">{c.label}</div>
+                <div className={`text-lg font-bold tabular-nums ${c.color}`}>{c.value}</div>
               </div>
             ))}
           </div>
@@ -280,7 +325,12 @@ export default function UmpireScorecardPage() {
                   yaxis: { title: 'Plate Z (ft)', range: [0, 5], zeroline: false, gridcolor: '#27272a' },
                   legend: { orientation: 'h', y: -0.15, font: { size: 10 } },
                   margin: { t: 10, b: 60, l: 50, r: 20 },
-                  shapes: [{ type: 'rect', x0: szLeft, x1: szRight, y0: szBot, y1: szTop, line: { color: '#52525b', width: 2 } }],
+                  shapes: [
+                    // Hard zone
+                    { type: 'rect', x0: szLeft, x1: szRight, y0: szBot, y1: szTop, line: { color: '#52525b', width: 2 } },
+                    // Shadow zone (1" buffer)
+                    { type: 'rect', x0: -0.913, x1: 0.913, y0: szBot - 0.083, y1: szTop + 0.083, line: { color: '#3f3f46', width: 1, dash: 'dot' } },
+                  ],
                 }}
                 config={{ displayModeBar: false }}
               />
@@ -298,13 +348,24 @@ export default function UmpireScorecardPage() {
             <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-zinc-400 mb-3">Accuracy Trend (Game by Game)</h3>
               <Plot
-                data={[{
-                  x: [...games].reverse().map(g => g.game_date),
-                  y: [...games].reverse().map(g => g.accuracy),
-                  type: 'scatter', mode: 'lines+markers',
-                  line: { color: '#10b981', width: 1.5 },
-                  marker: { size: 4, color: [...games].reverse().map(g => g.accuracy >= 92 ? '#10b981' : g.accuracy >= 89 ? '#eab308' : '#ef4444') },
-                }]}
+                data={[
+                  {
+                    x: [...games].reverse().map(g => g.game_date),
+                    y: [...games].reverse().map(g => g.true_accuracy),
+                    type: 'scatter', mode: 'lines+markers',
+                    name: 'True Accuracy',
+                    line: { color: '#10b981', width: 1.5 },
+                    marker: { size: 3, color: '#10b981' },
+                  },
+                  {
+                    x: [...games].reverse().map(g => g.game_date),
+                    y: [...games].reverse().map(g => g.real_accuracy),
+                    type: 'scatter', mode: 'lines+markers',
+                    name: 'Real Accuracy',
+                    line: { color: '#8b5cf6', width: 1.5 },
+                    marker: { size: 3, color: '#8b5cf6' },
+                  },
+                ]}
                 layout={{
                   width: undefined, height: 250,
                   paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
@@ -312,6 +373,7 @@ export default function UmpireScorecardPage() {
                   xaxis: { gridcolor: '#27272a' },
                   yaxis: { title: 'Accuracy %', range: [80, 100], gridcolor: '#27272a' },
                   margin: { t: 10, b: 40, l: 50, r: 20 },
+                  legend: { orientation: 'h', y: 1.1, font: { size: 10 } },
                   shapes: [{ type: 'line', x0: 0, x1: 1, xref: 'paper', y0: 92, y1: 92, line: { color: '#52525b', dash: 'dot', width: 1 } }],
                 }}
                 config={{ displayModeBar: false, responsive: true }}
@@ -334,8 +396,11 @@ export default function UmpireScorecardPage() {
                   </th>
                   <th className="px-4 py-2 text-right">Correct</th>
                   <th className="px-4 py-2 text-right">Missed</th>
-                  <th className="px-4 py-2 text-right cursor-pointer hover:text-zinc-300" onClick={() => handleGameSort('accuracy')}>
-                    Accuracy{sortArrow('accuracy')}
+                  <th className="px-4 py-2 text-right cursor-pointer hover:text-zinc-300" onClick={() => handleGameSort('true_accuracy')}>
+                    True Acc{sortArrow('true_accuracy')}
+                  </th>
+                  <th className="px-4 py-2 text-right cursor-pointer hover:text-zinc-300" onClick={() => handleGameSort('real_accuracy')}>
+                    Real Acc{sortArrow('real_accuracy')}
                   </th>
                 </tr>
               </thead>
@@ -347,13 +412,23 @@ export default function UmpireScorecardPage() {
                     <td className="px-4 py-2 text-sm text-right text-zinc-400 tabular-nums">{g.called}</td>
                     <td className="px-4 py-2 text-sm text-right text-emerald-400 tabular-nums">{g.correct}</td>
                     <td className="px-4 py-2 text-sm text-right text-red-400 tabular-nums">{g.called - g.correct}</td>
-                    <td className={`px-4 py-2 text-sm text-right font-mono tabular-nums ${g.accuracy >= 92 ? 'text-emerald-400' : g.accuracy >= 89 ? 'text-yellow-400' : 'text-red-400'}`}>
-                      {g.accuracy.toFixed(1)}%
+                    <td className={`px-4 py-2 text-sm text-right font-mono tabular-nums ${accColor(g.true_accuracy)}`}>
+                      {g.true_accuracy.toFixed(1)}%
+                    </td>
+                    <td className={`px-4 py-2 text-sm text-right font-mono tabular-nums ${realAccColor(g.real_accuracy)}`}>
+                      {g.real_accuracy.toFixed(1)}%
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Legend */}
+          <div className="text-[11px] text-zinc-600 space-y-1 px-1">
+            <p><span className="text-zinc-400 font-medium">True Accuracy</span> — correct calls / all called pitches (hard zone boundaries, no buffer)</p>
+            <p><span className="text-zinc-400 font-medium">Real Accuracy</span> — correct calls / non-shadow pitches (excludes pitches within 1&quot; of zone edge)</p>
+            <p><span className="text-zinc-400 font-medium">Shadow Zone</span> — the 1&quot; band around the zone boundary where calls are genuinely borderline</p>
           </div>
         </div>
       </div>
