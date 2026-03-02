@@ -43,9 +43,17 @@ interface DashboardData {
   summary: Summary
 }
 
-type Tab = 'daily' | 'breakdowns' | 'teams' | 'leaderboard'
+interface UmpireRow {
+  hp_umpire: string; games: number; called_pitches: number
+  missed_calls: number; miss_rate: number | null
+  bad_strikes: number; bad_balls: number
+  non_shadow_pitches: number; non_shadow_missed: number; non_shadow_miss_rate: number | null
+}
+
+type Tab = 'daily' | 'breakdowns' | 'teams' | 'leaderboard' | 'umpires'
 type DailySource = 'all' | 'batter' | 'fielder'
 type TeamSortField = 'team_abbr' | 'bat_for' | 'fld_for' | 'total_for' | 'bat_against' | 'fld_against' | 'total_against' | 'total' | 'net'
+type UmpireSortField = 'hp_umpire' | 'games' | 'called_pitches' | 'missed_calls' | 'miss_rate' | 'bad_strikes' | 'bad_balls' | 'non_shadow_missed' | 'non_shadow_miss_rate'
 type PlayerSortField = 'player_name' | 'n_challenges' | 'n_overturns' | 'n_fails' | 'rate_overturns' | 'exp_rate_overturns' | 'overturns_vs_exp' | 'net_net_chal'
 
 const GAME_TYPES = [
@@ -62,6 +70,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'breakdowns', label: 'Breakdowns' },
   { key: 'teams', label: 'Teams' },
   { key: 'leaderboard', label: 'Leaderboard' },
+  { key: 'umpires', label: 'Umpires' },
 ]
 
 function pct(v: number | null | undefined, digits = 1): string {
@@ -126,6 +135,13 @@ export default function ABSPage() {
   const [playerSort, setPlayerSort] = useState<PlayerSortField>('n_challenges')
   const [playerDir, setPlayerDir] = useState<'asc' | 'desc'>('desc')
 
+  // Umpires tab
+  const [umpires, setUmpires] = useState<UmpireRow[]>([])
+  const [umpiresLoading, setUmpiresLoading] = useState(false)
+  const [umpireSort, setUmpireSort] = useState<UmpireSortField>('missed_calls')
+  const [umpireDir, setUmpireDir] = useState<'asc' | 'desc'>('desc')
+  const [minGames, setMinGames] = useState(1)
+
   // Load filters
   useEffect(() => {
     api('filters').then(d => {
@@ -165,6 +181,21 @@ export default function ABSPage() {
   useEffect(() => {
     if (tab === 'leaderboard') loadLeaderboard()
   }, [tab, loadLeaderboard])
+
+  // Load umpires
+  const loadUmpires = useCallback(async () => {
+    setUmpiresLoading(true)
+    try {
+      const d = await api('umpires', { year, gameType, minGames })
+      if (Array.isArray(d)) setUmpires(d)
+    } finally {
+      setUmpiresLoading(false)
+    }
+  }, [year, gameType, minGames])
+
+  useEffect(() => {
+    if (tab === 'umpires') loadUmpires()
+  }, [tab, loadUmpires])
 
   // Sync
   async function handleSync() {
@@ -219,6 +250,20 @@ export default function ABSPage() {
       return ((av as number || 0) - (bv as number || 0)) * mul
     })
   }, [players, playerSort, playerDir])
+
+  // Umpire sort
+  function handleUmpireSort(field: UmpireSortField) {
+    if (umpireSort === field) setUmpireDir(d => d === 'desc' ? 'asc' : 'desc')
+    else { setUmpireSort(field); setUmpireDir('desc') }
+  }
+  const sortedUmpires = useMemo(() => {
+    return [...umpires].sort((a, b) => {
+      const mul = umpireDir === 'desc' ? -1 : 1
+      const av = a[umpireSort], bv = b[umpireSort]
+      if (typeof av === 'string') return (av || '').localeCompare((bv as string) || '') * mul
+      return ((av as number || 0) - (bv as number || 0)) * mul
+    })
+  }, [umpires, umpireSort, umpireDir])
 
   const summary = data?.summary
 
@@ -318,6 +363,13 @@ export default function ABSPage() {
                 challengeType={challengeType} setChallengeType={setChallengeType}
                 minChal={minChal} setMinChal={setMinChal}
                 sort={playerSort} dir={playerDir} onSort={handlePlayerSort}
+              />
+            )}
+            {tab === 'umpires' && (
+              <UmpiresTab
+                umpires={sortedUmpires} loading={umpiresLoading}
+                minGames={minGames} setMinGames={setMinGames}
+                sort={umpireSort} dir={umpireDir} onSort={handleUmpireSort}
               />
             )}
           </>
@@ -637,6 +689,86 @@ function LeaderboardTab({ players, loading, challengeType, setChallengeType, min
                     <td className={`px-3 py-2 text-center tabular-nums font-bold ${vsExpColor(p.net_net_chal)}`}>
                       {p.net_net_chal != null ? (p.net_net_chal > 0 ? '+' : '') + p.net_net_chal.toFixed(1) : '—'}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function missRateColor(rate: number | null): string {
+  if (rate == null) return 'text-zinc-400'
+  if (rate <= 0.05) return 'text-emerald-400'
+  if (rate <= 0.08) return 'text-yellow-400'
+  return 'text-red-400'
+}
+
+function UmpiresTab({ umpires, loading, minGames, setMinGames, sort, dir, onSort }: {
+  umpires: UmpireRow[]; loading: boolean
+  minGames: number; setMinGames: (v: number) => void
+  sort: UmpireSortField; dir: 'asc' | 'desc'; onSort: (f: UmpireSortField) => void
+}) {
+  const th = (label: string, field: UmpireSortField) => (
+    <th className="px-3 py-2 text-center font-medium cursor-pointer hover:text-zinc-300 transition select-none whitespace-nowrap"
+      onClick={() => onSort(field)}>
+      {label}{sortArrow(sort, field, dir)}
+    </th>
+  )
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <span className="text-xs text-zinc-500">Min Games:</span>
+        <input type="number" value={minGames} onChange={e => setMinGames(Math.max(1, Number(e.target.value)))}
+          className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white focus:border-emerald-600 focus:outline-none" />
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-6 h-6 border-2 border-zinc-700 border-t-emerald-500 rounded-full animate-spin" />
+        </div>
+      ) : umpires.length === 0 ? (
+        <p className="text-zinc-500 text-sm py-8 text-center">No umpire data found.</p>
+      ) : (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-zinc-800 text-zinc-500">
+                  <th className="px-3 py-2 text-left font-medium">#</th>
+                  {th('Umpire', 'hp_umpire')}
+                  {th('Games', 'games')}
+                  {th('Called Pitches', 'called_pitches')}
+                  {th('Missed Calls', 'missed_calls')}
+                  {th('Miss Rate', 'miss_rate')}
+                  {th('Bad Strikes', 'bad_strikes')}
+                  {th('Bad Balls', 'bad_balls')}
+                  {th('Non-Shadow Missed', 'non_shadow_missed')}
+                  {th('NS Miss Rate', 'non_shadow_miss_rate')}
+                </tr>
+              </thead>
+              <tbody>
+                {umpires.map((u, idx) => (
+                  <tr key={u.hp_umpire} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                    <td className="px-3 py-2 text-zinc-600 tabular-nums">{idx + 1}</td>
+                    <td className="px-3 py-2 text-left whitespace-nowrap">
+                      <a href={`/umpire/${encodeURIComponent(u.hp_umpire)}`}
+                        className="text-emerald-400 hover:text-emerald-300 font-medium transition">
+                        {u.hp_umpire}
+                      </a>
+                    </td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.games}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.called_pitches.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-300 font-medium">{u.missed_calls.toLocaleString()}</td>
+                    <td className={`px-3 py-2 text-center tabular-nums font-medium ${missRateColor(u.miss_rate)}`}>{pct(u.miss_rate)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.bad_strikes.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.bad_balls.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-300 font-medium">{u.non_shadow_missed.toLocaleString()}</td>
+                    <td className={`px-3 py-2 text-center tabular-nums font-medium ${missRateColor(u.non_shadow_miss_rate)}`}>{pct(u.non_shadow_miss_rate)}</td>
                   </tr>
                 ))}
               </tbody>

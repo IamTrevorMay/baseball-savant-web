@@ -304,6 +304,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data || [])
   }
 
+  if (action === 'umpires') {
+    const year = Number(body.year || 2026)
+    const gameType = body.gameType || 'R'
+    const minGames = Number(body.minGames || 1)
+
+    // Zone constants (same as umpire route)
+    const IN_ZONE = `(ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top)`
+    const CORRECT = `((${IN_ZONE} AND p.type = 'S') OR (NOT ${IN_ZONE} AND p.type = 'B'))`
+    const EXPANDED = `(ABS(p.plate_x) <= 0.913 AND p.plate_z >= p.sz_bot - 0.083 AND p.plate_z <= p.sz_top + 0.083)`
+    const CONTRACTED = `(ABS(p.plate_x) <= 0.747 AND p.plate_z >= p.sz_bot + 0.083 AND p.plate_z <= p.sz_top - 0.083)`
+    const NOT_SHADOW = `(NOT (${EXPANDED} AND NOT ${CONTRACTED}))`
+    const UMP_BASE_WHERE = `p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')`
+
+    const gtFilter = gameType && ['R', 'S', 'P'].includes(gameType)
+      ? `AND p.game_type = '${gameType}'`
+      : ''
+
+    const sql = `
+      SELECT u.hp_umpire,
+        COUNT(DISTINCT u.game_pk) as games,
+        COUNT(*) as called_pitches,
+        COUNT(*) FILTER (WHERE NOT ${CORRECT}) as missed_calls,
+        ROUND(COUNT(*) FILTER (WHERE NOT ${CORRECT})::numeric / NULLIF(COUNT(*), 0), 4) as miss_rate,
+        COUNT(*) FILTER (WHERE p.type = 'S' AND NOT ${IN_ZONE}) as bad_strikes,
+        COUNT(*) FILTER (WHERE p.type = 'B' AND ${IN_ZONE}) as bad_balls,
+        COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as non_shadow_pitches,
+        COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND NOT ${CORRECT}) as non_shadow_missed,
+        ROUND(COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND NOT ${CORRECT})::numeric / NULLIF(COUNT(*) FILTER (WHERE ${NOT_SHADOW}), 0), 4) as non_shadow_miss_rate
+      FROM game_umpires u
+      JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${year} ${gtFilter}
+      WHERE ${UMP_BASE_WHERE}
+      GROUP BY u.hp_umpire
+      HAVING COUNT(DISTINCT u.game_pk) >= ${minGames}
+      ORDER BY missed_calls DESC
+      LIMIT 100
+    `
+
+    const { data, error } = await supabase.rpc('run_query', { query_text: sql.trim() })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data || [])
+  }
+
   if (action === 'filters') {
     const { data, error } = await supabase.from('abs_daily_summary')
       .select('year,game_type,level')
