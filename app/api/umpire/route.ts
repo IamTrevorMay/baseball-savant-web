@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/admin'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { action } = body
 
   if (action === 'leaderboard') {
-    const { data, error } = await supabaseAdmin.rpc('run_query', {
+    const { data, error } = await supabase.rpc('run_query', {
       query_text: `
         SELECT u.hp_umpire,
           COUNT(DISTINCT u.game_pk) as games,
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const searchQuery = (body.query || '').trim().toLowerCase().replace(/'/g, "''")
     if (!searchQuery) return NextResponse.json([])
 
-    const { data, error } = await supabaseAdmin.rpc('run_query', {
+    const { data, error } = await supabase.rpc('run_query', {
       query_text: `
         SELECT hp_umpire, COUNT(DISTINCT game_pk) as games
         FROM game_umpires

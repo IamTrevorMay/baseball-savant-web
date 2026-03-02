@@ -256,26 +256,20 @@ export default function PercentileTab({ data }: Props) {
           <p className="text-[11px] text-zinc-500 mb-4">{mv.desc}</p>
           <div className="space-y-2">
             {mv.rows.map((r) => {
-              const maxVal = Math.max(...mv.rows.map(x => Math.abs(x.value)))
-              const barPct = maxVal > 0 ? (Math.abs(r.value) / maxVal) * 100 : 0
-              const pct = r.pct
-              const color = pct != null ? percentileColor(pct) : 'rgb(100,100,100)'
+              const pct = r.pct ?? 50
+              const color = percentileColor(pct)
               return (
                 <div key={r.name} className="flex items-center gap-3 h-8">
                   <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{r.name}</span>
                   <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}&quot;</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
                     <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
-                    <div className="h-full rounded transition-all" style={{ width: `${barPct}%`, backgroundColor: color, opacity: 0.8 }} />
+                    <div className="h-full rounded transition-all" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.8 }} />
                   </div>
-                  {pct != null ? (
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: color }}>
-                      {pct}
-                    </div>
-                  ) : (
-                    <span className="w-8 text-[10px] font-mono text-zinc-500 text-center shrink-0">—</span>
-                  )}
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                    style={{ backgroundColor: color }}>
+                    {r.pct != null ? r.pct : '—'}
+                  </div>
                 </div>
               )
             })}
