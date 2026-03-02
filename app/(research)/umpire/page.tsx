@@ -38,12 +38,27 @@ export default function UmpirePage() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
   const [sortField, setSortField] = useState<'games' | 'accuracy' | 'called_pitches'>('games')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [seasons, setSeasons] = useState<number[]>([])
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
   const router = useRouter()
   const debounceRef = useRef<NodeJS.Timeout>(null)
 
-  useEffect(() => {
-    loadLeaderboard()
-  }, [])
+  useEffect(() => { loadSeasons() }, [])
+  useEffect(() => { loadLeaderboard() }, [selectedSeason])
+
+  async function loadSeasons() {
+    try {
+      const res = await fetch('/api/umpire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'seasons' }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSeasons(data)
+      }
+    } catch {}
+  }
 
   async function loadLeaderboard() {
     setLeaderboardLoading(true)
@@ -51,7 +66,7 @@ export default function UmpirePage() {
       const res = await fetch('/api/umpire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'leaderboard' }),
+        body: JSON.stringify({ action: 'leaderboard', season: selectedSeason }),
       })
       if (!res.ok) {
         console.error('Leaderboard query error:', await res.text())
@@ -135,7 +150,7 @@ export default function UmpirePage() {
 
       {/* Hero */}
       <div className="flex flex-col items-center justify-center pt-24 pb-16 px-4">
-        <h1 className="text-4xl font-bold text-white mb-2">Umpire Search</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">Umpire Scorecards</h1>
         <p className="text-zinc-500 mb-10 text-sm">Search any home plate umpire to view their accuracy scorecard</p>
 
         {/* Search */}
@@ -153,16 +168,13 @@ export default function UmpirePage() {
             {loading && <div className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
           </div>
 
-          {/* Search Results Dropdown */}
           {searchResults.length > 0 && query && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl z-50">
               {searchResults.map(u => (
                 <div key={u.hp_umpire} onClick={() => goToUmpire(u.hp_umpire)}
                   className="px-4 py-3 flex items-center justify-between hover:bg-zinc-800 cursor-pointer transition border-b border-zinc-800 last:border-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-[11px] font-bold text-white">
-                      HP
-                    </div>
+                    <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-[11px] font-bold text-white">HP</div>
                     <div>
                       <div className="text-white font-medium text-sm">{u.hp_umpire}</div>
                       <div className="text-zinc-500 text-xs">Home Plate Umpire</div>
@@ -181,20 +193,32 @@ export default function UmpirePage() {
       {/* Leaderboard */}
       <div className="max-w-6xl mx-auto px-6 pb-20">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider">Top 50 Umpires by Games Called</h2>
-          <div className="flex gap-2 text-[11px] text-zinc-600">
-            <button onClick={() => handleSort('games')}
-              className={`px-2 py-1 rounded border transition ${sortField === 'games' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
-              Games{sortArrow('games')}
-            </button>
-            <button onClick={() => handleSort('accuracy')}
-              className={`px-2 py-1 rounded border transition ${sortField === 'accuracy' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
-              Accuracy{sortArrow('accuracy')}
-            </button>
-            <button onClick={() => handleSort('called_pitches')}
-              className={`px-2 py-1 rounded border transition ${sortField === 'called_pitches' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
-              Pitches{sortArrow('called_pitches')}
-            </button>
+          <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider">
+            Top 50 Umpires by Games Called
+          </h2>
+          <div className="flex items-center gap-3">
+            {/* Season selector */}
+            {seasons.length > 0 && (
+              <select value={selectedSeason ?? ''} onChange={e => setSelectedSeason(e.target.value ? Number(e.target.value) : null)}
+                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-white focus:border-emerald-600 focus:outline-none">
+                <option value="">All Seasons</option>
+                {seasons.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+            <div className="flex gap-2 text-[11px] text-zinc-600">
+              <button onClick={() => handleSort('games')}
+                className={`px-2 py-1 rounded border transition ${sortField === 'games' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
+                Games{sortArrow('games')}
+              </button>
+              <button onClick={() => handleSort('accuracy')}
+                className={`px-2 py-1 rounded border transition ${sortField === 'accuracy' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
+                Accuracy{sortArrow('accuracy')}
+              </button>
+              <button onClick={() => handleSort('called_pitches')}
+                className={`px-2 py-1 rounded border transition ${sortField === 'called_pitches' ? 'border-emerald-600 text-emerald-400' : 'border-zinc-800 hover:border-zinc-700'}`}>
+                Pitches{sortArrow('called_pitches')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -213,28 +237,15 @@ export default function UmpirePage() {
             {sortedLeaderboard.map((u, idx) => (
               <div key={u.hp_umpire} onClick={() => goToUmpire(u.hp_umpire)}
                 className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer transition group relative">
-                {/* Rank badge */}
-                <div className="absolute top-3 right-3 text-[10px] text-zinc-600 font-mono">
-                  #{idx + 1}
-                </div>
-
-                {/* Name row */}
+                <div className="absolute top-3 right-3 text-[10px] text-zinc-600 font-mono">#{idx + 1}</div>
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300">
-                    HP
-                  </div>
-                  <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition truncate pr-6">
-                    {u.hp_umpire}
-                  </span>
+                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300">HP</div>
+                  <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition truncate pr-6">{u.hp_umpire}</span>
                 </div>
-
-                {/* Accuracy highlight */}
                 <div className={`rounded-md border px-3 py-2 mb-3 ${accuracyBg(u.accuracy)}`}>
                   <div className="flex items-baseline justify-between">
                     <span className="text-[11px] text-zinc-400">Accuracy</span>
-                    <span className={`text-lg font-bold tabular-nums ${accuracyColor(u.accuracy)}`}>
-                      {u.accuracy.toFixed(1)}%
-                    </span>
+                    <span className={`text-lg font-bold tabular-nums ${accuracyColor(u.accuracy)}`}>{u.accuracy.toFixed(1)}%</span>
                   </div>
                   <div className="mt-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
                     <div
@@ -243,8 +254,6 @@ export default function UmpirePage() {
                     />
                   </div>
                 </div>
-
-                {/* Stats */}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                   <div className="flex justify-between">
                     <span className="text-zinc-500">Games</span>
@@ -263,8 +272,6 @@ export default function UmpirePage() {
                     <span className="text-zinc-300 tabular-nums">{(u.called_pitches - u.correct_calls).toLocaleString()}</span>
                   </div>
                 </div>
-
-                {/* Date range */}
                 <div className="mt-2 text-[10px] text-zinc-600 flex justify-between">
                   <span>{u.first_date}</span>
                   <span>to</span>

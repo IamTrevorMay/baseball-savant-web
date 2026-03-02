@@ -1,10 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { supabase } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,7 +50,7 @@ export async function POST(req: NextRequest) {
         errors++
       }
 
-      // Insert in batches of 100
+      // Insert in batches of 100 via Supabase client upsert
       if (rows.length >= 100 || i === games.length - 1) {
         if (rows.length > 0) {
           const { error } = await supabase.from('game_umpires').upsert(rows, { onConflict: 'game_pk' })
