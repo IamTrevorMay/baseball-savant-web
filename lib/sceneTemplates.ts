@@ -1213,4 +1213,75 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       el('text', 500, 800, 1340, 80, { text: 'Player Name ranks 3rd in MLB in total WAR, combining elite offense with above-average defense at a premium position.', fontSize: 20, fontWeight: 400, color: '#a1a1aa', textAlign: 'left' }),
     ]),
   },
+  {
+    id: 'pitching-outing', name: 'Pitching Outing Report', category: 'pitcher',
+    description: 'Full outing breakdown with velo, pitch flight, and outcomes',
+    icon: '\ud83d\udcca',
+    width: 1920, height: 1080,
+    build: () => scene('Pitching Outing Report', 1920, 1080, '#09090b', [
+      // Left column: player image + game context
+      el('player-image', 60, 60, 300, 380, { playerId: null, playerName: '', borderColor: '#06b6d4', showLabel: true }),
+      el('text', 60, 460, 300, 40, { text: 'PITCHER NAME', fontSize: 26, fontWeight: 800, color: '#ffffff', textAlign: 'center' }),
+      el('text', 60, 505, 300, 24, { text: 'vs. OPP — June 15, 2024', fontSize: 15, fontWeight: 400, color: '#71717a', textAlign: 'center' }),
+      el('shape', 60, 545, 300, 2, { shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
+      // Left column: decision + game score
+      el('stat-card', 60, 565, 140, 100, { label: 'DEC', value: 'W', sublabel: '', color: '#22c55e', fontSize: 40, variant: 'solid' }),
+      el('stat-card', 215, 565, 145, 100, { label: 'SCORE', value: '5-2', sublabel: '', color: '#06b6d4', fontSize: 36, variant: 'solid' }),
+      // Left column: pitch flight
+      el('pitch-flight', 60, 685, 300, 340, {
+        pitches: [
+          { id: 'p1', playerId: null, playerName: '', pitchType: 'FF', pitchColor: '#ef4444', mode: 'player', showInKey: true },
+          { id: 'p2', playerId: null, playerName: '', pitchType: 'SL', pitchColor: '#3b82f6', mode: 'player', showInKey: true },
+          { id: 'p3', playerId: null, playerName: '', pitchType: 'CH', pitchColor: '#22c55e', mode: 'player', showInKey: true },
+        ],
+        viewMode: 'catcher', showZone: true, animate: true, bgColor: '#09090b', showGrid: false, loopDuration: 1.5, showKey: true,
+      }),
+
+      // Center: title + primary stat line
+      el('text', 420, 50, 800, 50, { text: 'OUTING REPORT', fontSize: 40, fontWeight: 800, color: '#ffffff', textAlign: 'left' }),
+      el('shape', 420, 105, 800, 2, { shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
+      // Row 1: core stat line (IP, H, R, ER, BB, K)
+      el('stat-card', 420, 125, 200, 140, { label: 'IP', value: '7.0', sublabel: '', color: '#06b6d4', fontSize: 48, variant: 'glass' }),
+      el('stat-card', 635, 125, 200, 140, { label: 'H', value: '4', sublabel: '', color: '#71717a', fontSize: 48, variant: 'glass' }),
+      el('stat-card', 850, 125, 200, 140, { label: 'ER', value: '1', sublabel: '', color: '#ef4444', fontSize: 48, variant: 'glass' }),
+      el('stat-card', 1065, 125, 200, 140, { label: 'BB', value: '2', sublabel: '', color: '#f97316', fontSize: 48, variant: 'glass' }),
+      el('stat-card', 1280, 125, 200, 140, { label: 'K', value: '10', sublabel: '', color: '#a855f7', fontSize: 48, variant: 'glass' }),
+      // Row 2: pitching efficiency stats
+      el('stat-card', 420, 285, 240, 120, { label: 'PITCHES', value: '102', sublabel: '', color: '#71717a', fontSize: 42, variant: 'solid' }),
+      el('stat-card', 675, 285, 240, 120, { label: 'STRIKE%', value: '68%', sublabel: '69 strikes', color: '#22c55e', fontSize: 42, variant: 'solid' }),
+      el('stat-card', 930, 285, 240, 120, { label: 'CSW%', value: '33.2', sublabel: '', color: '#06b6d4', fontSize: 42, variant: 'solid' }),
+      el('stat-card', 1185, 285, 295, 120, { label: 'WHIFF%', value: '28.4', sublabel: '', color: '#eab308', fontSize: 42, variant: 'solid' }),
+
+      // Center: velocity bars by pitch type
+      el('text', 420, 430, 400, 30, { text: 'VELOCITY BY PITCH', fontSize: 16, fontWeight: 700, color: '#71717a', textAlign: 'left' }),
+      el('comparison-bar', 420, 468, 1060, 48, { label: 'Four-Seam (FF)', value: 96.8, maxValue: 105, color: '#ef4444', showValue: true }),
+      el('comparison-bar', 420, 528, 1060, 48, { label: 'Slider (SL)', value: 87.4, maxValue: 105, color: '#3b82f6', showValue: true }),
+      el('comparison-bar', 420, 588, 1060, 48, { label: 'Changeup (CH)', value: 85.1, maxValue: 105, color: '#22c55e', showValue: true }),
+
+      // Right column: outcomes + quality metrics
+      el('text', 1540, 50, 320, 50, { text: 'GAME SCORE', fontSize: 16, fontWeight: 700, color: '#71717a', textAlign: 'center' }),
+      el('stat-card', 1540, 80, 320, 180, { label: '', value: '72', sublabel: 'Quality Start', color: '#06b6d4', fontSize: 80, variant: 'outline' }),
+
+      // Bottom section: batted ball outcomes
+      el('shape', 420, 660, 1440, 2, { shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
+      el('text', 420, 680, 600, 30, { text: 'BATTED BALL OUTCOMES', fontSize: 16, fontWeight: 700, color: '#71717a', textAlign: 'left' }),
+      el('stat-card', 420, 720, 220, 120, { label: 'AVG EV', value: '86.2', sublabel: 'mph', color: '#22c55e', fontSize: 38, variant: 'glass' }),
+      el('stat-card', 660, 720, 220, 120, { label: 'HARD HIT%', value: '28.6', sublabel: '', color: '#f97316', fontSize: 38, variant: 'glass' }),
+      el('stat-card', 900, 720, 220, 120, { label: 'GB%', value: '52.4', sublabel: '', color: '#3b82f6', fontSize: 38, variant: 'glass' }),
+      el('stat-card', 1140, 720, 220, 120, { label: 'xERA', value: '2.41', sublabel: '', color: '#a855f7', fontSize: 38, variant: 'glass' }),
+      el('stat-card', 1380, 720, 220, 120, { label: 'xwOBA', value: '.268', sublabel: '', color: '#06b6d4', fontSize: 38, variant: 'glass' }),
+
+      // Bottom: pitch usage breakdown
+      el('text', 420, 870, 600, 30, { text: 'PITCH USAGE', fontSize: 16, fontWeight: 700, color: '#71717a', textAlign: 'left' }),
+      el('comparison-bar', 420, 908, 480, 40, { label: 'FF 48%', value: 48, maxValue: 100, color: '#ef4444', showValue: false }),
+      el('comparison-bar', 420, 958, 480, 40, { label: 'SL 28%', value: 28, maxValue: 100, color: '#3b82f6', showValue: false }),
+      el('comparison-bar', 420, 1008, 480, 40, { label: 'CH 24%', value: 24, maxValue: 100, color: '#22c55e', showValue: false }),
+
+      // Bottom right: K sequence / at-a-glance
+      el('text', 960, 870, 400, 30, { text: 'AT A GLANCE', fontSize: 16, fontWeight: 700, color: '#71717a', textAlign: 'left' }),
+      el('stat-card', 960, 908, 200, 100, { label: 'K-BB%', value: '24.5', sublabel: '', color: '#a855f7', fontSize: 36, variant: 'solid' }),
+      el('stat-card', 1180, 908, 200, 100, { label: 'ZONE%', value: '48.2', sublabel: '', color: '#22c55e', fontSize: 36, variant: 'solid' }),
+      el('stat-card', 1400, 908, 200, 100, { label: 'SwStr%', value: '14.8', sublabel: '', color: '#ef4444', fontSize: 36, variant: 'solid' }),
+    ]),
+  },
 ]
