@@ -11,6 +11,11 @@ interface Props {
   allCycles?: WhoopCycleRow[]
   allSleep?: WhoopSleepRow[]
   sleepData?: WhoopSleepRow[]
+  selectedDate: string
+  hasPrev: boolean
+  hasNext: boolean
+  onPrevDay: () => void
+  onNextDay: () => void
 }
 
 /* ── SVG Circular Gauge ── */
@@ -175,7 +180,19 @@ function SleepStageBar({ sleep }: { sleep: WhoopSleepRow }) {
 }
 
 /* ── Main Component ── */
-export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], allSleep = [], sleepData = [] }: Props) {
+export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], allSleep = [], sleepData = [], selectedDate, hasPrev, hasNext, onPrevDay, onNextDay }: Props) {
+  const today = new Date().toISOString().split('T')[0]
+  const isToday = selectedDate === today
+
+  // Format the date for display
+  const displayDate = (() => {
+    if (isToday) return 'Today'
+    const d = new Date(selectedDate + 'T12:00:00')
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    if (selectedDate === yesterday.toISOString().split('T')[0]) return 'Yesterday'
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  })()
   // Prepare gauge (formerly Readiness)
   const prepareScore = computeReadiness(cycle, sleep, allCycles, allSleep)
   const prepareState = readinessStateFromScore(prepareScore)
@@ -201,7 +218,27 @@ export default function TodayHero({ cycle, sleep, todayEvents, allCycles = [], a
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      <h3 className="text-xs font-medium text-zinc-400 mb-3 text-center">Today</h3>
+      <div className="flex items-center justify-center gap-3 mb-3">
+        <button
+          onClick={onPrevDay}
+          disabled={!hasPrev}
+          className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition disabled:opacity-25 disabled:cursor-not-allowed"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <h3 className="text-xs font-medium text-zinc-400 min-w-[100px] text-center">{displayDate}</h3>
+        <button
+          onClick={onNextDay}
+          disabled={!hasNext}
+          className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition disabled:opacity-25 disabled:cursor-not-allowed"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      </div>
 
       {/* Gauges */}
       <div className="flex justify-center gap-4 sm:gap-6 mb-4 flex-wrap">

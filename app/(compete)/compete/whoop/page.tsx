@@ -24,32 +24,39 @@ export default function WhoopPage() {
   const [syncing, setSyncing] = useState(false)
 
   const today = new Date().toISOString().split('T')[0]
+  const [selectedDate, setSelectedDate] = useState(today)
 
   const fetchData = useCallback(async () => {
     const to = new Date().toISOString().split('T')[0]
     const from = new Date(Date.now() - range * 86_400_000).toISOString().split('T')[0]
 
-    // Fetch WHOOP data and today's schedule events in parallel
-    const [whoopRes, scheduleRes] = await Promise.all([
-      fetch(`/api/compete/whoop/data?from=${from}&to=${to}&type=all`),
-      fetch(`/api/compete/schedule?from=${to}&to=${to}`).catch(() => null),
-    ])
-
+    const whoopRes = await fetch(`/api/compete/whoop/data?from=${from}&to=${to}&type=all`)
     const data = await whoopRes.json()
     setConnected(data.connected)
     setCycles(data.cycles || [])
     setSleep(data.sleep || [])
     setWorkouts(data.workouts || [])
 
-    if (scheduleRes?.ok) {
-      const scheduleData = await scheduleRes.json()
-      setTodayEvents(scheduleData.events || [])
-    }
-
     setLoading(false)
   }, [range])
 
+  // Fetch schedule events whenever selectedDate changes
+  const fetchSchedule = useCallback(async (date: string) => {
+    try {
+      const res = await fetch(`/api/compete/schedule?from=${date}&to=${date}`)
+      if (res.ok) {
+        const data = await res.json()
+        setTodayEvents(data.events || [])
+      } else {
+        setTodayEvents([])
+      }
+    } catch {
+      setTodayEvents([])
+    }
+  }, [])
+
   useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => { fetchSchedule(selectedDate) }, [selectedDate, fetchSchedule])
 
   // Auto-sync if data is stale (>1 hour since latest cycle)
   useEffect(() => {
@@ -96,8 +103,35 @@ export default function WhoopPage() {
     )
   }
 
-  const todayCycle = cycles.find(c => c.cycle_date === today) || cycles[cycles.length - 1] || null
-  const todaySleep = sleep.find(s => s.sleep_date === today) || sleep[sleep.length - 1] || null
+  const todayCycle = cycles.find(c => c.cycle_date === selectedDate) || null
+  const todaySleep = sleep.find(s => s.sleep_date === selectedDate) || null
+
+  // Available dates from cycles for prev/next navigation
+  const cycleDates = cycles.map(c => c.cycle_date).sort()
+
+  function handlePrevDay() {
+    const idx = cycleDates.indexOf(selectedDate)
+    if (idx > 0) {
+      setSelectedDate(cycleDates[idx - 1])
+    } else if (idx === -1 && cycleDates.length > 0) {
+      // selectedDate not in cycles — find the closest earlier date
+      const earlier = cycleDates.filter(d => d < selectedDate)
+      if (earlier.length > 0) setSelectedDate(earlier[earlier.length - 1])
+    }
+  }
+
+  function handleNextDay() {
+    const idx = cycleDates.indexOf(selectedDate)
+    if (idx >= 0 && idx < cycleDates.length - 1) {
+      setSelectedDate(cycleDates[idx + 1])
+    } else if (idx === -1 && cycleDates.length > 0) {
+      const later = cycleDates.filter(d => d > selectedDate)
+      if (later.length > 0) setSelectedDate(later[0])
+    }
+  }
+
+  const hasPrev = cycleDates.length > 0 && cycleDates[0] < selectedDate
+  const hasNext = cycleDates.length > 0 && cycleDates[cycleDates.length - 1] > selectedDate
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-6">
@@ -168,6 +202,11 @@ export default function WhoopPage() {
           todayCycle={todayCycle}
           todaySleep={todaySleep}
           todayEvents={todayEvents}
+          selectedDate={selectedDate}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrevDay={handlePrevDay}
+          onNextDay={handleNextDay}
           onGraphClick={(key) => { setSelectedGraph(key); setActiveTab('graphs') }}
         />
       ) : activeTab === 'graphs' ? (

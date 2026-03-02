@@ -13,10 +13,15 @@ interface Props {
   todayCycle: WhoopCycleRow | null
   todaySleep: WhoopSleepRow | null
   todayEvents: ScheduleEvent[]
+  selectedDate: string
+  hasPrev: boolean
+  hasNext: boolean
+  onPrevDay: () => void
+  onNextDay: () => void
   onGraphClick?: (graphKey: string) => void
 }
 
-export default function OverviewTab({ cycles, sleep, workouts, todayCycle, todaySleep, todayEvents, onGraphClick }: Props) {
+export default function OverviewTab({ cycles, sleep, workouts, todayCycle, todaySleep, todayEvents, selectedDate, hasPrev, hasNext, onPrevDay, onNextDay, onGraphClick }: Props) {
   // Recovery trend data with color-coded markers
   const recoveryData = cycles.map(c => ({ date: c.cycle_date, value: c.recovery_score }))
   const recoveryColors = cycles.map(c => {
@@ -42,7 +47,19 @@ export default function OverviewTab({ cycles, sleep, workouts, todayCycle, today
   return (
     <div className="space-y-4">
       {/* Today Hero */}
-      <TodayHero cycle={todayCycle} sleep={todaySleep} todayEvents={todayEvents} allCycles={cycles} allSleep={sleep} sleepData={sleep} />
+      <TodayHero
+        cycle={todayCycle}
+        sleep={todaySleep}
+        todayEvents={todayEvents}
+        allCycles={cycles}
+        allSleep={sleep}
+        sleepData={sleep}
+        selectedDate={selectedDate}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
+        onPrevDay={onPrevDay}
+        onNextDay={onNextDay}
+      />
 
       {/* Trend Charts Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
