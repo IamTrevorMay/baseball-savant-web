@@ -21,22 +21,37 @@ export async function POST(req: NextRequest) {
     const seasonFilter = season ? `AND u.game_date >= '${season}-01-01' AND u.game_date <= '${season}-12-31'` : ''
     const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
 
+    // When season is specified, filter pitches first by game_year (indexed) for performance
     const { data, error } = await supabase.rpc('run_query', {
-      query_text: `SELECT u.hp_umpire,
-          COUNT(DISTINCT u.game_pk) as games,
-          MIN(u.game_date)::text as first_date,
-          MAX(u.game_date)::text as last_date,
-          COUNT(*) as called_pitches,
-          COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
-          COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
-          COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
-        FROM game_umpires u
-        JOIN pitches p ON p.game_pk = u.game_pk
-        WHERE ${BASE_WHERE}
-          ${seasonFilter} ${pitchSeasonFilter}
-        GROUP BY u.hp_umpire
-        ORDER BY games DESC
-        LIMIT 50`
+      query_text: season
+        ? `SELECT u.hp_umpire,
+            COUNT(DISTINCT u.game_pk) as games,
+            MIN(u.game_date)::text as first_date,
+            MAX(u.game_date)::text as last_date,
+            COUNT(*) as called_pitches,
+            COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
+            COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
+            COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
+          FROM game_umpires u
+          JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${season}
+          WHERE ${BASE_WHERE}
+          GROUP BY u.hp_umpire
+          ORDER BY games DESC
+          LIMIT 50`
+        : `SELECT u.hp_umpire,
+            COUNT(DISTINCT u.game_pk) as games,
+            MIN(u.game_date)::text as first_date,
+            MAX(u.game_date)::text as last_date,
+            COUNT(*) as called_pitches,
+            COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
+            COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
+            COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
+          FROM game_umpires u
+          JOIN pitches p ON p.game_pk = u.game_pk
+          WHERE ${BASE_WHERE}
+          GROUP BY u.hp_umpire
+          ORDER BY games DESC
+          LIMIT 50`
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)

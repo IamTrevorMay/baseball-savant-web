@@ -44,7 +44,7 @@ export default function UmpirePage() {
   const [sortField, setSortField] = useState<SortField>('games')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [seasons, setSeasons] = useState<number[]>([])
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(new Date().getFullYear())
   const router = useRouter()
   const debounceRef = useRef<NodeJS.Timeout>(null)
 

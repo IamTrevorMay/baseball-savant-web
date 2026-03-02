@@ -74,7 +74,7 @@ export default function UmpireScorecardPage() {
   const [games, setGames] = useState<GameRow[]>([])
   const [loading, setLoading] = useState(true)
   const [seasons, setSeasons] = useState<number[]>([])
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(new Date().getFullYear())
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearch, setShowSearch] = useState(false)
