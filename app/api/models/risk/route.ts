@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
         MAX(CASE WHEN ABS(home_score - away_score) <= 2 THEN 1 ELSE 0 END) as close_game
       FROM pitches
       WHERE pitcher = ${safePitcher} AND game_year = ${safeSeason}
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY game_date, game_pk
       ORDER BY game_date DESC
     `
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND game_year = ${safeSeason}
         AND pitch_name IN ('4-Seam Fastball','Sinker','Cutter')
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY game_date, inning
       ORDER BY game_date DESC, inning
     `

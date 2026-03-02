@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND ${seasonFilter}
         AND pitch_name IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY pitch_name, pitch_type
       ORDER BY pitches DESC
     `
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND ${seasonFilter}
         AND pitch_name IN ('4-Seam Fastball', 'Sinker', 'Cutter')
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY game_date
       ORDER BY game_date DESC
       LIMIT 15
@@ -77,6 +79,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE batter = ${safeBatter} AND ${seasonFilter}
         AND zone IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY zone
       ORDER BY zone
     `
@@ -102,6 +105,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE batter = ${safeBatter} AND ${seasonFilter}
         AND zone > 9
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY quadrant
     `
 
@@ -117,6 +121,7 @@ export async function POST(req: NextRequest) {
         ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba
       FROM pitches
       WHERE batter = ${safeBatter} AND ${seasonFilter}
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY balls, strikes
       ORDER BY balls, strikes
     `
@@ -137,6 +142,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND batter = ${safeBatter}
         AND pitch_name IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY pitch_name
       ORDER BY pitches DESC
     `

@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
         'hc_y IS NOT NULL',
         'launch_speed IS NOT NULL',
         'launch_angle IS NOT NULL',
+        "pitch_type NOT IN ('PO', 'IN')",
       ]
       if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
       if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Build WHERE clauses
-    const where: string[] = [`pitcher = ${parseInt(playerId)}`]
+    const where: string[] = [`pitcher = ${parseInt(playerId)}`, "pitch_type NOT IN ('PO', 'IN')"]
     if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
     if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
     if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)

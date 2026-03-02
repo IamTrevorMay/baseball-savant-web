@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE game_year = ${year}
         AND pitch_type IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
         AND release_extension IS NOT NULL
         AND release_pos_z IS NOT NULL
         AND plate_z IS NOT NULL

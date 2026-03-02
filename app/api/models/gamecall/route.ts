@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND ${seasonFilter}
         AND pitch_name IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY pitch_name, pitch_type
       ORDER BY pitches DESC
     `
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE batter = ${safeBatter} AND ${seasonFilter}
         AND zone IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY zone
       ORDER BY zone
     `
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND batter = ${safeBatter}
         AND pitch_name IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       GROUP BY pitch_name
       ORDER BY pitches DESC
     `
@@ -102,6 +105,7 @@ export async function POST(req: NextRequest) {
         AND b.pitch_number = a.pitch_number + 1
       WHERE a.pitcher = ${safePitcher} AND a.game_year = ${safeSeason}
         AND a.pitch_name IS NOT NULL AND b.pitch_name IS NOT NULL
+        AND a.pitch_type NOT IN ('PO', 'IN') AND b.pitch_type NOT IN ('PO', 'IN')
       GROUP BY a.pitch_name, b.pitch_name
       ORDER BY freq DESC
     `
@@ -121,6 +125,7 @@ export async function POST(req: NextRequest) {
       FROM pitches
       WHERE pitcher = ${safePitcher} AND batter = ${safeBatter} AND ${seasonFilter}
         AND pitch_name IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       ORDER BY game_date DESC, at_bat_number, pitch_number
     `
 

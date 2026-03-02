@@ -19,12 +19,12 @@ export async function POST(req: NextRequest) {
 
   try {
     // Sample 200 rows with the formula computed
-    const sampleSql = `SELECT player_name, pitch_name, game_date, release_speed, (${formula}) AS model_value FROM pitches WHERE release_speed IS NOT NULL ORDER BY random() LIMIT 200`
+    const sampleSql = `SELECT player_name, pitch_name, game_date, release_speed, (${formula}) AS model_value FROM pitches WHERE release_speed IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') ORDER BY random() LIMIT 200`
     const { data: sampleRows, error: sampleErr } = await supabase.rpc('run_query', { query_text: sampleSql })
     if (sampleErr) return NextResponse.json({ error: sampleErr.message }, { status: 500 })
 
     // Stats query
-    const statsSql = `SELECT AVG((${formula})::numeric) AS mean, STDDEV((${formula})::numeric) AS stddev, MIN((${formula})::numeric) AS min, MAX((${formula})::numeric) AS max, COUNT(*) AS total_rows FROM (SELECT * FROM pitches WHERE release_speed IS NOT NULL ORDER BY random() LIMIT 10000) sub`
+    const statsSql = `SELECT AVG((${formula})::numeric) AS mean, STDDEV((${formula})::numeric) AS stddev, MIN((${formula})::numeric) AS min, MAX((${formula})::numeric) AS max, COUNT(*) AS total_rows FROM (SELECT * FROM pitches WHERE release_speed IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') ORDER BY random() LIMIT 10000) sub`
     const { data: statsData, error: statsErr } = await supabase.rpc('run_query', { query_text: statsSql })
     if (statsErr) return NextResponse.json({ error: statsErr.message }, { status: 500 })
 

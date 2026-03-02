@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const COLUMNS = await getColumnsWithModels()
-    const sql = `SELECT ${COLUMNS} FROM pitches WHERE ${col} = ${safeId} ORDER BY game_date DESC LIMIT 50000`
+    const sql = `SELECT ${COLUMNS} FROM pitches WHERE ${col} = ${safeId} AND pitch_type NOT IN ('PO', 'IN') ORDER BY game_date DESC LIMIT 50000`
     const { data, error } = await supabase.rpc('run_query', { query_text: sql })
 
     if (error) {

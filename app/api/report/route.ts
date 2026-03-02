@@ -107,7 +107,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : ''
+    whereParts.push("pitch_type NOT IN ('PO', 'IN')")
+    const whereClause = `WHERE ${whereParts.join(' AND ')}`
     const groupClause = `GROUP BY ${groupByExprs.join(', ')}`
 
     // HAVING — support both minPitches and minPA

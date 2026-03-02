@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
         AND plate_z IS NOT NULL
         AND sz_top IS NOT NULL
         AND sz_bot IS NOT NULL
+        AND pitch_type NOT IN ('PO', 'IN')
       ORDER BY pitcher, pitch_name
     `
 
