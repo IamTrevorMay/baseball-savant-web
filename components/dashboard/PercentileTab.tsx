@@ -3,13 +3,16 @@ import { useMemo, useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   SAVANT_PERCENTILES,
-  computePercentile, percentileColor,
+  computePercentile, percentileColor, plusToPercentile,
+  computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
   isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
 
 type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
 
 interface Props { data: any[] }
+
+const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
 export default function PercentileTab({ data }: Props) {
   const [view, setView] = useState<View>('rankings')
@@ -118,7 +121,6 @@ export default function PercentileTab({ data }: Props) {
       extension: avg(exts),
       ivb_ff: avg(ffIvbs),
       vaa_ff: avg(ffVaas),
-      // Deception scores from pre-computed table
       unique_score: deceptionVals.unique_score,
       deception_score: deceptionVals.deception_score,
       xdeception_score: deceptionVals.xdeception_score,
@@ -136,13 +138,12 @@ export default function PercentileTab({ data }: Props) {
     return results
   }, [data, deceptionVals])
 
-  // Raw command metrics per pitch type
+  // Raw command metrics per pitch type with percentile ranks
   const rawMetrics = useMemo(() => {
     const groups: Record<string, any[]> = {}
     data.forEach(d => { if (d.pitch_name) { if (!groups[d.pitch_name]) groups[d.pitch_name] = []; groups[d.pitch_name].push(d) } })
 
-    type MetricRow = { name: string; value: number; count: number }
-    const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
+    type MetricRow = { name: string; value: number; count: number; pct: number | null }
 
     const brinkRows: MetricRow[] = []
     const clusterRows: MetricRow[] = []
@@ -157,16 +158,28 @@ export default function PercentileTab({ data }: Props) {
       const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
 
+      // Compute plus stats → percentile for each metric
+      const brinkPlus = computeYearWeightedPlus(pitches, name, 'brink',
+        pts => { const v = pts.map((p: any) => p.brink).filter((x: any) => x != null); return avgArr(v) })
+      const clusterPlus = computeYearWeightedPlus(pitches, name, 'cluster',
+        pts => { const v = pts.map((p: any) => p.cluster).filter((x: any) => x != null); return avgArr(v) }, true)
+      const hdevPlus = computeYearWeightedPlus(pitches, name, 'hdev',
+        pts => { const v = pts.map((p: any) => p.hdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
+      const vdevPlus = computeYearWeightedPlus(pitches, name, 'vdev',
+        pts => { const v = pts.map((p: any) => p.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
+      const missfirePlus = computeYearWeightedPlus(pitches, name, 'missfire',
+        pts => { const b = pts.map((p: any) => p.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return avgArr(b) }, true)
+
       const ab = avgArr(brinks)
-      if (ab != null) brinkRows.push({ name, value: ab, count: pitches.length })
+      if (ab != null) brinkRows.push({ name, value: ab, count: pitches.length, pct: brinkPlus != null ? plusToPercentile(brinkPlus) : null })
       const ac = avgArr(clusters)
-      if (ac != null) clusterRows.push({ name, value: ac, count: pitches.length })
+      if (ac != null) clusterRows.push({ name, value: ac, count: pitches.length, pct: clusterPlus != null ? plusToPercentile(clusterPlus) : null })
       const ah = avgArr(hdevs)
-      if (ah != null) hdevRows.push({ name, value: ah, count: pitches.length })
+      if (ah != null) hdevRows.push({ name, value: ah, count: pitches.length, pct: hdevPlus != null ? plusToPercentile(hdevPlus) : null })
       const av = avgArr(vdevs)
-      if (av != null) vdevRows.push({ name, value: av, count: pitches.length })
+      if (av != null) vdevRows.push({ name, value: av, count: pitches.length, pct: vdevPlus != null ? plusToPercentile(vdevPlus) : null })
       const am = avgArr(missfires)
-      if (am != null) missfireRows.push({ name, value: am, count: pitches.length })
+      if (am != null) missfireRows.push({ name, value: am, count: pitches.length, pct: missfirePlus != null ? plusToPercentile(missfirePlus) : null })
     }
 
     return {
@@ -178,13 +191,14 @@ export default function PercentileTab({ data }: Props) {
     }
   }, [data])
 
-  const formatValue = (v: number, unit: string) => {
+  const formatVal = (v: number, unit: string) => {
     if (unit === '%') return v.toFixed(1) + '%'
     if (unit === '') return v.toFixed(3)
+    if (unit === 'z') return v.toFixed(2)
     return v.toFixed(1) + (unit ? ' ' + unit : '')
   }
 
-  type MetricView = { key: View; title: string; desc: string; unit: string; rows: { name: string; value: number; count: number }[]; higherBetter: boolean }
+  type MetricView = { key: View; title: string; desc: string; unit: string; rows: { name: string; value: number; count: number; pct: number | null }[]; higherBetter: boolean }
   const metricViews: MetricView[] = [
     { key: 'brink', title: 'Brink', desc: 'Avg signed distance to nearest strike zone edge (in) — higher = pitches closer to edges', unit: 'in', rows: rawMetrics.brinkRows, higherBetter: true },
     { key: 'cluster', title: 'Cluster', desc: 'Avg distance from pitch-type centroid (in) — lower = tighter clustering', unit: 'in', rows: rawMetrics.clusterRows, higherBetter: false },
@@ -218,7 +232,7 @@ export default function PercentileTab({ data }: Props) {
               return (
                 <div key={m.key} className="flex items-center gap-3 h-8">
                   <span className="w-24 text-xs text-zinc-400 text-right shrink-0">{m.label}</span>
-                  <span className="w-16 text-xs font-mono text-zinc-300 text-right shrink-0">{formatValue(m.value, m.unit)}</span>
+                  <span className="w-16 text-xs font-mono text-zinc-300 text-right shrink-0">{formatVal(m.value, m.unit)}</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
                     <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
                     <div className="h-full rounded transition-all" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.8 }} />
@@ -241,20 +255,27 @@ export default function PercentileTab({ data }: Props) {
           <h3 className="text-sm font-semibold text-zinc-300 mb-1">{mv.title} by Pitch Type</h3>
           <p className="text-[11px] text-zinc-500 mb-4">{mv.desc}</p>
           <div className="space-y-2">
-            {mv.rows.map((r, i) => {
+            {mv.rows.map((r) => {
               const maxVal = Math.max(...mv.rows.map(x => Math.abs(x.value)))
               const barPct = maxVal > 0 ? (Math.abs(r.value) / maxVal) * 100 : 0
-              // Color: best at top (teal), worst at bottom (orange). Since rows are pre-sorted best-first:
-              const t = mv.rows.length > 1 ? i / (mv.rows.length - 1) : 0
-              const barColor = `rgb(${Math.round(20 + t * 200)},${Math.round(184 - t * 100)},${Math.round(166 - t * 100)})`
+              const pct = r.pct
+              const color = pct != null ? percentileColor(pct) : 'rgb(100,100,100)'
               return (
                 <div key={r.name} className="flex items-center gap-3 h-8">
                   <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{r.name}</span>
                   <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}&quot;</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
-                    <div className="h-full rounded transition-all" style={{ width: `${barPct}%`, backgroundColor: barColor, opacity: 0.8 }} />
+                    <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
+                    <div className="h-full rounded transition-all" style={{ width: `${barPct}%`, backgroundColor: color, opacity: 0.8 }} />
                   </div>
-                  <span className="w-12 text-[10px] font-mono text-zinc-500 text-right shrink-0">{r.count.toLocaleString()}</span>
+                  {pct != null ? (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                      style={{ backgroundColor: color }}>
+                      {pct}
+                    </div>
+                  ) : (
+                    <span className="w-8 text-[10px] font-mono text-zinc-500 text-center shrink-0">—</span>
+                  )}
                 </div>
               )
             })}

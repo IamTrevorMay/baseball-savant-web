@@ -495,9 +495,9 @@ export const SAVANT_PERCENTILES: Record<string, { label: string; percentiles: nu
   extension:  { label: 'Extension',     unit: 'ft',  percentiles: [5.8, 6.1, 6.3, 6.6, 6.9],      higherBetter: true },
   ivb_ff:     { label: 'IVB (FF)',      unit: 'in',  percentiles: [12.0, 14.0, 16.0, 18.0, 20.5], higherBetter: true },
   vaa_ff:     { label: 'VAA (FF)',      unit: '°',   percentiles: [-6.8, -6.2, -5.5, -4.9, -4.2], higherBetter: true },
-  unique_score:     { label: 'Unique',      unit: '',  percentiles: [0.44, 0.56, 0.73, 0.93, 1.21], higherBetter: true },
-  deception_score:  { label: 'Deception',   unit: '',  percentiles: [-0.45, -0.22, 0.02, 0.25, 0.48], higherBetter: true },
-  xdeception_score: { label: 'xDeception',  unit: '',  percentiles: [-1.31, -0.58, -0.03, 0.58, 1.11], higherBetter: true },
+  unique_score:     { label: 'Unique',      unit: 'z',  percentiles: [0.44, 0.56, 0.73, 0.93, 1.21], higherBetter: true },
+  deception_score:  { label: 'Deception',   unit: 'z',  percentiles: [-0.45, -0.22, 0.02, 0.25, 0.48], higherBetter: true },
+  xdeception_score: { label: 'xDeception',  unit: 'z',  percentiles: [-1.31, -0.58, -0.03, 0.58, 1.11], higherBetter: true },
 }
 
 export function computePercentile(value: number, percentiles: number[], higherBetter: boolean): number {
@@ -518,18 +518,20 @@ export function computePercentile(value: number, percentiles: number[], higherBe
 }
 
 export function percentileColor(pct: number): string {
-  // red (0) → yellow (50) → blue (100)
+  // blue (0) → light gray (50) → red (100)
   if (pct <= 50) {
-    const t = pct / 50
-    const r = Math.round(220 - t * 100)
-    const g = Math.round(50 + t * 170)
-    const b = Math.round(50 + t * 20)
+    // Blue to gray: at 0 = saturated blue, at 50 = light gray
+    const t = pct / 50 // 0→1
+    const r = Math.round(50 + t * 150)   // 50 → 200
+    const g = Math.round(80 + t * 120)   // 80 → 200
+    const b = Math.round(220 - t * 20)   // 220 → 200
     return `rgb(${r},${g},${b})`
   } else {
-    const t = (pct - 50) / 50
-    const r = Math.round(120 - t * 80)
-    const g = Math.round(220 - t * 80)
-    const b = Math.round(70 + t * 180)
+    // Gray to red: at 50 = light gray, at 100 = saturated red
+    const t = (pct - 50) / 50 // 0→1
+    const r = Math.round(200 + t * 30)   // 200 → 230
+    const g = Math.round(200 - t * 140)  // 200 → 60
+    const b = Math.round(200 - t * 150)  // 200 → 50
     return `rgb(${r},${g},${b})`
   }
 }
