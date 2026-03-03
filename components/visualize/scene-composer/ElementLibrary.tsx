@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ElementType, SceneElement, Scene, ELEMENT_CATALOG } from '@/lib/sceneTypes'
-import { SCENE_TEMPLATES, TEXT_PRESETS, loadElementPresets, deleteElementPreset, instantiatePreset, type SceneTemplate, type SavedElementPreset } from '@/lib/sceneTemplates'
+import { SCENE_TEMPLATES, DATA_DRIVEN_TEMPLATES, TEXT_PRESETS, loadElementPresets, deleteElementPreset, instantiatePreset, type SceneTemplate, type DataDrivenTemplate, type SavedElementPreset } from '@/lib/sceneTemplates'
 
 type Tab = 'elements' | 'templates' | 'presets'
 
@@ -16,8 +16,8 @@ const CATEGORY_META: { key: string; label: string; icon: string }[] = [
   { key: 'advanced', label: 'Advanced', icon: '\u2605' },
 ]
 
-function TemplatesTab({ onLoad }: { onLoad: (t: SceneTemplate) => void }) {
-  const [openCats, setOpenCats] = useState<Set<string>>(new Set(['pitcher']))
+function TemplatesTab({ onLoad, onLoadDataDriven }: { onLoad: (t: SceneTemplate) => void; onLoadDataDriven?: (t: DataDrivenTemplate) => void }) {
+  const [openCats, setOpenCats] = useState<Set<string>>(new Set(['data-driven', 'pitcher']))
 
   function toggleCat(key: string) {
     setOpenCats(prev => {
@@ -37,6 +37,49 @@ function TemplatesTab({ onLoad }: { onLoad: (t: SceneTemplate) => void }) {
     <>
       <p className="text-[10px] text-zinc-600 mb-3">Click to load a template. Customize after loading.</p>
       <div className="space-y-1">
+        {/* Data-Driven Templates */}
+        {DATA_DRIVEN_TEMPLATES.length > 0 && (
+          <div>
+            <button
+              onClick={() => toggleCat('data-driven')}
+              className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-800/60 transition group"
+            >
+              <span className="w-6 h-6 rounded bg-emerald-600/20 text-emerald-400 flex items-center justify-center text-[10px] shrink-0">
+                {'\u26a1'}
+              </span>
+              <span className="text-[11px] font-medium text-emerald-300 group-hover:text-emerald-200 transition flex-1 text-left truncate">
+                Data-Driven
+              </span>
+              <span className="text-[9px] text-emerald-600 shrink-0">{DATA_DRIVEN_TEMPLATES.length}</span>
+              <span className="text-[10px] text-zinc-600 shrink-0">{openCats.has('data-driven') ? '\u25B4' : '\u25BE'}</span>
+            </button>
+            {openCats.has('data-driven') && (
+              <div className="ml-2 pl-2 border-l border-emerald-800/40 space-y-1 mt-1 mb-2">
+                {DATA_DRIVEN_TEMPLATES.map(template => (
+                  <button
+                    key={template.id}
+                    onClick={() => onLoadDataDriven?.(template)}
+                    className="w-full text-left px-2.5 py-2 rounded-lg bg-emerald-900/10 border border-emerald-800/30 hover:border-emerald-500/50 hover:bg-emerald-900/20 transition group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded bg-emerald-600/20 text-emerald-400 flex items-center justify-center text-[10px] shrink-0 group-hover:bg-emerald-500/30 transition">
+                        {template.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium text-zinc-200 group-hover:text-white transition leading-tight">{template.name}</span>
+                          <span className="text-[8px] font-semibold uppercase px-1 py-0.5 rounded bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 leading-none">Auto</span>
+                        </div>
+                        <div className="text-[9px] text-zinc-600 leading-tight mt-0.5">{template.description}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {grouped.map(cat => (
           <div key={cat.key}>
             <button
@@ -84,9 +127,10 @@ interface Props {
   onAdd: (type: ElementType) => void
   onAddElement?: (el: SceneElement) => void
   onLoadScene?: (scene: Scene) => void
+  onLoadDataDriven?: (template: DataDrivenTemplate) => void
 }
 
-export default function ElementLibrary({ onAdd, onAddElement, onLoadScene }: Props) {
+export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoadDataDriven }: Props) {
   const [tab, setTab] = useState<Tab>('elements')
   const [elementPresets, setElementPresets] = useState<SavedElementPreset[]>(() => loadElementPresets())
 
@@ -181,7 +225,7 @@ export default function ElementLibrary({ onAdd, onAddElement, onLoadScene }: Pro
 
         {/* ── Templates Tab ─────────────────────────────────────────────── */}
         {tab === 'templates' && (
-          <TemplatesTab onLoad={handleLoadTemplate} />
+          <TemplatesTab onLoad={handleLoadTemplate} onLoadDataDriven={onLoadDataDriven} />
         )}
 
         {/* ── Presets Tab ───────────────────────────────────────────────── */}

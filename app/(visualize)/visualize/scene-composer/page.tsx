@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, Keyframe, EasingFunction, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
+import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
+import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
 import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
@@ -24,6 +26,7 @@ export default function SceneComposerPage() {
   const [exportProgress, setExportProgress] = useState(0)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [bindingLoading, setBindingLoading] = useState(false)
+  const [templateLoading, setTemplateLoading] = useState(false)
   const [showGallery, setShowGallery] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('unsaved')
 
@@ -121,7 +124,7 @@ export default function SceneComposerPage() {
 
   const loadTemplateScene = useCallback(
     (templateScene: Scene) => {
-      setScene(templateScene)
+      setScene({ ...templateScene, templateConfig: undefined, templateData: undefined })
       setSelectedId(null)
       setSelectedIds(new Set())
       setCurrentFrame(0)
@@ -347,6 +350,70 @@ export default function SceneComposerPage() {
     setShowGallery(false)
   }
 
+  // ── Data-Driven Templates ────────────────────────────────────────────────
+
+  const activeDataTemplate = scene.templateConfig
+    ? DATA_DRIVEN_TEMPLATES.find(t => t.id === scene.templateConfig!.templateId)
+    : null
+
+  async function fetchAndRebuildTemplate(config: TemplateConfig) {
+    const template = DATA_DRIVEN_TEMPLATES.find(t => t.id === config.templateId)
+    if (!template) return
+
+    setTemplateLoading(true)
+    try {
+      const params = new URLSearchParams({
+        leaderboard: 'true',
+        metric: config.primaryStat,
+        playerType: config.playerType,
+        limit: String(config.count || 5),
+        sortDir: config.sortDir || 'desc',
+      })
+      if (config.dateRange.type === 'season') {
+        params.set('gameYear', String(config.dateRange.year))
+      } else {
+        params.set('dateFrom', config.dateRange.from)
+        params.set('dateTo', config.dateRange.to)
+      }
+      if (config.pitchType) params.set('pitchType', config.pitchType)
+      if (config.secondaryStat) params.set('secondaryMetric', config.secondaryStat)
+      if (config.tertiaryStat) params.set('tertiaryMetric', config.tertiaryStat)
+
+      const res = await fetch(`/api/scene-stats?${params}`)
+      const data = await res.json()
+      const rows: TemplateDataRow[] = data.leaderboard || []
+
+      const rebuilt = template.rebuild(config, rows)
+      setScene(rebuilt)
+      setSelectedId(null)
+      setSelectedIds(new Set())
+    } catch (err) {
+      console.error('Template fetch error:', err)
+    } finally {
+      setTemplateLoading(false)
+    }
+  }
+
+  function loadDataDrivenTemplate(template: DataDrivenTemplate) {
+    const config: TemplateConfig = { templateId: template.id, ...template.defaultConfig }
+    // Build initial scene with empty data, then auto-fetch
+    const initial = template.rebuild(config, [])
+    setScene(initial)
+    setSelectedId(null)
+    setSelectedIds(new Set())
+    setCurrentFrame(0)
+    setPlaying(false)
+    // Auto-fetch data
+    fetchAndRebuildTemplate(config)
+  }
+
+  function updateTemplateConfig(updates: Partial<TemplateConfig>) {
+    if (!scene.templateConfig) return
+    const newConfig = { ...scene.templateConfig, ...updates }
+    setScene(prev => ({ ...prev, templateConfig: newConfig }))
+    fetchAndRebuildTemplate(newConfig)
+  }
+
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -511,7 +578,7 @@ export default function SceneComposerPage() {
 
   function handleClear() {
     if (!scene.elements.length) return
-    setScene(prev => ({ ...prev, elements: [] }))
+    setScene(prev => ({ ...prev, elements: [], templateConfig: undefined, templateData: undefined }))
     setSelectedId(null)
   }
 
@@ -717,7 +784,7 @@ export default function SceneComposerPage() {
       <div className="flex-1 flex min-h-0">
         {/* Left: Element Library */}
         <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} />
+          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} />
         </div>
 
         {/* Center: Canvas */}
@@ -733,8 +800,8 @@ export default function SceneComposerPage() {
           />
         </div>
 
-        {/* Right: Properties */}
-        {selectedElement && (
+        {/* Right: Properties or Template Config */}
+        {selectedElement ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             <PropertiesPanel
               element={selectedElement}
@@ -749,7 +816,16 @@ export default function SceneComposerPage() {
               fps={scene.fps || 30}
             />
           </div>
-        )}
+        ) : scene.templateConfig ? (
+          <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
+            <TemplateConfigPanel
+              config={scene.templateConfig}
+              onUpdateConfig={updateTemplateConfig}
+              onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
+              loading={templateLoading}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* Timeline */}

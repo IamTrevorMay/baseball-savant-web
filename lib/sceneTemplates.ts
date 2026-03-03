@@ -3,7 +3,8 @@
  * Each factory returns a fresh Scene with unique IDs.
  */
 
-import { Scene, SceneElement } from './sceneTypes'
+import { Scene, SceneElement, TemplateConfig, TemplateDataRow } from './sceneTypes'
+import { SCENE_METRICS } from './reportMetrics'
 
 export interface SceneTemplate {
   id: string
@@ -1283,5 +1284,160 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       el('stat-card', 1180, 908, 200, 100, { label: 'ZONE%', value: '48.2', sublabel: '', color: '#22c55e', fontSize: 36, variant: 'solid' }),
       el('stat-card', 1400, 908, 200, 100, { label: 'SwStr%', value: '14.8', sublabel: '', color: '#ef4444', fontSize: 36, variant: 'solid' }),
     ]),
+  },
+]
+
+// ── Data-Driven Templates ────────────────────────────────────────────────────
+
+export interface DataDrivenTemplate {
+  id: string
+  name: string
+  category: SceneTemplate['category']
+  description: string
+  icon: string
+  width: number
+  height: number
+  defaultConfig: Omit<TemplateConfig, 'templateId'>
+  rebuild: (config: TemplateConfig, rows: TemplateDataRow[]) => Scene
+}
+
+function metricLabel(key: string): string {
+  return SCENE_METRICS.find(m => m.value === key)?.label || key.replace(/_/g, ' ').toUpperCase()
+}
+
+function buildSubtitle(config: TemplateConfig): string {
+  const parts: string[] = []
+  if (config.dateRange.type === 'season') parts.push(`${config.dateRange.year} Season`)
+  else parts.push(`${config.dateRange.from} \u2013 ${config.dateRange.to}`)
+  if (config.pitchType) parts.push(config.pitchType)
+  parts.push(config.playerType === 'batter' ? 'Batters' : 'Pitchers')
+  return parts.join(' \u00b7 ')
+}
+
+const STAT_COLORS = ['#06b6d4', '#a855f7', '#f59e0b']
+
+export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
+  {
+    id: 'top-5-leaderboard',
+    name: 'Top 5 Leaderboard',
+    category: 'advanced',
+    description: 'Auto-populated leaderboard with player headshots and stats',
+    icon: '\ud83c\udfc6',
+    width: 1920,
+    height: 1080,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+      sortDir: 'desc',
+      count: 5,
+    },
+    rebuild: (config: TemplateConfig, rows: TemplateDataRow[]): Scene => {
+      _z = 100
+      const count = config.count || 5
+      const title = config.title || `Top ${count} by ${metricLabel(config.primaryStat)}`
+      const subtitle = buildSubtitle(config)
+
+      const statCount = 1 + (config.secondaryStat ? 1 : 0) + (config.tertiaryStat ? 1 : 0)
+
+      // Layout constants
+      const startY = 200
+      const rowH = 150
+      const rowGap = 10
+      const imgW = 100
+      const imgH = 120
+      const rankW = 50
+      const nameW = 220
+      const statW = statCount === 1 ? 300 : statCount === 2 ? 240 : 190
+      const leftPad = 80
+      const statStartX = leftPad + rankW + imgW + 20 + nameW + 20
+
+      const elements: SceneElement[] = []
+
+      // Title
+      elements.push(el('text', 80, 40, 1760, 70, {
+        text: title, fontSize: 52, fontWeight: 800, color: '#ffffff', textAlign: 'left',
+      }))
+
+      // Subtitle
+      elements.push(el('text', 80, 115, 1760, 36, {
+        text: subtitle, fontSize: 22, fontWeight: 400, color: '#71717a', textAlign: 'left',
+      }))
+
+      // Divider line
+      elements.push(el('shape', 80, 165, 1760, 2, {
+        shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // Rows
+      for (let i = 0; i < count; i++) {
+        const row = rows[i]
+        const y = startY + i * (rowH + rowGap)
+        const playerId = row?.player_id ?? null
+        const playerName = row?.player_name ?? ''
+
+        // Row bg (subtle stripe for odd rows)
+        if (i % 2 === 1) {
+          elements.push(el('shape', 60, y - 10, 1800, rowH + 10, {
+            shape: 'rect', fill: 'rgba(39,39,42,0.3)', stroke: 'transparent', strokeWidth: 0, borderRadius: 8,
+          }))
+        }
+
+        // Rank
+        elements.push(el('text', leftPad, y + 30, rankW, 60, {
+          text: `${i + 1}`, fontSize: 40, fontWeight: 800, color: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#d97706' : '#71717a', textAlign: 'center',
+        }))
+
+        // Player image
+        elements.push({
+          ...el('player-image', leftPad + rankW, y + 5, imgW, imgH, {
+            playerId, playerName, borderColor: '#27272a', showLabel: false, bgColor: 'transparent',
+          }),
+          dataBinding: playerId ? { playerId, playerName, metric: config.primaryStat, source: 'statcast' as const, gameYear: config.dateRange.type === 'season' ? config.dateRange.year : undefined } : undefined,
+        })
+
+        // Player name
+        elements.push(el('text', leftPad + rankW + imgW + 20, y + 20, nameW, 30, {
+          text: playerName || 'Player Name', fontSize: 24, fontWeight: 700, color: '#ffffff', textAlign: 'left',
+        }))
+
+        // Player team placeholder text
+        elements.push(el('text', leftPad + rankW + imgW + 20, y + 56, nameW, 22, {
+          text: config.dateRange.type === 'season' ? `${config.dateRange.year}` : '', fontSize: 14, fontWeight: 400, color: '#52525b', textAlign: 'left',
+        }))
+
+        // Primary stat
+        elements.push(el('stat-card', statStartX, y + 10, statW, imgH - 10, {
+          label: metricLabel(config.primaryStat), value: row?.primary_value != null ? String(row.primary_value) : '--', sublabel: '', color: STAT_COLORS[0], fontSize: 42, variant: 'glass', bgColor: 'transparent',
+        }))
+
+        // Secondary stat
+        if (config.secondaryStat) {
+          elements.push(el('stat-card', statStartX + statW + 16, y + 10, statW, imgH - 10, {
+            label: metricLabel(config.secondaryStat), value: row?.secondary_value != null ? String(row.secondary_value) : '--', sublabel: '', color: STAT_COLORS[1], fontSize: 42, variant: 'glass', bgColor: 'transparent',
+          }))
+        }
+
+        // Tertiary stat
+        if (config.tertiaryStat) {
+          elements.push(el('stat-card', statStartX + (statW + 16) * 2, y + 10, statW, imgH - 10, {
+            label: metricLabel(config.tertiaryStat), value: row?.tertiary_value != null ? String(row.tertiary_value) : '--', sublabel: '', color: STAT_COLORS[2], fontSize: 42, variant: 'glass', bgColor: 'transparent',
+          }))
+        }
+      }
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: title,
+        width: 1920,
+        height: 1080,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: config,
+        templateData: rows,
+      }
+    },
   },
 ]

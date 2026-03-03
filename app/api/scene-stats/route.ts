@@ -10,10 +10,59 @@ const supabase = createClient(
 /**
  * GET /api/scene-stats?playerId=543037&metrics=avg_velo,whiff_pct&gameYear=2024&pitchType=FF
  * Also supports kinematics=true mode for pitch flight elements.
+ * Also supports leaderboard=true mode for data-driven templates.
  */
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
+
+    // ── Leaderboard mode (for data-driven templates) ─────────────────────
+    if (sp.get('leaderboard') === 'true') {
+      const metric = sp.get('metric')
+      const playerType = sp.get('playerType') || 'pitcher'
+      if (!metric || !METRICS[metric]) return NextResponse.json({ error: 'Valid metric required' }, { status: 400 })
+
+      const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
+      const gameYear = sp.get('gameYear')
+      const dateFrom = sp.get('dateFrom')
+      const dateTo = sp.get('dateTo')
+      const pitchType = sp.get('pitchType')
+      const limit = Math.min(parseInt(sp.get('limit') || '5'), 25)
+      const sortDir = sp.get('sortDir') === 'asc' ? 'ASC' : 'DESC'
+      const secondaryMetric = sp.get('secondaryMetric')
+      const tertiaryMetric = sp.get('tertiaryMetric')
+      const defaultMin = playerType === 'batter' ? 150 : 300
+      const minSample = parseInt(sp.get('minSample') || String(defaultMin))
+
+      const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
+      if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
+      if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+      if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
+      if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+
+      const selects = [`${METRICS[metric]} as primary_value`]
+      if (secondaryMetric && METRICS[secondaryMetric]) selects.push(`${METRICS[secondaryMetric]} as secondary_value`)
+      if (tertiaryMetric && METRICS[tertiaryMetric]) selects.push(`${METRICS[tertiaryMetric]} as tertiary_value`)
+
+      const sql = `
+        SELECT
+          p.${groupCol} as player_id,
+          pl.name as player_name,
+          ${selects.join(',\n          ')}
+        FROM pitches p
+        JOIN players pl ON pl.id = p.${groupCol}
+        WHERE ${where.join(' AND ')}
+        GROUP BY p.${groupCol}, pl.name
+        HAVING COUNT(*) >= ${minSample}
+        ORDER BY primary_value ${sortDir} NULLS LAST
+        LIMIT ${limit}
+      `.trim()
+
+      const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ leaderboard: data || [] })
+    }
+
     const playerId = sp.get('playerId')
     if (!playerId) return NextResponse.json({ error: 'playerId required' }, { status: 400 })
 

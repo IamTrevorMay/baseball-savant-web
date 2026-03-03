@@ -42,6 +42,31 @@ export interface SceneElement {
   keyframes?: Keyframe[]
 }
 
+// ── Template Data Binding ────────────────────────────────────────────────────
+
+export interface TemplateConfig {
+  templateId: string              // e.g. 'top-5-leaderboard'
+  playerType: 'pitcher' | 'batter'
+  primaryStat: string             // metric key from METRICS
+  secondaryStat?: string
+  tertiaryStat?: string
+  dateRange:
+    | { type: 'season'; year: number }
+    | { type: 'custom'; from: string; to: string }
+  pitchType?: string
+  title?: string
+  sortDir?: 'asc' | 'desc'       // default 'desc'
+  count?: number                  // default 5
+}
+
+export interface TemplateDataRow {
+  player_id: number
+  player_name: string
+  primary_value: number | string | null
+  secondary_value?: number | string | null
+  tertiary_value?: number | string | null
+}
+
 // ── Scene ───────────────────────────────────────────────────────────────────
 
 export interface Scene {
@@ -54,6 +79,8 @@ export interface Scene {
   savedId?: string
   duration?: number // seconds, default 5
   fps?: number      // default 30
+  templateConfig?: TemplateConfig
+  templateData?: TemplateDataRow[]
 }
 
 // ── Catalog ─────────────────────────────────────────────────────────────────
