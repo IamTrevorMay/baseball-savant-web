@@ -146,6 +146,7 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'unique_score', label: 'Unique', group: 'Deception' },
   { value: 'xdeception_score', label: 'xDeception', group: 'Deception' },
   // ERA Estimators
+  { value: 'era', label: 'ERA', group: 'ERA Estimators' },
   { value: 'fip', label: 'FIP', group: 'ERA Estimators' },
   { value: 'xera', label: 'xERA', group: 'ERA Estimators' },
 ]
@@ -156,4 +157,4 @@ export const TRITON_PLUS_METRIC_KEYS = new Set([
   'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'waste_pct',
 ])
 export const DECEPTION_METRIC_KEYS = new Set(['deception_score', 'unique_score', 'xdeception_score'])
-export const ERA_METRIC_KEYS = new Set(['fip', 'xera'])
+export const ERA_METRIC_KEYS = new Set(['era', 'fip', 'xera'])

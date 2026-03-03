@@ -50,7 +50,7 @@ const PITCHER_METRICS = new Set([
   // Deception
   'deception_score', 'unique_score', 'xdeception_score',
   // ERA Estimators
-  'fip', 'xera',
+  'era', 'fip', 'xera',
 ])
 
 interface Props {

@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Backfill pitches-based secondary/tertiary
-        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
+        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key) && !ERA_METRIC_KEYS.has(m.key))
         if (pitchesMetrics.length > 0 && result.length > 0) {
           const ids = result.map(r => r.player_id)
           const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
@@ -139,6 +139,29 @@ export async function GET(req: NextRequest) {
             for (const r of result) {
               const extra = lookup.get(r.player_id)
               if (extra) { for (const m of pitchesMetrics) r[m.alias] = extra[m.alias] ?? null }
+            }
+          }
+        }
+
+        // Backfill ERA secondary/tertiary
+        const eraBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && ERA_METRIC_KEYS.has(m.key))
+        if (eraBackfill.length > 0 && result.length > 0) {
+          const ids = result.map(r => r.player_id)
+          const yr = parseInt(gameYear || '2025')
+          const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[2025]
+          const sql2 = `SELECT p.pitcher as player_id, COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k, COUNT(*) FILTER (WHERE events = 'walk') as bb, COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp, COUNT(*) FILTER (WHERE events = 'home_run') as hr, COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip, COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa, AVG(estimated_woba_using_speedangle) as xwoba FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${yr}` : ''} GROUP BY p.pitcher`.trim()
+          const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+          if (d2) {
+            const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
+            for (const r of result) {
+              const s = lookup.get(r.player_id)
+              if (!s) continue
+              const ip = Number(s.ip) || 0, pa = Number(s.pa) || 0
+              const fipVal = ip > 0 ? Math.round(((13 * (Number(s.hr) || 0) + 3 * ((Number(s.bb) || 0) + (Number(s.hbp) || 0)) - 2 * (Number(s.k) || 0)) / ip + constants.cfip) * 100) / 100 : null
+              const xwoba = s.xwoba != null ? Number(s.xwoba) : null
+              const xeraVal = ip > 0 && pa > 0 && xwoba != null ? Math.round((((xwoba - constants.woba) / constants.woba_scale) * (pa / ip) * 9 + constants.lg_era) * 100) / 100 : null
+              const ERA_VALS: Record<string, any> = { era: fipVal, fip: fipVal, xera: xeraVal }
+              for (const m of eraBackfill) r[m.alias] = ERA_VALS[m.key] ?? null
             }
           }
         }
@@ -240,7 +263,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Backfill pitches-based secondary/tertiary
-        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
+        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key) && !ERA_METRIC_KEYS.has(m.key))
         if (pitchesMetrics.length > 0 && result.length > 0) {
           const ids = result.map(r => r.player_id)
           const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
@@ -315,10 +338,10 @@ export async function GET(req: NextRequest) {
             ? Math.round((((xwoba - constants.woba) / constants.woba_scale) * (pa / ip) * 9 + constants.lg_era) * 100) / 100
             : null
 
-          return { player_id: r.player_id, player_name: r.player_name, fip, xera }
+          return { player_id: r.player_id, player_name: r.player_name, era: fip, fip, xera }
         })
 
-        const ERA_COL: Record<string, string> = { fip: 'fip', xera: 'xera' }
+        const ERA_COL: Record<string, string> = { era: 'era', fip: 'fip', xera: 'xera' }
         const primaryCol = ERA_COL[metric] || metric
         const jsSortDir = sortDir === 'ASC' ? 1 : -1
         rows.sort((a, b) => {
@@ -354,6 +377,38 @@ export async function GET(req: NextRequest) {
             for (const r of result) {
               const extra = lookup.get(r.player_id)
               if (extra) { for (const m of pitchesMetrics) r[m.alias] = extra[m.alias] ?? null }
+            }
+          }
+        }
+
+        // Backfill Triton secondary/tertiary
+        const tritonBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && TRITON_PLUS_METRIC_KEYS.has(m.key))
+        if (tritonBackfill.length > 0 && result.length > 0) {
+          const ids = result.map(r => r.player_id)
+          const TRITON_COL_ERA: Record<string, string> = {
+            cmd_plus: 'cmd_plus', rpcom_plus: 'rpcom_plus', brink_plus: 'brink_plus', cluster_plus: 'cluster_plus',
+            hdev_plus: 'hdev_plus', vdev_plus: 'vdev_plus', missfire_plus: 'missfire_plus',
+            avg_brink: 'avg_brink', avg_cluster: 'avg_cluster', avg_hdev: 'avg_hdev', avg_vdev: 'avg_vdev',
+            avg_missfire: 'avg_missfire', waste_pct: 'waste_pct',
+          }
+          const ACCUM = Object.keys(TRITON_COL_ERA)
+          const sql2 = `SELECT pitcher, pitches, ${ACCUM.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher IN (${ids.join(',')})`.trim()
+          const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+          if (d2) {
+            const tMap = new Map<number, Record<string, any>>()
+            for (const row of d2 as any[]) {
+              const id = row.pitcher
+              if (!tMap.has(id)) { const init: Record<string, any> = {}; for (const k of ACCUM) { init[`_${k}_s`] = 0; init[`_${k}_w`] = 0 }; tMap.set(id, init) }
+              const p = tMap.get(id)!; const n = Number(row.pitches) || 0
+              for (const k of ACCUM) { if (row[k] != null) { p[`_${k}_s`] += Number(row[k]) * n; p[`_${k}_w`] += n } }
+            }
+            for (const r of result) {
+              const t = tMap.get(r.player_id); if (!t) continue
+              for (const m of tritonBackfill) {
+                const col = TRITON_COL_ERA[m.key]; if (!col) continue
+                const prec = col.startsWith('avg_') || col === 'waste_pct' ? 100 : 10
+                r[m.alias] = t[`_${col}_w`] > 0 ? Math.round((t[`_${col}_s`] / t[`_${col}_w`]) * prec) / prec : null
+              }
             }
           }
         }
@@ -394,7 +449,90 @@ export async function GET(req: NextRequest) {
 
       const { data, error } = await supabase.rpc('run_query', { query_text: sql })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ leaderboard: data || [] })
+
+      const result: any[] = data || []
+      if (result.length === 0) return NextResponse.json({ leaderboard: result })
+
+      // Cross-source backfill for secondary/tertiary metrics from non-pitches sources
+      const ids = result.map((r: any) => r.player_id)
+      const year = parseInt(gameYear || '2025')
+
+      // Backfill Triton metrics
+      const tritonMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && TRITON_PLUS_METRIC_KEYS.has(m.key))
+      if (tritonMetrics.length > 0 && playerType === 'pitcher') {
+        const TRITON_COL: Record<string, string> = {
+          cmd_plus: 'cmd_plus', rpcom_plus: 'rpcom_plus',
+          brink_plus: 'brink_plus', cluster_plus: 'cluster_plus',
+          hdev_plus: 'hdev_plus', vdev_plus: 'vdev_plus', missfire_plus: 'missfire_plus',
+          avg_brink: 'avg_brink', avg_cluster: 'avg_cluster',
+          avg_hdev: 'avg_hdev', avg_vdev: 'avg_vdev',
+          avg_missfire: 'avg_missfire', waste_pct: 'waste_pct',
+        }
+        const ACCUM_KEYS = Object.keys(TRITON_COL)
+        const sql2 = `SELECT pitcher, pitches, ${ACCUM_KEYS.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher IN (${ids.join(',')})`.trim()
+        const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+        if (d2) {
+          // Pivot per pitcher
+          const tMap = new Map<number, Record<string, any>>()
+          for (const row of d2 as any[]) {
+            const id = row.pitcher
+            if (!tMap.has(id)) {
+              const init: Record<string, any> = {}
+              for (const k of ACCUM_KEYS) { init[`_${k}_s`] = 0; init[`_${k}_w`] = 0 }
+              tMap.set(id, init)
+            }
+            const p = tMap.get(id)!
+            const n = Number(row.pitches) || 0
+            for (const k of ACCUM_KEYS) {
+              if (row[k] != null) { p[`_${k}_s`] += Number(row[k]) * n; p[`_${k}_w`] += n }
+            }
+          }
+          for (const r of result) {
+            const t = tMap.get(r.player_id)
+            if (!t) continue
+            for (const m of tritonMetrics) {
+              const col = TRITON_COL[m.key]
+              if (!col) continue
+              const precision = col.startsWith('avg_') || col === 'waste_pct' ? 100 : 10
+              r[m.alias] = t[`_${col}_w`] > 0 ? Math.round((t[`_${col}_s`] / t[`_${col}_w`]) * precision) / precision : null
+            }
+          }
+        }
+      }
+
+      // Backfill ERA metrics
+      const eraMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && ERA_METRIC_KEYS.has(m.key))
+      if (eraMetrics.length > 0 && playerType === 'pitcher') {
+        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[2025]
+        const sql2 = `
+          SELECT p.pitcher as player_id,
+            COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
+            COUNT(*) FILTER (WHERE events = 'walk') as bb,
+            COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
+            COUNT(*) FILTER (WHERE events = 'home_run') as hr,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+            AVG(estimated_woba_using_speedangle) as xwoba
+          FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${year}` : ''} ${pitchType ? `AND pitch_type = '${pitchType.replace(/'/g, "''")}'` : ''}
+          GROUP BY p.pitcher
+        `.trim()
+        const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+        if (d2) {
+          const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
+          for (const r of result) {
+            const s = lookup.get(r.player_id)
+            if (!s) continue
+            const ip = Number(s.ip) || 0, pa = Number(s.pa) || 0
+            const fipVal = ip > 0 ? Math.round(((13 * (Number(s.hr) || 0) + 3 * ((Number(s.bb) || 0) + (Number(s.hbp) || 0)) - 2 * (Number(s.k) || 0)) / ip + constants.cfip) * 100) / 100 : null
+            const xwoba = s.xwoba != null ? Number(s.xwoba) : null
+            const xeraVal = ip > 0 && pa > 0 && xwoba != null ? Math.round((((xwoba - constants.woba) / constants.woba_scale) * (pa / ip) * 9 + constants.lg_era) * 100) / 100 : null
+            const ERA_VALS: Record<string, any> = { era: fipVal, fip: fipVal, xera: xeraVal }
+            for (const m of eraMetrics) r[m.alias] = ERA_VALS[m.key] ?? null
+          }
+        }
+      }
+
+      return NextResponse.json({ leaderboard: result })
     }
 
     const playerId = sp.get('playerId')
