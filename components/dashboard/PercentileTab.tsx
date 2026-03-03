@@ -99,7 +99,7 @@ export default function PercentileTab({ data }: Props) {
     const exts = data.map(d => d.release_extension).filter((v): v is number => v != null)
     const evs = battedBalls.map(d => d.launch_speed)
     const xbas = data.map(d => d.estimated_ba_using_speedangle).filter((v: any) => v != null)
-    const barrels = battedBalls.filter(d => d.launch_speed >= 98 && d.launch_angle >= 26 && d.launch_angle <= 30).length
+    const barrels = battedBalls.filter(d => String(d.launch_speed_angle) === '6').length
     const hardHits = battedBalls.filter(d => d.launch_speed >= 95).length
     const gbs = battedBalls.filter(d => d.bb_type === 'ground_ball').length
     const ffIvbs = fastballs.map(d => d.pfx_z != null ? d.pfx_z * 12 : null).filter((v): v is number => v != null)

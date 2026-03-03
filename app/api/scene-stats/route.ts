@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
           const ids = result.map(r => r.player_id)
           const yr = parseInt(gameYear || '2025')
           const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[2025]
-          const sql2 = `SELECT p.pitcher as player_id, COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k, COUNT(*) FILTER (WHERE events = 'walk') as bb, COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp, COUNT(*) FILTER (WHERE events = 'home_run') as hr, COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip, COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa, AVG(estimated_woba_using_speedangle) as xwoba FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${yr}` : ''} GROUP BY p.pitcher`.trim()
+          const sql2 = `SELECT p.pitcher as player_id, COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k, COUNT(*) FILTER (WHERE events = 'walk') as bb, COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp, COUNT(*) FILTER (WHERE events = 'home_run') as hr, (COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip, COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa, AVG(estimated_woba_using_speedangle) as xwoba FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${yr}` : ''} GROUP BY p.pitcher`.trim()
           const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
           if (d2) {
             const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
@@ -360,7 +360,7 @@ export async function GET(req: NextRequest) {
         if (eraBackfill.length > 0 && result.length > 0) {
           const ids = result.map((r: any) => r.player_id)
           const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[2025]
-          const sql2 = `SELECT p.pitcher as player_id, COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k, COUNT(*) FILTER (WHERE events = 'walk') as bb, COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp, COUNT(*) FILTER (WHERE events = 'home_run') as hr, COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip, COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa, AVG(estimated_woba_using_speedangle) as xwoba FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') AND game_year = ${year} GROUP BY p.pitcher`.trim()
+          const sql2 = `SELECT p.pitcher as player_id, COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k, COUNT(*) FILTER (WHERE events = 'walk') as bb, COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp, COUNT(*) FILTER (WHERE events = 'home_run') as hr, (COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip, COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa, AVG(estimated_woba_using_speedangle) as xwoba FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') AND game_year = ${year} GROUP BY p.pitcher`.trim()
           const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
           if (d2) {
             const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
@@ -398,7 +398,7 @@ export async function GET(req: NextRequest) {
             COUNT(*) FILTER (WHERE events = 'walk') as bb,
             COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
             COUNT(*) FILTER (WHERE events = 'home_run') as hr,
-            COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip,
+            (COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip,
             COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
             AVG(estimated_woba_using_speedangle) as xwoba
           FROM pitches p JOIN players pl ON pl.id = p.pitcher
@@ -558,7 +558,7 @@ export async function GET(req: NextRequest) {
             COUNT(*) FILTER (WHERE events = 'walk') as bb,
             COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
             COUNT(*) FILTER (WHERE events = 'home_run') as hr,
-            COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip,
+            (COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip,
             COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
             AVG(estimated_woba_using_speedangle) as xwoba
           FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${year}` : ''} ${pitchType ? `AND pitch_type = '${pitchType.replace(/'/g, "''")}'` : ''}
