@@ -57,6 +57,7 @@ export interface TemplateConfig {
   title?: string
   sortDir?: 'asc' | 'desc'       // default 'desc'
   count?: number                  // default 5
+  minSample?: number              // min pitches/PA qualifier
 }
 
 export interface TemplateDataRow {

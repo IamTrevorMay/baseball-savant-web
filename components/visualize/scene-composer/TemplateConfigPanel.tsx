@@ -215,6 +215,19 @@ export default function TemplateConfigPanel({ config, onUpdateConfig, onRefresh,
         </select>
       </div>
 
+      {/* Min Sample */}
+      <div>
+        <label className="text-[11px] text-zinc-500 block mb-1">Min Pitches (qualifier)</label>
+        <input
+          type="number"
+          value={config.minSample ?? (config.playerType === 'batter' ? 150 : 300)}
+          onChange={e => onUpdateConfig({ minSample: Math.max(0, parseInt(e.target.value) || 0) })}
+          min={0}
+          step={50}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-600 outline-none"
+        />
+      </div>
+
       <div className="h-px bg-zinc-800" />
 
       {/* Secondary Stat */}

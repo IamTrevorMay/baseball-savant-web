@@ -368,6 +368,7 @@ export default function SceneComposerPage() {
         playerType: config.playerType,
         limit: String(config.count || 5),
         sortDir: config.sortDir || 'desc',
+        minSample: String(config.minSample ?? (config.playerType === 'batter' ? 150 : 300)),
       })
       if (config.dateRange.type === 'season') {
         params.set('gameYear', String(config.dateRange.year))
