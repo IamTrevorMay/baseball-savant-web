@@ -68,29 +68,78 @@ export const METRICS: Record<string, string> = {
 }
 
 /** Subset of metrics available for scene data binding */
-export const SCENE_METRICS: { value: string; label: string }[] = [
-  { value: 'avg_velo', label: 'Avg Velocity' },
-  { value: 'max_velo', label: 'Max Velocity' },
-  { value: 'avg_spin', label: 'Avg Spin Rate' },
-  { value: 'whiff_pct', label: 'Whiff %' },
-  { value: 'k_pct', label: 'K %' },
-  { value: 'bb_pct', label: 'BB %' },
-  { value: 'csw_pct', label: 'CSW %' },
-  { value: 'zone_pct', label: 'Zone %' },
-  { value: 'chase_pct', label: 'Chase %' },
-  { value: 'avg_ev', label: 'Avg Exit Velo' },
-  { value: 'avg_la', label: 'Avg Launch Angle' },
-  { value: 'ba', label: 'AVG' },
-  { value: 'obp', label: 'OBP' },
-  { value: 'slg', label: 'SLG' },
-  { value: 'avg_xba', label: 'xBA' },
-  { value: 'avg_xwoba', label: 'xwOBA' },
-  { value: 'avg_hbreak_in', label: 'H-Break (in)' },
-  { value: 'avg_ivb_in', label: 'IVB (in)' },
-  { value: 'avg_ext', label: 'Extension' },
-  { value: 'pitches', label: 'Pitch Count' },
-  { value: 'games', label: 'Games' },
-  { value: 'usage_pct', label: 'Usage %' },
-  { value: 'gb_pct', label: 'GB %' },
-  { value: 'fb_pct', label: 'FB %' },
+export const SCENE_METRICS: { value: string; label: string; group?: string }[] = [
+  // Stuff / Arsenal
+  { value: 'avg_velo', label: 'Avg Velocity', group: 'Stuff' },
+  { value: 'max_velo', label: 'Max Velocity', group: 'Stuff' },
+  { value: 'avg_spin', label: 'Avg Spin Rate', group: 'Stuff' },
+  { value: 'avg_hbreak_in', label: 'H-Break (in)', group: 'Stuff' },
+  { value: 'avg_ivb_in', label: 'IVB (in)', group: 'Stuff' },
+  { value: 'avg_ext', label: 'Extension', group: 'Stuff' },
+  { value: 'avg_arm_angle', label: 'Arm Angle', group: 'Stuff' },
+  // Rates
+  { value: 'whiff_pct', label: 'Whiff %', group: 'Rates' },
+  { value: 'k_pct', label: 'K %', group: 'Rates' },
+  { value: 'bb_pct', label: 'BB %', group: 'Rates' },
+  { value: 'k_minus_bb', label: 'K-BB %', group: 'Rates' },
+  { value: 'csw_pct', label: 'CSW %', group: 'Rates' },
+  { value: 'swstr_pct', label: 'SwStr %', group: 'Rates' },
+  { value: 'zone_pct', label: 'Zone %', group: 'Rates' },
+  { value: 'chase_pct', label: 'Chase %', group: 'Rates' },
+  { value: 'contact_pct', label: 'Contact %', group: 'Rates' },
+  { value: 'z_swing_pct', label: 'Z-Swing %', group: 'Rates' },
+  { value: 'o_contact_pct', label: 'O-Contact %', group: 'Rates' },
+  // Batting
+  { value: 'ba', label: 'AVG', group: 'Batting' },
+  { value: 'obp', label: 'OBP', group: 'Batting' },
+  { value: 'slg', label: 'SLG', group: 'Batting' },
+  { value: 'ops', label: 'OPS', group: 'Batting' },
+  // Expected
+  { value: 'avg_xba', label: 'xBA', group: 'Expected' },
+  { value: 'avg_xwoba', label: 'xwOBA', group: 'Expected' },
+  { value: 'avg_xslg', label: 'xSLG', group: 'Expected' },
+  { value: 'avg_woba', label: 'wOBA', group: 'Expected' },
+  { value: 'total_re24', label: 'RE24', group: 'Expected' },
+  // Batted Ball
+  { value: 'avg_ev', label: 'Avg Exit Velo', group: 'Batted Ball' },
+  { value: 'max_ev', label: 'Max Exit Velo', group: 'Batted Ball' },
+  { value: 'avg_la', label: 'Avg Launch Angle', group: 'Batted Ball' },
+  { value: 'avg_dist', label: 'Avg Distance', group: 'Batted Ball' },
+  { value: 'hard_hit_pct', label: 'Hard Hit %', group: 'Batted Ball' },
+  { value: 'barrel_pct', label: 'Barrel %', group: 'Batted Ball' },
+  { value: 'gb_pct', label: 'GB %', group: 'Batted Ball' },
+  { value: 'fb_pct', label: 'FB %', group: 'Batted Ball' },
+  { value: 'ld_pct', label: 'LD %', group: 'Batted Ball' },
+  { value: 'pu_pct', label: 'PU %', group: 'Batted Ball' },
+  // Swing
+  { value: 'avg_bat_speed', label: 'Bat Speed', group: 'Swing' },
+  { value: 'avg_swing_length', label: 'Swing Length', group: 'Swing' },
+  // Counting
+  { value: 'pitches', label: 'Pitch Count', group: 'Counting' },
+  { value: 'pa', label: 'PA', group: 'Counting' },
+  { value: 'games', label: 'Games', group: 'Counting' },
+  { value: 'h', label: 'Hits', group: 'Counting' },
+  { value: 'hr_count', label: 'Home Runs', group: 'Counting' },
+  { value: 'k_count', label: 'Strikeouts', group: 'Counting' },
+  { value: 'bb_count', label: 'Walks', group: 'Counting' },
+  { value: 'doubles', label: 'Doubles', group: 'Counting' },
+  { value: 'triples', label: 'Triples', group: 'Counting' },
+  { value: 'hbp_count', label: 'HBP', group: 'Counting' },
+  { value: 'usage_pct', label: 'Usage %', group: 'Counting' },
+  // Triton+ (Command)
+  { value: 'cmd_plus', label: 'Cmd+', group: 'Triton+' },
+  { value: 'rpcom_plus', label: 'RPCom+', group: 'Triton+' },
+  { value: 'brink_plus', label: 'Brink+', group: 'Triton+' },
+  { value: 'cluster_plus', label: 'Cluster+', group: 'Triton+' },
+  { value: 'hdev_plus', label: 'HDev+', group: 'Triton+' },
+  { value: 'vdev_plus', label: 'VDev+', group: 'Triton+' },
+  { value: 'missfire_plus', label: 'Miss+', group: 'Triton+' },
+  // Deception
+  { value: 'deception_score', label: 'Deception', group: 'Deception' },
+  { value: 'unique_score', label: 'Unique', group: 'Deception' },
+  { value: 'xdeception_score', label: 'xDeception', group: 'Deception' },
 ]
+
+/** Set of metrics that come from pre-computed tables instead of pitches aggregation */
+export const TRITON_PLUS_METRIC_KEYS = new Set(['cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus'])
+export const DECEPTION_METRIC_KEYS = new Set(['deception_score', 'unique_score', 'xdeception_score'])

@@ -16,8 +16,38 @@ const PITCH_TYPES = [
 const YEARS = Array.from({ length: 11 }, (_, i) => 2025 - i) // 2025 down to 2015
 
 // Metrics more relevant for batters vs pitchers
-const BATTER_METRICS = new Set(['ba', 'obp', 'slg', 'ops', 'avg_ev', 'max_ev', 'avg_la', 'avg_dist', 'hard_hit_pct', 'barrel_pct', 'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_bat_speed', 'avg_swing_length', 'k_pct', 'bb_pct', 'chase_pct', 'contact_pct', 'whiff_pct', 'hr_count', 'h'])
-const PITCHER_METRICS = new Set(['avg_velo', 'max_velo', 'avg_spin', 'whiff_pct', 'k_pct', 'bb_pct', 'csw_pct', 'zone_pct', 'chase_pct', 'avg_ev', 'avg_hbreak_in', 'avg_ivb_in', 'avg_ext', 'k_minus_bb', 'swstr_pct', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'avg_xba', 'avg_xwoba', 'ba', 'obp', 'slg'])
+const BATTER_METRICS = new Set([
+  // Batting
+  'ba', 'obp', 'slg', 'ops',
+  // Expected
+  'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'total_re24',
+  // Batted Ball
+  'avg_ev', 'max_ev', 'avg_la', 'avg_dist', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct',
+  // Swing
+  'avg_bat_speed', 'avg_swing_length',
+  // Rates
+  'k_pct', 'bb_pct', 'chase_pct', 'contact_pct', 'whiff_pct', 'z_swing_pct', 'o_contact_pct',
+  // Counting
+  'hr_count', 'h', 'doubles', 'triples', 'bb_count', 'k_count', 'hbp_count', 'pa', 'games',
+])
+const PITCHER_METRICS = new Set([
+  // Stuff
+  'avg_velo', 'max_velo', 'avg_spin', 'avg_hbreak_in', 'avg_ivb_in', 'avg_ext', 'avg_arm_angle',
+  // Rates
+  'whiff_pct', 'k_pct', 'bb_pct', 'k_minus_bb', 'csw_pct', 'swstr_pct', 'zone_pct', 'chase_pct', 'contact_pct', 'z_swing_pct', 'o_contact_pct',
+  // Batting against
+  'ba', 'obp', 'slg', 'ops',
+  // Expected
+  'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'total_re24',
+  // Batted Ball
+  'avg_ev', 'max_ev', 'avg_la', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct',
+  // Counting
+  'pitches', 'pa', 'games', 'k_count', 'bb_count', 'hr_count', 'h', 'usage_pct',
+  // Triton+
+  'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus',
+  // Deception
+  'deception_score', 'unique_score', 'xdeception_score',
+])
 
 interface Props {
   config: TemplateConfig
@@ -32,6 +62,15 @@ export default function TemplateConfigPanel({ config, onUpdateConfig, onRefresh,
 
   const relevantSet = config.playerType === 'batter' ? BATTER_METRICS : PITCHER_METRICS
   const filteredMetrics = SCENE_METRICS.filter(m => relevantSet.has(m.value))
+
+  // Group metrics by their group for optgroup rendering
+  const groupedMetrics: { group: string; metrics: typeof filteredMetrics }[] = []
+  const seen = new Set<string>()
+  for (const m of filteredMetrics) {
+    const g = m.group || 'Other'
+    if (!seen.has(g)) { seen.add(g); groupedMetrics.push({ group: g, metrics: [] }) }
+    groupedMetrics.find(gm => gm.group === g)!.metrics.push(m)
+  }
 
   return (
     <div className="p-3 space-y-4">
@@ -83,8 +122,12 @@ export default function TemplateConfigPanel({ config, onUpdateConfig, onRefresh,
           onChange={e => onUpdateConfig({ primaryStat: e.target.value })}
           className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 focus:border-emerald-600 outline-none"
         >
-          {filteredMetrics.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
+          {groupedMetrics.map(g => (
+            <optgroup key={g.group} label={g.group}>
+              {g.metrics.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>

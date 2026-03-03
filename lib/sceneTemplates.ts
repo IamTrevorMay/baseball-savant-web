@@ -1347,8 +1347,8 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       const imgW = 100
       const imgH = 120
       const rankW = 50
-      const nameW = 220
-      const statW = statCount === 1 ? 300 : statCount === 2 ? 240 : 190
+      const nameW = statCount === 1 ? 320 : statCount === 2 ? 280 : 240
+      const statW = statCount === 1 ? 300 : statCount === 2 ? 220 : 180
       const leftPad = 80
       const statStartX = leftPad + rankW + imgW + 20 + nameW + 20
 

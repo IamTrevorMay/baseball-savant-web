@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { METRICS } from '@/lib/reportMetrics'
+import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS } from '@/lib/reportMetrics'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,9 +20,6 @@ export async function GET(req: NextRequest) {
     if (sp.get('leaderboard') === 'true') {
       const metric = sp.get('metric')
       const playerType = sp.get('playerType') || 'pitcher'
-      if (!metric || !METRICS[metric]) return NextResponse.json({ error: 'Valid metric required' }, { status: 400 })
-
-      const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
       const gameYear = sp.get('gameYear')
       const dateFrom = sp.get('dateFrom')
       const dateTo = sp.get('dateTo')
@@ -31,6 +28,204 @@ export async function GET(req: NextRequest) {
       const sortDir = sp.get('sortDir') === 'asc' ? 'ASC' : 'DESC'
       const secondaryMetric = sp.get('secondaryMetric')
       const tertiaryMetric = sp.get('tertiaryMetric')
+
+      if (!metric) return NextResponse.json({ error: 'metric required' }, { status: 400 })
+
+      // Determine which source each metric needs
+      const allMetrics = [
+        { key: metric, alias: 'primary_value' },
+        ...(secondaryMetric ? [{ key: secondaryMetric, alias: 'secondary_value' }] : []),
+        ...(tertiaryMetric ? [{ key: tertiaryMetric, alias: 'tertiary_value' }] : []),
+      ]
+
+      const isTritonPrimary = TRITON_PLUS_METRIC_KEYS.has(metric)
+      const isDeceptionPrimary = DECEPTION_METRIC_KEYS.has(metric)
+
+      // ── Triton+ leaderboard (primary metric from pitcher_season_command) ──
+      if (isTritonPrimary) {
+        const year = parseInt(gameYear || '2025')
+        const minPitches = parseInt(sp.get('minSample') || '300')
+
+        // Map Triton+ metric keys to column expressions on pivoted data
+        const TRITON_COL: Record<string, string> = {
+          cmd_plus: 'cmd_plus', rpcom_plus: 'rpcom_plus',
+          brink_plus: 'brink_plus', cluster_plus: 'cluster_plus',
+          hdev_plus: 'hdev_plus', vdev_plus: 'vdev_plus', missfire_plus: 'missfire_plus',
+        }
+
+        // Fetch raw per-pitch-type rows and pivot in JS (matches leaderboard-triton pattern)
+        const sql = `
+          SELECT pitcher, player_name, pitch_name, pitches,
+            brink_plus, cluster_plus, hdev_plus, vdev_plus, missfire_plus,
+            cmd_plus, rpcom_plus
+          FROM pitcher_season_command
+          WHERE game_year = ${year}
+        `.trim()
+
+        const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+        // Pivot to one row per pitcher with usage-weighted composites
+        const map = new Map<number, Record<string, any>>()
+        for (const row of (data || [])) {
+          const id = row.pitcher
+          if (!map.has(id)) {
+            map.set(id, { player_id: id, player_name: row.player_name, pitches: 0,
+              _cmd_sum: 0, _cmd_w: 0, _rpcom_sum: 0, _rpcom_w: 0,
+              _brink_sum: 0, _brink_w: 0, _cluster_sum: 0, _cluster_w: 0,
+              _hdev_sum: 0, _hdev_w: 0, _vdev_sum: 0, _vdev_w: 0,
+              _missfire_sum: 0, _missfire_w: 0,
+            })
+          }
+          const p = map.get(id)!
+          const n = Number(row.pitches) || 0
+          p.pitches += n
+          for (const k of ['cmd', 'rpcom', 'brink', 'cluster', 'hdev', 'vdev', 'missfire']) {
+            const col = k === 'cmd' || k === 'rpcom' ? `${k}_plus` : `${k}_plus`
+            if (row[col] != null) { p[`_${k}_sum`] += Number(row[col]) * n; p[`_${k}_w`] += n }
+          }
+        }
+
+        let rows = Array.from(map.values())
+        for (const r of rows) {
+          for (const k of ['cmd', 'rpcom', 'brink', 'cluster', 'hdev', 'vdev', 'missfire']) {
+            r[`${k}_plus`] = r[`_${k}_w`] > 0 ? Math.round((r[`_${k}_sum`] / r[`_${k}_w`]) * 10) / 10 : null
+          }
+        }
+        rows = rows.filter(r => r.pitches >= minPitches)
+
+        // Map primary/secondary/tertiary from Triton+ or fall back to pitches-based
+        // For simplicity, secondary/tertiary that need pitches table are fetched separately
+        const jsSortDir = sortDir === 'ASC' ? 1 : -1
+        const primaryCol = TRITON_COL[metric] || metric
+        rows.sort((a, b) => {
+          const va = a[primaryCol], vb = b[primaryCol]
+          if (va == null && vb == null) return 0
+          if (va == null) return 1
+          if (vb == null) return -1
+          return (va - vb) * jsSortDir
+        })
+        rows = rows.slice(0, limit)
+
+        // Build result with aliases
+        const result = rows.map(r => {
+          const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name }
+          for (const m of allMetrics) {
+            if (TRITON_COL[m.key]) out[m.alias] = r[TRITON_COL[m.key]] ?? null
+            else out[m.alias] = null // secondary/tertiary from different source not available here
+          }
+          return out
+        })
+
+        // If secondary/tertiary are pitches-based metrics, fetch them for these player IDs
+        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
+        if (pitchesMetrics.length > 0 && result.length > 0) {
+          const ids = result.map(r => r.player_id)
+          const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
+          const where2 = [`p.${groupCol} IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
+          if (gameYear) where2.push(`game_year = ${parseInt(gameYear)}`)
+          if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+          const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
+          const sql2 = `SELECT p.${groupCol} as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.${groupCol}`.trim()
+          const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+          if (d2) {
+            const lookup = new Map((d2 as any[]).map(r => [r.player_id, r]))
+            for (const r of result) {
+              const extra = lookup.get(r.player_id)
+              if (extra) { for (const m of pitchesMetrics) r[m.alias] = extra[m.alias] ?? null }
+            }
+          }
+        }
+
+        return NextResponse.json({ leaderboard: result })
+      }
+
+      // ── Deception leaderboard (primary metric from pitcher_season_deception) ──
+      if (isDeceptionPrimary) {
+        const year = parseInt(gameYear || '2025')
+        const minPitches = parseInt(sp.get('minSample') || '300')
+
+        const sql = `
+          SELECT pitcher, player_name, pitch_type, pitches,
+            unique_score, deception_score
+          FROM pitcher_season_deception
+          WHERE game_year = ${year}
+        `.trim()
+
+        const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+        // Pivot to one row per pitcher
+        const map = new Map<number, Record<string, any>>()
+        for (const row of (data || [])) {
+          const id = row.pitcher
+          if (!map.has(id)) {
+            map.set(id, { player_id: id, player_name: row.player_name, pitches: 0,
+              _uniq_sum: 0, _uniq_w: 0, _dec_sum: 0, _dec_w: 0 })
+          }
+          const p = map.get(id)!
+          const n = Number(row.pitches) || 0
+          p.pitches += n
+          if (row.unique_score != null) { p._uniq_sum += Number(row.unique_score) * n; p._uniq_w += n }
+          if (row.deception_score != null) { p._dec_sum += Number(row.deception_score) * n; p._dec_w += n }
+        }
+
+        let rows = Array.from(map.values())
+        for (const r of rows) {
+          r.unique_score = r._uniq_w > 0 ? Math.round((r._uniq_sum / r._uniq_w) * 100) / 100 : null
+          r.deception_score = r._dec_w > 0 ? Math.round((r._dec_sum / r._dec_w) * 100) / 100 : null
+          // xDeception not stored per-row in simple form, use deception_score as fallback
+          r.xdeception_score = r.deception_score
+        }
+        rows = rows.filter(r => r.pitches >= minPitches)
+
+        const DEC_COL: Record<string, string> = { deception_score: 'deception_score', unique_score: 'unique_score', xdeception_score: 'xdeception_score' }
+        const primaryCol = DEC_COL[metric] || metric
+        const jsSortDir = sortDir === 'ASC' ? 1 : -1
+        rows.sort((a, b) => {
+          const va = a[primaryCol], vb = b[primaryCol]
+          if (va == null && vb == null) return 0
+          if (va == null) return 1
+          if (vb == null) return -1
+          return (va - vb) * jsSortDir
+        })
+        rows = rows.slice(0, limit)
+
+        const result = rows.map(r => {
+          const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name }
+          for (const m of allMetrics) {
+            if (DEC_COL[m.key]) out[m.alias] = r[DEC_COL[m.key]] ?? null
+            else out[m.alias] = null
+          }
+          return out
+        })
+
+        // Backfill pitches-based secondary/tertiary
+        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
+        if (pitchesMetrics.length > 0 && result.length > 0) {
+          const ids = result.map(r => r.player_id)
+          const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
+          if (gameYear) where2.push(`game_year = ${parseInt(gameYear)}`)
+          if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+          const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
+          const sql2 = `SELECT p.pitcher as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.pitcher`.trim()
+          const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+          if (d2) {
+            const lookup = new Map((d2 as any[]).map(r => [r.player_id, r]))
+            for (const r of result) {
+              const extra = lookup.get(r.player_id)
+              if (extra) { for (const m of pitchesMetrics) r[m.alias] = extra[m.alias] ?? null }
+            }
+          }
+        }
+
+        return NextResponse.json({ leaderboard: result })
+      }
+
+      // ── Standard pitches-table leaderboard ────────────────────────────────
+      if (!METRICS[metric]) return NextResponse.json({ error: 'Valid metric required' }, { status: 400 })
+
+      const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
       const defaultMin = playerType === 'batter' ? 150 : 300
       const minSample = parseInt(sp.get('minSample') || String(defaultMin))
 
