@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { METRICS } from '@/lib/reportMetrics'
 
 // ── Allowed Group-By Columns ─────────────────────────────────────────────────
