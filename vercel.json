@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/abs",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/pitches",
+      "schedule": "0 9 * * *"
     }
   ]
 }

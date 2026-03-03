@@ -49,6 +49,8 @@ const PITCHER_METRICS = new Set([
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus',
   // Deception
   'deception_score', 'unique_score', 'xdeception_score',
+  // ERA Estimators
+  'fip', 'xera',
 ])
 
 interface Props {

@@ -12,6 +12,13 @@ const CONTRACTED = `(ABS(p.plate_x) <= 0.747 AND p.plate_z >= p.sz_bot + 0.083 A
 const NOT_SHADOW = `(NOT (${EXPANDED} AND NOT ${CONTRACTED}))`
 const BASE_WHERE = `p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')`
 
+const VALID_GAME_TYPES = ['R', 'S', 'P', 'E', 'W', 'D', 'L', 'F']
+
+function gameTypeFilter(gameType: string | null): string {
+  if (!gameType || !VALID_GAME_TYPES.includes(gameType)) return ''
+  return `AND p.game_type = '${gameType}'`
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { action } = body
@@ -20,6 +27,7 @@ export async function POST(req: NextRequest) {
     const season = body.season ? Number(body.season) : null
     const seasonFilter = season ? `AND u.game_date >= '${season}-01-01' AND u.game_date <= '${season}-12-31'` : ''
     const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
+    const gtFilter = gameTypeFilter(body.gameType || null)
 
     // When season is specified, filter pitches first by game_year (indexed) for performance
     const { data, error } = await supabase.rpc('run_query', {
@@ -33,7 +41,7 @@ export async function POST(req: NextRequest) {
             COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
             COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
           FROM game_umpires u
-          JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${season}
+          JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${season} ${gtFilter}
           WHERE ${BASE_WHERE}
           GROUP BY u.hp_umpire
           ORDER BY games DESC
@@ -47,7 +55,7 @@ export async function POST(req: NextRequest) {
             COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
             COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
           FROM game_umpires u
-          JOIN pitches p ON p.game_pk = u.game_pk
+          JOIN pitches p ON p.game_pk = u.game_pk ${gtFilter}
           WHERE ${BASE_WHERE}
           GROUP BY u.hp_umpire
           ORDER BY games DESC
@@ -79,7 +87,8 @@ export async function POST(req: NextRequest) {
     const season = body.season ? Number(body.season) : null
     const seasonFilter = season ? `AND u.game_date >= '${season}-01-01' AND u.game_date <= '${season}-12-31'` : ''
     const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
-    const umpWhere = `u.hp_umpire = '${umpireName}' AND ${BASE_WHERE} ${seasonFilter} ${pitchSeasonFilter}`
+    const gtFilter = gameTypeFilter(body.gameType || null)
+    const umpWhere = `u.hp_umpire = '${umpireName}' AND ${BASE_WHERE} ${seasonFilter} ${pitchSeasonFilter} ${gtFilter}`
 
     // 1. Summary stats
     const summarySQL = `

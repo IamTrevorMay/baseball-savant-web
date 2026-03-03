@@ -45,11 +45,12 @@ export default function UmpirePage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [seasons, setSeasons] = useState<number[]>([])
   const [selectedSeason, setSelectedSeason] = useState<number | null>(new Date().getFullYear())
+  const [gameType, setGameType] = useState<string | null>(null)
   const router = useRouter()
   const debounceRef = useRef<NodeJS.Timeout>(null)
 
   useEffect(() => { loadSeasons() }, [])
-  useEffect(() => { loadLeaderboard() }, [selectedSeason])
+  useEffect(() => { loadLeaderboard() }, [selectedSeason, gameType])
 
   async function loadSeasons() {
     try {
@@ -71,7 +72,7 @@ export default function UmpirePage() {
       const res = await fetch('/api/umpire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'leaderboard', season: selectedSeason }),
+        body: JSON.stringify({ action: 'leaderboard', season: selectedSeason, gameType }),
       })
       if (!res.ok) {
         console.error('Leaderboard query error:', await res.text())
@@ -209,6 +210,20 @@ export default function UmpirePage() {
             Top 50 Umpires by Games Called
           </h2>
           <div className="flex items-center gap-3">
+            {/* Game type chips */}
+            <div className="flex gap-1 text-[11px]">
+              {([
+                { value: null, label: 'All' },
+                { value: 'S', label: 'Spring' },
+                { value: 'R', label: 'Regular' },
+                { value: 'P', label: 'Postseason' },
+              ] as const).map(gt => (
+                <button key={gt.label} onClick={() => setGameType(gt.value)}
+                  className={`px-2 py-1 rounded border transition ${gameType === gt.value ? 'border-emerald-600 text-emerald-400 bg-emerald-950/30' : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
+                  {gt.label}
+                </button>
+              ))}
+            </div>
             {/* Season selector */}
             {seasons.length > 0 && (
               <select value={selectedSeason ?? ''} onChange={e => setSelectedSeason(e.target.value ? Number(e.target.value) : null)}

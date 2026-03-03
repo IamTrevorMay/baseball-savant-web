@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS } from '@/lib/reportMetrics'
+import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS } from '@/lib/reportMetrics'
+import { SEASON_CONSTANTS } from '@/lib/constants-data'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -244,6 +245,106 @@ export async function GET(req: NextRequest) {
           const ids = result.map(r => r.player_id)
           const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
           if (gameYear) where2.push(`game_year = ${parseInt(gameYear)}`)
+          if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+          const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
+          const sql2 = `SELECT p.pitcher as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.pitcher`.trim()
+          const { data: d2 } = await supabase.rpc('run_query', { query_text: sql2 })
+          if (d2) {
+            const lookup = new Map((d2 as any[]).map(r => [r.player_id, r]))
+            for (const r of result) {
+              const extra = lookup.get(r.player_id)
+              if (extra) { for (const m of pitchesMetrics) r[m.alias] = extra[m.alias] ?? null }
+            }
+          }
+        }
+
+        return NextResponse.json({ leaderboard: result })
+      }
+
+      // ── ERA Estimators leaderboard (FIP / xERA — need year constants) ────
+      const isERAPrimary = ERA_METRIC_KEYS.has(metric)
+      if (isERAPrimary) {
+        const year = parseInt(gameYear || '2025')
+        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[2025]
+        const minPitches = parseInt(sp.get('minSample') || '300')
+
+        const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
+        if (gameYear) where.push(`game_year = ${year}`)
+        if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+        if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
+        if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+
+        const sql = `
+          SELECT
+            p.pitcher as player_id,
+            pl.name as player_name,
+            COUNT(*) as pitches,
+            COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
+            COUNT(*) FILTER (WHERE events = 'walk') as bb,
+            COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
+            COUNT(*) FILTER (WHERE events = 'home_run') as hr,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN (
+              'single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error'
+            ) THEN game_pk::bigint * 10000 + at_bat_number END)::numeric / 3.0 as ip,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+            AVG(estimated_woba_using_speedangle) as xwoba
+          FROM pitches p
+          JOIN players pl ON pl.id = p.pitcher
+          WHERE ${where.join(' AND ')}
+          GROUP BY p.pitcher, pl.name
+          HAVING COUNT(*) >= ${minPitches}
+        `.trim()
+
+        const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+        // Compute FIP and xERA in JS using year-specific constants
+        let rows = ((data || []) as any[]).map(r => {
+          const ip = Number(r.ip) || 0
+          const pa = Number(r.pa) || 0
+          const k = Number(r.k) || 0
+          const bb = Number(r.bb) || 0
+          const hbp = Number(r.hbp) || 0
+          const hr = Number(r.hr) || 0
+          const xwoba = r.xwoba != null ? Number(r.xwoba) : null
+
+          const fip = ip > 0
+            ? Math.round(((13 * hr + 3 * (bb + hbp) - 2 * k) / ip + constants.cfip) * 100) / 100
+            : null
+          const xera = ip > 0 && pa > 0 && xwoba != null
+            ? Math.round((((xwoba - constants.woba) / constants.woba_scale) * (pa / ip) * 9 + constants.lg_era) * 100) / 100
+            : null
+
+          return { player_id: r.player_id, player_name: r.player_name, fip, xera }
+        })
+
+        const ERA_COL: Record<string, string> = { fip: 'fip', xera: 'xera' }
+        const primaryCol = ERA_COL[metric] || metric
+        const jsSortDir = sortDir === 'ASC' ? 1 : -1
+        rows.sort((a, b) => {
+          const va = (a as any)[primaryCol], vb = (b as any)[primaryCol]
+          if (va == null && vb == null) return 0
+          if (va == null) return 1
+          if (vb == null) return -1
+          return (va - vb) * jsSortDir
+        })
+        rows = rows.slice(0, limit)
+
+        const result = rows.map(r => {
+          const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name }
+          for (const m of allMetrics) {
+            if (ERA_COL[m.key]) out[m.alias] = (r as any)[ERA_COL[m.key]] ?? null
+            else out[m.alias] = null
+          }
+          return out
+        })
+
+        // Backfill pitches-based secondary/tertiary
+        const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !ERA_METRIC_KEYS.has(m.key) && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
+        if (pitchesMetrics.length > 0 && result.length > 0) {
+          const ids = result.map(r => r.player_id)
+          const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
+          if (gameYear) where2.push(`game_year = ${year}`)
           if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
           const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
           const sql2 = `SELECT p.pitcher as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.pitcher`.trim()

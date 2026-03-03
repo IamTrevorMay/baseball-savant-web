@@ -75,13 +75,14 @@ export default function UmpireScorecardPage() {
   const [loading, setLoading] = useState(true)
   const [seasons, setSeasons] = useState<number[]>([])
   const [selectedSeason, setSelectedSeason] = useState<number | null>(new Date().getFullYear())
+  const [gameType, setGameType] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [showSearch, setShowSearch] = useState(false)
   const [gameSortField, setGameSortField] = useState<GameSortField>('game_date')
   const [gameSortDir, setGameSortDir] = useState<'asc' | 'desc'>('desc')
 
-  useEffect(() => { loadData() }, [umpireName, selectedSeason])
+  useEffect(() => { loadData() }, [umpireName, selectedSeason, gameType])
 
   async function loadData() {
     setLoading(true)
@@ -89,7 +90,7 @@ export default function UmpireScorecardPage() {
       const res = await fetch('/api/umpire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'scorecard', name: umpireName, season: selectedSeason }),
+        body: JSON.stringify({ action: 'scorecard', name: umpireName, season: selectedSeason, gameType }),
       })
       if (!res.ok) {
         console.error('Scorecard error:', await res.text())
@@ -248,6 +249,20 @@ export default function UmpireScorecardPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {/* Game type chips */}
+            <div className="flex gap-1 text-[11px]">
+              {([
+                { value: null, label: 'All' },
+                { value: 'S', label: 'Spring' },
+                { value: 'R', label: 'Regular' },
+                { value: 'P', label: 'Postseason' },
+              ] as const).map(gt => (
+                <button key={gt.label} onClick={() => setGameType(gt.value)}
+                  className={`px-2 py-1 rounded border transition ${gameType === gt.value ? 'border-emerald-600 text-emerald-400 bg-emerald-950/30' : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
+                  {gt.label}
+                </button>
+              ))}
+            </div>
             {/* Season selector */}
             {seasons.length > 0 && (
               <select value={selectedSeason ?? ''} onChange={e => setSelectedSeason(e.target.value ? Number(e.target.value) : null)}
