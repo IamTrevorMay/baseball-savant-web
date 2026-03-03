@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { PITCH_NAME_TO_ABBREV } from '@/lib/constants-data'
 
 /**
  * Query pre-computed Triton command metrics for the leaderboard.
@@ -28,20 +29,6 @@ export async function POST(req: NextRequest) {
     const safeLimit = Math.min(Math.max(parseInt(String(limit)), 1), 1000)
     const safeOffset = Math.max(parseInt(String(offset)) || 0, 0)
     const safeSortDir = sortDir === 'ASC' ? 1 : -1
-
-    // Map full pitch names → abbreviations used in column keys
-    const PITCH_NAME_TO_ABBREV: Record<string, string> = {
-      '4-Seam Fastball': 'ff',
-      'Sinker': 'si',
-      'Cutter': 'fc',
-      'Slider': 'sl',
-      'Sweeper': 'sw',
-      'Curveball': 'cu',
-      'Changeup': 'ch',
-      'Split-Finger': 'fs',
-      'Knuckle Curve': 'kc',
-      'Slurve': 'sv',
-    }
 
     // Fetch all rows (one per pitcher × pitch type) for the year
     const sql = `

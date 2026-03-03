@@ -59,3 +59,22 @@ export const PARK_FACTORS: Record<string, {
   SD:  { basic: 96, pf_hr: 101, pf_so: 102, pf_bb: 100 },
   SF:  { basic: 97, pf_hr: 91, pf_so: 98, pf_bb: 97 },
 }
+
+// Latest year in SEASON_CONSTANTS (for fallback instead of hardcoding 2025)
+export const LATEST_SEASON_YEAR = Math.max(...Object.keys(SEASON_CONSTANTS).map(Number))
+
+// Zone boundary (half plate width + ball radius, in feet)
+export const ZONE_HALF_WIDTH = 0.83
+
+// Pitch name → lowercase abbreviation (for leaderboard column keys)
+export const PITCH_NAME_TO_ABBREV: Record<string, string> = {
+  '4-Seam Fastball': 'ff', 'Sinker': 'si', 'Cutter': 'fc', 'Slider': 'sl',
+  'Sweeper': 'sw', 'Curveball': 'cu', 'Changeup': 'ch', 'Split-Finger': 'fs',
+  'Knuckle Curve': 'kc', 'Slurve': 'sv',
+}
+
+// Pitch type code → lowercase abbreviation
+export const PITCH_TYPE_TO_ABBREV: Record<string, string> = {
+  FF: 'ff', SI: 'si', FC: 'fc', SL: 'sl', SW: 'sw', CU: 'cu',
+  CH: 'ch', FS: 'fs', KC: 'kc', SV: 'sv', ST: 'st',
+}

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { ZONE_HALF_WIDTH } from '@/lib/constants-data'
 
-// Zone boundary constants (feet)
-// Hard zone edge = 0.83 ft (half plate + ball radius)
-// Shadow buffer = 0.083 ft (1 inch)
-const IN_ZONE = `(ABS(p.plate_x) <= 0.83 AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top)`
+// Zone boundary constants (feet) derived from ZONE_HALF_WIDTH (half plate + ball radius)
+const SHADOW = 0.083 // 1 inch buffer
+const IN_ZONE = `(ABS(p.plate_x) <= ${ZONE_HALF_WIDTH} AND p.plate_z >= p.sz_bot AND p.plate_z <= p.sz_top)`
 const CORRECT = `((${IN_ZONE} AND p.type = 'S') OR (NOT ${IN_ZONE} AND p.type = 'B'))`
 // Shadow zone: within 1" of zone edge (in expanded but not contracted)
-const EXPANDED = `(ABS(p.plate_x) <= 0.913 AND p.plate_z >= p.sz_bot - 0.083 AND p.plate_z <= p.sz_top + 0.083)`
-const CONTRACTED = `(ABS(p.plate_x) <= 0.747 AND p.plate_z >= p.sz_bot + 0.083 AND p.plate_z <= p.sz_top - 0.083)`
+const EXPANDED = `(ABS(p.plate_x) <= ${ZONE_HALF_WIDTH + SHADOW} AND p.plate_z >= p.sz_bot - ${SHADOW} AND p.plate_z <= p.sz_top + ${SHADOW})`
+const CONTRACTED = `(ABS(p.plate_x) <= ${ZONE_HALF_WIDTH - SHADOW} AND p.plate_z >= p.sz_bot + ${SHADOW} AND p.plate_z <= p.sz_top - ${SHADOW})`
 const NOT_SHADOW = `(NOT (${EXPANDED} AND NOT ${CONTRACTED}))`
 const BASE_WHERE = `p.type IN ('B', 'S') AND p.plate_x IS NOT NULL AND p.sz_top IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')`
 
@@ -25,41 +25,25 @@ export async function POST(req: NextRequest) {
 
   if (action === 'leaderboard') {
     const season = body.season ? Number(body.season) : null
-    const seasonFilter = season ? `AND u.game_date >= '${season}-01-01' AND u.game_date <= '${season}-12-31'` : ''
-    const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
     const gtFilter = gameTypeFilter(body.gameType || null)
 
     // When season is specified, filter pitches first by game_year (indexed) for performance
+    const yearJoin = season ? `AND p.game_year = ${season}` : ''
     const { data, error } = await supabase.rpc('run_query', {
-      query_text: season
-        ? `SELECT u.hp_umpire,
-            COUNT(DISTINCT u.game_pk) as games,
-            MIN(u.game_date)::text as first_date,
-            MAX(u.game_date)::text as last_date,
-            COUNT(*) as called_pitches,
-            COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
-            COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
-            COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
-          FROM game_umpires u
-          JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${season} ${gtFilter}
-          WHERE ${BASE_WHERE}
-          GROUP BY u.hp_umpire
-          ORDER BY games DESC
-          LIMIT 50`
-        : `SELECT u.hp_umpire,
-            COUNT(DISTINCT u.game_pk) as games,
-            MIN(u.game_date)::text as first_date,
-            MAX(u.game_date)::text as last_date,
-            COUNT(*) as called_pitches,
-            COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
-            COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
-            COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
-          FROM game_umpires u
-          JOIN pitches p ON p.game_pk = u.game_pk ${gtFilter}
-          WHERE ${BASE_WHERE}
-          GROUP BY u.hp_umpire
-          ORDER BY games DESC
-          LIMIT 50`
+      query_text: `SELECT u.hp_umpire,
+          COUNT(DISTINCT u.game_pk) as games,
+          MIN(u.game_date)::text as first_date,
+          MAX(u.game_date)::text as last_date,
+          COUNT(*) as called_pitches,
+          COUNT(*) FILTER (WHERE ${CORRECT}) as correct_calls,
+          COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as real_called_pitches,
+          COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND ${CORRECT}) as real_correct_calls
+        FROM game_umpires u
+        JOIN pitches p ON p.game_pk = u.game_pk ${yearJoin} ${gtFilter}
+        WHERE ${BASE_WHERE}
+        GROUP BY u.hp_umpire
+        ORDER BY games DESC
+        LIMIT 50`
     })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)

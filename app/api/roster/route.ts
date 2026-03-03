@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster/active?season=2025`,
+      `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster/active?season=${new Date().getFullYear()}`,
       { next: { revalidate: 3600 } }
     )
     const data = await res.json()

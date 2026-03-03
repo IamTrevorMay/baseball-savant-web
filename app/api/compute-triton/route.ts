@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import {
   getLeagueBaseline,
   computePlus,
   computeCommandPlus,
   computeRPComPlus,
 } from '@/lib/leagueStats'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { ZONE_HALF_WIDTH } from '@/lib/constants-data'
 
 /**
  * Batch compute Triton command metrics and store in pitcher_season_command.
@@ -92,8 +88,8 @@ export async function POST(req: NextRequest) {
 
         for (const p of pitches) {
           // Brink
-          const dLeft = p.plate_x + 0.83
-          const dRight = 0.83 - p.plate_x
+          const dLeft = p.plate_x + ZONE_HALF_WIDTH
+          const dRight = ZONE_HALF_WIDTH - p.plate_x
           const dBot = p.plate_z - p.sz_bot
           const dTop = p.sz_top - p.plate_z
           const brink = Math.min(dLeft, dRight, dBot, dTop) * 12

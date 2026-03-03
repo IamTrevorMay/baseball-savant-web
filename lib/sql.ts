@@ -1,7 +1,8 @@
 /**
- * Shared SQL fragments and pure computation helpers for scene-stats and related routes.
- * No Supabase dependency — just string constants and arithmetic.
+ * Shared SQL fragments, computation helpers, and backfill utilities for scene-stats
+ * and related routes.
  */
+import { METRICS } from '@/lib/reportMetrics'
 
 export const TRITON_COLUMNS = [
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus',
@@ -85,4 +86,78 @@ export function backfillFromLookup(
       for (const m of metrics) r[m.alias] = extra[m.alias] ?? null
     }
   }
+}
+
+// ── Leaderboard backfill helpers ─────────────────────────────────────────────
+// Each runs a single query and merges results into `result` rows.
+// Designed to be called inside Promise.all for parallelism.
+
+/** Backfill pitches-table metrics (whiff%, avg_velo, etc.) into result rows. */
+export async function backfillPitchesMetrics(
+  q: (sql: string) => PromiseLike<{ data: any; error: any }>,
+  result: Record<string, any>[],
+  metrics: { key: string; alias: string }[],
+  groupCol: string,
+  extraWhere: string[]
+): Promise<void> {
+  if (metrics.length === 0 || result.length === 0) return
+  try {
+    const ids = result.map(r => r.player_id)
+    const where = [`p.${groupCol} IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')", ...extraWhere]
+    const selects = metrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
+    const sql = `SELECT p.${groupCol} as player_id, ${selects.join(', ')} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.${groupCol}`
+    const { data } = await q(sql)
+    if (data) backfillFromLookup(result, data as any[], metrics)
+  } catch (e) { console.error('Pitches backfill failed:', e) }
+}
+
+/** Backfill Triton command metrics from pitcher_season_command into result rows. */
+export async function backfillTritonMetrics(
+  q: (sql: string) => PromiseLike<{ data: any; error: any }>,
+  result: Record<string, any>[],
+  metrics: { key: string; alias: string }[],
+  year: number
+): Promise<void> {
+  if (metrics.length === 0 || result.length === 0) return
+  try {
+    const ids = result.map(r => r.player_id)
+    const sql = `SELECT pitcher, pitches, ${TRITON_COLUMNS.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher IN (${ids.join(',')})`
+    const { data } = await q(sql)
+    if (data) {
+      const tMap = pivotTritonRows(data as any[])
+      for (const r of result) {
+        const t = tMap.get(r.player_id); if (!t) continue
+        for (const m of metrics) {
+          if (TRITON_COL[m.key]) r[m.alias] = t[TRITON_COL[m.key]] ?? null
+        }
+      }
+    }
+  } catch (e) { console.error('Triton backfill failed:', e) }
+}
+
+/** Backfill FIP/xERA metrics computed from pitches ERA components into result rows. */
+export async function backfillEraMetrics(
+  q: (sql: string) => PromiseLike<{ data: any; error: any }>,
+  result: Record<string, any>[],
+  metrics: { key: string; alias: string }[],
+  constants: { cfip: number; woba: number; woba_scale: number; lg_era: number },
+  extraWhere: string[]
+): Promise<void> {
+  if (metrics.length === 0 || result.length === 0) return
+  try {
+    const ids = result.map(r => r.player_id)
+    const where = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO','IN')", ...extraWhere]
+    const sql = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.pitcher`
+    const { data } = await q(sql)
+    if (data) {
+      const lookup = new Map((data as any[]).map((r: any) => [r.player_id, r]))
+      for (const r of result) {
+        const s = lookup.get(r.player_id); if (!s) continue
+        const fipVal = computeFIP(s, constants)
+        const xeraVal = computeXERA(s, constants)
+        const ERA_VALS: Record<string, any> = { era: fipVal, fip: fipVal, xera: xeraVal }
+        for (const m of metrics) r[m.alias] = ERA_VALS[m.key] ?? null
+      }
+    }
+  } catch (e) { console.error('ERA backfill failed:', e) }
 }

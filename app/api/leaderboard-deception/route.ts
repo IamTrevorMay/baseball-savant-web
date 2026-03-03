@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { computeXDeceptionScore } from '@/lib/leagueStats'
-
-const FASTBALL_TYPES = new Set(['FF', 'SI', 'FC'])
-
-const PITCH_TYPE_TO_ABBREV: Record<string, string> = {
-  FF: 'ff', SI: 'si', FC: 'fc', SL: 'sl', SW: 'sw', CU: 'cu',
-  CH: 'ch', FS: 'fs', KC: 'kc', SV: 'sv', ST: 'st',
-}
+import { computeXDeceptionScore, isFastball } from '@/lib/leagueStats'
+import { PITCH_TYPE_TO_ABBREV } from '@/lib/constants-data'
 
 /**
  * Query pre-computed Deception metrics for the leaderboard.
@@ -83,7 +77,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Accumulate z-scores for xDeception
-      const isFB = FASTBALL_TYPES.has(row.pitch_type)
+      const isFB = isFastball(row.pitch_type)
       const bucket = isFB ? p._fb_z : p._os_z
       if (row.z_vaa != null && row.z_haa != null && row.z_vb != null && row.z_hb != null) {
         bucket.vaa += Number(row.z_vaa) * ptPitches

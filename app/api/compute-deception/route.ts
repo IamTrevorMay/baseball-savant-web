@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const FASTBALL_TYPES = new Set(['FF', 'SI', 'FC'])
-
-// Unique weights
-const FB_UNIQUE_W = { vaa: 0.25, vb: 0.15, hb: 0.20, haa: 0.20, ext: 0.20 }
-const OS_UNIQUE_W = { vaa: 0.30, vb: 0.20, hb: 0.25, haa: 0.25 }
-
-// Deception weights (signed z-scores with directional value)
-const FB_DECEPTION_W = { vaa: -0.25, ext: 0.35, vb: 0.20, hb: -0.10, haa: -0.10 }
-const OS_DECEPTION_W = { vaa: 0.35, ext: 0.25, vb: 0.20, hb: -0.10, haa: 0.10 }
-
-// xDeception regression coefficients
-const XD = {
-  fb_vaa: -1.2219, fb_haa: -0.2740, fb_vb: 0.3830, fb_hb: -0.2684, fb_ext: -0.8779,
-  os_vaa: 1.1265, os_haa: 0.3900, os_vb: 0.0947, os_hb: -0.2621, os_ext: 1.2845,
-}
+import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { isFastball, computeUniqueScore, computeDeceptionScore, ZScores } from '@/lib/leagueStats'
 
 /**
  * Batch compute Deception metrics and store in pitcher_season_deception.
@@ -111,48 +91,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Skip if any required z-score is missing
-      const isFB = FASTBALL_TYPES.has(row.pitch_type)
-      const requiredComps = isFB
-        ? ['vaa', 'haa', 'vb', 'hb', 'ext']
-        : ['vaa', 'haa', 'vb', 'hb']
-      const hasAllZ = requiredComps.every(c => zScores[c] != null)
-      if (!hasAllZ) continue
-
-      // Unique score (absolute z-scores)
-      let uniqueScore: number
-      if (isFB) {
-        uniqueScore =
-          FB_UNIQUE_W.vaa * Math.abs(zScores.vaa!) +
-          FB_UNIQUE_W.vb * Math.abs(zScores.vb!) +
-          FB_UNIQUE_W.hb * Math.abs(zScores.hb!) +
-          FB_UNIQUE_W.haa * Math.abs(zScores.haa!) +
-          FB_UNIQUE_W.ext * Math.abs(zScores.ext!)
-      } else {
-        uniqueScore =
-          OS_UNIQUE_W.vaa * Math.abs(zScores.vaa!) +
-          OS_UNIQUE_W.vb * Math.abs(zScores.vb!) +
-          OS_UNIQUE_W.hb * Math.abs(zScores.hb!) +
-          OS_UNIQUE_W.haa * Math.abs(zScores.haa!)
+      const isFB = isFastball(row.pitch_type)
+      const zs: ZScores = {
+        vaa: zScores.vaa as number | null,
+        haa: zScores.haa as number | null,
+        vb: zScores.vb as number | null,
+        hb: zScores.hb as number | null,
+        ext: zScores.ext as number | null,
       }
-
-      // Deception score (signed z-scores with directional weights)
-      let deceptionScore: number
-      if (isFB) {
-        deceptionScore =
-          FB_DECEPTION_W.vaa * zScores.vaa! +
-          FB_DECEPTION_W.ext * zScores.ext! +
-          FB_DECEPTION_W.vb * zScores.vb! +
-          FB_DECEPTION_W.hb * zScores.hb! +
-          FB_DECEPTION_W.haa * zScores.haa!
-      } else {
-        deceptionScore =
-          OS_DECEPTION_W.vaa * zScores.vaa! +
-          (zScores.ext != null ? OS_DECEPTION_W.ext * zScores.ext! : 0) +
-          OS_DECEPTION_W.vb * zScores.vb! +
-          OS_DECEPTION_W.hb * zScores.hb! +
-          OS_DECEPTION_W.haa * zScores.haa!
-      }
+      const uniqueScore = computeUniqueScore(zs, isFB)
+      const deceptionScore = computeDeceptionScore(zs, isFB)
+      if (uniqueScore == null || deceptionScore == null) continue
 
       upsertRows.push({
         pitcher: Number(row.pitcher),

@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS } from '@/lib/reportMetrics'
-import { SEASON_CONSTANTS } from '@/lib/constants-data'
-import { computeXDeceptionScore } from '@/lib/leagueStats'
+import { SEASON_CONSTANTS, LATEST_SEASON_YEAR } from '@/lib/constants-data'
+import { computeXDeceptionScore, isFastball } from '@/lib/leagueStats'
 import {
   TRITON_COLUMNS, TRITON_COL,
   ERA_COMPONENTS_SQL,
   computeFIP, computeXERA,
   pivotTritonRows, backfillFromLookup,
+  backfillPitchesMetrics, backfillTritonMetrics, backfillEraMetrics,
 } from '@/lib/sql'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -92,49 +88,22 @@ export async function GET(req: NextRequest) {
         // Parallel backfills for secondary/tertiary from other sources
         const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key) && !ERA_METRIC_KEYS.has(m.key))
         const eraBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && ERA_METRIC_KEYS.has(m.key))
+        const extraWhere: string[] = []
+        if (gameYear) extraWhere.push(`game_year = ${parseInt(gameYear)}`)
+        if (pitchType) extraWhere.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+        const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
+        const yr = parseInt(gameYear || '2025')
 
         await Promise.all([
-          pitchesMetrics.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map(r => r.player_id)
-              const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
-              const where2 = [`p.${groupCol} IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
-              if (gameYear) where2.push(`game_year = ${parseInt(gameYear)}`)
-              if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
-              const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
-              const sql2 = `SELECT p.${groupCol} as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.${groupCol}`
-              const { data: d2 } = await q(sql2)
-              if (d2) backfillFromLookup(result, d2 as any[], pitchesMetrics)
-            } catch {}
-          })() : null,
-          eraBackfill.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map(r => r.player_id)
-              const yr = parseInt(gameYear || '2025')
-              const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[2025]
-              const sql2 = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${yr}` : ''} GROUP BY p.pitcher`
-              const { data: d2 } = await q(sql2)
-              if (d2) {
-                const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
-                for (const r of result) {
-                  const s = lookup.get(r.player_id)
-                  if (!s) continue
-                  const fipVal = computeFIP(s, constants)
-                  const xeraVal = computeXERA(s, constants)
-                  const ERA_VALS: Record<string, any> = { era: fipVal, fip: fipVal, xera: xeraVal }
-                  for (const m of eraBackfill) r[m.alias] = ERA_VALS[m.key] ?? null
-                }
-              }
-            } catch {}
-          })() : null,
-        ].filter(Boolean))
+          backfillPitchesMetrics(q, result, pitchesMetrics, groupCol, extraWhere),
+          backfillEraMetrics(q, result, eraBackfill, SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], gameYear ? [`game_year = ${yr}`] : []),
+        ])
 
         return NextResponse.json({ leaderboard: result })
       }
 
       // ── Deception leaderboard (primary metric from pitcher_season_deception) ──
       if (isDeceptionPrimary) {
-        const FASTBALL_TYPES = new Set(['FF', 'SI', 'FC'])
         const year = parseInt(gameYear || '2025')
         const minPitches = parseInt(sp.get('minSample') || '300')
 
@@ -167,7 +136,7 @@ export async function GET(req: NextRequest) {
           if (row.deception_score != null) { p._dec_sum += Number(row.deception_score) * n; p._dec_w += n }
 
           // Accumulate z-scores for xDeception
-          const isFB = FASTBALL_TYPES.has(row.pitch_type)
+          const isFB = isFastball(row.pitch_type)
           const bucket = isFB ? p._fb_z : p._os_z
           if (row.z_vaa != null && row.z_haa != null && row.z_vb != null && row.z_hb != null) {
             bucket.vaa += Number(row.z_vaa) * n
@@ -267,53 +236,13 @@ export async function GET(req: NextRequest) {
         const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !ERA_METRIC_KEYS.has(m.key) && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
         const tritonBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && TRITON_PLUS_METRIC_KEYS.has(m.key))
         const eraBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && (m.key === 'fip' || m.key === 'xera'))
+        const extraWhere3 = [`game_year = ${year}`, ...(pitchType ? [`pitch_type = '${pitchType.replace(/'/g, "''")}'`] : [])]
 
         await Promise.all([
-          pitchesMetrics.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map((r: any) => r.player_id)
-              const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')", `game_year = ${year}`]
-              if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
-              const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
-              const sql2 = `SELECT p.pitcher as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.pitcher`
-              const { data: d2 } = await q(sql2)
-              if (d2) backfillFromLookup(result, d2 as any[], pitchesMetrics)
-            } catch {}
-          })() : null,
-          tritonBackfill.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map((r: any) => r.player_id)
-              const sql2 = `SELECT pitcher, pitches, ${TRITON_COLUMNS.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher IN (${ids.join(',')})`
-              const { data: d2 } = await q(sql2)
-              if (d2) {
-                const tMap = pivotTritonRows(d2 as any[])
-                for (const r of result) {
-                  const t = tMap.get(r.player_id); if (!t) continue
-                  for (const m of tritonBackfill) {
-                    if (TRITON_COL[m.key]) r[m.alias] = t[TRITON_COL[m.key]] ?? null
-                  }
-                }
-              }
-            } catch {}
-          })() : null,
-          eraBackfill.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map((r: any) => r.player_id)
-              const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[2025]
-              const sql2 = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') AND game_year = ${year} GROUP BY p.pitcher`
-              const { data: d2 } = await q(sql2)
-              if (d2) {
-                const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
-                for (const r of result) {
-                  const s = lookup.get(r.player_id); if (!s) continue
-                  const fipVal = computeFIP(s, constants)
-                  const xeraVal = computeXERA(s, constants)
-                  for (const m of eraBackfill) { if (m.key === 'fip') r[m.alias] = fipVal; if (m.key === 'xera') r[m.alias] = xeraVal }
-                }
-              }
-            } catch {}
-          })() : null,
-        ].filter(Boolean))
+          backfillPitchesMetrics(q, result, pitchesMetrics, 'pitcher', extraWhere3),
+          backfillTritonMetrics(q, result, tritonBackfill, year),
+          backfillEraMetrics(q, result, eraBackfill, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], [`game_year = ${year}`]),
+        ])
 
         return NextResponse.json({ leaderboard: result })
       }
@@ -322,7 +251,7 @@ export async function GET(req: NextRequest) {
       const isFIPxERA = metric === 'fip' || metric === 'xera'
       if (isFIPxERA) {
         const year = parseInt(gameYear || '2025')
-        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[2025]
+        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
         const minPitches = parseInt(sp.get('minSample') || '300')
 
         const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
@@ -367,37 +296,14 @@ export async function GET(req: NextRequest) {
         // Parallel backfills for secondary/tertiary from other sources
         const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !ERA_METRIC_KEYS.has(m.key) && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
         const tritonBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && TRITON_PLUS_METRIC_KEYS.has(m.key))
+        const extraWhere4: string[] = []
+        if (gameYear) extraWhere4.push(`game_year = ${year}`)
+        if (pitchType) extraWhere4.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
 
         await Promise.all([
-          pitchesMetrics.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map(r => r.player_id)
-              const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
-              if (gameYear) where2.push(`game_year = ${year}`)
-              if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
-              const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
-              const sql2 = `SELECT p.pitcher as player_id, ${selects2.join(', ')} FROM pitches p WHERE ${where2.join(' AND ')} GROUP BY p.pitcher`
-              const { data: d2 } = await q(sql2)
-              if (d2) backfillFromLookup(result, d2 as any[], pitchesMetrics)
-            } catch {}
-          })() : null,
-          tritonBackfill.length > 0 && result.length > 0 ? (async () => {
-            try {
-              const ids = result.map(r => r.player_id)
-              const sql2 = `SELECT pitcher, pitches, ${TRITON_COLUMNS.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher IN (${ids.join(',')})`
-              const { data: d2 } = await q(sql2)
-              if (d2) {
-                const tMap = pivotTritonRows(d2 as any[])
-                for (const r of result) {
-                  const t = tMap.get(r.player_id); if (!t) continue
-                  for (const m of tritonBackfill) {
-                    if (TRITON_COL[m.key]) r[m.alias] = t[TRITON_COL[m.key]] ?? null
-                  }
-                }
-              }
-            } catch {}
-          })() : null,
-        ].filter(Boolean))
+          backfillPitchesMetrics(q, result, pitchesMetrics, 'pitcher', extraWhere4),
+          backfillTritonMetrics(q, result, tritonBackfill, year),
+        ])
 
         return NextResponse.json({ leaderboard: result })
       }
@@ -446,40 +352,16 @@ export async function GET(req: NextRequest) {
       const tritonMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && TRITON_PLUS_METRIC_KEYS.has(m.key))
       const eraMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && ERA_METRIC_KEYS.has(m.key))
 
-      await Promise.all([
-        tritonMetrics.length > 0 && playerType === 'pitcher' ? (async () => {
-          try {
-            const sql2 = `SELECT pitcher, pitches, ${TRITON_COLUMNS.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher IN (${ids.join(',')})`
-            const { data: d2 } = await q(sql2)
-            if (d2) {
-              const tMap = pivotTritonRows(d2 as any[])
-              for (const r of result) {
-                const t = tMap.get(r.player_id); if (!t) continue
-                for (const m of tritonMetrics) {
-                  if (TRITON_COL[m.key]) r[m.alias] = t[TRITON_COL[m.key]] ?? null
-                }
-              }
-            }
-          } catch {}
-        })() : null,
-        eraMetrics.length > 0 && playerType === 'pitcher' ? (async () => {
-          try {
-            const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[2025]
-            const sql2 = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE p.pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO','IN') ${gameYear ? `AND game_year = ${year}` : ''} ${pitchType ? `AND pitch_type = '${pitchType.replace(/'/g, "''")}'` : ''} GROUP BY p.pitcher`
-            const { data: d2 } = await q(sql2)
-            if (d2) {
-              const lookup = new Map((d2 as any[]).map((r: any) => [r.player_id, r]))
-              for (const r of result) {
-                const s = lookup.get(r.player_id); if (!s) continue
-                const fipVal = computeFIP(s, constants)
-                const xeraVal = computeXERA(s, constants)
-                const ERA_VALS: Record<string, any> = { era: fipVal, fip: fipVal, xera: xeraVal }
-                for (const m of eraMetrics) r[m.alias] = ERA_VALS[m.key] ?? null
-              }
-            }
-          } catch {}
-        })() : null,
-      ].filter(Boolean))
+      if (playerType === 'pitcher') {
+        const extraWhere5: string[] = []
+        if (gameYear) extraWhere5.push(`game_year = ${year}`)
+        if (pitchType) extraWhere5.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+
+        await Promise.all([
+          backfillTritonMetrics(q, result, tritonMetrics, year),
+          backfillEraMetrics(q, result, eraMetrics, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], extraWhere5),
+        ])
+      }
 
       return NextResponse.json({ leaderboard: result })
     }
