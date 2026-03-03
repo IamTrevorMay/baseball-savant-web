@@ -41,21 +41,25 @@ export async function GET(req: NextRequest) {
       const isTritonPrimary = TRITON_PLUS_METRIC_KEYS.has(metric)
       const isDeceptionPrimary = DECEPTION_METRIC_KEYS.has(metric)
 
-      // ── Triton+ leaderboard (primary metric from pitcher_season_command) ──
+      // ── Triton leaderboard (primary metric from pitcher_season_command) ──
       if (isTritonPrimary) {
         const year = parseInt(gameYear || '2025')
         const minPitches = parseInt(sp.get('minSample') || '300')
 
-        // Map Triton+ metric keys to column expressions on pivoted data
+        // Map metric keys to pivoted column names
         const TRITON_COL: Record<string, string> = {
           cmd_plus: 'cmd_plus', rpcom_plus: 'rpcom_plus',
           brink_plus: 'brink_plus', cluster_plus: 'cluster_plus',
           hdev_plus: 'hdev_plus', vdev_plus: 'vdev_plus', missfire_plus: 'missfire_plus',
+          avg_brink: 'avg_brink', avg_cluster: 'avg_cluster',
+          avg_hdev: 'avg_hdev', avg_vdev: 'avg_vdev',
+          avg_missfire: 'avg_missfire', waste_pct: 'waste_pct',
         }
 
-        // Fetch raw per-pitch-type rows and pivot in JS (matches leaderboard-triton pattern)
+        // Fetch all columns we need (raw + plus)
         const sql = `
           SELECT pitcher, player_name, pitch_name, pitches,
+            avg_brink, avg_cluster, avg_hdev, avg_vdev, avg_missfire, waste_pct,
             brink_plus, cluster_plus, hdev_plus, vdev_plus, missfire_plus,
             cmd_plus, rpcom_plus
           FROM pitcher_season_command
@@ -65,37 +69,38 @@ export async function GET(req: NextRequest) {
         const { data, error } = await supabase.rpc('run_query', { query_text: sql })
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-        // Pivot to one row per pitcher with usage-weighted composites
+        // All keys to accumulate (both raw and plus)
+        const ACCUM_KEYS = [
+          'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus',
+          'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'waste_pct',
+        ]
+
+        // Pivot to one row per pitcher with usage-weighted averages
         const map = new Map<number, Record<string, any>>()
         for (const row of (data || [])) {
           const id = row.pitcher
           if (!map.has(id)) {
-            map.set(id, { player_id: id, player_name: row.player_name, pitches: 0,
-              _cmd_sum: 0, _cmd_w: 0, _rpcom_sum: 0, _rpcom_w: 0,
-              _brink_sum: 0, _brink_w: 0, _cluster_sum: 0, _cluster_w: 0,
-              _hdev_sum: 0, _hdev_w: 0, _vdev_sum: 0, _vdev_w: 0,
-              _missfire_sum: 0, _missfire_w: 0,
-            })
+            const init: Record<string, any> = { player_id: id, player_name: row.player_name, pitches: 0 }
+            for (const k of ACCUM_KEYS) { init[`_${k}_sum`] = 0; init[`_${k}_w`] = 0 }
+            map.set(id, init)
           }
           const p = map.get(id)!
           const n = Number(row.pitches) || 0
           p.pitches += n
-          for (const k of ['cmd', 'rpcom', 'brink', 'cluster', 'hdev', 'vdev', 'missfire']) {
-            const col = k === 'cmd' || k === 'rpcom' ? `${k}_plus` : `${k}_plus`
-            if (row[col] != null) { p[`_${k}_sum`] += Number(row[col]) * n; p[`_${k}_w`] += n }
+          for (const k of ACCUM_KEYS) {
+            if (row[k] != null) { p[`_${k}_sum`] += Number(row[k]) * n; p[`_${k}_w`] += n }
           }
         }
 
         let rows = Array.from(map.values())
         for (const r of rows) {
-          for (const k of ['cmd', 'rpcom', 'brink', 'cluster', 'hdev', 'vdev', 'missfire']) {
-            r[`${k}_plus`] = r[`_${k}_w`] > 0 ? Math.round((r[`_${k}_sum`] / r[`_${k}_w`]) * 10) / 10 : null
+          for (const k of ACCUM_KEYS) {
+            const precision = k.startsWith('avg_') || k === 'waste_pct' ? 100 : 10
+            r[k] = r[`_${k}_w`] > 0 ? Math.round((r[`_${k}_sum`] / r[`_${k}_w`]) * precision) / precision : null
           }
         }
         rows = rows.filter(r => r.pitches >= minPitches)
 
-        // Map primary/secondary/tertiary from Triton+ or fall back to pitches-based
-        // For simplicity, secondary/tertiary that need pitches table are fetched separately
         const jsSortDir = sortDir === 'ASC' ? 1 : -1
         const primaryCol = TRITON_COL[metric] || metric
         rows.sort((a, b) => {
@@ -112,12 +117,12 @@ export async function GET(req: NextRequest) {
           const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name }
           for (const m of allMetrics) {
             if (TRITON_COL[m.key]) out[m.alias] = r[TRITON_COL[m.key]] ?? null
-            else out[m.alias] = null // secondary/tertiary from different source not available here
+            else out[m.alias] = null
           }
           return out
         })
 
-        // If secondary/tertiary are pitches-based metrics, fetch them for these player IDs
+        // Backfill pitches-based secondary/tertiary
         const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
         if (pitchesMetrics.length > 0 && result.length > 0) {
           const ids = result.map(r => r.player_id)
@@ -142,11 +147,18 @@ export async function GET(req: NextRequest) {
 
       // ── Deception leaderboard (primary metric from pitcher_season_deception) ──
       if (isDeceptionPrimary) {
+        const FASTBALL_TYPES = new Set(['FF', 'SI', 'FC'])
+        const XD = {
+          fb_vaa: -1.2219, fb_haa: -0.2740, fb_vb: 0.3830, fb_hb: -0.2684, fb_ext: -0.8779,
+          os_vaa: 1.1265, os_haa: 0.3900, os_vb: 0.0947, os_hb: -0.2621, os_ext: 1.2845,
+        }
+
         const year = parseInt(gameYear || '2025')
         const minPitches = parseInt(sp.get('minSample') || '300')
 
         const sql = `
           SELECT pitcher, player_name, pitch_type, pitches,
+            z_vaa, z_haa, z_vb, z_hb, z_ext,
             unique_score, deception_score
           FROM pitcher_season_deception
           WHERE game_year = ${year}
@@ -161,21 +173,47 @@ export async function GET(req: NextRequest) {
           const id = row.pitcher
           if (!map.has(id)) {
             map.set(id, { player_id: id, player_name: row.player_name, pitches: 0,
-              _uniq_sum: 0, _uniq_w: 0, _dec_sum: 0, _dec_w: 0 })
+              _uniq_sum: 0, _uniq_w: 0, _dec_sum: 0, _dec_w: 0,
+              _fb_z: { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 },
+              _os_z: { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 },
+            })
           }
           const p = map.get(id)!
           const n = Number(row.pitches) || 0
           p.pitches += n
           if (row.unique_score != null) { p._uniq_sum += Number(row.unique_score) * n; p._uniq_w += n }
           if (row.deception_score != null) { p._dec_sum += Number(row.deception_score) * n; p._dec_w += n }
+
+          // Accumulate z-scores for xDeception
+          const isFB = FASTBALL_TYPES.has(row.pitch_type)
+          const bucket = isFB ? p._fb_z : p._os_z
+          if (row.z_vaa != null && row.z_haa != null && row.z_vb != null && row.z_hb != null) {
+            bucket.vaa += Number(row.z_vaa) * n
+            bucket.haa += Number(row.z_haa) * n
+            bucket.vb += Number(row.z_vb) * n
+            bucket.hb += Number(row.z_hb) * n
+            bucket.ext += (row.z_ext != null ? Number(row.z_ext) : 0) * n
+            bucket.w += n
+          }
         }
 
         let rows = Array.from(map.values())
         for (const r of rows) {
-          r.unique_score = r._uniq_w > 0 ? Math.round((r._uniq_sum / r._uniq_w) * 100) / 100 : null
-          r.deception_score = r._dec_w > 0 ? Math.round((r._dec_sum / r._dec_w) * 100) / 100 : null
-          // xDeception not stored per-row in simple form, use deception_score as fallback
-          r.xdeception_score = r.deception_score
+          r.unique_score = r._uniq_w > 0 ? Math.round((r._uniq_sum / r._uniq_w) * 1000) / 1000 : null
+          r.deception_score = r._dec_w > 0 ? Math.round((r._dec_sum / r._dec_w) * 1000) / 1000 : null
+
+          // xDeception from z-score regression
+          const fb = r._fb_z, os = r._os_z
+          if (fb.w > 0 && os.w > 0) {
+            const fbZ = { vaa: fb.vaa / fb.w, haa: fb.haa / fb.w, vb: fb.vb / fb.w, hb: fb.hb / fb.w, ext: fb.ext / fb.w }
+            const osZ = { vaa: os.vaa / os.w, haa: os.haa / os.w, vb: os.vb / os.w, hb: os.hb / os.w, ext: os.ext / os.w }
+            r.xdeception_score = Math.round((
+              XD.fb_vaa * fbZ.vaa + XD.fb_haa * fbZ.haa + XD.fb_vb * fbZ.vb + XD.fb_hb * fbZ.hb + XD.fb_ext * fbZ.ext +
+              XD.os_vaa * osZ.vaa + XD.os_haa * osZ.haa + XD.os_vb * osZ.vb + XD.os_hb * osZ.hb + XD.os_ext * osZ.ext
+            ) * 1000) / 1000
+          } else {
+            r.xdeception_score = null
+          }
         }
         rows = rows.filter(r => r.pitches >= minPitches)
 

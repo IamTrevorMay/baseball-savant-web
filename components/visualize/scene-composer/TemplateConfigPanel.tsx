@@ -43,6 +43,8 @@ const PITCHER_METRICS = new Set([
   'avg_ev', 'max_ev', 'avg_la', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct',
   // Counting
   'pitches', 'pa', 'games', 'k_count', 'bb_count', 'hr_count', 'h', 'usage_pct',
+  // Triton (Raw)
+  'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'waste_pct',
   // Triton+
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus',
   // Deception

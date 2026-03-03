@@ -126,6 +126,13 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'triples', label: 'Triples', group: 'Counting' },
   { value: 'hbp_count', label: 'HBP', group: 'Counting' },
   { value: 'usage_pct', label: 'Usage %', group: 'Counting' },
+  // Triton (Raw Command)
+  { value: 'avg_brink', label: 'Brink', group: 'Triton' },
+  { value: 'avg_cluster', label: 'Cluster', group: 'Triton' },
+  { value: 'avg_hdev', label: 'HDev', group: 'Triton' },
+  { value: 'avg_vdev', label: 'VDev', group: 'Triton' },
+  { value: 'avg_missfire', label: 'Missfire %', group: 'Triton' },
+  { value: 'waste_pct', label: 'Waste %', group: 'Triton' },
   // Triton+ (Command)
   { value: 'cmd_plus', label: 'Cmd+', group: 'Triton+' },
   { value: 'rpcom_plus', label: 'RPCom+', group: 'Triton+' },
@@ -141,5 +148,8 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
 ]
 
 /** Set of metrics that come from pre-computed tables instead of pitches aggregation */
-export const TRITON_PLUS_METRIC_KEYS = new Set(['cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus'])
+export const TRITON_PLUS_METRIC_KEYS = new Set([
+  'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus',
+  'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'waste_pct',
+])
 export const DECEPTION_METRIC_KEYS = new Set(['deception_score', 'unique_score', 'xdeception_score'])
