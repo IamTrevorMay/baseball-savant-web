@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { computeXDeceptionScore } from '@/lib/leagueStats'
 
 const FASTBALL_TYPES = new Set(['FF', 'SI', 'FC'])
 
 const PITCH_TYPE_TO_ABBREV: Record<string, string> = {
   FF: 'ff', SI: 'si', FC: 'fc', SL: 'sl', SW: 'sw', CU: 'cu',
   CH: 'ch', FS: 'fs', KC: 'kc', SV: 'sv', ST: 'st',
-}
-
-// xDeception regression coefficients
-const XD = {
-  fb_vaa: -1.2219, fb_haa: -0.2740, fb_vb: 0.3830, fb_hb: -0.2684, fb_ext: -0.8779,
-  os_vaa: 1.1265, os_haa: 0.3900, os_vb: 0.0947, os_hb: -0.2621, os_ext: 1.2845,
 }
 
 /**
@@ -116,10 +111,7 @@ export async function POST(req: NextRequest) {
       if (fb.w > 0 && os.w > 0) {
         const fbZ = { vaa: fb.vaa / fb.w, haa: fb.haa / fb.w, vb: fb.vb / fb.w, hb: fb.hb / fb.w, ext: fb.ext / fb.w }
         const osZ = { vaa: os.vaa / os.w, haa: os.haa / os.w, vb: os.vb / os.w, hb: os.hb / os.w, ext: os.ext / os.w }
-        row.xdeception_score = Math.round((
-          XD.fb_vaa * fbZ.vaa + XD.fb_haa * fbZ.haa + XD.fb_vb * fbZ.vb + XD.fb_hb * fbZ.hb + XD.fb_ext * fbZ.ext +
-          XD.os_vaa * osZ.vaa + XD.os_haa * osZ.haa + XD.os_vb * osZ.vb + XD.os_hb * osZ.hb + XD.os_ext * osZ.ext
-        ) * 1000) / 1000
+        row.xdeception_score = Math.round(computeXDeceptionScore(fbZ, osZ) * 1000) / 1000
       } else {
         row.xdeception_score = null
       }
