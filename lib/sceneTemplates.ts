@@ -1594,9 +1594,9 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         bgColor: '#09090b', showKey: true, zoneColor: '#52525b', zoneLineWidth: 2,
       }))
 
-      // ── Command Metrics (Season) ─────────────────────────────────────────
+      // ── Command Metrics ──────────────────────────────────────────────────
       elements.push(el('text', 60, 880, 500, 32, {
-        text: 'COMMAND (Season)', fontSize: 18, fontWeight: 700, color: '#52525b', textAlign: 'left',
+        text: 'COMMAND', fontSize: 18, fontWeight: 700, color: '#52525b', textAlign: 'left',
         textTransform: 'uppercase',
       }))
 

@@ -1,7 +1,123 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { ZONE_HALF_WIDTH } from '@/lib/constants-data'
+import {
+  getLeagueBaseline,
+  getLeagueCentroid,
+  computePlus,
+  computeCommandPlus,
+} from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+
+// ── Outing-level command computation ────────────────────────────────────────
+
+interface PitchRow {
+  plate_x: number
+  plate_z: number
+  pitch_name: string
+  sz_top: number
+  sz_bot: number
+  zone: number
+  game_year: number
+}
+
+interface PitchTypeCommand {
+  avg_missfire: number | null
+  avg_brink: number | null
+  avg_cluster: number | null
+  cmd_plus: number | null
+}
+
+function computeOutingCommand(pitches: PitchRow[]) {
+  // Group by pitch type
+  const groups: Record<string, PitchRow[]> = {}
+  for (const p of pitches) {
+    if (!p.pitch_name) continue
+    if (!groups[p.pitch_name]) groups[p.pitch_name] = []
+    groups[p.pitch_name].push(p)
+  }
+
+  const byPitch: Record<string, PitchTypeCommand> = {}
+
+  // Aggregate accumulators for weighted overall command
+  let totalPitches = 0
+  let wasteTotal = 0, clusterTotal = 0, brinkTotal = 0
+  let wasteN = 0, clusterN = 0, brinkN = 0
+
+  for (const [pitchName, pts] of Object.entries(groups)) {
+    const year = pts[0].game_year
+    const centroid = getLeagueCentroid(pitchName, year)
+
+    let brinkSum = 0, clusterSum = 0, missfireCount = 0
+    let validBrink = 0, validCluster = 0, wasteCount = 0
+
+    for (const p of pts) {
+      // Brink — signed distance to nearest zone edge (inches)
+      const dLeft = p.plate_x + ZONE_HALF_WIDTH
+      const dRight = ZONE_HALF_WIDTH - p.plate_x
+      const dBot = p.plate_z - p.sz_bot
+      const dTop = p.sz_top - p.plate_z
+      const brink = Math.min(dLeft, dRight, dBot, dTop) * 12
+      brinkSum += brink
+      validBrink++
+
+      // Cluster — distance from league centroid (inches)
+      if (centroid) {
+        const cluster = Math.sqrt((p.plate_x - centroid.cx) ** 2 + (p.plate_z - centroid.cz) ** 2) * 12
+        clusterSum += cluster
+        validCluster++
+      }
+
+      // Missfire — near-misses outside zone (brink between -2 and 0 inches)
+      const isInZone = p.zone >= 1 && p.zone <= 9
+      if (!isInZone && brink > -2) missfireCount++
+
+      // Waste — pitches > 10 inches outside zone
+      if (brink < -10) wasteCount++
+    }
+
+    const avgBrink = validBrink > 0 ? brinkSum / validBrink : null
+    const avgCluster = validCluster > 0 ? clusterSum / validCluster : null
+    const avgMissfire = pts.length > 0 ? (missfireCount / pts.length) * 100 : null
+
+    // Plus stats
+    const brinkBl = getLeagueBaseline('brink', pitchName, year)
+    const clusterBl = getLeagueBaseline('cluster', pitchName, year)
+    const missfireBl = getLeagueBaseline('missfire', pitchName, year)
+
+    const brinkPlus = avgBrink != null && brinkBl ? computePlus(avgBrink, brinkBl.mean, brinkBl.stddev) : null
+    const clusterPlus = avgCluster != null && clusterBl ? 100 - (computePlus(avgCluster, clusterBl.mean, clusterBl.stddev) - 100) : null
+    const missfirePlus = avgMissfire != null && missfireBl ? 100 - (computePlus(avgMissfire, missfireBl.mean, missfireBl.stddev) - 100) : null
+
+    const cmdPlus = brinkPlus != null && clusterPlus != null && missfirePlus != null
+      ? computeCommandPlus(brinkPlus, clusterPlus, missfirePlus)
+      : null
+
+    byPitch[pitchName] = {
+      avg_missfire: avgMissfire != null ? +avgMissfire.toFixed(2) : null,
+      avg_brink: avgBrink != null ? +avgBrink.toFixed(2) : null,
+      avg_cluster: avgCluster != null ? +avgCluster.toFixed(2) : null,
+      cmd_plus: cmdPlus != null ? +cmdPlus.toFixed(1) : null,
+    }
+
+    // Accumulate for aggregate
+    totalPitches += pts.length
+    const wastePct = (wasteCount / pts.length) * 100
+    wasteTotal += wastePct * pts.length; wasteN += pts.length
+    if (avgCluster != null) { clusterTotal += avgCluster * pts.length; clusterN += pts.length }
+    if (avgBrink != null) { brinkTotal += avgBrink * pts.length; brinkN += pts.length }
+  }
+
+  return {
+    byPitch,
+    aggregate: {
+      waste_pct: wasteN > 0 ? wasteTotal / wasteN : null,
+      avg_cluster: clusterN > 0 ? clusterTotal / clusterN : null,
+      avg_brink: brinkN > 0 ? brinkTotal / brinkN : null,
+    },
+  }
+}
 
 /**
  * GET /api/pitcher-outing
@@ -57,8 +173,8 @@ export async function GET(req: NextRequest) {
     const gamePk = sp.get('gamePk')
     if (!gamePk) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
 
-    // Run queries in parallel
-    const [boxscoreRes, arsenalRes, locationsRes, metaRes, commandRes] = await Promise.all([
+    // Run queries in parallel (4 queries — no more season command lookup)
+    const [boxscoreRes, arsenalRes, locationsRes, metaRes] = await Promise.all([
       // 1. MLB Stats API boxscore
       fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`).then(r => r.json()).catch(() => null),
 
@@ -79,15 +195,15 @@ export async function GET(req: NextRequest) {
         ORDER BY count DESC
       `),
 
-      // 3. Pitch locations
+      // 3. Pitch locations + zone data for command computation
       q(`
-        SELECT plate_x, plate_z, pitch_name
+        SELECT plate_x, plate_z, pitch_name, sz_top, sz_bot, zone, game_year
         FROM pitches
         WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
           AND plate_x IS NOT NULL AND plate_z IS NOT NULL
       `),
 
-      // 4. Game metadata (opponent, date, pitcher name)
+      // 4. Game metadata (opponent, date)
       q(`
         SELECT
           game_date::text AS game_date,
@@ -96,14 +212,6 @@ export async function GET(req: NextRequest) {
         WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
         GROUP BY game_date
         LIMIT 1
-      `),
-
-      // 5. Season-level command metrics (per pitch type)
-      q(`
-        SELECT pitch_name, pitches, waste_pct, avg_missfire, avg_brink, avg_cluster, cmd_plus
-        FROM pitcher_season_command
-        WHERE pitcher = ${pitcherId}
-          AND game_year = (SELECT game_year FROM pitches WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk} LIMIT 1)
       `),
     ])
 
@@ -137,18 +245,21 @@ export async function GET(req: NextRequest) {
 
     const meta = metaRes.data?.[0] || {}
 
-    // Build per-pitch-type command lookup from season data
-    const cmdByPitch: Record<string, { avg_missfire: number | null; avg_brink: number | null; cmd_plus: number | null }> = {}
-    for (const r of (commandRes.data || [])) {
-      cmdByPitch[r.pitch_name] = {
-        avg_missfire: r.avg_missfire != null ? Number(r.avg_missfire) : null,
-        avg_brink: r.avg_brink != null ? Number(r.avg_brink) : null,
-        cmd_plus: r.cmd_plus != null ? Number(r.cmd_plus) : null,
-      }
-    }
+    // Compute outing-level command metrics from pitch locations
+    const pitchRows: PitchRow[] = (locationsRes.data || []).map((r: any) => ({
+      plate_x: Number(r.plate_x),
+      plate_z: Number(r.plate_z),
+      pitch_name: r.pitch_name,
+      sz_top: Number(r.sz_top),
+      sz_bot: Number(r.sz_bot),
+      zone: Number(r.zone),
+      game_year: Number(r.game_year),
+    }))
+
+    const cmd = computeOutingCommand(pitchRows)
 
     const arsenal = (arsenalRes.data || []).map((r: any) => {
-      const cmdRow = cmdByPitch[r.pitch_name] || {}
+      const cmdRow = cmd.byPitch[r.pitch_name] || {}
       return {
         pitch_name: r.pitch_name,
         count: Number(r.count),
@@ -163,30 +274,11 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    const locations = (locationsRes.data || []).map((r: any) => ({
-      plate_x: Number(r.plate_x),
-      plate_z: Number(r.plate_z),
+    const locations = pitchRows.map((r) => ({
+      plate_x: r.plate_x,
+      plate_z: r.plate_z,
       pitch_name: r.pitch_name,
     }))
-
-    // Aggregate season-level command totals
-    const allCmdRows = commandRes.data || []
-    const totalPitches = allCmdRows.reduce((s: number, r: any) => s + (Number(r.pitches) || 0), 0)
-    let aggWaste: number | null = null
-    let aggCluster: number | null = null
-    let aggBrink: number | null = null
-    if (totalPitches > 0) {
-      let ws = 0, cs = 0, bs = 0, wc = 0, cc = 0, bc = 0
-      for (const r of allCmdRows) {
-        const n = Number(r.pitches) || 0
-        if (r.waste_pct != null) { ws += Number(r.waste_pct) * n; wc += n }
-        if (r.avg_cluster != null) { cs += Number(r.avg_cluster) * n; cc += n }
-        if (r.avg_brink != null) { bs += Number(r.avg_brink) * n; bc += n }
-      }
-      if (wc > 0) aggWaste = ws / wc
-      if (cc > 0) aggCluster = cs / cc
-      if (bc > 0) aggBrink = bs / bc
-    }
 
     const outing = {
       pitcher_id: Number(pitcherId),
@@ -196,11 +288,7 @@ export async function GET(req: NextRequest) {
       game_line: gameLine,
       arsenal,
       locations,
-      command: {
-        waste_pct: aggWaste,
-        avg_cluster: aggCluster,
-        avg_brink: aggBrink,
-      },
+      command: cmd.aggregate,
     }
 
     return NextResponse.json({ outing })

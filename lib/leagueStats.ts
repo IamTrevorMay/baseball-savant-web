@@ -401,6 +401,110 @@ export const MISSFIRE_LEAGUE_BY_YEAR: YearLeague = {
   },
 }
 
+// ── LEAGUE-WIDE CENTROIDS (avg plate_x / plate_z per pitch type per year, in feet) ──
+// Used for computing Cluster (distance from league centroid) on single-game data
+// where pitcher-level centroid is not meaningful.
+type CentroidEntry = { cx: number; cz: number }
+type YearCentroids = Record<number, Record<string, CentroidEntry>>
+
+export const CENTROIDS_BY_YEAR: YearCentroids = {
+  2015: {
+    '4-Seam Fastball': { cx: -0.0433, cz: 2.5661 }, 'Slider': { cx: 0.1711, cz: 1.8879 },
+    'Sinker': { cx: -0.1585, cz: 2.3215 }, 'Changeup': { cx: -0.1386, cz: 1.8619 },
+    'Curveball': { cx: -0.0174, cz: 1.8645 }, 'Cutter': { cx: 0.1310, cz: 2.3018 },
+    'Split-Finger': { cx: -0.2409, cz: 1.7304 }, 'Knuckle Curve': { cx: 0.0805, cz: 1.7993 },
+    'Sweeper': { cx: 0.2289, cz: 2.0222 },
+  },
+  2016: {
+    '4-Seam Fastball': { cx: -0.0448, cz: 2.5827 }, 'Slider': { cx: 0.2011, cz: 1.8914 },
+    'Sinker': { cx: -0.1591, cz: 2.3432 }, 'Changeup': { cx: -0.1477, cz: 1.8738 },
+    'Curveball': { cx: 0.0152, cz: 1.8704 }, 'Cutter': { cx: 0.1630, cz: 2.2756 },
+    'Split-Finger': { cx: -0.2613, cz: 1.7266 }, 'Knuckle Curve': { cx: 0.0669, cz: 1.8012 },
+    'Sweeper': { cx: 0.1308, cz: 1.8691 }, 'Slurve': { cx: 0.1757, cz: 1.7375 },
+  },
+  2017: {
+    '4-Seam Fastball': { cx: 0.0334, cz: 2.6345 }, 'Slider': { cx: 0.2631, cz: 1.8977 },
+    'Sinker': { cx: -0.0793, cz: 2.3464 }, 'Changeup': { cx: -0.0699, cz: 1.8712 },
+    'Curveball': { cx: 0.0867, cz: 1.8826 }, 'Cutter': { cx: 0.2559, cz: 2.2248 },
+    'Split-Finger': { cx: -0.1889, cz: 1.7083 }, 'Knuckle Curve': { cx: 0.0856, cz: 1.8602 },
+    'Sweeper': { cx: 0.1918, cz: 1.9443 }, 'Slurve': { cx: 0.3462, cz: 1.7642 },
+  },
+  2018: {
+    '4-Seam Fastball': { cx: 0.0193, cz: 2.6516 }, 'Slider': { cx: 0.2386, cz: 1.8549 },
+    'Sinker': { cx: -0.0999, cz: 2.3050 }, 'Changeup': { cx: -0.0718, cz: 1.8514 },
+    'Curveball': { cx: 0.0740, cz: 1.8775 }, 'Cutter': { cx: 0.1747, cz: 2.2552 },
+    'Split-Finger': { cx: -0.2457, cz: 1.6387 }, 'Knuckle Curve': { cx: 0.0999, cz: 1.8109 },
+    'Sweeper': { cx: 0.3070, cz: 1.9482 }, 'Slurve': { cx: 0.3468, cz: 1.8234 },
+  },
+  2019: {
+    '4-Seam Fastball': { cx: 0.0070, cz: 2.7038 }, 'Slider': { cx: 0.2494, cz: 1.8278 },
+    'Sinker': { cx: -0.1230, cz: 2.2933 }, 'Changeup': { cx: -0.0605, cz: 1.8331 },
+    'Curveball': { cx: 0.0891, cz: 1.8543 }, 'Cutter': { cx: 0.1489, cz: 2.2322 },
+    'Split-Finger': { cx: -0.2188, cz: 1.6361 }, 'Knuckle Curve': { cx: 0.1291, cz: 1.7540 },
+    'Sweeper': { cx: 0.3659, cz: 1.9010 }, 'Slurve': { cx: 0.2678, cz: 1.7976 },
+  },
+  2020: {
+    '4-Seam Fastball': { cx: 0.0050, cz: 2.7184 }, 'Slider': { cx: 0.2683, cz: 1.8164 },
+    'Sinker': { cx: -0.1143, cz: 2.3017 }, 'Changeup': { cx: -0.0759, cz: 1.8329 },
+    'Curveball': { cx: 0.1051, cz: 1.7719 }, 'Cutter': { cx: 0.1888, cz: 2.3030 },
+    'Split-Finger': { cx: -0.2181, cz: 1.7058 }, 'Knuckle Curve': { cx: 0.1236, cz: 1.7552 },
+    'Sweeper': { cx: 0.2453, cz: 1.9017 }, 'Slurve': { cx: 0.0343, cz: 1.8307 },
+  },
+  2021: {
+    '4-Seam Fastball': { cx: 0.0007, cz: 2.7436 }, 'Slider': { cx: 0.2203, cz: 1.8773 },
+    'Sinker': { cx: -0.0753, cz: 2.3279 }, 'Changeup': { cx: -0.0384, cz: 1.8487 },
+    'Curveball': { cx: 0.0846, cz: 1.8315 }, 'Cutter': { cx: 0.1689, cz: 2.3188 },
+    'Split-Finger': { cx: -0.2277, cz: 1.6972 }, 'Knuckle Curve': { cx: 0.0772, cz: 1.7850 },
+    'Sweeper': { cx: 0.2532, cz: 1.9509 }, 'Slurve': { cx: 0.0897, cz: 1.7727 },
+  },
+  2022: {
+    '4-Seam Fastball': { cx: -0.0100, cz: 2.8103 }, 'Slider': { cx: 0.2340, cz: 1.8644 },
+    'Sinker': { cx: -0.1239, cz: 2.3504 }, 'Changeup': { cx: -0.0728, cz: 1.8370 },
+    'Curveball': { cx: 0.0744, cz: 1.8602 }, 'Cutter': { cx: 0.2193, cz: 2.3548 },
+    'Split-Finger': { cx: -0.2670, cz: 1.6841 }, 'Knuckle Curve': { cx: 0.1152, cz: 1.7962 },
+    'Sweeper': { cx: 0.3205, cz: 1.9831 }, 'Slurve': { cx: 0.0206, cz: 1.8574 },
+  },
+  2023: {
+    '4-Seam Fastball': { cx: -0.0174, cz: 2.8151 }, 'Slider': { cx: 0.2111, cz: 1.8686 },
+    'Sinker': { cx: -0.1048, cz: 2.3579 }, 'Changeup': { cx: -0.0775, cz: 1.8161 },
+    'Curveball': { cx: 0.0494, cz: 1.8337 }, 'Cutter': { cx: 0.1835, cz: 2.3681 },
+    'Split-Finger': { cx: -0.2545, cz: 1.7292 }, 'Knuckle Curve': { cx: 0.1317, cz: 1.7331 },
+    'Sweeper': { cx: 0.2861, cz: 1.9754 }, 'Slurve': { cx: 0.1026, cz: 1.8704 },
+  },
+  2024: {
+    '4-Seam Fastball': { cx: -0.0071, cz: 2.8516 }, 'Slider': { cx: 0.2444, cz: 1.8870 },
+    'Sinker': { cx: -0.0741, cz: 2.3701 }, 'Changeup': { cx: -0.0450, cz: 1.8121 },
+    'Curveball': { cx: 0.0615, cz: 1.8202 }, 'Cutter': { cx: 0.1723, cz: 2.4323 },
+    'Split-Finger': { cx: -0.1718, cz: 1.7072 }, 'Knuckle Curve': { cx: 0.1031, cz: 1.6848 },
+    'Sweeper': { cx: 0.3075, cz: 2.0022 }, 'Slurve': { cx: 0.2486, cz: 1.8454 },
+  },
+  2025: {
+    '4-Seam Fastball': { cx: -0.0066, cz: 2.8650 }, 'Slider': { cx: 0.2041, cz: 1.9262 },
+    'Sinker': { cx: -0.0823, cz: 2.4000 }, 'Changeup': { cx: -0.0644, cz: 1.8247 },
+    'Curveball': { cx: 0.0410, cz: 1.8473 }, 'Cutter': { cx: 0.1744, cz: 2.5095 },
+    'Split-Finger': { cx: -0.2033, cz: 1.7588 }, 'Knuckle Curve': { cx: 0.1178, cz: 1.6719 },
+    'Sweeper': { cx: 0.2660, cz: 1.9997 }, 'Slurve': { cx: 0.1683, cz: 1.8749 },
+  },
+}
+
+/**
+ * Get league-wide centroid for a pitch type in a given year.
+ * Falls back to nearest year if exact year missing.
+ */
+export function getLeagueCentroid(pitchName: string, year: number): CentroidEntry | undefined {
+  const exact = CENTROIDS_BY_YEAR[year]?.[pitchName]
+  if (exact) return exact
+  let bestYear: number | undefined
+  let bestDist = Infinity
+  for (const y of AVAILABLE_YEARS) {
+    if (CENTROIDS_BY_YEAR[y]?.[pitchName] && Math.abs(y - year) < bestDist) {
+      bestDist = Math.abs(y - year)
+      bestYear = y
+    }
+  }
+  return bestYear != null ? CENTROIDS_BY_YEAR[bestYear]![pitchName] : undefined
+}
+
 // ── STUFF (Stuff+ model — XGBoost-predicted run value, pitcher-level aggregated) ──
 // Placeholder baselines — will be populated after running train.py
 // These are mean/stddev of pitcher-level avg stuff_rv per pitch_type per year
