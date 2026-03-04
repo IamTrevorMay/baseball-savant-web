@@ -1,4 +1,4 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot'
 
 // ── Data Binding ────────────────────────────────────────────────────────────
 
@@ -58,6 +58,11 @@ export interface TemplateConfig {
   sortDir?: 'asc' | 'desc'       // default 'desc'
   count?: number                  // default 5
   minSample?: number              // min pitches/PA qualifier
+  // Outing template fields
+  playerId?: number
+  playerName?: string
+  gamePk?: number
+  gameLabel?: string
 }
 
 export interface TemplateDataRow {
@@ -66,6 +71,17 @@ export interface TemplateDataRow {
   primary_value: number | string | null
   secondary_value?: number | string | null
   tertiary_value?: number | string | null
+}
+
+export interface OutingData {
+  pitcher_id: number
+  pitcher_name: string
+  game_date: string
+  opponent: string
+  game_line: { ip: string; h: number; r: number; er: number; bb: number; k: number; pitches: number }
+  arsenal: { pitch_name: string; count: number; avg_velo: number; avg_ivb: number; avg_hbreak: number; avg_arm_angle: number; avg_ext: number }[]
+  locations: { plate_x: number; plate_z: number; pitch_name: string }[]
+  command: { waste_pct: number | null; avg_missfire: number | null; avg_brink: number | null }
 }
 
 // ── Scene ───────────────────────────────────────────────────────────────────
@@ -95,6 +111,7 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'pitch-flight', name: 'Pitch Flight', desc: 'Animated trajectory', icon: '\u2312' },
   { type: 'stadium', name: 'Stadium', desc: '3D field with hit trajectories', icon: '\u26be' },
   { type: 'ticker', name: 'Ticker', desc: 'Scrolling text crawl', icon: '\u21c4' },
+  { type: 'zone-plot', name: 'Zone Plot', desc: 'Pitch locations with zone overlay', icon: '\u25ce' },
 ]
 
 // ── Shared style defaults ───────────────────────────────────────────────────
@@ -164,6 +181,13 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
       fontSize: 20, fontWeight: 600, color: '#ffffff',
       bgColor: '#09090b', speed: 60, direction: 'left',
       separator: ' \u2022 ', showBg: true,
+    },
+  },
+  'zone-plot': {
+    w: 400, h: 450,
+    props: {
+      ...UNIVERSAL_STYLE, pitches: [], showZone: true, dotSize: 8, dotOpacity: 0.85,
+      bgColor: '#09090b', showKey: true, zoneColor: '#52525b', zoneLineWidth: 2,
     },
   },
 }

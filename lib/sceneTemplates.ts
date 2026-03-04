@@ -3,8 +3,9 @@
  * Each factory returns a fresh Scene with unique IDs.
  */
 
-import { Scene, SceneElement, TemplateConfig, TemplateDataRow } from './sceneTypes'
+import { Scene, SceneElement, TemplateConfig, TemplateDataRow, OutingData } from './sceneTypes'
 import { SCENE_METRICS } from './reportMetrics'
+import { getPitchColor } from '@/components/chartConfig'
 
 export interface SceneTemplate {
   id: string
@@ -1298,7 +1299,7 @@ export interface DataDrivenTemplate {
   width: number
   height: number
   defaultConfig: Omit<TemplateConfig, 'templateId'>
-  rebuild: (config: TemplateConfig, rows: TemplateDataRow[]) => Scene
+  rebuild: (config: TemplateConfig, rows: any) => Scene
 }
 
 function metricLabel(key: string): string {
@@ -1437,6 +1438,170 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         fps: 30,
         templateConfig: config,
         templateData: rows,
+      }
+    },
+  },
+
+  // ── Pitcher Outing Report ────────────────────────────────────────────────
+  {
+    id: 'pitcher-outing-report',
+    name: 'Pitcher Outing Report',
+    category: 'pitcher',
+    description: 'Game outing report with arsenal, zone plot, and command metrics',
+    icon: '\u{1f4cb}',
+    width: 1920,
+    height: 1080,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+    },
+    rebuild: (config: TemplateConfig, data: OutingData | null): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+
+      const d = data || null
+      const name = d?.pitcher_name || config.playerName || 'Pitcher Name'
+      const dateOpp = d ? `${d.game_date} vs ${d.opponent}` : '----/--/-- vs ---'
+      const gl = d?.game_line
+      const lineStr = gl
+        ? `${gl.ip} IP \u00b7 ${gl.h} H \u00b7 ${gl.r} R \u00b7 ${gl.bb} BB \u00b7 ${gl.k} K`
+        : '-- IP \u00b7 -- H \u00b7 -- R \u00b7 -- BB \u00b7 -- K'
+      const pitchCount = gl ? `${gl.pitches} P` : '-- P'
+      const titleText = config.title || name
+
+      // ── Header Row ───────────────────────────────────────────────────────
+      // Headshot
+      elements.push(el('player-image', 60, 40, 180, 220, {
+        playerId: d?.pitcher_id || config.playerId || null,
+        playerName: name,
+        borderColor: '#27272a', showLabel: false, bgColor: 'transparent',
+      }))
+
+      // Name
+      elements.push(el('text', 260, 50, 800, 60, {
+        text: titleText, fontSize: 48, fontWeight: 800, color: '#ffffff', textAlign: 'left',
+      }))
+
+      // Date / opponent
+      elements.push(el('text', 260, 115, 800, 30, {
+        text: dateOpp, fontSize: 20, fontWeight: 400, color: '#71717a', textAlign: 'left',
+      }))
+
+      // Game line
+      elements.push(el('text', 260, 155, 800, 40, {
+        text: lineStr, fontSize: 28, fontWeight: 600, color: '#a1a1aa', textAlign: 'left',
+      }))
+
+      // Pitch count (right aligned)
+      elements.push(el('text', 1680, 50, 180, 30, {
+        text: pitchCount, fontSize: 22, fontWeight: 700, color: '#06b6d4', textAlign: 'right',
+      }))
+
+      // Divider
+      elements.push(el('shape', 60, 280, 1800, 2, {
+        shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // ── Arsenal Table ────────────────────────────────────────────────────
+      elements.push(el('text', 60, 295, 400, 24, {
+        text: 'PITCH ARSENAL', fontSize: 14, fontWeight: 700, color: '#52525b', textAlign: 'left',
+        textTransform: 'uppercase',
+      }))
+
+      // Table header
+      const cols = [
+        { label: 'Pitch', x: 60, w: 160 },
+        { label: '#', x: 230, w: 60 },
+        { label: 'Velo', x: 310, w: 80 },
+        { label: 'IVB', x: 410, w: 80 },
+        { label: 'HBreak', x: 510, w: 80 },
+        { label: 'Arm\u00b0', x: 620, w: 80 },
+        { label: 'Ext', x: 720, w: 80 },
+      ]
+
+      for (const col of cols) {
+        elements.push(el('text', col.x, 325, col.w, 24, {
+          text: col.label, fontSize: 11, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
+          textTransform: 'uppercase',
+        }))
+      }
+
+      // Table rows (up to 7 pitch types)
+      const arsenal = d?.arsenal || []
+      const maxRows = 7
+      for (let i = 0; i < maxRows; i++) {
+        const row = arsenal[i]
+        const ry = 355 + i * 35
+
+        if (row) {
+          // Color dot
+          const dotColor = getPitchColor(row.pitch_name)
+          elements.push(el('shape', 60, ry + 5, 14, 14, {
+            shape: 'circle', fill: dotColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 7,
+          }))
+
+          // Pitch name
+          elements.push(el('text', 80, ry, 140, 28, {
+            text: row.pitch_name, fontSize: 14, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
+          }))
+
+          // Stats
+          const vals = [
+            String(row.count),
+            row.avg_velo?.toFixed(1) || '--',
+            row.avg_ivb?.toFixed(1) || '--',
+            row.avg_hbreak?.toFixed(1) || '--',
+            row.avg_arm_angle?.toFixed(1) || '--',
+            row.avg_ext?.toFixed(1) || '--',
+          ]
+          for (let j = 0; j < vals.length; j++) {
+            elements.push(el('text', cols[j + 1].x, ry, cols[j + 1].w, 28, {
+              text: vals[j], fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+            }))
+          }
+        }
+      }
+
+      // ── Zone Plot ────────────────────────────────────────────────────────
+      elements.push(el('zone-plot', 1140, 295, 720, 550, {
+        pitches: d?.locations || [],
+        showZone: true, dotSize: 10, dotOpacity: 0.85,
+        bgColor: '#09090b', showKey: true, zoneColor: '#52525b', zoneLineWidth: 2,
+      }))
+
+      // ── Command Metrics (Season) ─────────────────────────────────────────
+      elements.push(el('text', 60, 880, 400, 24, {
+        text: 'COMMAND (Season)', fontSize: 14, fontWeight: 700, color: '#52525b', textAlign: 'left',
+        textTransform: 'uppercase',
+      }))
+
+      const cmd = d?.command
+      elements.push(el('stat-card', 60, 915, 280, 120, {
+        label: 'Waste %', value: cmd?.waste_pct != null ? (cmd.waste_pct * 100).toFixed(1) + '%' : '--',
+        sublabel: '', color: '#06b6d4', fontSize: 36, variant: 'glass', bgColor: 'transparent',
+      }))
+
+      elements.push(el('stat-card', 370, 915, 280, 120, {
+        label: 'Misfire %', value: cmd?.avg_missfire != null ? (cmd.avg_missfire * 100).toFixed(1) + '%' : '--',
+        sublabel: '', color: '#a855f7', fontSize: 36, variant: 'glass', bgColor: 'transparent',
+      }))
+
+      elements.push(el('stat-card', 680, 915, 280, 120, {
+        label: 'Brink', value: cmd?.avg_brink != null ? cmd.avg_brink.toFixed(2) : '--',
+        sublabel: '', color: '#f59e0b', fontSize: 36, variant: 'glass', bgColor: 'transparent',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: `${name} Outing Report`,
+        width: 1920,
+        height: 1080,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: config,
       }
     },
   },
