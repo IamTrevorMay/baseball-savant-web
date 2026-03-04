@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 
 const SEASONS = ['2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015']
@@ -33,6 +33,25 @@ function fmtVal(key: string, val: number): string {
   return val.toFixed(1) + '%'
 }
 
+function fmtDelta(key: string, delta: number): string {
+  const abs = Math.abs(delta)
+  if (key === 'xwoba') return abs.toFixed(3)
+  if (key === 'spin') return String(Math.round(abs))
+  if (key === 'velo' || key === 'ev') return abs.toFixed(1) + ' mph'
+  return abs.toFixed(1) + ' pts'
+}
+
+function buildReason(a: Alert): string {
+  const d = fmtDelta(a.metric, a.delta)
+  const verb = a.direction === 'up' ? 'up' : 'down'
+  return `${a.metric_label} ${verb} ${d} vs season avg`
+}
+
+interface Highlight extends Alert {
+  type: 'pitcher' | 'hitter'
+  reason: string
+}
+
 export default function TrendsPage() {
   const [season, setSeason] = useState('2025')
   const [playerType, setPlayerType] = useState<'pitcher' | 'hitter'>('pitcher')
@@ -42,6 +61,66 @@ export default function TrendsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [recentDate, setRecentDate] = useState('')
   const [latestDate, setLatestDate] = useState('')
+  const [highlights, setHighlights] = useState<{ surges: Highlight[]; concerns: Highlight[] } | null>(null)
+  const [highlightsLoading, setHighlightsLoading] = useState(true)
+
+  // Auto-load highlights on mount — fetch both pitcher and hitter trends
+  useEffect(() => {
+    let cancelled = false
+    async function loadHighlights() {
+      try {
+        const [pitcherRes, hitterRes] = await Promise.all([
+          fetch('/api/trends', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ season: 2025, playerType: 'pitcher', minPitches: 500 }),
+          }),
+          fetch('/api/trends', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ season: 2025, playerType: 'hitter', minPitches: 500 }),
+          }),
+        ])
+        if (cancelled) return
+        const [pd, hd] = await Promise.all([pitcherRes.json(), hitterRes.json()])
+        const pitcherAlerts: Alert[] = (pd.rows || []).map((a: Alert) => ({ ...a }))
+        const hitterAlerts: Alert[] = (hd.rows || []).map((a: Alert) => ({ ...a }))
+
+        // Tag with type and add reason
+        const all: Highlight[] = [
+          ...pitcherAlerts.map(a => ({ ...a, type: 'pitcher' as const, reason: buildReason(a) })),
+          ...hitterAlerts.map(a => ({ ...a, type: 'hitter' as const, reason: buildReason(a) })),
+        ]
+
+        // Deduplicate: one entry per player, keep highest |sigma|
+        const surgeAll = all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
+        const concernAll = all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
+
+        const pickUnique = (list: Highlight[], n: number): Highlight[] => {
+          const seen = new Set<number>()
+          const result: Highlight[] = []
+          for (const item of list) {
+            if (seen.has(item.player_id)) continue
+            seen.add(item.player_id)
+            result.push(item)
+            if (result.length >= n) break
+          }
+          return result
+        }
+
+        setHighlights({
+          surges: pickUnique(surgeAll, 5),
+          concerns: pickUnique(concernAll, 5),
+        })
+        if (pd.recentDate) { setRecentDate(pd.recentDate); setLatestDate(pd.latestDate) }
+      } catch {
+        // Silently fail — highlights are supplementary
+      }
+      if (!cancelled) setHighlightsLoading(false)
+    }
+    loadHighlights()
+    return () => { cancelled = true }
+  }, [])
 
   const handleScan = useCallback(async () => {
     setLoading(true); setError(null)
@@ -74,6 +153,76 @@ export default function TrendsPage() {
       <div className="max-w-6xl mx-auto w-full px-4 md:px-6 py-6">
         <h1 className="text-lg font-semibold text-white mb-1">Trend Alerts</h1>
         <p className="text-xs text-zinc-500 mb-4">Detect significant recent performance changes vs season averages</p>
+
+        {/* Trends to Notice — auto-loaded highlights */}
+        {highlightsLoading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {[0, 1].map(i => (
+              <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 animate-pulse">
+                <div className="h-4 w-24 bg-zinc-800 rounded mb-3" />
+                {[0, 1, 2, 3, 4].map(j => <div key={j} className="h-10 bg-zinc-800/50 rounded mb-2" />)}
+              </div>
+            ))}
+          </div>
+        )}
+        {highlights && !highlightsLoading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {/* Surges */}
+            <div className="bg-zinc-900 border border-emerald-500/20 rounded-lg overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-emerald-500/10 flex items-center gap-2">
+                <span className="text-emerald-400 text-sm font-semibold">Surges</span>
+                <span className="text-[10px] text-zinc-600">Top performing trends</span>
+              </div>
+              <div className="divide-y divide-zinc-800/50">
+                {highlights.surges.map((h, i) => (
+                  <div key={h.player_id} className="px-4 py-2.5 flex items-start gap-3 hover:bg-emerald-500/5 transition">
+                    <span className="text-emerald-500/50 text-xs font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white text-sm font-medium">{h.player_name}</span>
+                        <span className="text-[9px] text-zinc-600 uppercase">{h.type === 'pitcher' ? 'P' : 'H'}</span>
+                        <span className="text-[10px] font-mono text-emerald-400 ml-auto shrink-0">
+                          {h.sigma > 0 ? '+' : ''}{h.sigma.toFixed(1)}σ
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">{h.reason}</p>
+                    </div>
+                  </div>
+                ))}
+                {highlights.surges.length === 0 && (
+                  <div className="px-4 py-6 text-center text-zinc-600 text-xs">No surges detected</div>
+                )}
+              </div>
+            </div>
+            {/* Concerns */}
+            <div className="bg-zinc-900 border border-red-500/20 rounded-lg overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-red-500/10 flex items-center gap-2">
+                <span className="text-red-400 text-sm font-semibold">Concerns</span>
+                <span className="text-[10px] text-zinc-600">Notable declines to watch</span>
+              </div>
+              <div className="divide-y divide-zinc-800/50">
+                {highlights.concerns.map((h, i) => (
+                  <div key={h.player_id} className="px-4 py-2.5 flex items-start gap-3 hover:bg-red-500/5 transition">
+                    <span className="text-red-500/50 text-xs font-mono mt-0.5 w-4 shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white text-sm font-medium">{h.player_name}</span>
+                        <span className="text-[9px] text-zinc-600 uppercase">{h.type === 'pitcher' ? 'P' : 'H'}</span>
+                        <span className="text-[10px] font-mono text-red-400 ml-auto shrink-0">
+                          {h.sigma > 0 ? '+' : ''}{h.sigma.toFixed(1)}σ
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">{h.reason}</p>
+                    </div>
+                  </div>
+                ))}
+                {highlights.concerns.length === 0 && (
+                  <div className="px-4 py-6 text-center text-zinc-600 text-xs">No concerns detected</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Controls */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-6">
