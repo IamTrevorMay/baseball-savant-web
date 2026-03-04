@@ -1504,25 +1504,31 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }))
 
       // ── Arsenal Table ────────────────────────────────────────────────────
-      elements.push(el('text', 60, 295, 400, 24, {
-        text: 'PITCH ARSENAL', fontSize: 14, fontWeight: 700, color: '#52525b', textAlign: 'left',
+      // Left column spans x=60 to x=1080 (1020px wide), zone plot fills right
+      elements.push(el('text', 60, 295, 500, 32, {
+        text: 'PITCH ARSENAL', fontSize: 18, fontWeight: 700, color: '#52525b', textAlign: 'left',
         textTransform: 'uppercase',
       }))
 
       // Table header
       const cols = [
-        { label: 'Pitch', x: 60, w: 160 },
-        { label: '#', x: 230, w: 60 },
-        { label: 'Velo', x: 310, w: 80 },
-        { label: 'IVB', x: 410, w: 80 },
-        { label: 'HBreak', x: 510, w: 80 },
-        { label: 'Arm\u00b0', x: 620, w: 80 },
-        { label: 'Ext', x: 720, w: 80 },
+        { label: 'Pitch', x: 60, w: 220 },
+        { label: '#', x: 290, w: 90 },
+        { label: 'Velo', x: 400, w: 120 },
+        { label: 'IVB', x: 530, w: 120 },
+        { label: 'HBreak', x: 660, w: 120 },
+        { label: 'Arm\u00b0', x: 800, w: 120 },
+        { label: 'Ext', x: 930, w: 120 },
       ]
 
+      // Header divider
+      elements.push(el('shape', 60, 360, 1020, 1, {
+        shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
       for (const col of cols) {
-        elements.push(el('text', col.x, 325, col.w, 24, {
-          text: col.label, fontSize: 11, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
+        elements.push(el('text', col.x, 335, col.w, 30, {
+          text: col.label, fontSize: 15, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
           textTransform: 'uppercase',
         }))
       }
@@ -1530,20 +1536,28 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       // Table rows (up to 7 pitch types)
       const arsenal = d?.arsenal || []
       const maxRows = 7
+      const rowH = 55
       for (let i = 0; i < maxRows; i++) {
         const row = arsenal[i]
-        const ry = 355 + i * 35
+        const ry = 370 + i * rowH
+
+        // Subtle stripe for even rows
+        if (row && i % 2 === 0) {
+          elements.push(el('shape', 60, ry, 1020, rowH, {
+            shape: 'rect', fill: 'rgba(39,39,42,0.2)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+          }))
+        }
 
         if (row) {
           // Color dot
           const dotColor = getPitchColor(row.pitch_name)
-          elements.push(el('shape', 60, ry + 5, 14, 14, {
-            shape: 'circle', fill: dotColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 7,
+          elements.push(el('shape', 68, ry + 16, 20, 20, {
+            shape: 'circle', fill: dotColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 10,
           }))
 
           // Pitch name
-          elements.push(el('text', 80, ry, 140, 28, {
-            text: row.pitch_name, fontSize: 14, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
+          elements.push(el('text', 96, ry + 8, 180, rowH - 16, {
+            text: row.pitch_name, fontSize: 20, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
           }))
 
           // Stats
@@ -1556,8 +1570,8 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
             row.avg_ext?.toFixed(1) || '--',
           ]
           for (let j = 0; j < vals.length; j++) {
-            elements.push(el('text', cols[j + 1].x, ry, cols[j + 1].w, 28, {
-              text: vals[j], fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+            elements.push(el('text', cols[j + 1].x, ry + 8, cols[j + 1].w, rowH - 16, {
+              text: vals[j], fontSize: 20, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
             }))
           }
         }
@@ -1571,23 +1585,23 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }))
 
       // ── Command Metrics (Season) ─────────────────────────────────────────
-      elements.push(el('text', 60, 880, 400, 24, {
-        text: 'COMMAND (Season)', fontSize: 14, fontWeight: 700, color: '#52525b', textAlign: 'left',
+      elements.push(el('text', 60, 880, 500, 32, {
+        text: 'COMMAND (Season)', fontSize: 18, fontWeight: 700, color: '#52525b', textAlign: 'left',
         textTransform: 'uppercase',
       }))
 
       const cmd = d?.command
-      elements.push(el('stat-card', 60, 915, 280, 120, {
-        label: 'Waste %', value: cmd?.waste_pct != null ? (cmd.waste_pct * 100).toFixed(1) + '%' : '--',
+      elements.push(el('stat-card', 60, 920, 300, 120, {
+        label: 'Waste %', value: cmd?.waste_pct != null ? cmd.waste_pct.toFixed(1) + '%' : '--',
         sublabel: '', color: '#06b6d4', fontSize: 36, variant: 'glass', bgColor: 'transparent',
       }))
 
-      elements.push(el('stat-card', 370, 915, 280, 120, {
-        label: 'Misfire %', value: cmd?.avg_missfire != null ? (cmd.avg_missfire * 100).toFixed(1) + '%' : '--',
+      elements.push(el('stat-card', 390, 920, 300, 120, {
+        label: 'Misfire %', value: cmd?.avg_missfire != null ? cmd.avg_missfire.toFixed(1) + '%' : '--',
         sublabel: '', color: '#a855f7', fontSize: 36, variant: 'glass', bgColor: 'transparent',
       }))
 
-      elements.push(el('stat-card', 680, 915, 280, 120, {
+      elements.push(el('stat-card', 720, 920, 300, 120, {
         label: 'Brink', value: cmd?.avg_brink != null ? cmd.avg_brink.toFixed(2) : '--',
         sublabel: '', color: '#f59e0b', fontSize: 36, variant: 'glass', bgColor: 'transparent',
       }))
