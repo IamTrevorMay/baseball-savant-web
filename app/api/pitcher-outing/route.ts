@@ -98,13 +98,12 @@ export async function GET(req: NextRequest) {
         LIMIT 1
       `),
 
-      // 5. Season-level command metrics
+      // 5. Season-level command metrics (per pitch type)
       q(`
-        SELECT waste_pct, avg_missfire, avg_brink
+        SELECT pitch_name, waste_pct, avg_missfire, avg_brink, cmd_plus
         FROM pitcher_season_command
         WHERE pitcher = ${pitcherId}
           AND game_year = (SELECT game_year FROM pitches WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk} LIMIT 1)
-        LIMIT 1
       `),
     ])
 
@@ -137,15 +136,32 @@ export async function GET(req: NextRequest) {
     const pitcherName = playerRow?.[0]?.player_name || 'Unknown'
 
     const meta = metaRes.data?.[0] || {}
-    const arsenal = (arsenalRes.data || []).map((r: any) => ({
-      pitch_name: r.pitch_name,
-      count: Number(r.count),
-      avg_velo: Number(r.avg_velo),
-      avg_ivb: Number(r.avg_ivb),
-      avg_hbreak: Number(r.avg_hbreak),
-      avg_arm_angle: Number(r.avg_arm_angle),
-      avg_ext: Number(r.avg_ext),
-    }))
+
+    // Build per-pitch-type command lookup from season data
+    const cmdByPitch: Record<string, { avg_missfire: number | null; avg_brink: number | null; cmd_plus: number | null }> = {}
+    for (const r of (commandRes.data || [])) {
+      cmdByPitch[r.pitch_name] = {
+        avg_missfire: r.avg_missfire != null ? Number(r.avg_missfire) : null,
+        avg_brink: r.avg_brink != null ? Number(r.avg_brink) : null,
+        cmd_plus: r.cmd_plus != null ? Number(r.cmd_plus) : null,
+      }
+    }
+
+    const arsenal = (arsenalRes.data || []).map((r: any) => {
+      const cmdRow = cmdByPitch[r.pitch_name] || {}
+      return {
+        pitch_name: r.pitch_name,
+        count: Number(r.count),
+        avg_velo: Number(r.avg_velo),
+        avg_ivb: Number(r.avg_ivb),
+        avg_hbreak: Number(r.avg_hbreak),
+        avg_arm_angle: Number(r.avg_arm_angle),
+        avg_ext: Number(r.avg_ext),
+        avg_missfire: cmdRow.avg_missfire ?? null,
+        avg_brink: cmdRow.avg_brink ?? null,
+        cmd_plus: cmdRow.cmd_plus ?? null,
+      }
+    })
 
     const locations = (locationsRes.data || []).map((r: any) => ({
       plate_x: Number(r.plate_x),
@@ -153,7 +169,24 @@ export async function GET(req: NextRequest) {
       pitch_name: r.pitch_name,
     }))
 
-    const cmd = commandRes.data?.[0] || {}
+    // Aggregate season-level command totals
+    const allCmdRows = commandRes.data || []
+    const totalPitches = allCmdRows.reduce((s: number, r: any) => s + (Number(r.pitches) || 0), 0)
+    let aggWaste: number | null = null
+    let aggMissfire: number | null = null
+    let aggBrink: number | null = null
+    if (totalPitches > 0) {
+      let ws = 0, ms = 0, bs = 0, wc = 0, mc = 0, bc = 0
+      for (const r of allCmdRows) {
+        const n = Number(r.pitches) || 0
+        if (r.waste_pct != null) { ws += Number(r.waste_pct) * n; wc += n }
+        if (r.avg_missfire != null) { ms += Number(r.avg_missfire) * n; mc += n }
+        if (r.avg_brink != null) { bs += Number(r.avg_brink) * n; bc += n }
+      }
+      if (wc > 0) aggWaste = ws / wc
+      if (mc > 0) aggMissfire = ms / mc
+      if (bc > 0) aggBrink = bs / bc
+    }
 
     const outing = {
       pitcher_id: Number(pitcherId),
@@ -164,9 +197,9 @@ export async function GET(req: NextRequest) {
       arsenal,
       locations,
       command: {
-        waste_pct: cmd.waste_pct != null ? Number(cmd.waste_pct) : null,
-        avg_missfire: cmd.avg_missfire != null ? Number(cmd.avg_missfire) : null,
-        avg_brink: cmd.avg_brink != null ? Number(cmd.avg_brink) : null,
+        waste_pct: aggWaste,
+        avg_missfire: aggMissfire,
+        avg_brink: aggBrink,
       },
     }
 

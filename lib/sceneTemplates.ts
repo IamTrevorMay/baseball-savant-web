@@ -1504,31 +1504,35 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }))
 
       // ── Arsenal Table ────────────────────────────────────────────────────
-      // Left column spans x=60 to x=1080 (1020px wide), zone plot fills right
+      // Left column spans x=60 to x=1100 (1040px wide), zone plot fills right
+      const tableW = 1040
       elements.push(el('text', 60, 295, 500, 32, {
         text: 'PITCH ARSENAL', fontSize: 18, fontWeight: 700, color: '#52525b', textAlign: 'left',
         textTransform: 'uppercase',
       }))
 
-      // Table header
+      // Table header — 10 columns: Pitch, #, Velo, IVB, HBreak, Arm°, Ext, Misfire, Brink, Cmd+
       const cols = [
-        { label: 'Pitch', x: 60, w: 220 },
-        { label: '#', x: 290, w: 90 },
-        { label: 'Velo', x: 400, w: 120 },
-        { label: 'IVB', x: 530, w: 120 },
-        { label: 'HBreak', x: 660, w: 120 },
-        { label: 'Arm\u00b0', x: 800, w: 120 },
-        { label: 'Ext', x: 930, w: 120 },
+        { label: 'Pitch', x: 60, w: 170 },
+        { label: '#', x: 235, w: 55 },
+        { label: 'Velo', x: 300, w: 85 },
+        { label: 'IVB', x: 395, w: 80 },
+        { label: 'HBreak', x: 480, w: 85 },
+        { label: 'Arm\u00b0', x: 575, w: 75 },
+        { label: 'Ext', x: 660, w: 70 },
+        { label: 'Msfire', x: 740, w: 85 },
+        { label: 'Brink', x: 835, w: 85 },
+        { label: 'Cmd+', x: 930, w: 85 },
       ]
 
       // Header divider
-      elements.push(el('shape', 60, 360, 1020, 1, {
+      elements.push(el('shape', 60, 360, tableW, 1, {
         shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
       }))
 
       for (const col of cols) {
         elements.push(el('text', col.x, 335, col.w, 30, {
-          text: col.label, fontSize: 15, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
+          text: col.label, fontSize: 13, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
           textTransform: 'uppercase',
         }))
       }
@@ -1543,7 +1547,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
 
         // Subtle stripe for even rows
         if (row && i % 2 === 0) {
-          elements.push(el('shape', 60, ry, 1020, rowH, {
+          elements.push(el('shape', 60, ry, tableW, rowH, {
             shape: 'rect', fill: 'rgba(39,39,42,0.2)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
           }))
         }
@@ -1556,11 +1560,11 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
           }))
 
           // Pitch name
-          elements.push(el('text', 96, ry + 8, 180, rowH - 16, {
-            text: row.pitch_name, fontSize: 20, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
+          elements.push(el('text', 96, ry + 8, 140, rowH - 16, {
+            text: row.pitch_name, fontSize: 18, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
           }))
 
-          // Stats
+          // Stats (indices 1-9 match cols[1]-cols[9])
           const vals = [
             String(row.count),
             row.avg_velo?.toFixed(1) || '--',
@@ -1568,10 +1572,16 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
             row.avg_hbreak?.toFixed(1) || '--',
             row.avg_arm_angle?.toFixed(1) || '--',
             row.avg_ext?.toFixed(1) || '--',
+            row.avg_missfire != null ? row.avg_missfire.toFixed(1) + '%' : '--',
+            row.avg_brink != null ? row.avg_brink.toFixed(2) : '--',
+            row.cmd_plus != null ? String(Math.round(row.cmd_plus)) : '--',
           ]
           for (let j = 0; j < vals.length; j++) {
+            const isPlus = j === 8 // Cmd+ column
             elements.push(el('text', cols[j + 1].x, ry + 8, cols[j + 1].w, rowH - 16, {
-              text: vals[j], fontSize: 20, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+              text: vals[j], fontSize: 18, fontWeight: isPlus ? 700 : 500,
+              color: isPlus && row.cmd_plus != null ? (row.cmd_plus >= 100 ? '#10b981' : '#ef4444') : '#a1a1aa',
+              textAlign: 'center',
             }))
           }
         }
