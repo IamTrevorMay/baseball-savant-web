@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import TridentLogo from '@/components/TridentLogo'
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -38,7 +39,8 @@ export default function SetPasswordPage() {
 
   return (
     <div className="w-full max-w-sm">
-      <div className="text-center mb-8">
+      <div className="flex flex-col items-center mb-8">
+        <TridentLogo className="w-16 h-20 text-orange-500 mb-3" />
         <h1 className="font-[family-name:var(--font-bebas)] text-5xl uppercase text-orange-500 tracking-widest">Triton Apex</h1>
         <p className="text-sm text-zinc-500 mt-1">Set your password to get started.</p>
       </div>

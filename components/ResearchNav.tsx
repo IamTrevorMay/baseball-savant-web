@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import TridentLogo from '@/components/TridentLogo'
 
 const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
@@ -50,6 +51,7 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
   return (
     <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 md:px-6 relative shrink-0" ref={menuRef}>
       {/* Brand */}
+      <TridentLogo className="w-5 h-6 text-emerald-400 mr-1.5" />
       <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
       <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4 hidden sm:inline">Research</a>
 

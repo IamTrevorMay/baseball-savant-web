@@ -2,6 +2,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import TridentLogo from '@/components/TridentLogo'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -75,7 +76,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="w-full max-w-sm">
-      <div className="text-center mb-8">
+      <div className="flex flex-col items-center mb-8">
+        <TridentLogo className="w-16 h-20 text-orange-500 mb-3" />
         <h1 className="font-[family-name:var(--font-bebas)] text-5xl uppercase text-orange-500 tracking-widest">Triton Apex</h1>
         <p className="text-sm text-zinc-500 mt-1">Find the peak.</p>
       </div>

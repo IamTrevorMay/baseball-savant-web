@@ -2,6 +2,7 @@
 import { Suspense, useEffect } from 'react'
 import { useAuth } from '@/components/AuthProvider'
 import UserMenu from '@/components/UserMenu'
+import TridentLogo from '@/components/TridentLogo'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -126,6 +127,7 @@ function LauncherContent() {
       {/* Header */}
       <div className="flex flex-col items-center mb-12 relative">
         <div className="absolute right-0 top-0"><UserMenu /></div>
+        <TridentLogo className="w-16 h-20 text-orange-500 mb-3" />
         <h1 className="font-[family-name:var(--font-bebas)] text-5xl uppercase text-orange-500 tracking-widest">Triton Apex</h1>
         <p className="text-sm text-zinc-500 mt-1">Find Your Peak.</p>
       </div>

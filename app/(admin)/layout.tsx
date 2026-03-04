@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import Link from 'next/link'
 import UserMenu from '@/components/UserMenu'
+import TridentLogo from '@/components/TridentLogo'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth()
@@ -41,6 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </Link>
+          <TridentLogo className="w-5 h-6 text-orange-500 mr-1.5" />
           <h1 className="font-[family-name:var(--font-bebas)] text-xl uppercase tracking-widest">
             <span className="text-orange-500">Triton Apex</span>
             <span className="text-zinc-600 mx-2">/</span>
