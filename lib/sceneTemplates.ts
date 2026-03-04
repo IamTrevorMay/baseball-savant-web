@@ -1607,7 +1607,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }))
 
       elements.push(el('stat-card', 390, 920, 300, 120, {
-        label: 'Misfire', value: cmd?.avg_missfire != null ? cmd.avg_missfire.toFixed(1) + '"' : '--',
+        label: 'Cluster', value: cmd?.avg_cluster != null ? cmd.avg_cluster.toFixed(1) + '"' : '--',
         sublabel: '', color: '#a855f7', fontSize: 36, variant: 'glass', bgColor: 'transparent',
       }))
 

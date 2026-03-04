@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
 
       // 5. Season-level command metrics (per pitch type)
       q(`
-        SELECT pitch_name, pitches, waste_pct, avg_missfire, avg_brink, cmd_plus
+        SELECT pitch_name, pitches, waste_pct, avg_missfire, avg_brink, avg_cluster, cmd_plus
         FROM pitcher_season_command
         WHERE pitcher = ${pitcherId}
           AND game_year = (SELECT game_year FROM pitches WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk} LIMIT 1)
@@ -173,18 +173,18 @@ export async function GET(req: NextRequest) {
     const allCmdRows = commandRes.data || []
     const totalPitches = allCmdRows.reduce((s: number, r: any) => s + (Number(r.pitches) || 0), 0)
     let aggWaste: number | null = null
-    let aggMissfire: number | null = null
+    let aggCluster: number | null = null
     let aggBrink: number | null = null
     if (totalPitches > 0) {
-      let ws = 0, ms = 0, bs = 0, wc = 0, mc = 0, bc = 0
+      let ws = 0, cs = 0, bs = 0, wc = 0, cc = 0, bc = 0
       for (const r of allCmdRows) {
         const n = Number(r.pitches) || 0
         if (r.waste_pct != null) { ws += Number(r.waste_pct) * n; wc += n }
-        if (r.avg_missfire != null) { ms += Number(r.avg_missfire) * n; mc += n }
+        if (r.avg_cluster != null) { cs += Number(r.avg_cluster) * n; cc += n }
         if (r.avg_brink != null) { bs += Number(r.avg_brink) * n; bc += n }
       }
       if (wc > 0) aggWaste = ws / wc
-      if (mc > 0) aggMissfire = ms / mc
+      if (cc > 0) aggCluster = cs / cc
       if (bc > 0) aggBrink = bs / bc
     }
 
@@ -198,7 +198,7 @@ export async function GET(req: NextRequest) {
       locations,
       command: {
         waste_pct: aggWaste,
-        avg_missfire: aggMissfire,
+        avg_cluster: aggCluster,
         avg_brink: aggBrink,
       },
     }
