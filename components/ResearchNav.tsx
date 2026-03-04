@@ -19,6 +19,7 @@ const MORE_LINKS = [
   { href: '/abs', label: 'ABS' },
   { href: '/explore', label: 'Explore' },
   { href: '/analyst', label: 'Analyst' },
+  { href: '/glossary', label: 'Glossary' },
 ]
 
 const ALL_LINKS = [...PRIMARY_LINKS, ...MORE_LINKS]
