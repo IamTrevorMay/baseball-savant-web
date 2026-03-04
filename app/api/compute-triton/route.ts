@@ -140,9 +140,16 @@ export async function POST(req: NextRequest) {
         const rpcomPlus = brinkPlus != null && clusterPlus != null && hdevPlus != null && vdevPlus != null && missfirePlus != null
           ? computeRPComPlus(brinkPlus, clusterPlus, hdevPlus, vdevPlus, missfirePlus) : null
 
-        // Waste%: pitches deliberately thrown outside zone in 2-strike counts
-        // Simplified: zone > 9 pitches / total pitches
-        const wasteCount = pitches.filter(p => p.zone > 9).length
+        // Waste%: pitches that miss the zone by more than 10 inches (brink < -10)
+        let wasteCount = 0
+        for (const p of pitches) {
+          const dLeft = p.plate_x + ZONE_HALF_WIDTH
+          const dRight = ZONE_HALF_WIDTH - p.plate_x
+          const dBot = p.plate_z - p.sz_bot
+          const dTop = p.sz_top - p.plate_z
+          const b = Math.min(dLeft, dRight, dBot, dTop) * 12
+          if (b < -10) wasteCount++
+        }
         const wastePct = (wasteCount / pitches.length) * 100
 
         upsertRows.push({
