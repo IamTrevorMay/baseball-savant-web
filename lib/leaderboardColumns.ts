@@ -184,6 +184,7 @@ const PLUS_METRICS = [
   { suffix: 'hdev_plus', label: 'HDev+', hasPlus: true },
   { suffix: 'vdev_plus', label: 'VDev+', hasPlus: true },
   { suffix: 'missfire_plus', label: 'Miss+', hasPlus: true },
+  { suffix: 'stuff_plus', label: 'Stuff+', hasPlus: true },
   { suffix: 'waste_pct', label: 'Waste%', hasPlus: false },
 ]
 

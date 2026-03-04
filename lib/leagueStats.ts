@@ -4,7 +4,7 @@
 
 type LeagueEntry = { mean: number; stddev: number }
 type YearLeague = Record<number, Record<string, LeagueEntry>>
-type MetricName = 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
+type MetricName = 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'stuff'
 
 // ── BRINK ────────────────────────────────────────────────────────────────────
 export const BRINK_LEAGUE_BY_YEAR: YearLeague = {
@@ -401,6 +401,141 @@ export const MISSFIRE_LEAGUE_BY_YEAR: YearLeague = {
   },
 }
 
+// ── STUFF (Stuff+ model — XGBoost-predicted run value, pitcher-level aggregated) ──
+// Placeholder baselines — will be populated after running train.py
+// These are mean/stddev of pitcher-level avg stuff_rv per pitch_type per year
+export const STUFF_LEAGUE_BY_YEAR: YearLeague = {
+  2015: {
+    '4-Seam Fastball': { mean: -0.0050, stddev: 0.0035 }, 'Slider': { mean: -0.0110, stddev: 0.0060 },
+    'Sinker': { mean: -0.0040, stddev: 0.0040 }, 'Changeup': { mean: -0.0120, stddev: 0.0055 },
+    'Curveball': { mean: -0.0100, stddev: 0.0065 }, 'Cutter': { mean: -0.0060, stddev: 0.0045 },
+    'Split-Finger': { mean: -0.0140, stddev: 0.0055 }, 'Knuckle Curve': { mean: -0.0110, stddev: 0.0070 },
+  },
+  2016: {
+    '4-Seam Fastball': { mean: -0.0050, stddev: 0.0035 }, 'Slider': { mean: -0.0110, stddev: 0.0060 },
+    'Sinker': { mean: -0.0040, stddev: 0.0040 }, 'Changeup': { mean: -0.0120, stddev: 0.0055 },
+    'Curveball': { mean: -0.0100, stddev: 0.0065 }, 'Cutter': { mean: -0.0060, stddev: 0.0045 },
+    'Split-Finger': { mean: -0.0140, stddev: 0.0055 }, 'Knuckle Curve': { mean: -0.0110, stddev: 0.0070 },
+  },
+  2017: {
+    '4-Seam Fastball': { mean: -0.0055, stddev: 0.0038 }, 'Slider': { mean: -0.0105, stddev: 0.0058 },
+    'Sinker': { mean: -0.0035, stddev: 0.0038 }, 'Changeup': { mean: -0.0110, stddev: 0.0052 },
+    'Curveball': { mean: -0.0095, stddev: 0.0062 }, 'Cutter': { mean: -0.0070, stddev: 0.0048 },
+    'Sweeper': { mean: -0.0115, stddev: 0.0060 }, 'Split-Finger': { mean: -0.0135, stddev: 0.0058 },
+    'Knuckle Curve': { mean: -0.0105, stddev: 0.0065 },
+  },
+  2018: {
+    '4-Seam Fastball': { mean: -0.0055, stddev: 0.0038 }, 'Slider': { mean: -0.0110, stddev: 0.0060 },
+    'Sinker': { mean: -0.0038, stddev: 0.0040 }, 'Changeup': { mean: -0.0115, stddev: 0.0055 },
+    'Curveball': { mean: -0.0098, stddev: 0.0060 }, 'Cutter': { mean: -0.0065, stddev: 0.0048 },
+    'Sweeper': { mean: -0.0110, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0145, stddev: 0.0060 },
+    'Knuckle Curve': { mean: -0.0108, stddev: 0.0065 },
+  },
+  2019: {
+    '4-Seam Fastball': { mean: -0.0060, stddev: 0.0040 }, 'Slider': { mean: -0.0115, stddev: 0.0060 },
+    'Sinker': { mean: -0.0040, stddev: 0.0040 }, 'Changeup': { mean: -0.0120, stddev: 0.0058 },
+    'Curveball': { mean: -0.0105, stddev: 0.0068 }, 'Cutter': { mean: -0.0070, stddev: 0.0050 },
+    'Sweeper': { mean: -0.0120, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0140, stddev: 0.0060 },
+    'Knuckle Curve': { mean: -0.0112, stddev: 0.0068 },
+  },
+  2020: {
+    '4-Seam Fastball': { mean: -0.0055, stddev: 0.0042 }, 'Slider': { mean: -0.0118, stddev: 0.0065 },
+    'Sinker': { mean: -0.0035, stddev: 0.0042 }, 'Changeup': { mean: -0.0112, stddev: 0.0058 },
+    'Curveball': { mean: -0.0108, stddev: 0.0072 }, 'Cutter': { mean: -0.0062, stddev: 0.0052 },
+    'Sweeper': { mean: -0.0110, stddev: 0.0060 }, 'Split-Finger': { mean: -0.0130, stddev: 0.0062 },
+    'Knuckle Curve': { mean: -0.0110, stddev: 0.0070 },
+  },
+  2021: {
+    '4-Seam Fastball': { mean: -0.0052, stddev: 0.0038 }, 'Slider': { mean: -0.0108, stddev: 0.0058 },
+    'Sinker': { mean: -0.0030, stddev: 0.0042 }, 'Changeup': { mean: -0.0118, stddev: 0.0055 },
+    'Curveball': { mean: -0.0110, stddev: 0.0070 }, 'Cutter': { mean: -0.0055, stddev: 0.0048 },
+    'Sweeper': { mean: -0.0105, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0148, stddev: 0.0058 },
+    'Knuckle Curve': { mean: -0.0115, stddev: 0.0065 },
+  },
+  2022: {
+    '4-Seam Fastball': { mean: -0.0055, stddev: 0.0040 }, 'Slider': { mean: -0.0110, stddev: 0.0058 },
+    'Sinker': { mean: -0.0028, stddev: 0.0040 }, 'Changeup': { mean: -0.0122, stddev: 0.0058 },
+    'Curveball': { mean: -0.0100, stddev: 0.0068 }, 'Cutter': { mean: -0.0050, stddev: 0.0045 },
+    'Sweeper': { mean: -0.0108, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0140, stddev: 0.0058 },
+    'Knuckle Curve': { mean: -0.0108, stddev: 0.0060 },
+  },
+  2023: {
+    '4-Seam Fastball': { mean: -0.0052, stddev: 0.0042 }, 'Slider': { mean: -0.0105, stddev: 0.0058 },
+    'Sinker': { mean: -0.0025, stddev: 0.0040 }, 'Changeup': { mean: -0.0120, stddev: 0.0060 },
+    'Curveball': { mean: -0.0100, stddev: 0.0068 }, 'Cutter': { mean: -0.0045, stddev: 0.0042 },
+    'Sweeper': { mean: -0.0110, stddev: 0.0060 }, 'Split-Finger': { mean: -0.0138, stddev: 0.0060 },
+    'Knuckle Curve': { mean: -0.0110, stddev: 0.0065 }, 'Slurve': { mean: -0.0105, stddev: 0.0055 },
+  },
+  2024: {
+    '4-Seam Fastball': { mean: -0.0048, stddev: 0.0042 }, 'Slider': { mean: -0.0100, stddev: 0.0055 },
+    'Sinker': { mean: -0.0020, stddev: 0.0040 }, 'Changeup': { mean: -0.0118, stddev: 0.0058 },
+    'Curveball': { mean: -0.0098, stddev: 0.0065 }, 'Cutter': { mean: -0.0042, stddev: 0.0042 },
+    'Sweeper': { mean: -0.0105, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0132, stddev: 0.0058 },
+    'Knuckle Curve': { mean: -0.0112, stddev: 0.0065 }, 'Slurve': { mean: -0.0108, stddev: 0.0055 },
+  },
+  2025: {
+    '4-Seam Fastball': { mean: -0.0045, stddev: 0.0042 }, 'Slider': { mean: -0.0095, stddev: 0.0055 },
+    'Sinker': { mean: -0.0018, stddev: 0.0040 }, 'Changeup': { mean: -0.0115, stddev: 0.0058 },
+    'Curveball': { mean: -0.0095, stddev: 0.0068 }, 'Cutter': { mean: -0.0040, stddev: 0.0042 },
+    'Sweeper': { mean: -0.0100, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0130, stddev: 0.0060 },
+    'Knuckle Curve': { mean: -0.0108, stddev: 0.0062 }, 'Slurve': { mean: -0.0100, stddev: 0.0050 },
+  },
+}
+
+// ── STUFF LINEAR COEFFICIENTS ────────────────────────────────────────────────
+// Per pitch_name: intercept + feature weights for client-side stuff_rv approximation
+// Features: release_speed, pfx_x, pfx_z, release_spin_rate, spin_axis,
+//           release_extension, release_pos_x, release_pos_z, arm_angle,
+//           vx0, vy0, vz0, ax, ay, az, p_throws_R
+// Placeholder values — will be replaced after running train.py
+export const STUFF_LINEAR_FEATURES = [
+  'release_speed', 'pfx_x', 'pfx_z', 'release_spin_rate', 'spin_axis',
+  'release_extension', 'release_pos_x', 'release_pos_z', 'arm_angle',
+  'vx0', 'vy0', 'vz0', 'ax', 'ay', 'az', 'p_throws_R',
+] as const
+
+export type StuffLinearCoeffs = { intercept: number; weights: number[] }
+
+export const STUFF_LINEAR_COEFFICIENTS: Record<string, StuffLinearCoeffs> = {
+  '4-Seam Fastball': { intercept: 0.08, weights: [-0.0012, 0.002, 0.008, -0.000002, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0002, -0.0001, 0.0005, 0.0001, 0.00005, 0.0003, -0.003] },
+  'Sinker': { intercept: 0.06, weights: [-0.0010, 0.003, 0.006, -0.000002, 0.000004, -0.002, 0.001, -0.001, 0.00004, 0.0002, -0.0001, 0.0004, 0.0001, 0.00005, 0.0002, -0.002] },
+  'Cutter': { intercept: 0.05, weights: [-0.0008, 0.004, 0.005, -0.000003, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0003, -0.0001, 0.0004, 0.0001, 0.00004, 0.0002, -0.002] },
+  'Slider': { intercept: 0.04, weights: [-0.0005, 0.005, 0.003, -0.000003, 0.000006, -0.001, 0.001, -0.001, 0.00006, 0.0003, -0.0002, 0.0003, 0.0002, 0.00005, 0.0002, -0.002] },
+  'Sweeper': { intercept: 0.04, weights: [-0.0004, 0.006, 0.002, -0.000003, 0.000006, -0.001, 0.001, -0.001, 0.00006, 0.0003, -0.0002, 0.0003, 0.0002, 0.00005, 0.0002, -0.002] },
+  'Curveball': { intercept: 0.03, weights: [-0.0003, 0.004, 0.004, -0.000004, 0.000005, -0.001, 0.001, -0.001, 0.00005, 0.0002, -0.0002, 0.0004, 0.0001, 0.00004, 0.0003, -0.001] },
+  'Changeup': { intercept: 0.05, weights: [-0.0006, 0.003, 0.006, -0.000003, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0002, -0.0001, 0.0004, 0.0001, 0.00005, 0.0002, -0.002] },
+  'Split-Finger': { intercept: 0.06, weights: [-0.0008, 0.003, 0.007, -0.000003, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0002, -0.0001, 0.0005, 0.0001, 0.00005, 0.0003, -0.003] },
+  'Knuckle Curve': { intercept: 0.03, weights: [-0.0003, 0.004, 0.004, -0.000004, 0.000005, -0.001, 0.001, -0.001, 0.00005, 0.0002, -0.0002, 0.0004, 0.0001, 0.00004, 0.0003, -0.001] },
+  'Slurve': { intercept: 0.04, weights: [-0.0004, 0.005, 0.003, -0.000003, 0.000006, -0.001, 0.001, -0.001, 0.00006, 0.0003, -0.0002, 0.0003, 0.0002, 0.00005, 0.0002, -0.002] },
+}
+
+/**
+ * Compute raw stuff_rv for a single pitch using the linear approximation.
+ * Returns null if any required feature is missing.
+ */
+export function computeStuffRV(p: any): number | null {
+  const pitchName = p.pitch_name as string
+  const coeffs = STUFF_LINEAR_COEFFICIENTS[pitchName]
+  if (!coeffs) return null
+
+  const vals: number[] = []
+  for (const feat of STUFF_LINEAR_FEATURES) {
+    if (feat === 'p_throws_R') {
+      vals.push(p.p_throws === 'R' ? 1 : 0)
+    } else {
+      const v = p[feat]
+      if (v == null) return null
+      vals.push(Number(v))
+    }
+  }
+
+  let rv = coeffs.intercept
+  for (let i = 0; i < vals.length; i++) {
+    rv += coeffs.weights[i] * vals[i]
+  }
+  return rv
+}
+
 // ── METRIC TABLE MAP ─────────────────────────────────────────────────────────
 const METRIC_TABLES: Record<MetricName, YearLeague> = {
   brink: BRINK_LEAGUE_BY_YEAR,
@@ -408,6 +543,7 @@ const METRIC_TABLES: Record<MetricName, YearLeague> = {
   hdev: HDEV_LEAGUE_BY_YEAR,
   vdev: VDEV_LEAGUE_BY_YEAR,
   missfire: MISSFIRE_LEAGUE_BY_YEAR,
+  stuff: STUFF_LEAGUE_BY_YEAR,
 }
 
 // Available years in the data, sorted

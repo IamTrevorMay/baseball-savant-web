@@ -206,6 +206,22 @@ function calcArsenal(data: any[]) {
     const clusterPlus = computeYearWeightedPlus(pitches, name, 'cluster',
       pts => { const v = pts.map((p: any) => p.cluster).filter((x: any) => x != null); return ptAvgFn(v) }, true)
 
+    // Stuff+: use DB stuff_plus if available, otherwise client-side stuff_rv
+    const stuffPlus = computeYearWeightedPlus(pitches, name, 'stuff',
+      pts => {
+        const vals = pts.map((p: any) => p.stuff_plus != null ? null : p.stuff_rv).filter((x: any) => x != null)
+        // If DB values exist, use them directly
+        const dbVals = pts.map((p: any) => p.stuff_plus).filter((x: any) => x != null)
+        if (dbVals.length > vals.length) return null // will use DB path
+        return ptAvgFn(vals)
+      }, true) // invert: lower rv = better stuff = higher plus
+
+    // If DB stuff_plus values dominate, compute a simple average of those
+    const dbStuffPlusVals = pitches.map((p: any) => p.stuff_plus).filter((x: any) => x != null)
+    const finalStuffPlus = dbStuffPlusVals.length > pitches.length * 0.5
+      ? Math.round(dbStuffPlusVals.reduce((a: number, b: number) => a + b, 0) / dbStuffPlusVals.length)
+      : stuffPlus
+
     return {
       name, count: pitches.length, usagePct: pct(pitches.length, total),
       avgVelo: f(avg(velos)), maxVelo: f(velos.length ? Math.max(...velos) : null),
@@ -217,6 +233,7 @@ function calcArsenal(data: any[]) {
       cluster: f(avgCluster),
       brinkPlus: brinkPlus != null ? String(brinkPlus) : '—',
       clusterPlus: clusterPlus != null ? String(clusterPlus) : '—',
+      stuffPlus: finalStuffPlus != null ? String(finalStuffPlus) : '—',
     }
   }).sort((a, b) => b.count - a.count)
 }
@@ -224,7 +241,7 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","commandPlus","rpcomPlus"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","stuffPlus","commandPlus","rpcomPlus"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
@@ -339,6 +356,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:'cluster', l:'Cluster' },
     { k:'brinkPlus', l:'Brink+' },
     { k:'clusterPlus', l:'Cluster+' },
+    { k:'stuffPlus', l:'Stuff+' },
   ]
 
   const activeRows = mode === 'traditional' ? mergedTradRows : mode === 'advanced' ? mergedAdvRows : arsenalRows
@@ -356,7 +374,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
     if (k === 'brink') return 'text-teal-400'
     if (k === 'cluster') return 'text-teal-400'
-    if (k === 'brinkPlus' || k === 'clusterPlus' || k === 'commandPlus' || k === 'rpcomPlus') {
+    if (k === 'brinkPlus' || k === 'clusterPlus' || k === 'stuffPlus' || k === 'commandPlus' || k === 'rpcomPlus') {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
       return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'

@@ -1,3 +1,5 @@
+import { computeStuffRV } from './leagueStats'
+
 /**
  * enrichData — Derived field computation for Statcast pitch rows.
  *
@@ -8,6 +10,7 @@
  *   pfx_z_in     Vertical movement (inches, from feet)
  *   brink        Signed distance to nearest strike zone edge (inches)
  *   cluster      Distance from pitch-type centroid (inches)
+ *   stuff_rv     Linear-approximated stuff run value (when DB stuff_plus is null)
  *   vs_team      Batting team (derived from inning_topbot)
  *   batter_name  Batter display name (from lookup map)
  */
@@ -101,6 +104,15 @@ export function enrichData(
         p.hdev = +((c.cx - p.plate_x) * 12).toFixed(1)
         p.vdev = +((p.plate_z - c.cz) * 12).toFixed(1)
       }
+    }
+
+    // ------------------------------------------------------------------
+    // Stuff RV — linear approximation of XGBoost stuff model
+    // Only computed when DB-backfilled stuff_plus is not available.
+    // ------------------------------------------------------------------
+    if (p.stuff_plus == null && p.release_speed != null && p.pfx_x != null) {
+      const rv = computeStuffRV(p)
+      if (rv != null) p.stuff_rv = rv
     }
 
     // ------------------------------------------------------------------
