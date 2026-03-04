@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
 
       // 5. Season-level command metrics (per pitch type)
       q(`
-        SELECT pitch_name, waste_pct, avg_missfire, avg_brink, cmd_plus
+        SELECT pitch_name, pitches, waste_pct, avg_missfire, avg_brink, cmd_plus
         FROM pitcher_season_command
         WHERE pitcher = ${pitcherId}
           AND game_year = (SELECT game_year FROM pitches WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk} LIMIT 1)
