@@ -23,7 +23,7 @@ export default async function MechanicsLayout({ children }: { children: React.Re
         <TridentLogo className="w-5 h-6 text-blue-400 mr-1.5" />
         <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
         <span className="text-zinc-700">/</span>
-        <span className="font-bold text-blue-400 tracking-wide text-sm">Mechanics</span>
+        <span className="font-[family-name:var(--font-bebas)] text-blue-400 tracking-wide text-sm">Mechanics</span>
       </nav>
       {children}
     </div>

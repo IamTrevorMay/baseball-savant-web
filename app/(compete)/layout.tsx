@@ -24,7 +24,7 @@ export default async function CompeteLayout({ children }: { children: React.Reac
         <TridentLogo className="w-5 h-6 text-amber-400 mr-1.5" />
         <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
         <span className="text-zinc-700">/</span>
-        <span className="font-bold text-amber-400 tracking-wide text-sm">Compete</span>
+        <span className="font-[family-name:var(--font-bebas)] text-amber-400 tracking-wide text-sm">Compete</span>
         <CompeteNav />
       </nav>
       {children}

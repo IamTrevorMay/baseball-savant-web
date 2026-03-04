@@ -23,7 +23,7 @@ export default async function VisualizeLayout({ children }: { children: React.Re
         <TridentLogo className="w-5 h-6 text-cyan-400 mr-1.5" />
         <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
         <span className="text-zinc-700">/</span>
-        <a href="/visualize" className="font-bold text-cyan-400 tracking-wide text-sm hover:text-cyan-300 transition">Visualize</a>
+        <a href="/visualize" className="font-[family-name:var(--font-bebas)] text-cyan-400 tracking-wide text-sm hover:text-cyan-300 transition">Visualize</a>
       </nav>
       {children}
     </div>
