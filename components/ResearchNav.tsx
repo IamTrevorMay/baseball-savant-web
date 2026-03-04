@@ -1,17 +1,27 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 
-const NAV_LINKS = [
+const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
   { href: '/leaders', label: 'Leaders' },
   { href: '/reports', label: 'Reports' },
+  { href: '/matchups', label: 'Matchups' },
+  { href: '/teams', label: 'Teams' },
+]
+
+const MORE_LINKS = [
+  { href: '/sequencing', label: 'Sequencing' },
+  { href: '/trends', label: 'Trends' },
+  { href: '/park-adjusted', label: 'Park Adj' },
   { href: '/umpire', label: 'Umpires' },
   { href: '/abs', label: 'ABS' },
   { href: '/explore', label: 'Explore' },
   { href: '/analyst', label: 'Analyst' },
 ]
+
+const ALL_LINKS = [...PRIMARY_LINKS, ...MORE_LINKS]
 
 interface Props {
   active?: string
@@ -21,15 +31,20 @@ interface Props {
 
 export default function ResearchNav({ active, children, rightContent }: Props) {
   const [open, setOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const moreRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false)
     }
-    if (open) document.addEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
+  }, [])
+
+  const moreActive = MORE_LINKS.some(l => l.href === active)
 
   return (
     <nav className="h-12 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 md:px-6 relative shrink-0" ref={menuRef}>
@@ -43,12 +58,36 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
       {/* Desktop nav links — centered */}
       <div className="hidden md:flex flex-1 justify-center">
         <div className="flex gap-4 text-xs text-zinc-500">
-          {NAV_LINKS.map(link => (
+          {PRIMARY_LINKS.map(link => (
             <a key={link.href} href={link.href}
               className={active === link.href ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}>
               {link.label}
             </a>
           ))}
+          {/* More dropdown */}
+          <div className="relative" ref={moreRef}>
+            <button
+              onClick={() => setMoreOpen(!moreOpen)}
+              className={`flex items-center gap-0.5 ${moreActive ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}`}
+            >
+              More
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {moreOpen && (
+              <div className="absolute top-full right-0 mt-2 w-36 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+                {MORE_LINKS.map(link => (
+                  <a key={link.href} href={link.href}
+                    className={`block px-3 py-1.5 text-xs transition ${
+                      active === link.href ? 'text-emerald-400 bg-zinc-700/30' : 'text-zinc-400 hover:text-white hover:bg-zinc-700/30'
+                    }`}>
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -71,7 +110,7 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
       {/* Mobile dropdown */}
       {open && (
         <div className="absolute top-full left-0 right-0 bg-zinc-900 border-b border-zinc-700 shadow-xl z-50 md:hidden">
-          {NAV_LINKS.map(link => (
+          {ALL_LINKS.map(link => (
             <a key={link.href} href={link.href}
               className={`block px-6 py-3 text-sm border-t border-zinc-800/50 transition ${
                 active === link.href ? 'text-emerald-400 bg-zinc-800/30' : 'text-zinc-400 hover:text-white hover:bg-zinc-800/30'
