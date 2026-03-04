@@ -1520,7 +1520,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         { label: 'HBreak', x: 505, w: 90 },
         { label: 'Arm\u00b0', x: 605, w: 80 },
         { label: 'Ext', x: 695, w: 75 },
-        { label: 'Msfire', x: 780, w: 85 },
+        { label: 'Miss', x: 780, w: 85 },
         { label: 'Brink', x: 875, w: 85 },
         { label: 'Cmd+', x: 970, w: 85 },
       ]
@@ -1572,7 +1572,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
             row.avg_hbreak?.toFixed(1) || '--',
             row.avg_arm_angle?.toFixed(1) || '--',
             row.avg_ext?.toFixed(1) || '--',
-            row.avg_missfire != null ? row.avg_missfire.toFixed(1) + '%' : '--',
+            row.avg_missfire != null ? row.avg_missfire.toFixed(1) : '--',
             row.avg_brink != null ? row.avg_brink.toFixed(2) : '--',
             row.cmd_plus != null ? String(Math.round(row.cmd_plus)) : '--',
           ]
@@ -1607,7 +1607,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }))
 
       elements.push(el('stat-card', 390, 920, 300, 120, {
-        label: 'Misfire %', value: cmd?.avg_missfire != null ? cmd.avg_missfire.toFixed(1) + '%' : '--',
+        label: 'Misfire', value: cmd?.avg_missfire != null ? cmd.avg_missfire.toFixed(1) + '"' : '--',
         sublabel: '', color: '#a855f7', fontSize: 36, variant: 'glass', bgColor: 'transparent',
       }))
 
