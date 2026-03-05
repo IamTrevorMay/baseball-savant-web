@@ -5,7 +5,7 @@ import type { ActiveFilter } from '@/components/FilterEngine'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type View = 'pitching' | 'hitting' | 'team' | 'defence'
-export type StatSet = 'traditional' | 'advanced' | 'stuff' | 'battedball' | 'discipline' | 'triton_raw' | 'triton_plus' | 'deception'
+export type StatSet = 'traditional' | 'advanced' | 'stuff' | 'battedball' | 'discipline' | 'triton_raw' | 'triton_plus' | 'deception' | 'oaa' | 'outfield_oaa' | 'catch_probability' | 'arm_strength' | 'run_value' | 'catcher_framing'
 
 export interface ColumnDef {
   key: string          // metric key or group key (e.g. 'player_name', 'avg_velo')
@@ -41,7 +41,14 @@ export const STAT_SETS: Record<View, { key: StatSet; label: string }[]> = {
     { key: 'battedball', label: 'Batted Ball' },
     { key: 'discipline', label: 'Plate Discipline' },
   ],
-  defence: [],
+  defence: [
+    { key: 'oaa', label: 'OAA' },
+    { key: 'run_value', label: 'Run Value' },
+    { key: 'arm_strength', label: 'Arm Strength' },
+    { key: 'catch_probability', label: 'Catch Prob' },
+    { key: 'outfield_oaa', label: 'OF Directional' },
+    { key: 'catcher_framing', label: 'Framing' },
+  ],
 }
 
 // ── Conditional color helpers ────────────────────────────────────────────────
@@ -50,6 +57,22 @@ function plusColor(v: number): string {
   if (v >= 100) return 'text-teal-400'
   if (v >= 85) return 'text-orange-400'
   return 'text-red-400'
+}
+
+function oaaColor(v: number): string {
+  if (v >= 10) return 'text-emerald-300'
+  if (v > 0) return 'text-emerald-400'
+  if (v === 0) return 'text-zinc-400'
+  if (v > -10) return 'text-red-400'
+  return 'text-red-300'
+}
+
+function runsColor(v: number): string {
+  if (v >= 5) return 'text-emerald-300'
+  if (v > 0) return 'text-emerald-400'
+  if (v === 0) return 'text-zinc-400'
+  if (v > -5) return 'text-red-400'
+  return 'text-red-300'
 }
 
 function re24Color(v: number, view: View): string {
@@ -153,6 +176,102 @@ export const COLUMNS: Record<string, ColumnDef[]> = {
   'team:advanced': [teamCol, pitches, kPct, bbPct, kMinusBb, whiffPct, swstrPct, cswPct, xba, xwoba, xslg, woba, re24],
   'team:battedball': [teamCol, pitches, avgEv, maxEv, avgLa, hardHit, barrel, gbPct, fbPct, ldPct, puPct],
   'team:discipline': [teamCol, pitches, zonePct, chasePct, whiffPct, swstrPct, cswPct, contactPct, zSwingPct, oContactPct],
+
+  // ── DEFENCE ─────────────────────────────────────────────────────
+  'defence:oaa': [
+    { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+    { key: 'player_id', label: '', colorClass: '', isGroup: true },
+    { key: 'team', label: 'Team', colorClass: 'text-zinc-400' },
+    { key: 'position', label: 'Pos', colorClass: 'text-zinc-400' },
+    { key: 'outs_above_average', label: 'OAA', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'fielding_runs_prevented', label: 'FRP', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'oaa_infront', label: 'In Front', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_lateral_3b', label: '3B Side', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_lateral_1b', label: '1B Side', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_behind', label: 'Behind', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_rhh', label: 'vs RHH', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_lhh', label: 'vs LHH', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'actual_success_rate', label: 'Actual%', colorClass: 'text-sky-400', format: 'dec1' },
+    { key: 'estimated_success_rate', label: 'Expected%', colorClass: 'text-sky-400', format: 'dec1' },
+    { key: 'diff_success_rate', label: 'Diff%', colorClass: '', format: 'dec1', conditionalColor: (v) => oaaColor(v) },
+  ],
+  'defence:outfield_oaa': [
+    { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+    { key: 'player_id', label: '', colorClass: '', isGroup: true },
+    { key: 'attempts', label: 'Attempts', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'oaa', label: 'OAA', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_back_left', label: 'Back-L', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_back', label: 'Back', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_back_right', label: 'Back-R', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_back_all', label: 'Back All', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_in_left', label: 'In-L', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_in', label: 'In', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_in_right', label: 'In-R', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'oaa_in_all', label: 'In All', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+  ],
+  'defence:catch_probability': [
+    { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+    { key: 'player_id', label: '', colorClass: '', isGroup: true },
+    { key: 'oaa', label: 'OAA', colorClass: '', format: 'int', conditionalColor: (v) => oaaColor(v) },
+    { key: 'five_star_plays', label: '5★ Made', colorClass: 'text-emerald-400', format: 'int' },
+    { key: 'five_star_opps', label: '5★ Opps', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'five_star_pct', label: '5★%', colorClass: 'text-emerald-400', format: 'dec1' },
+    { key: 'four_star_plays', label: '4★ Made', colorClass: 'text-teal-400', format: 'int' },
+    { key: 'four_star_opps', label: '4★ Opps', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'four_star_pct', label: '4★%', colorClass: 'text-teal-400', format: 'dec1' },
+    { key: 'three_star_plays', label: '3★ Made', colorClass: 'text-sky-400', format: 'int' },
+    { key: 'three_star_opps', label: '3★ Opps', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'three_star_pct', label: '3★%', colorClass: 'text-sky-400', format: 'dec1' },
+    { key: 'two_star_plays', label: '2★ Made', colorClass: 'text-amber-400', format: 'int' },
+    { key: 'two_star_opps', label: '2★ Opps', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'two_star_pct', label: '2★%', colorClass: 'text-amber-400', format: 'dec1' },
+    { key: 'one_star_plays', label: '1★ Made', colorClass: 'text-orange-400', format: 'int' },
+    { key: 'one_star_opps', label: '1★ Opps', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'one_star_pct', label: '1★%', colorClass: 'text-orange-400', format: 'dec1' },
+  ],
+  'defence:arm_strength': [
+    { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+    { key: 'player_id', label: '', colorClass: '', isGroup: true },
+    { key: 'team', label: 'Team', colorClass: 'text-zinc-400' },
+    { key: 'position', label: 'Pos', colorClass: 'text-zinc-400' },
+    { key: 'total_throws', label: 'Throws', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'max_arm_strength', label: 'Max Arm', colorClass: 'text-amber-400', format: 'dec1' },
+    { key: 'arm_overall', label: 'Overall', colorClass: 'text-amber-400', format: 'dec1' },
+    { key: 'arm_inf', label: 'IF Avg', colorClass: 'text-sky-400', format: 'dec1' },
+    { key: 'arm_of', label: 'OF Avg', colorClass: 'text-sky-400', format: 'dec1' },
+    { key: 'arm_1b', label: '1B', colorClass: 'text-zinc-300', format: 'dec1' },
+    { key: 'arm_2b', label: '2B', colorClass: 'text-zinc-300', format: 'dec1' },
+    { key: 'arm_3b', label: '3B', colorClass: 'text-zinc-300', format: 'dec1' },
+    { key: 'arm_ss', label: 'SS', colorClass: 'text-zinc-300', format: 'dec1' },
+    { key: 'arm_lf', label: 'LF', colorClass: 'text-zinc-300', format: 'dec1' },
+    { key: 'arm_cf', label: 'CF', colorClass: 'text-zinc-300', format: 'dec1' },
+    { key: 'arm_rf', label: 'RF', colorClass: 'text-zinc-300', format: 'dec1' },
+  ],
+  'defence:run_value': [
+    { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+    { key: 'player_id', label: '', colorClass: '', isGroup: true },
+    { key: 'team', label: 'Team', colorClass: 'text-zinc-400' },
+    { key: 'total_runs', label: 'Total Runs', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'inf_of_runs', label: 'IF/OF Runs', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'range_runs', label: 'Range', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'arm_runs', label: 'Arm', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'dp_runs', label: 'DP', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'catching_runs', label: 'Catching', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'framing_runs', label: 'Framing', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'throwing_runs', label: 'Throwing', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'blocking_runs', label: 'Blocking', colorClass: '', format: 'int', conditionalColor: (v) => runsColor(v) },
+    { key: 'outs_total', label: 'Outs', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'tot_pa', label: 'PA', colorClass: 'text-zinc-400', format: 'int' },
+  ],
+  'defence:catcher_framing': [
+    { key: 'player_name', label: 'Name', colorClass: 'text-white font-medium', isName: true },
+    { key: 'player_id', label: '', colorClass: '', isGroup: true },
+    { key: 'team', label: 'Team', colorClass: 'text-zinc-400' },
+    { key: 'pitches', label: 'Pitches', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'pitches_shadow', label: 'Shadow', colorClass: 'text-zinc-400', format: 'int' },
+    { key: 'rv_total', label: 'Framing Runs', colorClass: '', format: 'dec1', conditionalColor: (v) => runsColor(v) },
+    { key: 'pct_total', label: 'Strike Rate+', colorClass: '', format: 'dec1', conditionalColor: (v) => oaaColor(v) },
+  ],
 }
 
 // ── Triton pitch types & per-pitch-type column generation ─────────────────────
@@ -272,9 +391,13 @@ export const DECEPTION_COLUMNS: ColumnDef[] = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Defence stat sets that use the separate defence leaderboard API */
+export const DEFENCE_STAT_SETS = new Set(['oaa', 'outfield_oaa', 'catch_probability', 'arm_strength', 'run_value', 'catcher_framing'])
+
 /** Get metric keys needed for a stat set (excludes group-by columns) */
 export function getMetricsForStatSet(view: View, statSet: StatSet): string[] {
   if (statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') return [] // uses separate API
+  if (DEFENCE_STAT_SETS.has(statSet)) return [] // uses defence API
   const cols = COLUMNS[`${view}:${statSet}`] || []
   return cols.filter(c => !c.isGroup && c.key !== '_batter_name').map(c => c.key)
 }
@@ -285,6 +408,7 @@ export function getGroupBy(view: View): string[] {
     case 'pitching': return ['player_name', 'pitcher']
     case 'hitting': return ['batter']
     case 'team': return ['pitch_team']
+    case 'defence': return ['player_name', 'player_id']
     default: return ['player_name']
   }
 }

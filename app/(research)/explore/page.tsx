@@ -7,6 +7,7 @@ import FilterEngine, { ActiveFilter, FILTER_CATALOG } from '@/components/FilterE
 import ExplainBubble from '@/components/ExplainBubble'
 import {
   View, StatSet, STAT_SETS, COLUMNS, TRITON_RAW_COLUMNS, TRITON_PLUS_COLUMNS, DECEPTION_COLUMNS,
+  DEFENCE_STAT_SETS,
   getMetricsForStatSet, getGroupBy, filtersToReportFormat,
   formatValue, getCellColor, defaultQualifier,
   type ColumnDef,
@@ -98,12 +99,24 @@ export default function ExplorePage() {
 
   // Fetch data whenever view, statSet, filters, sort, page, or qualifier changes
   const fetchData = useCallback(async () => {
-    if (view === 'defence') return
     setLoading(true)
     const id = ++fetchRef.current
 
     try {
-      if (statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
+      if (DEFENCE_STAT_SETS.has(statSet)) {
+        // Defence uses separate leaderboard API
+        const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
+        const season = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
+
+        const res = await fetch('/api/leaderboard-defence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ season, statSet, sortBy, sortDir, limit, offset: page * limit }),
+        })
+        const data = await res.json()
+        if (id !== fetchRef.current) return
+        setRows(data.rows || [])
+      } else if (statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
         // Triton / Deception use separate APIs
         const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
         const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
@@ -196,9 +209,10 @@ export default function ExplorePage() {
   // When view changes, reset statSet and qualifier
   function handleViewChange(v: View) {
     setView(v)
-    setStatSet(STAT_SETS[v]?.[0]?.key || 'traditional')
+    const firstStat = STAT_SETS[v]?.[0]?.key || 'traditional'
+    setStatSet(firstStat)
     setQualifier(defaultQualifier(v))
-    setSortBy('pitches')
+    setSortBy(v === 'defence' ? 'outs_above_average' : 'pitches')
     setSortDir('DESC')
     setPage(0)
   }
@@ -219,7 +233,8 @@ export default function ExplorePage() {
   }
 
   // Get the visible columns (hide empty isGroup columns like pitcher/batter IDs)
-  const allCols = statSet === 'triton_raw' ? TRITON_RAW_COLUMNS
+  const allCols = DEFENCE_STAT_SETS.has(statSet) ? (COLUMNS[`defence:${statSet}`] || [])
+    : statSet === 'triton_raw' ? TRITON_RAW_COLUMNS
     : statSet === 'triton_plus' ? TRITON_PLUS_COLUMNS
     : statSet === 'deception' ? DECEPTION_COLUMNS
     : (COLUMNS[`${view}:${statSet}`] || [])
@@ -246,7 +261,10 @@ export default function ExplorePage() {
 
   function handleRowClick(row: any, col: ColumnDef) {
     if (!col.isName) return
-    if (view === 'pitching' || statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
+    if (view === 'defence') {
+      const id = row.player_id
+      if (id) window.location.href = `/hitter/${id}`
+    } else if (view === 'pitching' || statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
       const id = row.pitcher
       if (id) window.location.href = `/player/${id}`
     } else if (view === 'hitting') {
@@ -328,23 +346,11 @@ export default function ExplorePage() {
         optionsCache={optionsCache}
       />
 
-      {/* Defence placeholder */}
-      {view === 'defence' ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-zinc-600 text-5xl mb-4">&#x1F6E1;</div>
-            <h2 className="text-xl font-medium text-zinc-300 mb-2">Defensive metrics coming soon</h2>
-            <p className="text-zinc-500 text-sm max-w-md">
-              OAA, DRS, and UZR require additional data sources not yet available.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           {/* Stat set tabs */}
           <div className="bg-zinc-950 border-b border-zinc-800 px-6 flex items-center gap-1 h-9">
             {STAT_SETS[view].map(ss => (
-              <button key={ss.key} onClick={() => { setStatSet(ss.key); setPage(0); setSortBy('pitches'); setSortDir('DESC') }}
+              <button key={ss.key} onClick={() => { setStatSet(ss.key); setPage(0); setSortBy(DEFENCE_STAT_SETS.has(ss.key) ? 'player_name' : 'pitches'); setSortDir('DESC') }}
                 className={`px-3 py-1 rounded-t text-[11px] font-medium transition border-b-2 ${
                   statSet === ss.key
                     ? 'border-emerald-500 text-emerald-400'
@@ -446,7 +452,6 @@ export default function ExplorePage() {
             ) : null}
           </div>
         </>
-      )}
 
       {/* Context menu */}
       {contextMenu && (

@@ -11,6 +11,7 @@ import ResultsTab from '@/components/dashboard/ResultsTab'
 import PitchLogTab from '@/components/dashboard/PitchLogTab'
 import HitterSplitsTab from '@/components/dashboard/HitterSplitsTab'
 import HitterGameLogTab from '@/components/dashboard/HitterGameLogTab'
+import HitterFieldingTab from '@/components/dashboard/HitterFieldingTab'
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
 import PlayerBadges from '@/components/PlayerBadges'
@@ -30,6 +31,7 @@ const BASE_TABS = [
   { id: 'pitchlog', label: 'Pitch Log' },
   { id: 'splits', label: 'Splits' },
   { id: 'gamelog', label: 'Game Log' },
+  { id: 'fielding', label: 'Fielding' },
 ]
 
 const TEAM_COLORS: Record<string, string> = {
@@ -296,6 +298,7 @@ export default function HitterDashboard() {
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="hitter" />}
           {tab === 'splits' && <HitterSplitsTab data={data} />}
           {tab === 'gamelog' && <HitterGameLogTab data={data} />}
+          {tab === 'fielding' && <HitterFieldingTab batterId={batterId} lahmanFielding={lahmanData?.fielding} />}
           {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}
         </div>
       </div>

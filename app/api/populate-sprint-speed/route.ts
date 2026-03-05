@@ -1,24 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { parseCSVLine } from '@/lib/csv'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-function parseCSVLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') { inQuotes = !inQuotes; continue }
-    if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; continue }
-    current += ch
-  }
-  result.push(current.trim())
-  return result
-}
 
 export async function POST(req: NextRequest) {
   try {
