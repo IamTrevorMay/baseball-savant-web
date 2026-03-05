@@ -1,7 +1,10 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
+import SequenceReplayCanvas, { type SequenceReplayHandle, type ReplayPitch } from '@/components/sequencing/SequenceReplayCanvas'
+import AtBatSelector, { type AtBatGroup } from '@/components/sequencing/AtBatSelector'
+import { exportSequenceReplayMP4 } from '@/lib/exportSequenceReplay'
 
 interface PlayerResult {
   player_name: string
@@ -39,6 +42,36 @@ function pctBg(pct: number): string {
   return ''
 }
 
+function groupAtBats(pitches: any[]): AtBatGroup[] {
+  const map = new Map<string, any[]>()
+  for (const p of pitches) {
+    const key = `${p.game_pk}-${p.at_bat_number}`
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(p)
+  }
+
+  const groups: AtBatGroup[] = []
+  for (const [key, rows] of map) {
+    const first = rows[0]
+    const last = rows[rows.length - 1]
+    groups.push({
+      key,
+      game_pk: first.game_pk,
+      at_bat_number: first.at_bat_number,
+      game_date: first.game_date,
+      batter_name: first.batter_name,
+      inning: first.inning,
+      inning_topbot: first.inning_topbot,
+      stand: first.stand,
+      result: last.events || null,
+      pitchCount: rows.length,
+      pitches: rows,
+    })
+  }
+
+  return groups
+}
+
 export default function SequencingPage() {
   const [pitcher, setPitcher] = useState<PlayerResult | null>(null)
   const [season, setSeason] = useState('2025')
@@ -47,6 +80,14 @@ export default function SequencingPage() {
   const [error, setError] = useState<string | null>(null)
   const [transitions, setTransitions] = useState<Transition[]>([])
   const [arsenal, setArsenal] = useState<ArsenalRow[]>([])
+
+  // Replay state
+  const [atBats, setAtBats] = useState<AtBatGroup[]>([])
+  const [selectedAtBat, setSelectedAtBat] = useState<AtBatGroup | null>(null)
+  const [loadingAtBats, setLoadingAtBats] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState(0)
+  const replayRef = useRef<SequenceReplayHandle>(null)
 
   const handleFetch = useCallback(async () => {
     if (!pitcher?.pitcher) return
@@ -64,6 +105,48 @@ export default function SequencingPage() {
     } catch (e: any) { setError(e.message) }
     setLoading(false)
   }, [pitcher, season, hand])
+
+  const handleLoadAtBats = useCallback(async () => {
+    if (!pitcher?.pitcher) return
+    setLoadingAtBats(true)
+    try {
+      const res = await fetch('/api/sequencing-atbats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pitcherId: pitcher.pitcher, season, hand }),
+      })
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
+      const data = await res.json()
+      const groups = groupAtBats(data.pitches || [])
+      setAtBats(groups)
+      if (groups.length > 0) setSelectedAtBat(groups[0])
+    } catch (e: any) { setError(e.message) }
+    setLoadingAtBats(false)
+  }, [pitcher, season, hand])
+
+  const handleExportMP4 = useCallback(async () => {
+    if (!replayRef.current || !selectedAtBat) return
+    setExporting(true)
+    setExportProgress(0)
+    try {
+      const { renderFrameAt, totalDurationMs } = replayRef.current
+      const batter = selectedAtBat.batter_name.replace(/\s+/g, '-').toLowerCase()
+      await exportSequenceReplayMP4(
+        renderFrameAt,
+        totalDurationMs,
+        { fps: 30, filename: `sequence-${batter}.mp4` },
+        pct => setExportProgress(pct),
+      )
+    } catch (e: any) {
+      setError(e.message)
+    }
+    setExporting(false)
+  }, [selectedAtBat])
+
+  const replayPitches: ReplayPitch[] = useMemo(() => {
+    if (!selectedAtBat) return []
+    return selectedAtBat.pitches as ReplayPitch[]
+  }, [selectedAtBat])
 
   // Build matrix: rows = from_pitch, cols = all unique pitches
   const allPitches = [...new Set([...transitions.map(t => t.from_pitch), ...transitions.map(t => t.to_pitch)])]
@@ -85,8 +168,8 @@ export default function SequencingPage() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-6">
           <div className="flex flex-wrap items-end gap-4">
             <PlayerSearchInput type="pitcher" label="Pitcher" value={pitcher}
-              onSelect={p => { setPitcher(p); setTransitions([]); setArsenal([]) }}
-              onClear={() => { setPitcher(null); setTransitions([]); setArsenal([]) }} />
+              onSelect={p => { setPitcher(p); setTransitions([]); setArsenal([]); setAtBats([]); setSelectedAtBat(null) }}
+              onClear={() => { setPitcher(null); setTransitions([]); setArsenal([]); setAtBats([]); setSelectedAtBat(null) }} />
             <div>
               <label className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block">Season</label>
               <select value={season} onChange={e => setSeason(e.target.value)}
@@ -133,7 +216,7 @@ export default function SequencingPage() {
 
         {/* Transition Matrix */}
         {transitions.length > 0 && orderedPitches.length > 0 && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden mb-6">
             <div className="px-3 py-2 border-b border-zinc-800 text-xs text-zinc-400 font-medium">
               Transition Matrix <span className="text-zinc-600 ml-1">Row = Previous Pitch, Column = Next Pitch</span>
             </div>
@@ -179,6 +262,58 @@ export default function SequencingPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Pitch Sequence Replay */}
+        {transitions.length > 0 && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden mb-6">
+            <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
+              <span className="text-xs text-zinc-400 font-medium">Pitch Sequence Replay</span>
+              <div className="flex items-center gap-2">
+                {atBats.length === 0 && (
+                  <button
+                    onClick={handleLoadAtBats}
+                    disabled={loadingAtBats}
+                    className="h-7 px-3 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 text-zinc-300 text-[11px] rounded border border-zinc-700 transition"
+                  >
+                    {loadingAtBats ? 'Loading...' : 'Load Replays'}
+                  </button>
+                )}
+                {selectedAtBat && (
+                  <button
+                    onClick={handleExportMP4}
+                    disabled={exporting}
+                    className="h-7 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white text-[11px] rounded transition"
+                  >
+                    {exporting ? `Exporting ${Math.round(exportProgress)}%` : 'Export MP4'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="p-4">
+              {atBats.length > 0 && (
+                <div className="mb-3">
+                  <AtBatSelector atBats={atBats} selected={selectedAtBat} onSelect={setSelectedAtBat} />
+                </div>
+              )}
+              {atBats.length === 0 && !loadingAtBats && (
+                <div className="text-center py-8 text-zinc-600 text-sm">
+                  Click &quot;Load Replays&quot; to fetch at-bat data for animated replay.
+                </div>
+              )}
+              {loadingAtBats && (
+                <div className="text-center py-8 text-zinc-500 text-sm">Loading at-bats...</div>
+              )}
+              {replayPitches.length > 0 && (
+                <SequenceReplayCanvas
+                  ref={replayRef}
+                  pitches={replayPitches}
+                  width={540}
+                  height={480}
+                />
+              )}
             </div>
           </div>
         )}
