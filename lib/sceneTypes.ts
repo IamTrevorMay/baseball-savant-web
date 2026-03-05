@@ -1,4 +1,4 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot'
 
 // ── Data Binding ────────────────────────────────────────────────────────────
 
@@ -84,6 +84,26 @@ export interface OutingData {
   command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null }
 }
 
+export interface StarterCardData {
+  pitcher_id: number
+  pitcher_name: string
+  p_throws: string
+  team: string
+  age: number | null
+  game_date: string
+  opponent: string
+  game_line: { ip: string; er: number; h: number; hr: number; bb: number; k: number; whiffs: number; csw_pct: number; pitches: number }
+  grades: { start: string; stuff: string; command: string; triton: string }
+  primary_fastball: { name: string; avg_velo: number; avg_ext: number; avg_ivb: number; avg_hb: number; avg_havaa: number } | null
+  usage: { pitch_name: string; outing_pct: number; vs_lhb_pct: number; vs_rhb_pct: number; season_pct: number }[]
+  movement: { hb: number; ivb: number; pitch_name: string }[]
+  season_movement: { pitch_name: string; avg_hb: number; avg_ivb: number; std_hb: number; std_ivb: number }[]
+  locations_lhb: { plate_x: number; plate_z: number; pitch_name: string }[]
+  locations_rhb: { plate_x: number; plate_z: number; pitch_name: string }[]
+  pitch_metrics: { pitch_name: string; count: number; avg_velo: number; velo_diff: number; avg_ivb: number; avg_hb: number; str_pct: number; swstr_pct: number; csw_pct: number; xslgcon: number; stuff_plus: number; triton_plus: number }[]
+  command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null }
+}
+
 // ── Scene ───────────────────────────────────────────────────────────────────
 
 export interface Scene {
@@ -112,6 +132,7 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'stadium', name: 'Stadium', desc: '3D field with hit trajectories', icon: '\u26be' },
   { type: 'ticker', name: 'Ticker', desc: 'Scrolling text crawl', icon: '\u21c4' },
   { type: 'zone-plot', name: 'Zone Plot', desc: 'Pitch locations with zone overlay', icon: '\u25ce' },
+  { type: 'movement-plot', name: 'Movement Plot', desc: 'HB vs IVB scatter with season shapes', icon: '\u25c8' },
 ]
 
 // ── Shared style defaults ───────────────────────────────────────────────────
@@ -188,6 +209,13 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
     props: {
       ...UNIVERSAL_STYLE, pitches: [], showZone: true, dotSize: 8, dotOpacity: 0.85,
       bgColor: '#09090b', showKey: true, zoneColor: '#52525b', zoneLineWidth: 2,
+    },
+  },
+  'movement-plot': {
+    w: 340, h: 320,
+    props: {
+      ...UNIVERSAL_STYLE, pitches: [], seasonShapes: [], bgColor: '#09090b',
+      dotSize: 10, dotOpacity: 0.85, showKey: false, showSeasonShapes: true, maxRange: 24,
     },
   },
 }

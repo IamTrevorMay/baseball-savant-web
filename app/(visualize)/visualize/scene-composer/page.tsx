@@ -381,6 +381,24 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── Starter Card ──────────────────────────────────────────────────
+      if (config.templateId === 'starter-card') {
+        if (!config.playerId || !config.gamePk) {
+          const rebuilt = template.rebuild(config, null)
+          setScene(rebuilt)
+          setSelectedId(null)
+          setSelectedIds(new Set())
+          return
+        }
+        const res = await fetch(`/api/starter-card?pitcherId=${config.playerId}&gamePk=${config.gamePk}`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.data || null)
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Default leaderboard logic ──────────────────────────────────────
       const params = new URLSearchParams({
         leaderboard: 'true',
@@ -839,7 +857,7 @@ export default function SceneComposerPage() {
           </div>
         ) : scene.templateConfig ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            {scene.templateConfig.templateId === 'pitcher-outing-report' ? (
+            {(scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
               <OutingConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}

@@ -5,6 +5,7 @@ import { Scene, SceneElement } from '@/lib/sceneTypes'
 import PitchFlightRenderer from './PitchFlightRenderer'
 import StadiumRenderer from './StadiumRenderer'
 import ZonePlotRenderer from './ZonePlotRenderer'
+import MovementPlotRenderer from './MovementPlotRenderer'
 
 // ── Ticker Renderer ──────────────────────────────────────────────────────────
 
@@ -245,6 +246,8 @@ function renderElementContent(el: SceneElement) {
       return <TickerRenderer props={el.props} width={el.width} height={el.height} />
     case 'zone-plot':
       return <ZonePlotRenderer props={el.props} width={el.width} height={el.height} />
+    case 'movement-plot':
+      return <MovementPlotRenderer props={el.props} width={el.width} height={el.height} />
     default:
       return <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 text-xs">Unknown</div>
   }

@@ -49,7 +49,8 @@ export default function OutingConfigPanel({ config, onUpdateConfig, onRefresh, l
     let cancelled = false
     setGamesLoading(true)
 
-    fetch(`/api/pitcher-outing?games=true&pitcherId=${config.playerId}&season=${season}`)
+    const gamesEndpoint = config.templateId === 'starter-card' ? '/api/starter-card' : '/api/pitcher-outing'
+    fetch(`${gamesEndpoint}?games=true&pitcherId=${config.playerId}&season=${season}`)
       .then(r => r.json())
       .then(data => {
         if (!cancelled) setGames(data.games || [])

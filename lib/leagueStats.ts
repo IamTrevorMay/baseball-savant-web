@@ -920,6 +920,36 @@ export function computeDeceptionScore(zScores: ZScores, fb: boolean): number | n
   }
 }
 
+// ── PLUS-TO-GRADE CONVERSION ─────────────────────────────────────────────────
+
+export function plusToGrade(plus: number): string {
+  if (plus >= 130) return 'A+'
+  if (plus >= 125) return 'A'
+  if (plus >= 120) return 'A-'
+  if (plus >= 115) return 'B+'
+  if (plus >= 110) return 'B'
+  if (plus >= 105) return 'B-'
+  if (plus >= 100) return 'C+'
+  if (plus >= 95) return 'C'
+  if (plus >= 90) return 'C-'
+  if (plus >= 85) return 'D+'
+  if (plus >= 80) return 'D'
+  if (plus >= 75) return 'D-'
+  return 'F'
+}
+
+export function gradeColor(grade: string): string {
+  const letter = grade.charAt(0)
+  switch (letter) {
+    case 'A': return '#10b981' // emerald
+    case 'B': return '#06b6d4' // cyan
+    case 'C': return '#f59e0b' // amber
+    case 'D': return '#f97316' // orange
+    case 'F': return '#ef4444' // red
+    default: return '#a1a1aa'
+  }
+}
+
 export function computeXDeceptionScore(
   fbZ: { vaa: number; haa: number; vb: number; hb: number; ext: number },
   osZ: { vaa: number; haa: number; vb: number; hb: number; ext: number }

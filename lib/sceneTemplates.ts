@@ -3,9 +3,10 @@
  * Each factory returns a fresh Scene with unique IDs.
  */
 
-import { Scene, SceneElement, TemplateConfig, TemplateDataRow, OutingData } from './sceneTypes'
+import { Scene, SceneElement, TemplateConfig, TemplateDataRow, OutingData, StarterCardData } from './sceneTypes'
 import { SCENE_METRICS } from './reportMetrics'
 import { getPitchColor } from '@/components/chartConfig'
+import { gradeColor } from './leagueStats'
 
 export interface SceneTemplate {
   id: string
@@ -1622,6 +1623,395 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         width: 1920,
         height: 1080,
         background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: config,
+      }
+    },
+  },
+
+  // ── Starter Card ─────────────────────────────────────────────────────────
+  {
+    id: 'starter-card',
+    name: 'Starter Card',
+    category: 'pitcher',
+    description: 'Full pitcher outing card with grades, usage, movement, zones, and metrics',
+    icon: '\u{1f0cf}',
+    width: 1080,
+    height: 1350,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+    },
+    rebuild: (config: TemplateConfig, data: StarterCardData | null): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const d = data || null
+      const name = d?.pitcher_name || config.playerName || 'Pitcher Name'
+      const hand = d?.p_throws || 'R'
+      const team = d?.team || '---'
+      const ageStr = d?.age != null ? `Age: ${d.age}` : ''
+      const dateStr = d?.game_date || '----/--/--'
+      const oppStr = d?.opponent || '---'
+      const season = config.dateRange?.type === 'season' ? config.dateRange.year : 2025
+
+      // ── Background ──────────────────────────────────────────────────────
+      elements.push(el('shape', 0, 0, 1080, 1350, {
+        shape: 'rect', fill: '#111827', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // ── Header (y: 20–110) ──────────────────────────────────────────────
+      elements.push(el('text', 30, 20, 600, 42, {
+        text: name, fontSize: 36, fontWeight: 800, color: '#ffffff', textAlign: 'left',
+      }))
+
+      const metaLine = [hand === 'R' ? 'RHP' : 'LHP', team, ageStr].filter(Boolean).join(' | ')
+      elements.push(el('text', 30, 62, 600, 22, {
+        text: metaLine, fontSize: 14, fontWeight: 400, color: '#a1a1aa', textAlign: 'left',
+      }))
+
+      elements.push(el('text', 30, 86, 600, 22, {
+        text: `Pitcher Performance: ${dateStr} vs ${oppStr}`,
+        fontSize: 15, fontWeight: 500, color: '#06b6d4', textAlign: 'left',
+      }))
+
+      // Trident logo area
+      elements.push(el('shape', 880, 15, 170, 50, {
+        shape: 'rect', fill: 'rgba(6,182,212,0.08)', stroke: '#06b6d4', strokeWidth: 1, borderRadius: 8,
+      }))
+      elements.push(el('text', 880, 15, 170, 50, {
+        text: 'TRITON STATS', fontSize: 14, fontWeight: 700, color: '#06b6d4', textAlign: 'center',
+        fontFamily: 'Bebas Neue',
+      }))
+
+      // ── Game Line Bar (y: 115–155) ──────────────────────────────────────
+      const gl = d?.game_line
+      const lineStr = gl
+        ? `${gl.ip} IP, ${gl.er} ER, ${gl.h} Hits${gl.hr > 0 ? ` (${gl.hr} HR)` : ''}, ${gl.bb} BBs, ${gl.k} K – ${gl.whiffs} Whiffs, ${gl.csw_pct.toFixed(0)}% CSW, ${gl.pitches} Pitches`
+        : '-- IP, -- ER, -- Hits, -- BBs, -- K'
+
+      elements.push(el('shape', 30, 115, 1020, 40, {
+        shape: 'rect', fill: 'rgba(6,182,212,0.08)', stroke: '#06b6d4', strokeWidth: 1, borderRadius: 8,
+      }))
+      elements.push(el('text', 30, 115, 1020, 40, {
+        text: lineStr, fontSize: 14, fontWeight: 500, color: '#e4e4e7', textAlign: 'center',
+      }))
+
+      // ── Top Section: Grades + Primary FB (left) + Usage (right) ────────
+
+      // LEFT COLUMN (30–420) — Grades
+      const grades = d?.grades || { start: '--', stuff: '--', command: '--', triton: '--' }
+
+      // Start label + big grade
+      elements.push(el('text', 30, 170, 100, 20, {
+        text: 'Start', fontSize: 16, fontWeight: 500, color: '#71717a', textAlign: 'left',
+      }))
+      elements.push(el('text', 30, 192, 100, 65, {
+        text: grades.start, fontSize: 56, fontWeight: 800,
+        color: typeof grades.start === 'string' ? gradeColor(grades.start) : '#a1a1aa',
+        textAlign: 'left',
+      }))
+
+      // Models row
+      elements.push(el('text', 140, 170, 100, 20, {
+        text: 'Models', fontSize: 14, fontWeight: 500, color: '#71717a', textAlign: 'left',
+      }))
+
+      const modelGrades = [
+        { label: 'Stuff', grade: grades.stuff },
+        { label: 'Command', grade: grades.command },
+        { label: 'Triton+', grade: grades.triton },
+      ]
+      for (let i = 0; i < modelGrades.length; i++) {
+        const mg = modelGrades[i]
+        const mx = 140 + i * 90
+        elements.push(el('text', mx, 192, 80, 16, {
+          text: mg.label, fontSize: 11, fontWeight: 500, color: '#71717a', textAlign: 'center',
+        }))
+        elements.push(el('text', mx, 210, 80, 40, {
+          text: mg.grade, fontSize: 32, fontWeight: 800,
+          color: typeof mg.grade === 'string' ? gradeColor(mg.grade) : '#a1a1aa',
+          textAlign: 'center',
+        }))
+      }
+
+      // Divider
+      elements.push(el('shape', 30, 260, 380, 1, {
+        shape: 'rect', fill: '#374151', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // Primary Fastball
+      const fb = d?.primary_fastball
+      const fbName = fb?.name || 'Fastball'
+      const fbColor = getPitchColor(fbName)
+      elements.push(el('text', 30, 268, 300, 20, {
+        text: `Primary Fastball: ${fbName}`, fontSize: 14, fontWeight: 600, color: fbColor, textAlign: 'left',
+      }))
+
+      const fbStats = [
+        { label: 'Velo', value: fb ? fb.avg_velo.toFixed(1) : '--' },
+        { label: 'Ext', value: fb ? fb.avg_ext.toFixed(1) : '--' },
+        { label: 'IVB', value: fb ? fb.avg_ivb.toFixed(1) : '--' },
+        { label: 'HB', value: fb ? fb.avg_hb.toFixed(1) : '--' },
+        { label: 'HAVAA', value: fb ? fb.avg_havaa.toFixed(1) + '°' : '--' },
+      ]
+      for (let i = 0; i < fbStats.length; i++) {
+        const fs = fbStats[i]
+        const fx = 30 + i * 78
+        elements.push(el('text', fx, 292, 72, 14, {
+          text: fs.label, fontSize: 10, fontWeight: 500, color: '#71717a', textAlign: 'center',
+        }))
+        elements.push(el('text', fx, 308, 72, 24, {
+          text: fs.value, fontSize: 18, fontWeight: 700, color: '#e4e4e7', textAlign: 'center',
+        }))
+      }
+
+      // ── RIGHT COLUMN (430–1050) — Usage Chart ──────────────────────────
+      elements.push(el('text', 430, 170, 620, 24, {
+        text: 'Usage', fontSize: 18, fontWeight: 700, color: '#e4e4e7', textAlign: 'center',
+      }))
+
+      // Headers
+      elements.push(el('text', 445, 196, 80, 16, {
+        text: 'vs LHB%', fontSize: 11, fontWeight: 600, color: '#71717a', textAlign: 'left',
+      }))
+      elements.push(el('text', 975, 196, 70, 16, {
+        text: 'vs RHB%', fontSize: 11, fontWeight: 600, color: '#71717a', textAlign: 'right',
+      }))
+
+      const usage = d?.usage || []
+      const maxUsagePct = Math.max(...usage.map(u => Math.max(u.vs_lhb_pct, u.vs_rhb_pct)), 50)
+      const barMaxW = 180
+
+      for (let i = 0; i < Math.min(usage.length, 6); i++) {
+        const u = usage[i]
+        const ry = 218 + i * 28
+        const color = getPitchColor(u.pitch_name)
+        const lhbW = (u.vs_lhb_pct / maxUsagePct) * barMaxW
+        const rhbW = (u.vs_rhb_pct / maxUsagePct) * barMaxW
+
+        // Center label: abbreviation + outing %
+        elements.push(el('text', 680, ry, 120, 22, {
+          text: `${u.pitch_name} ${u.outing_pct}%`, fontSize: 12, fontWeight: 600, color: '#e4e4e7', textAlign: 'center',
+        }))
+
+        // LHB bar (grows left from center)
+        if (lhbW > 0) {
+          elements.push(el('shape', 670 - lhbW, ry + 2, lhbW, 18, {
+            shape: 'rect', fill: color, stroke: 'transparent', strokeWidth: 0, borderRadius: 4,
+          }))
+        }
+        // LHB pct label
+        elements.push(el('text', 445, ry, 80, 22, {
+          text: `${u.vs_lhb_pct}%`, fontSize: 11, fontWeight: 500, color: '#a1a1aa', textAlign: 'left',
+        }))
+
+        // Delta arrow vs season (LHB side)
+        const lhbDelta = u.vs_lhb_pct - u.season_pct
+        if (Math.abs(lhbDelta) > 0.5) {
+          const arrowColor = lhbDelta > 0 ? '#10b981' : '#ef4444'
+          const arrowText = lhbDelta > 0 ? `▲${Math.abs(lhbDelta).toFixed(0)}` : `▼${Math.abs(lhbDelta).toFixed(0)}`
+          elements.push(el('text', 530, ry, 50, 22, {
+            text: arrowText, fontSize: 9, fontWeight: 600, color: arrowColor, textAlign: 'left',
+          }))
+        }
+
+        // RHB bar (grows right from center)
+        if (rhbW > 0) {
+          elements.push(el('shape', 810, ry + 2, rhbW, 18, {
+            shape: 'rect', fill: color, stroke: 'transparent', strokeWidth: 0, borderRadius: 4,
+          }))
+        }
+        // RHB pct label
+        elements.push(el('text', 975, ry, 70, 22, {
+          text: `${u.vs_rhb_pct}%`, fontSize: 11, fontWeight: 500, color: '#a1a1aa', textAlign: 'right',
+        }))
+
+        // Delta arrow vs season (RHB side)
+        const rhbDelta = u.vs_rhb_pct - u.season_pct
+        if (Math.abs(rhbDelta) > 0.5) {
+          const arrowColor = rhbDelta > 0 ? '#10b981' : '#ef4444'
+          const arrowText = rhbDelta > 0 ? `▲${Math.abs(rhbDelta).toFixed(0)}` : `▼${Math.abs(rhbDelta).toFixed(0)}`
+          elements.push(el('text', 920, ry, 50, 22, {
+            text: arrowText, fontSize: 9, fontWeight: 600, color: arrowColor, textAlign: 'right',
+          }))
+        }
+      }
+
+      // Footnote
+      elements.push(el('text', 430, 395, 620, 16, {
+        text: `Arrows are vs ${season} Usage`, fontSize: 10, fontWeight: 400, color: '#52525b', textAlign: 'center',
+      }))
+
+      // ── Middle Section: Movement + Zone Splits (y: 420–800) ────────────
+
+      // Movement Plot (left)
+      elements.push(el('text', 30, 425, 340, 24, {
+        text: 'Movement', fontSize: 16, fontWeight: 700, color: '#e4e4e7', textAlign: 'center',
+      }))
+      elements.push(el('movement-plot', 30, 452, 340, 300, {
+        pitches: d?.movement || [],
+        seasonShapes: d?.season_movement || [],
+        bgColor: '#111827', dotSize: 9, dotOpacity: 0.85,
+        showKey: false, showSeasonShapes: true, maxRange: 24,
+      }))
+      elements.push(el('text', 30, 755, 340, 16, {
+        text: `Shaded Regions are ${season} Shapes`, fontSize: 10, fontWeight: 400, color: '#52525b', textAlign: 'center',
+      }))
+
+      // vs LHB Zone (center)
+      elements.push(el('text', 390, 425, 300, 24, {
+        text: 'Locations', fontSize: 16, fontWeight: 700, color: '#e4e4e7', textAlign: 'center',
+      }))
+      elements.push(el('text', 390, 448, 300, 20, {
+        text: 'vs LHB', fontSize: 13, fontWeight: 600, color: '#a1a1aa', textAlign: 'center',
+      }))
+      elements.push(el('zone-plot', 400, 470, 280, 290, {
+        pitches: d?.locations_lhb || [],
+        showZone: true, dotSize: 8, dotOpacity: 0.85,
+        bgColor: '#111827', showKey: false, zoneColor: '#52525b', zoneLineWidth: 2,
+      }))
+
+      // vs RHB Zone (right)
+      elements.push(el('text', 730, 425, 310, 24, {
+        text: 'Locations', fontSize: 16, fontWeight: 700, color: '#e4e4e7', textAlign: 'center',
+      }))
+      elements.push(el('text', 730, 448, 310, 20, {
+        text: 'vs RHB', fontSize: 13, fontWeight: 600, color: '#a1a1aa', textAlign: 'center',
+      }))
+      elements.push(el('zone-plot', 740, 470, 280, 290, {
+        pitches: d?.locations_rhb || [],
+        showZone: true, dotSize: 8, dotOpacity: 0.85,
+        bgColor: '#111827', showKey: false, zoneColor: '#52525b', zoneLineWidth: 2,
+      }))
+
+      // ── Bottom Table: Pitch Type Metrics (y: 790–1330) ─────────────────
+      elements.push(el('text', 30, 790, 1020, 32, {
+        text: 'Pitch Type Metrics', fontSize: 22, fontWeight: 800, color: '#e4e4e7', textAlign: 'center',
+      }))
+
+      // Table header
+      const tCols = [
+        { label: 'Type', x: 30, w: 140, align: 'left' },
+        { label: '#', x: 175, w: 45, align: 'center' },
+        { label: 'Velo', x: 225, w: 75, align: 'center' },
+        { label: 'IVB', x: 305, w: 70, align: 'center' },
+        { label: 'HB', x: 380, w: 65, align: 'center' },
+        { label: 'Str%', x: 450, w: 65, align: 'center' },
+        { label: 'SwStr%', x: 520, w: 70, align: 'center' },
+        { label: 'CSW%', x: 595, w: 70, align: 'center' },
+        { label: 'xSLGcon', x: 670, w: 85, align: 'center' },
+        { label: 'Stuff+', x: 760, w: 80, align: 'center' },
+        { label: 'Triton+', x: 845, w: 80, align: 'center' },
+      ]
+
+      const headerY = 830
+      for (const col of tCols) {
+        elements.push(el('text', col.x, headerY, col.w, 24, {
+          text: col.label, fontSize: 12, fontWeight: 700, color: '#52525b',
+          textAlign: col.align, textTransform: 'uppercase',
+        }))
+      }
+
+      // Header divider
+      elements.push(el('shape', 30, headerY + 26, 900, 1, {
+        shape: 'rect', fill: '#374151', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // Table rows
+      const metrics = d?.pitch_metrics || []
+      const rowH = 52
+      for (let i = 0; i < Math.min(metrics.length, 7); i++) {
+        const m = metrics[i]
+        const ry = headerY + 32 + i * rowH
+
+        // Stripe
+        if (i % 2 === 0) {
+          elements.push(el('shape', 30, ry, 900, rowH, {
+            shape: 'rect', fill: 'rgba(55,65,81,0.15)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+          }))
+        }
+
+        // Color dot
+        const dotColor = getPitchColor(m.pitch_name)
+        elements.push(el('shape', 38, ry + 16, 18, 18, {
+          shape: 'circle', fill: dotColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 9,
+        }))
+
+        // Pitch name
+        elements.push(el('text', 60, ry + 8, 110, rowH - 16, {
+          text: m.pitch_name, fontSize: 14, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
+        }))
+
+        // Count
+        elements.push(el('text', tCols[1].x, ry + 8, tCols[1].w, rowH - 16, {
+          text: String(m.count), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+        }))
+
+        // Velo with diff
+        const diffColor = m.velo_diff > 0 ? '#ef4444' : m.velo_diff < -2 ? '#06b6d4' : '#71717a'
+        const diffStr = m.velo_diff !== 0 ? ` (${m.velo_diff > 0 ? '+' : ''}${m.velo_diff.toFixed(0)})` : ''
+        elements.push(el('text', tCols[2].x, ry + 8, tCols[2].w, rowH - 16, {
+          text: `${m.avg_velo.toFixed(1)}`, fontSize: 14, fontWeight: 500, color: '#e4e4e7', textAlign: 'center',
+        }))
+        if (diffStr) {
+          elements.push(el('text', tCols[2].x + 40, ry + 8, 40, rowH - 16, {
+            text: diffStr, fontSize: 10, fontWeight: 500, color: diffColor, textAlign: 'left',
+          }))
+        }
+
+        // IVB, HB
+        elements.push(el('text', tCols[3].x, ry + 8, tCols[3].w, rowH - 16, {
+          text: m.avg_ivb.toFixed(1), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+        }))
+        elements.push(el('text', tCols[4].x, ry + 8, tCols[4].w, rowH - 16, {
+          text: m.avg_hb.toFixed(1), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+        }))
+
+        // Str%
+        elements.push(el('text', tCols[5].x, ry + 8, tCols[5].w, rowH - 16, {
+          text: m.str_pct.toFixed(0) + '%', fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
+        }))
+
+        // SwStr%
+        const swstrColor = m.swstr_pct >= 15 ? '#10b981' : m.swstr_pct >= 10 ? '#f59e0b' : '#a1a1aa'
+        elements.push(el('text', tCols[6].x, ry + 8, tCols[6].w, rowH - 16, {
+          text: m.swstr_pct.toFixed(1) + '%', fontSize: 14, fontWeight: 500, color: swstrColor, textAlign: 'center',
+        }))
+
+        // CSW%
+        const cswColor = m.csw_pct >= 32 ? '#10b981' : m.csw_pct >= 25 ? '#f59e0b' : '#a1a1aa'
+        elements.push(el('text', tCols[7].x, ry + 8, tCols[7].w, rowH - 16, {
+          text: m.csw_pct.toFixed(1) + '%', fontSize: 14, fontWeight: 600, color: cswColor, textAlign: 'center',
+        }))
+
+        // xSLGcon
+        const xslgColor = m.xslgcon > 0 ? (m.xslgcon <= 0.300 ? '#10b981' : m.xslgcon <= 0.500 ? '#f59e0b' : '#ef4444') : '#71717a'
+        elements.push(el('text', tCols[8].x, ry + 8, tCols[8].w, rowH - 16, {
+          text: m.xslgcon > 0 ? m.xslgcon.toFixed(3) : '--', fontSize: 14, fontWeight: 500, color: xslgColor, textAlign: 'center',
+        }))
+
+        // Stuff+
+        const stuffColor = m.stuff_plus >= 100 ? '#10b981' : '#ef4444'
+        elements.push(el('text', tCols[9].x, ry + 8, tCols[9].w, rowH - 16, {
+          text: String(Math.round(m.stuff_plus)), fontSize: 14, fontWeight: 700, color: stuffColor, textAlign: 'center',
+        }))
+
+        // Triton+
+        const tritonColor = m.triton_plus >= 100 ? '#10b981' : '#ef4444'
+        elements.push(el('text', tCols[10].x, ry + 8, tCols[10].w, rowH - 16, {
+          text: String(Math.round(m.triton_plus)), fontSize: 14, fontWeight: 700, color: tritonColor, textAlign: 'center',
+        }))
+      }
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: `${name} Starter Card`,
+        width: 1080,
+        height: 1350,
+        background: '#111827',
         elements,
         duration: 5,
         fps: 30,
