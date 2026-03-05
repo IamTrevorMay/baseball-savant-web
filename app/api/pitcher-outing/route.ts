@@ -154,6 +154,7 @@ export async function GET(req: NextRequest) {
         avg_arm_angle: Number(r.avg_arm_angle),
         avg_ext: Number(r.avg_ext),
         avg_missfire: cmdRow.avg_missfire ?? null,
+        close_pct: cmdRow.close_pct ?? null,
         avg_brink: cmdRow.avg_brink ?? null,
         cmd_plus: cmdRow.cmd_plus ?? null,
       }

@@ -83,7 +83,8 @@ export async function POST(req: NextRequest) {
         if (!centroid) continue
 
         // Compute per-pitch raw metrics
-        let brinkSum = 0, clusterSum = 0, hdevSum = 0, vdevSum = 0, missfireCount = 0
+        let brinkSum = 0, clusterSum = 0, hdevSum = 0, vdevSum = 0
+        let missfireSum = 0, missfireCount = 0, closeCount = 0, outsideCount = 0
         let validBrink = 0, validCluster = 0
 
         for (const p of pitches) {
@@ -105,20 +106,22 @@ export async function POST(req: NextRequest) {
           vdevSum += vdev
           validCluster++
 
-          // Missfire: intended strike that missed zone, or ball intended as ball that caught zone
+          // Missfire (avg miss distance) + Close% (% of misses within 2")
           const isInZone = p.zone >= 1 && p.zone <= 9
-          const isSwStr = p.description && p.description.includes('swinging_strike')
-          const isCalled = p.description === 'called_strike'
-          const isStrike = isSwStr || isCalled || (p.description && p.description.includes('foul'))
-          // Missfire = pitch outside zone that wasn't an intentional waste (in a 2-strike count where the pitch was a ball)
-          if (!isInZone && brink > -2) missfireCount++ // near misses outside zone
+          if (!isInZone) {
+            outsideCount++
+            missfireSum += Math.abs(brink)
+            missfireCount++
+            if (brink > -2) closeCount++
+          }
         }
 
         const avgBrink = validBrink > 0 ? brinkSum / validBrink : null
         const avgCluster = validCluster > 0 ? clusterSum / validCluster : null
         const avgHdev = validCluster > 0 ? hdevSum / validCluster : null
         const avgVdev = validCluster > 0 ? vdevSum / validCluster : null
-        const avgMissfire = pitches.length > 0 ? (missfireCount / pitches.length) * 100 : null
+        const avgMissfire = missfireCount > 0 ? missfireSum / missfireCount : null
+        const closePct = outsideCount > 0 ? (closeCount / outsideCount) * 100 : null
 
         // Compute plus stats
         const brinkBl = getLeagueBaseline('brink', pitchName, year)
@@ -126,6 +129,7 @@ export async function POST(req: NextRequest) {
         const hdevBl = getLeagueBaseline('hdev', pitchName, year)
         const vdevBl = getLeagueBaseline('vdev', pitchName, year)
         const missfireBl = getLeagueBaseline('missfire', pitchName, year)
+        const closePctBl = getLeagueBaseline('close_pct', pitchName, year)
 
         const brinkPlus = avgBrink != null && brinkBl ? computePlus(avgBrink, brinkBl.mean, brinkBl.stddev) : null
         // For cluster/hdev/vdev/missfire: lower is better, so invert
@@ -133,6 +137,8 @@ export async function POST(req: NextRequest) {
         const hdevPlus = avgHdev != null && hdevBl ? 100 - (computePlus(avgHdev, hdevBl.mean, hdevBl.stddev) - 100) : null
         const vdevPlus = avgVdev != null && vdevBl ? 100 - (computePlus(avgVdev, vdevBl.mean, vdevBl.stddev) - 100) : null
         const missfirePlus = avgMissfire != null && missfireBl ? 100 - (computePlus(avgMissfire, missfireBl.mean, missfireBl.stddev) - 100) : null
+        // Close%: higher is better, NOT inverted
+        const closePctPlus = closePct != null && closePctBl ? computePlus(closePct, closePctBl.mean, closePctBl.stddev) : null
 
         // Composites
         const cmdPlus = brinkPlus != null && clusterPlus != null && missfirePlus != null
@@ -163,11 +169,13 @@ export async function POST(req: NextRequest) {
           avg_hdev: avgHdev != null ? +avgHdev.toFixed(2) : null,
           avg_vdev: avgVdev != null ? +avgVdev.toFixed(2) : null,
           avg_missfire: avgMissfire != null ? +avgMissfire.toFixed(2) : null,
+          close_pct: closePct != null ? +closePct.toFixed(2) : null,
           brink_plus: brinkPlus != null ? +brinkPlus.toFixed(1) : null,
           cluster_plus: clusterPlus != null ? +clusterPlus.toFixed(1) : null,
           hdev_plus: hdevPlus != null ? +hdevPlus.toFixed(1) : null,
           vdev_plus: vdevPlus != null ? +vdevPlus.toFixed(1) : null,
           missfire_plus: missfirePlus != null ? +missfirePlus.toFixed(1) : null,
+          close_pct_plus: closePctPlus != null ? +closePctPlus.toFixed(1) : null,
           cmd_plus: cmdPlus != null ? +cmdPlus.toFixed(1) : null,
           rpcom_plus: rpcomPlus != null ? +rpcomPlus.toFixed(1) : null,
           waste_pct: +wastePct.toFixed(1),
