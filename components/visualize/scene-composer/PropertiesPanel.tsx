@@ -235,6 +235,13 @@ function DataBindingSection({ binding, onUpdateBinding, onFetch, loading, dynami
               Player & season configured in Dynamic Slots panel
             </div>
           )}
+          <button
+            onClick={onFetch}
+            disabled={!binding?.dynamicSlot || loading}
+            className="w-full mt-1 px-3 py-1.5 rounded bg-cyan-600/20 border border-cyan-600/50 text-[11px] font-medium text-cyan-300 hover:bg-cyan-600/30 transition disabled:opacity-40"
+          >
+            {loading ? 'Fetching...' : 'Fetch & Apply'}
+          </button>
         </>
       )}
       {(source === 'statcast' || source === 'lahman') && (
@@ -923,7 +930,7 @@ function TypographySection({ p, onUpdateProps }: { p: Record<string, any>; onUpd
 export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30, dynamicSlots, onAddDynamicSlot }: Props) {
   const p = element.props
   const b = element.dataBinding
-  const showBinding = element.type === 'stat-card' || element.type === 'comparison-bar'
+  const showBinding = true
   const showTypography = TEXT_TYPES.has(element.type)
 
   // Load Google Font for live preview

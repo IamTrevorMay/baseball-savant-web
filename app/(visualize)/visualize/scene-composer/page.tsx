@@ -207,6 +207,22 @@ export default function SceneComposerPage() {
     }))
   }, [])
 
+  function applyStatToElement(elId: string, elType: ElementType, metric: string, val: any, playerName: string, sublabel: string) {
+    if (val === null || val === undefined) return
+    if (elType === 'stat-card') {
+      updateElementProps(elId, { value: String(val), label: metric.replace(/_/g, ' ').toUpperCase(), sublabel })
+    } else if (elType === 'comparison-bar') {
+      updateElementProps(elId, { value: Number(val), label: `${playerName} - ${metric.replace(/_/g, ' ')}` })
+    } else if (elType === 'text') {
+      updateElementProps(elId, { text: String(val) })
+    } else if (elType === 'ticker') {
+      updateElementProps(elId, { text: `${playerName} ${metric.replace(/_/g, ' ')}: ${val}` })
+    } else {
+      // Generic fallback: set value prop
+      updateElementProps(elId, { value: String(val) })
+    }
+  }
+
   const fetchBinding = useCallback(async (id: string) => {
     const el = scene.elements.find(e => e.id === id)
     if (!el?.dataBinding) return
@@ -214,7 +230,20 @@ export default function SceneComposerPage() {
 
     setBindingLoading(true)
     try {
-      if (b.source === 'statcast') {
+      if (b.source === 'dynamic') {
+        const slot = scene.dynamicSlots?.find(s => s.id === b.dynamicSlot)
+        if (!slot?.playerId) return
+        const params = new URLSearchParams({
+          playerId: String(slot.playerId),
+          metrics: b.metric,
+          gameYear: String(slot.gameYear),
+        })
+        if (slot.pitchType) params.set('pitchType', slot.pitchType)
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        const val = data.stats?.[b.metric]
+        applyStatToElement(id, el.type, b.metric, val, slot.playerName || '', `${slot.playerName || ''} ${slot.gameYear}`.trim())
+      } else if (b.source === 'statcast') {
         const params = new URLSearchParams({
           playerId: String(b.playerId),
           metrics: b.metric,
@@ -224,24 +253,14 @@ export default function SceneComposerPage() {
         const res = await fetch(`/api/scene-stats?${params}`)
         const data = await res.json()
         const val = data.stats?.[b.metric]
-        if (val !== null && val !== undefined) {
-          if (el.type === 'stat-card') {
-            updateElementProps(id, { value: String(val), label: b.metric.replace(/_/g, ' ').toUpperCase(), sublabel: `${b.playerName} ${b.gameYear || ''}`.trim() })
-          } else if (el.type === 'comparison-bar') {
-            updateElementProps(id, { value: Number(val), label: `${b.playerName} - ${b.metric.replace(/_/g, ' ')}` })
-          }
-        }
+        applyStatToElement(id, el.type, b.metric, val, b.playerName, `${b.playerName} ${b.gameYear || ''}`.trim())
       } else if (b.source === 'lahman') {
         const res = await fetch(`/api/lahman/player?playerId=${b.playerId}`)
         const data = await res.json()
         const stat = b.lahmanStat || 'era'
         const row = data.pitching?.[0] || data.batting?.[0]
         if (row && row[stat] !== undefined) {
-          if (el.type === 'stat-card') {
-            updateElementProps(id, { value: String(row[stat]), label: stat.toUpperCase(), sublabel: b.playerName })
-          } else if (el.type === 'comparison-bar') {
-            updateElementProps(id, { value: Number(row[stat]), label: `${b.playerName} - ${stat}` })
-          }
+          applyStatToElement(id, el.type, stat, row[stat], b.playerName, b.playerName)
         }
       }
     } catch (err) {
@@ -249,7 +268,7 @@ export default function SceneComposerPage() {
     } finally {
       setBindingLoading(false)
     }
-  }, [scene.elements, updateElementProps])
+  }, [scene.elements, scene.dynamicSlots, updateElementProps])
 
   // ── Dynamic Slots ──────────────────────────────────────────────────────────
 
@@ -325,21 +344,7 @@ export default function SceneComposerPage() {
         for (const el of elements) {
           const metric = el.dataBinding!.metric
           const val = stats[metric]
-          if (val === null || val === undefined) continue
-          if (el.type === 'stat-card') {
-            updateElementProps(el.id, {
-              value: String(val),
-              label: metric.replace(/_/g, ' ').toUpperCase(),
-              sublabel: `${slot.playerName || ''} ${slot.gameYear}`.trim(),
-            })
-          } else if (el.type === 'comparison-bar') {
-            updateElementProps(el.id, {
-              value: Number(val),
-              label: `${slot.playerName || ''} - ${metric.replace(/_/g, ' ')}`,
-            })
-          } else if (el.type === 'text') {
-            updateElementProps(el.id, { text: String(val) })
-          }
+          applyStatToElement(el.id, el.type, metric, val, slot.playerName || '', `${slot.playerName || ''} ${slot.gameYear}`.trim())
         }
       })
 
