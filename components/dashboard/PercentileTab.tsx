@@ -8,7 +8,7 @@ import {
   isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
 
-type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire'
+type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'close_pct'
 
 interface Props { data: any[] }
 
@@ -150,6 +150,7 @@ export default function PercentileTab({ data }: Props) {
     const hdevRows: MetricRow[] = []
     const vdevRows: MetricRow[] = []
     const missfireRows: MetricRow[] = []
+    const closePctRows: MetricRow[] = []
 
     for (const [name, pitches] of Object.entries(groups)) {
       const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
@@ -169,6 +170,8 @@ export default function PercentileTab({ data }: Props) {
         pts => { const v = pts.map((p: any) => p.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
       const missfirePlus = computeYearWeightedPlus(pitches, name, 'missfire',
         pts => { const b = pts.map((p: any) => p.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return avgArr(b) }, true)
+      const closePctPlus = computeYearWeightedPlus(pitches, name, 'close_pct',
+        pts => { const ob = pts.map((p: any) => p.brink).filter((x: any) => x != null && x < 0); return ob.length > 0 ? (ob.filter((x: number) => -x < 2).length / ob.length) * 100 : null })
 
       const ab = avgArr(brinks)
       if (ab != null) brinkRows.push({ name, value: ab, count: pitches.length, pct: brinkPlus != null ? plusToPercentile(brinkPlus) : null })
@@ -180,6 +183,9 @@ export default function PercentileTab({ data }: Props) {
       if (av != null) vdevRows.push({ name, value: av, count: pitches.length, pct: vdevPlus != null ? plusToPercentile(vdevPlus) : null })
       const am = avgArr(missfires)
       if (am != null) missfireRows.push({ name, value: am, count: pitches.length, pct: missfirePlus != null ? plusToPercentile(missfirePlus) : null })
+      const outsideBrinks = brinks.filter((v: number) => v < 0)
+      const cp = outsideBrinks.length > 0 ? (outsideBrinks.filter((v: number) => -v < 2).length / outsideBrinks.length) * 100 : null
+      if (cp != null) closePctRows.push({ name, value: cp, count: pitches.length, pct: closePctPlus != null ? plusToPercentile(closePctPlus) : null })
     }
 
     return {
@@ -188,6 +194,7 @@ export default function PercentileTab({ data }: Props) {
       hdevRows: hdevRows.sort((a, b) => a.value - b.value),
       vdevRows: vdevRows.sort((a, b) => a.value - b.value),
       missfireRows: missfireRows.sort((a, b) => a.value - b.value),
+      closePctRows: closePctRows.sort((a, b) => b.value - a.value),
     }
   }, [data])
 
@@ -205,13 +212,14 @@ export default function PercentileTab({ data }: Props) {
     { key: 'hdev', title: 'HDev', desc: 'Avg absolute horizontal deviation from centroid (in) — lower = tighter horizontal spread', unit: 'in', rows: rawMetrics.hdevRows, higherBetter: false },
     { key: 'vdev', title: 'VDev', desc: 'Avg absolute vertical deviation from centroid (in) — lower = tighter vertical spread', unit: 'in', rows: rawMetrics.vdevRows, higherBetter: false },
     { key: 'missfire', title: 'Missfire', desc: 'Avg distance of outside-zone pitches from closest zone edge (in) — lower = misses stay closer', unit: 'in', rows: rawMetrics.missfireRows, higherBetter: false },
+    { key: 'close_pct', title: 'Close%', desc: '% of zone misses within 2" of edge — higher = misses stay close', unit: '%', rows: rawMetrics.closePctRows, higherBetter: true },
   ]
 
   return (
     <div className="space-y-4">
       {/* View toggle */}
       <div className="flex gap-1 flex-wrap">
-        {([['rankings', 'Rankings'], ['brink', 'Brink'], ['cluster', 'Cluster'], ['hdev', 'HDev'], ['vdev', 'VDev'], ['missfire', 'Missfire']] as [View, string][]).map(([v, label]) => (
+        {([['rankings', 'Rankings'], ['brink', 'Brink'], ['cluster', 'Cluster'], ['hdev', 'HDev'], ['vdev', 'VDev'], ['missfire', 'Missfire'], ['close_pct', 'Close%']] as [View, string][]).map(([v, label]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
               view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'

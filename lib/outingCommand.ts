@@ -23,6 +23,7 @@ export interface PitchRow {
 
 export interface PitchTypeCommand {
   avg_missfire: number | null
+  close_pct: number | null
   avg_brink: number | null
   avg_cluster: number | null
   cmd_plus: number | null
@@ -49,8 +50,9 @@ export function computeOutingCommand(pitches: PitchRow[]) {
     const year = pts[0].game_year
     const centroid = getLeagueCentroid(pitchName, year)
 
-    let brinkSum = 0, clusterSum = 0, missfireCount = 0
+    let brinkSum = 0, clusterSum = 0
     let validBrink = 0, validCluster = 0, wasteCount = 0
+    let missfireSum = 0, missfireCount = 0, closeCount = 0, outsideCount = 0
 
     for (const p of pts) {
       // Brink — signed distance to nearest zone edge (inches)
@@ -69,9 +71,15 @@ export function computeOutingCommand(pitches: PitchRow[]) {
         validCluster++
       }
 
-      // Missfire — near-misses outside zone (brink between -2 and 0 inches)
+      // Missfire — avg distance outside-zone pitches miss by (inches)
+      // Close% — % of zone misses within 2 inches of edge
       const isInZone = p.zone >= 1 && p.zone <= 9
-      if (!isInZone && brink > -2) missfireCount++
+      if (!isInZone) {
+        outsideCount++
+        missfireSum += Math.abs(brink)
+        missfireCount++
+        if (brink > -2) closeCount++
+      }
 
       // Waste — pitches > 10 inches outside zone
       if (brink < -10) wasteCount++
@@ -79,7 +87,8 @@ export function computeOutingCommand(pitches: PitchRow[]) {
 
     const avgBrink = validBrink > 0 ? brinkSum / validBrink : null
     const avgCluster = validCluster > 0 ? clusterSum / validCluster : null
-    const avgMissfire = pts.length > 0 ? (missfireCount / pts.length) * 100 : null
+    const avgMissfire = missfireCount > 0 ? missfireSum / missfireCount : null
+    const closePct = outsideCount > 0 ? (closeCount / outsideCount) * 100 : null
 
     // Plus stats
     const brinkBl = getLeagueBaseline('brink', pitchName, year)
@@ -96,6 +105,7 @@ export function computeOutingCommand(pitches: PitchRow[]) {
 
     byPitch[pitchName] = {
       avg_missfire: avgMissfire != null ? +avgMissfire.toFixed(2) : null,
+      close_pct: closePct != null ? +closePct.toFixed(2) : null,
       avg_brink: avgBrink != null ? +avgBrink.toFixed(2) : null,
       avg_cluster: avgCluster != null ? +avgCluster.toFixed(2) : null,
       cmd_plus: cmdPlus != null ? +cmdPlus.toFixed(1) : null,

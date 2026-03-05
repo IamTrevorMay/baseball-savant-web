@@ -1514,16 +1514,17 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
 
       // Table header — 10 columns
       const cols = [
-        { label: 'Pitch', x: 60, w: 180 },
-        { label: '#', x: 245, w: 60 },
-        { label: 'Velo', x: 315, w: 90 },
-        { label: 'IVB', x: 415, w: 85 },
-        { label: 'HBreak', x: 505, w: 90 },
-        { label: 'Arm\u00b0', x: 605, w: 80 },
-        { label: 'Ext', x: 695, w: 75 },
-        { label: 'Miss', x: 780, w: 85 },
-        { label: 'Brink', x: 875, w: 85 },
-        { label: 'Cmd+', x: 970, w: 85 },
+        { label: 'Pitch', x: 60, w: 165 },
+        { label: '#', x: 230, w: 55 },
+        { label: 'Velo', x: 290, w: 80 },
+        { label: 'IVB', x: 375, w: 75 },
+        { label: 'HBreak', x: 455, w: 80 },
+        { label: 'Arm\u00b0', x: 540, w: 70 },
+        { label: 'Ext', x: 615, w: 65 },
+        { label: 'Miss', x: 685, w: 75 },
+        { label: 'Close%', x: 765, w: 75 },
+        { label: 'Brink', x: 845, w: 75 },
+        { label: 'Cmd+', x: 925, w: 85 },
       ]
 
       for (const col of cols) {
@@ -1561,11 +1562,11 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
           }))
 
           // Pitch name
-          elements.push(el('text', 102, ry + 10, 140, rowH - 20, {
+          elements.push(el('text', 92, ry + 10, 130, rowH - 20, {
             text: row.pitch_name, fontSize: 22, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
           }))
 
-          // Stats (indices 1-9 match cols[1]-cols[9])
+          // Stats (indices 1-10 match cols[1]-cols[10])
           const vals = [
             String(row.count),
             row.avg_velo?.toFixed(1) || '--',
@@ -1574,11 +1575,12 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
             row.avg_arm_angle?.toFixed(1) || '--',
             row.avg_ext?.toFixed(1) || '--',
             row.avg_missfire != null ? row.avg_missfire.toFixed(1) : '--',
+            row.close_pct != null ? row.close_pct.toFixed(1) + '%' : '--',
             row.avg_brink != null ? row.avg_brink.toFixed(2) : '--',
             row.cmd_plus != null ? String(Math.round(row.cmd_plus)) : '--',
           ]
           for (let j = 0; j < vals.length; j++) {
-            const isPlus = j === 8 // Cmd+ column
+            const isPlus = j === 9 // Cmd+ column
             elements.push(el('text', cols[j + 1].x, ry + 10, cols[j + 1].w, rowH - 20, {
               text: vals[j], fontSize: 22, fontWeight: isPlus ? 700 : 500,
               color: isPlus && row.cmd_plus != null ? (row.cmd_plus >= 100 ? '#10b981' : '#ef4444') : '#a1a1aa',

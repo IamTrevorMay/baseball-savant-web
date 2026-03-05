@@ -11,6 +11,7 @@ import {
   HDEV_LEAGUE_BY_YEAR,
   VDEV_LEAGUE_BY_YEAR,
   MISSFIRE_LEAGUE_BY_YEAR,
+  CLOSE_PCT_LEAGUE_BY_YEAR,
   COMMAND_WEIGHTS,
   RPCOM_WEIGHTS,
 } from '../lib/leagueStats'
@@ -38,7 +39,7 @@ function invertPlus(avg: number, mean: number, stddev: number): number {
 async function computeYear(year: number) {
   console.log(`\n=== Computing year ${year} ===`)
 
-  const sql = `SELECT pitcher, player_name, pitch_name, game_year, COUNT(*) as pitches, AVG(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12) as avg_brink, AVG(SQRT(POWER(plate_x - cx, 2) + POWER(plate_z - cz, 2)) * 12) as avg_cluster, AVG(ABS(plate_x - cx) * 12) as avg_hdev, AVG(ABS(plate_z - cz) * 12) as avg_vdev, 100.0 * COUNT(*) FILTER (WHERE zone > 9 AND LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 > -2) / NULLIF(COUNT(*), 0) as avg_missfire, 100.0 * COUNT(*) FILTER (WHERE LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 < -10) / NULLIF(COUNT(*), 0) as waste_pct FROM (SELECT p.*, c.cx, c.cz FROM pitches p JOIN (SELECT pitch_name, AVG(plate_x) as cx, AVG(plate_z) as cz FROM pitches WHERE game_year = ${year} AND pitch_name IS NOT NULL AND plate_x IS NOT NULL AND plate_z IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') GROUP BY pitch_name) c ON c.pitch_name = p.pitch_name WHERE p.game_year = ${year} AND p.pitch_name IS NOT NULL AND p.plate_x IS NOT NULL AND p.plate_z IS NOT NULL AND p.sz_top IS NOT NULL AND p.sz_bot IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')) sub GROUP BY pitcher, player_name, pitch_name, game_year HAVING COUNT(*) >= 50`
+  const sql = `SELECT pitcher, player_name, pitch_name, game_year, COUNT(*) as pitches, AVG(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12) as avg_brink, AVG(SQRT(POWER(plate_x - cx, 2) + POWER(plate_z - cz, 2)) * 12) as avg_cluster, AVG(ABS(plate_x - cx) * 12) as avg_hdev, AVG(ABS(plate_z - cz) * 12) as avg_vdev, AVG(ABS(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z)) * 12) FILTER (WHERE zone > 9) as avg_missfire, 100.0 * COUNT(*) FILTER (WHERE zone > 9 AND LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 > -2) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0) as close_pct, 100.0 * COUNT(*) FILTER (WHERE LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 < -10) / NULLIF(COUNT(*), 0) as waste_pct FROM (SELECT p.*, c.cx, c.cz FROM pitches p JOIN (SELECT pitch_name, AVG(plate_x) as cx, AVG(plate_z) as cz FROM pitches WHERE game_year = ${year} AND pitch_name IS NOT NULL AND plate_x IS NOT NULL AND plate_z IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') GROUP BY pitch_name) c ON c.pitch_name = p.pitch_name WHERE p.game_year = ${year} AND p.pitch_name IS NOT NULL AND p.plate_x IS NOT NULL AND p.plate_z IS NOT NULL AND p.sz_top IS NOT NULL AND p.sz_bot IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')) sub GROUP BY pitcher, player_name, pitch_name, game_year HAVING COUNT(*) >= 50`
 
   const { data: rows, error } = await supabase.rpc('run_query', { query_text: sql })
   if (error) {
@@ -57,12 +58,14 @@ async function computeYear(year: number) {
   const hdevBl = HDEV_LEAGUE_BY_YEAR[year] || {}
   const vdevBl = VDEV_LEAGUE_BY_YEAR[year] || {}
   const missfireBl = MISSFIRE_LEAGUE_BY_YEAR[year] || {}
+  const closePctBl = CLOSE_PCT_LEAGUE_BY_YEAR[year] || {}
 
   const upsertRows = rows.map((r: any) => {
     const pn = r.pitch_name
 
     // Plus stats (brink is NOT inverted — higher brink = closer to edge = better)
     // cluster/hdev/vdev/missfire ARE inverted — lower = tighter = better
+    // close_pct is NOT inverted — higher close% = better
     const brinkPlus = r.avg_brink != null && brinkBl[pn]
       ? computePlus(r.avg_brink, brinkBl[pn].mean, brinkBl[pn].stddev)
       : null
@@ -77,6 +80,9 @@ async function computeYear(year: number) {
       : null
     const missfirePlus = r.avg_missfire != null && missfireBl[pn]
       ? invertPlus(r.avg_missfire, missfireBl[pn].mean, missfireBl[pn].stddev)
+      : null
+    const closePctPlus = r.close_pct != null && closePctBl[pn]
+      ? computePlus(r.close_pct, closePctBl[pn].mean, closePctBl[pn].stddev)
       : null
 
     // Composites
@@ -108,11 +114,13 @@ async function computeYear(year: number) {
       avg_hdev: r.avg_hdev != null ? +parseFloat(r.avg_hdev).toFixed(2) : null,
       avg_vdev: r.avg_vdev != null ? +parseFloat(r.avg_vdev).toFixed(2) : null,
       avg_missfire: r.avg_missfire != null ? +parseFloat(r.avg_missfire).toFixed(2) : null,
+      close_pct: r.close_pct != null ? +parseFloat(r.close_pct).toFixed(2) : null,
       brink_plus: brinkPlus != null ? +brinkPlus.toFixed(1) : null,
       cluster_plus: clusterPlus != null ? +clusterPlus.toFixed(1) : null,
       hdev_plus: hdevPlus != null ? +hdevPlus.toFixed(1) : null,
       vdev_plus: vdevPlus != null ? +vdevPlus.toFixed(1) : null,
       missfire_plus: missfirePlus != null ? +missfirePlus.toFixed(1) : null,
+      close_pct_plus: closePctPlus != null ? +closePctPlus.toFixed(1) : null,
       cmd_plus: cmdPlus != null ? +cmdPlus.toFixed(1) : null,
       rpcom_plus: rpcomPlus != null ? +rpcomPlus.toFixed(1) : null,
       waste_pct: r.waste_pct != null ? +parseFloat(r.waste_pct).toFixed(1) : null,
@@ -142,7 +150,7 @@ async function computeYear(year: number) {
 }
 
 async function main() {
-  const years = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]
+  const years = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
   for (const year of years) {
     await computeYear(year)
   }

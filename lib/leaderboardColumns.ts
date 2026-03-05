@@ -174,7 +174,8 @@ const RAW_METRICS = [
   { suffix: 'cluster', label: 'Cluster' },
   { suffix: 'hdev', label: 'HDev' },
   { suffix: 'vdev', label: 'VDev' },
-  { suffix: 'missfire', label: 'Miss' },
+  { suffix: 'missfire', label: 'Missfire' },
+  { suffix: 'close_pct', label: 'Close%' },
   { suffix: 'waste_pct', label: 'Waste%' },
 ]
 
@@ -183,7 +184,8 @@ const PLUS_METRICS = [
   { suffix: 'cluster_plus', label: 'Cluster+', hasPlus: true },
   { suffix: 'hdev_plus', label: 'HDev+', hasPlus: true },
   { suffix: 'vdev_plus', label: 'VDev+', hasPlus: true },
-  { suffix: 'missfire_plus', label: 'Miss+', hasPlus: true },
+  { suffix: 'missfire_plus', label: 'Missfire+', hasPlus: true },
+  { suffix: 'close_pct_plus', label: 'Close+', hasPlus: true },
   { suffix: 'stuff_plus', label: 'Stuff+', hasPlus: true },
   { suffix: 'waste_pct', label: 'Waste%', hasPlus: false },
 ]

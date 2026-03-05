@@ -6,9 +6,9 @@ import { METRICS } from '@/lib/reportMetrics'
 
 export const TRITON_COLUMNS = [
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus',
-  'hdev_plus', 'vdev_plus', 'missfire_plus',
+  'hdev_plus', 'vdev_plus', 'missfire_plus', 'close_pct_plus',
   'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev',
-  'avg_missfire', 'waste_pct',
+  'avg_missfire', 'close_pct', 'waste_pct',
 ] as const
 
 export const TRITON_COL: Record<string, string> =

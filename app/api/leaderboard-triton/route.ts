@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
     // Fetch all rows (one per pitcher × pitch type) for the year
     const sql = `
       SELECT pitcher, player_name, pitch_name, pitches,
-        avg_brink, avg_cluster, avg_hdev, avg_vdev, avg_missfire, waste_pct,
-        brink_plus, cluster_plus, hdev_plus, vdev_plus, missfire_plus,
+        avg_brink, avg_cluster, avg_hdev, avg_vdev, avg_missfire, close_pct, waste_pct,
+        brink_plus, cluster_plus, hdev_plus, vdev_plus, missfire_plus, close_pct_plus,
         cmd_plus, rpcom_plus
       FROM pitcher_season_command
       WHERE game_year = ${safeYear}
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
         p[`${pt}_hdev`] = row.avg_hdev != null ? Number(row.avg_hdev) : null
         p[`${pt}_vdev`] = row.avg_vdev != null ? Number(row.avg_vdev) : null
         p[`${pt}_missfire`] = row.avg_missfire != null ? Number(row.avg_missfire) : null
+        p[`${pt}_close_pct`] = row.close_pct != null ? Number(row.close_pct) : null
         p[`${pt}_waste_pct`] = row.waste_pct != null ? Number(row.waste_pct) : null
       } else {
         p[`${pt}_brink_plus`] = row.brink_plus != null ? Number(row.brink_plus) : null
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
         p[`${pt}_hdev_plus`] = row.hdev_plus != null ? Number(row.hdev_plus) : null
         p[`${pt}_vdev_plus`] = row.vdev_plus != null ? Number(row.vdev_plus) : null
         p[`${pt}_missfire_plus`] = row.missfire_plus != null ? Number(row.missfire_plus) : null
+        p[`${pt}_close_pct_plus`] = row.close_pct_plus != null ? Number(row.close_pct_plus) : null
         p[`${pt}_waste_pct`] = row.waste_pct != null ? Number(row.waste_pct) : null
 
         // Accumulate for weighted cmd_plus / rpcom_plus

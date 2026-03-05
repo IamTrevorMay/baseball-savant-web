@@ -81,12 +81,14 @@ export default function PitchLevelTab({ data }: Props) {
       const hdevs = pitches.map(p => p.hdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const vdevs = pitches.map(p => p.vdev).filter((v: any) => v != null).map((v: number) => Math.abs(v))
       const missfires = brinks.filter((v: number) => v < 0).map((v: number) => -v)
+      const outsideBrinks = brinks.filter((v: number) => v < 0)
 
       const avgBrink = avgArr(brinks)
       const avgCluster = avgArr(clusters)
       const avgHdev = avgArr(hdevs)
       const avgVdev = avgArr(vdevs)
       const avgMissfire = avgArr(missfires)
+      const closePct = outsideBrinks.length > 0 ? (outsideBrinks.filter((v: number) => -v < 2).length / outsideBrinks.length) * 100 : null
       const wastePct = brinks.length > 0 ? (brinks.filter((v: number) => v < -10).length / brinks.length) * 100 : null
 
       // Year-weighted plus stats
@@ -100,6 +102,8 @@ export default function PitchLevelTab({ data }: Props) {
         pts => { const v = pts.map((p: any) => p.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
       const missfirePlus = computeYearWeightedPlus(pitches, name, 'missfire',
         pts => { const b = pts.map((p: any) => p.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return avgArr(b) }, true)
+      const closePctPlus = computeYearWeightedPlus(pitches, name, 'close_pct',
+        pts => { const ob = pts.map((p: any) => p.brink).filter((x: any) => x != null && x < 0); return ob.length > 0 ? (ob.filter((x: number) => -x < 2).length / ob.length) * 100 : null })
 
       const commandPlus = brinkPlus != null && clusterPlus != null && missfirePlus != null
         ? String(computeCommandPlus(brinkPlus, clusterPlus, missfirePlus)) : '—'
@@ -118,12 +122,14 @@ export default function PitchLevelTab({ data }: Props) {
         hdev: avgHdev != null ? avgHdev.toFixed(1) : '—',
         vdev: avgVdev != null ? avgVdev.toFixed(1) : '—',
         missfire: avgMissfire != null ? avgMissfire.toFixed(1) : '—',
+        closePct: closePct != null ? closePct.toFixed(1) + '%' : '—',
         wastePct: wastePct != null ? wastePct.toFixed(1) + '%' : '—',
         brinkPlus: brinkPlus != null ? String(brinkPlus) : '—',
         clusterPlus: clusterPlus != null ? String(clusterPlus) : '—',
         hdevPlus: hdevPlus != null ? String(hdevPlus) : '—',
         vdevPlus: vdevPlus != null ? String(vdevPlus) : '—',
         missfirePlus: missfirePlus != null ? String(missfirePlus) : '—',
+        closePctPlus: closePctPlus != null ? String(closePctPlus) : '—',
         commandPlus,
         rpcomPlus,
         unique: dec?.unique != null ? dec.unique.toFixed(2) : '—',
@@ -165,12 +171,14 @@ export default function PitchLevelTab({ data }: Props) {
     { k: 'hdev', l: 'HDev' },
     { k: 'vdev', l: 'VDev' },
     { k: 'missfire', l: 'Missfire' },
+    { k: 'closePct', l: 'Close%' },
     { k: 'wastePct', l: 'Waste%' },
     { k: 'brinkPlus', l: 'Brink+' },
     { k: 'clusterPlus', l: 'Cluster+' },
     { k: 'hdevPlus', l: 'HDev+' },
     { k: 'vdevPlus', l: 'VDev+' },
     { k: 'missfirePlus', l: 'Missfire+' },
+    { k: 'closePctPlus', l: 'Close+' },
     { k: 'commandPlus', l: 'Cmd+' },
     { k: 'rpcomPlus', l: 'RPCom+' },
     { k: 'unique', l: 'Unique' },
@@ -181,8 +189,9 @@ export default function PitchLevelTab({ data }: Props) {
     if (k === 'name') return 'text-white font-medium'
     if (k === 'count') return 'text-zinc-400'
     if (['brink', 'cluster', 'hdev', 'vdev', 'missfire'].includes(k)) return 'text-teal-400'
+    if (k === 'closePct') return 'text-cyan-400'
     if (k === 'wastePct') return 'text-orange-400'
-    if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus', 'missfirePlus', 'commandPlus', 'rpcomPlus'].includes(k)) {
+    if (['brinkPlus', 'clusterPlus', 'hdevPlus', 'vdevPlus', 'missfirePlus', 'closePctPlus', 'commandPlus', 'rpcomPlus'].includes(k)) {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
       return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'
@@ -244,6 +253,7 @@ export default function PitchLevelTab({ data }: Props) {
         <p><span className="text-teal-400 font-medium">HDev</span> — avg horizontal deviation from centroid (in, pitcher POV). Lower = tighter horizontal spread.</p>
         <p><span className="text-teal-400 font-medium">VDev</span> — avg vertical deviation from centroid (in). Lower = tighter vertical spread.</p>
         <p><span className="text-teal-400 font-medium">Missfire</span> — avg distance of outside-zone pitches from closest zone edge (in). Lower = misses stay closer to zone.</p>
+        <p><span className="text-cyan-400 font-medium">Close%</span> — percentage of zone misses within 2&quot; of the edge. Higher = misses stay close.</p>
         <p><span className="text-orange-400 font-medium">Waste%</span> — percentage of pitches more than 10&quot; outside the zone. Lower = fewer wasted pitches.</p>
         <p>Plus stats: 100 = league avg, +10 = 1 stddev better. <span className="text-teal-400">Above 100</span> = better than avg, <span className="text-orange-400">below 100</span> = worse.</p>
         <p><span className="text-teal-400 font-medium">Cmd+</span> — Command+ composite: 40% Brink+ + 30% Cluster+ + 30% Missfire+ (theory-weighted skill).</p>

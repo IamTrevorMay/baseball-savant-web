@@ -131,7 +131,8 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'avg_cluster', label: 'Cluster', group: 'Triton' },
   { value: 'avg_hdev', label: 'HDev', group: 'Triton' },
   { value: 'avg_vdev', label: 'VDev', group: 'Triton' },
-  { value: 'avg_missfire', label: 'Missfire %', group: 'Triton' },
+  { value: 'avg_missfire', label: 'Missfire', group: 'Triton' },
+  { value: 'close_pct', label: 'Close %', group: 'Triton' },
   { value: 'waste_pct', label: 'Waste %', group: 'Triton' },
   // Triton+ (Command)
   { value: 'cmd_plus', label: 'Cmd+', group: 'Triton+' },
@@ -140,7 +141,8 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'cluster_plus', label: 'Cluster+', group: 'Triton+' },
   { value: 'hdev_plus', label: 'HDev+', group: 'Triton+' },
   { value: 'vdev_plus', label: 'VDev+', group: 'Triton+' },
-  { value: 'missfire_plus', label: 'Miss+', group: 'Triton+' },
+  { value: 'missfire_plus', label: 'Missfire+', group: 'Triton+' },
+  { value: 'close_pct_plus', label: 'Close+', group: 'Triton+' },
   // Deception
   { value: 'deception_score', label: 'Deception', group: 'Deception' },
   { value: 'unique_score', label: 'Unique', group: 'Deception' },
@@ -153,8 +155,8 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
 
 /** Set of metrics that come from pre-computed tables instead of pitches aggregation */
 export const TRITON_PLUS_METRIC_KEYS = new Set([
-  'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus',
-  'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'waste_pct',
+  'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus', 'close_pct_plus',
+  'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'close_pct', 'waste_pct',
 ])
 export const DECEPTION_METRIC_KEYS = new Set(['deception_score', 'unique_score', 'xdeception_score'])
 export const ERA_METRIC_KEYS = new Set(['era', 'fip', 'xera'])

@@ -219,7 +219,7 @@ function whiffs(p: any[]) {
   return p.filter(d => (d.description || '').toLowerCase().includes('swinging_strike'))
 }
 
-type PlusKey = 'brinkPlus' | 'clusterPlus' | 'hdevPlus' | 'vdevPlus' | 'missfirePlus' | 'commandPlus' | 'rpcomPlus'
+type PlusKey = 'brinkPlus' | 'clusterPlus' | 'hdevPlus' | 'vdevPlus' | 'missfirePlus' | 'closePctPlus' | 'commandPlus' | 'rpcomPlus'
 
 function usageWeightedPlus(pitches: any[], metric: PlusKey): number | null {
   const groups: Record<string, any[]> = {}
@@ -238,6 +238,8 @@ function usageWeightedPlus(pitches: any[], metric: PlusKey): number | null {
       p => { const v = p.map((d: any) => d.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return avgArr(v) }, true)
     const mp = computeYearWeightedPlus(pts, name, 'missfire',
       p => { const b = p.map((d: any) => d.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return avgArr(b) }, true)
+    const clp = computeYearWeightedPlus(pts, name, 'close_pct',
+      p => { const ob = p.map((d: any) => d.brink).filter((x: any) => x != null && x < 0); return ob.length > 0 ? (ob.filter((x: number) => -x < 2).length / ob.length) * 100 : null })
 
     let val: number | null = null
     if (metric === 'brinkPlus') val = bp
@@ -245,6 +247,7 @@ function usageWeightedPlus(pitches: any[], metric: PlusKey): number | null {
     else if (metric === 'hdevPlus') val = hp
     else if (metric === 'vdevPlus') val = vp
     else if (metric === 'missfirePlus') val = mp
+    else if (metric === 'closePctPlus') val = clp
     else if (metric === 'commandPlus' && bp != null && cp != null && mp != null) val = computeCommandPlus(bp, cp, mp)
     else if (metric === 'rpcomPlus' && bp != null && cp != null && hp != null && vp != null && mp != null) val = computeRPComPlus(bp, cp, hp, vp, mp)
 
@@ -294,12 +297,14 @@ export const CUSTOM_COL_CATALOG: CustomColDef[] = [
   { key: 'hdev_raw', label: 'HDev', category: 'Command', compute: p => { const v = p.map((d: any) => d.hdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'vdev_raw', label: 'VDev', category: 'Command', compute: p => { const v = p.map((d: any) => d.vdev).filter((x: any) => x != null).map((x: number) => Math.abs(x)); return v.length ? v.reduce((a: number, b: number) => a + b, 0) / v.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'missfire_raw', label: 'Missfire', category: 'Command', compute: p => { const b = p.map((d: any) => d.brink).filter((x: any) => x != null && x < 0).map((x: number) => -x); return b.length ? b.reduce((a: number, b: number) => a + b, 0) / b.length : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'close_pct_raw', label: 'Close%', category: 'Command', compute: p => { const ob = p.map((d: any) => d.brink).filter((x: any) => x != null && x < 0); return ob.length ? (ob.filter((x: number) => -x < 2).length / ob.length) * 100 : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   // Command — Plus stats (usage-weighted across pitch types)
   { key: 'brink_plus', label: 'Brink+', category: 'Command', compute: p => usageWeightedPlus(p, 'brinkPlus'), fmt: v => v === null ? '\u2014' : String(v) },
   { key: 'cluster_plus', label: 'Cluster+', category: 'Command', compute: p => usageWeightedPlus(p, 'clusterPlus'), fmt: v => v === null ? '\u2014' : String(v) },
   { key: 'hdev_plus', label: 'HDev+', category: 'Command', compute: p => usageWeightedPlus(p, 'hdevPlus'), fmt: v => v === null ? '\u2014' : String(v) },
   { key: 'vdev_plus', label: 'VDev+', category: 'Command', compute: p => usageWeightedPlus(p, 'vdevPlus'), fmt: v => v === null ? '\u2014' : String(v) },
   { key: 'missfire_plus', label: 'Missfire+', category: 'Command', compute: p => usageWeightedPlus(p, 'missfirePlus'), fmt: v => v === null ? '\u2014' : String(v) },
+  { key: 'close_pct_plus', label: 'Close+', category: 'Command', compute: p => usageWeightedPlus(p, 'closePctPlus'), fmt: v => v === null ? '\u2014' : String(v) },
   { key: 'command_plus', label: 'Cmd+', category: 'Command', compute: p => usageWeightedPlus(p, 'commandPlus'), fmt: v => v === null ? '\u2014' : String(v) },
   { key: 'rpcom_plus', label: 'RPCom+', category: 'Command', compute: p => usageWeightedPlus(p, 'rpcomPlus'), fmt: v => v === null ? '\u2014' : String(v) },
 ]
