@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ElementType, SceneElement, Scene, ELEMENT_CATALOG } from '@/lib/sceneTypes'
+import { useState, useEffect } from 'react'
+import { ElementType, SceneElement, Scene, ELEMENT_CATALOG, CustomTemplateRecord } from '@/lib/sceneTypes'
 import { SCENE_TEMPLATES, DATA_DRIVEN_TEMPLATES, TEXT_PRESETS, loadElementPresets, deleteElementPreset, instantiatePreset, type SceneTemplate, type DataDrivenTemplate, type SavedElementPreset } from '@/lib/sceneTemplates'
 
 type Tab = 'elements' | 'templates' | 'presets'
@@ -16,8 +16,16 @@ const CATEGORY_META: { key: string; label: string; icon: string }[] = [
   { key: 'advanced', label: 'Advanced', icon: '\u2605' },
 ]
 
-function TemplatesTab({ onLoad, onLoadDataDriven }: { onLoad: (t: SceneTemplate) => void; onLoadDataDriven?: (t: DataDrivenTemplate) => void }) {
-  const [openCats, setOpenCats] = useState<Set<string>>(new Set(['data-driven', 'pitcher']))
+function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate }: { onLoad: (t: SceneTemplate) => void; onLoadDataDriven?: (t: DataDrivenTemplate) => void; onLoadCustomTemplate?: (t: CustomTemplateRecord) => void }) {
+  const [openCats, setOpenCats] = useState<Set<string>>(new Set(['data-driven', 'custom', 'pitcher']))
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplateRecord[]>([])
+
+  useEffect(() => {
+    fetch('/api/custom-templates')
+      .then(r => r.json())
+      .then(data => setCustomTemplates(data.templates || []))
+      .catch(() => {})
+  }, [])
 
   function toggleCat(key: string) {
     setOpenCats(prev => {
@@ -80,6 +88,51 @@ function TemplatesTab({ onLoad, onLoadDataDriven }: { onLoad: (t: SceneTemplate)
           </div>
         )}
 
+        {/* Custom Templates */}
+        {customTemplates.length > 0 && (
+          <div>
+            <button
+              onClick={() => toggleCat('custom')}
+              className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-zinc-800/60 transition group"
+            >
+              <span className="w-6 h-6 rounded bg-cyan-600/20 text-cyan-400 flex items-center justify-center text-[10px] shrink-0">
+                {'\u2726'}
+              </span>
+              <span className="text-[11px] font-medium text-cyan-300 group-hover:text-cyan-200 transition flex-1 text-left truncate">
+                Custom
+              </span>
+              <span className="text-[9px] text-cyan-600 shrink-0">{customTemplates.length}</span>
+              <span className="text-[10px] text-zinc-600 shrink-0">{openCats.has('custom') ? '\u25B4' : '\u25BE'}</span>
+            </button>
+            {openCats.has('custom') && (
+              <div className="ml-2 pl-2 border-l border-cyan-800/40 space-y-1 mt-1 mb-2">
+                {customTemplates.map(template => (
+                  <button
+                    key={template.id}
+                    onClick={() => onLoadCustomTemplate?.(template)}
+                    className="w-full text-left px-2.5 py-2 rounded-lg bg-cyan-900/10 border border-cyan-800/30 hover:border-cyan-500/50 hover:bg-cyan-900/20 transition group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded bg-cyan-600/20 text-cyan-400 flex items-center justify-center text-[10px] shrink-0 group-hover:bg-cyan-500/30 transition">
+                        {template.icon || '\u2726'}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium text-zinc-200 group-hover:text-white transition leading-tight">{template.name}</span>
+                          <span className="text-[8px] font-semibold uppercase px-1 py-0.5 rounded bg-cyan-600/20 text-cyan-400 border border-cyan-600/30 leading-none">Custom</span>
+                        </div>
+                        {template.description && (
+                          <div className="text-[9px] text-zinc-600 leading-tight mt-0.5">{template.description}</div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {grouped.map(cat => (
           <div key={cat.key}>
             <button
@@ -128,9 +181,10 @@ interface Props {
   onAddElement?: (el: SceneElement) => void
   onLoadScene?: (scene: Scene) => void
   onLoadDataDriven?: (template: DataDrivenTemplate) => void
+  onLoadCustomTemplate?: (template: CustomTemplateRecord) => void
 }
 
-export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoadDataDriven }: Props) {
+export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoadDataDriven, onLoadCustomTemplate }: Props) {
   const [tab, setTab] = useState<Tab>('elements')
   const [elementPresets, setElementPresets] = useState<SavedElementPreset[]>(() => loadElementPresets())
 
@@ -225,7 +279,7 @@ export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoa
 
         {/* ── Templates Tab ─────────────────────────────────────────────── */}
         {tab === 'templates' && (
-          <TemplatesTab onLoad={handleLoadTemplate} onLoadDataDriven={onLoadDataDriven} />
+          <TemplatesTab onLoad={handleLoadTemplate} onLoadDataDriven={onLoadDataDriven} onLoadCustomTemplate={onLoadCustomTemplate} />
         )}
 
         {/* ── Presets Tab ───────────────────────────────────────────────── */}

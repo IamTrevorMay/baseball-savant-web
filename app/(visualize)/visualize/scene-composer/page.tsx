@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
+import DynamicConfigPanel from '@/components/visualize/scene-composer/DynamicConfigPanel'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfigPanel'
@@ -30,6 +31,10 @@ export default function SceneComposerPage() {
   const [templateLoading, setTemplateLoading] = useState(false)
   const [showGallery, setShowGallery] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('unsaved')
+  const [showSaveMenu, setShowSaveMenu] = useState(false)
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false)
+  const [customTemplateId, setCustomTemplateId] = useState<string | null>(null)
+  const [customTemplateRecord, setCustomTemplateRecord] = useState<CustomTemplateRecord | null>(null)
 
   // Timeline state
   const [showTimeline, setShowTimeline] = useState(false)
@@ -355,6 +360,85 @@ export default function SceneComposerPage() {
     setCurrentFrame(0)
     setPlaying(false)
     setShowGallery(false)
+    setCustomTemplateId(null)
+    setCustomTemplateRecord(null)
+  }
+
+  async function handleUpdateTemplate() {
+    setShowSaveMenu(false)
+    const templateName = customTemplateRecord?.name || activeDataTemplate?.name || scene.templateConfig?.templateId || 'template'
+
+    if (customTemplateId) {
+      // Update existing custom template
+      try {
+        await fetch(`/api/custom-templates/${customTemplateId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            elements: scene.elements,
+            width: scene.width,
+            height: scene.height,
+            background: scene.background,
+          }),
+        })
+        setSaveStatus('saved')
+      } catch {
+        setSaveStatus('unsaved')
+      }
+    } else if (scene.templateConfig) {
+      // Fork a built-in template into custom_templates
+      try {
+        const res = await fetch('/api/custom-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: templateName,
+            description: `Custom version of ${templateName}`,
+            category: 'custom',
+            icon: activeDataTemplate?.icon || '\u26a1',
+            width: scene.width,
+            height: scene.height,
+            background: scene.background,
+            elements: scene.elements,
+            input_fields: customTemplateRecord?.input_fields || [],
+            data_query: customTemplateRecord?.data_query || null,
+            base_template_id: scene.templateConfig.templateId,
+          }),
+        })
+        const data = await res.json()
+        if (data.id) setCustomTemplateId(data.id)
+        setSaveStatus('saved')
+      } catch {
+        setSaveStatus('unsaved')
+      }
+    }
+    setShowUpdateConfirm(false)
+  }
+
+  function loadCustomTemplate(template: CustomTemplateRecord) {
+    const newScene: Scene = {
+      id: Math.random().toString(36).slice(2, 10),
+      name: template.name,
+      width: template.width,
+      height: template.height,
+      background: template.background,
+      elements: template.elements.map(el => ({ ...el, id: Math.random().toString(36).slice(2, 10) })),
+      duration: 5,
+      fps: 30,
+      templateConfig: template.data_query ? {
+        templateId: `custom:${template.id}`,
+        playerType: 'pitcher',
+        primaryStat: 'avg_velo',
+        dateRange: { type: 'season', year: 2025 },
+      } : undefined,
+    }
+    setScene(newScene)
+    setSelectedId(null)
+    setSelectedIds(new Set())
+    setCurrentFrame(0)
+    setPlaying(false)
+    setCustomTemplateId(template.id)
+    setCustomTemplateRecord(template)
   }
 
   // ── Data-Driven Templates ────────────────────────────────────────────────
@@ -795,19 +879,33 @@ export default function SceneComposerPage() {
 
         <div className="w-px h-5 bg-zinc-800" />
 
-        {/* Save */}
-        <button
-          onClick={handleSave}
-          className="px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-300 hover:text-white hover:border-zinc-600 transition"
-        >
-          Save
-        </button>
-        <button
-          onClick={handleSaveAs}
-          className="px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-400 hover:text-white transition"
-        >
-          Save As
-        </button>
+        {/* Save dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowSaveMenu(p => !p)}
+            className="px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-300 hover:text-white hover:border-zinc-600 transition"
+          >
+            Save {'\u25BE'}
+          </button>
+          {showSaveMenu && (
+            <div className="absolute right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1 w-44">
+              <button onClick={() => { setShowSaveMenu(false); handleSave() }} className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700 transition">
+                Save Scene
+              </button>
+              <button onClick={() => { setShowSaveMenu(false); handleSaveAs() }} className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700 transition">
+                Save As...
+              </button>
+              {(scene.templateConfig || customTemplateId) && (
+                <>
+                  <div className="border-t border-zinc-700 my-1" />
+                  <button onClick={() => { setShowSaveMenu(false); setShowUpdateConfirm(true) }} className="w-full text-left px-3 py-1.5 text-[11px] text-emerald-400 hover:bg-zinc-700 transition">
+                    Update Template
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <button
           onClick={() => setShowGallery(true)}
           className="px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-300 hover:text-white hover:border-zinc-600 transition"
@@ -863,7 +961,7 @@ export default function SceneComposerPage() {
       <div className="flex-1 flex min-h-0">
         {/* Left: Element Library */}
         <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} />
+          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} onLoadCustomTemplate={loadCustomTemplate} />
         </div>
 
         {/* Center: Canvas */}
@@ -894,6 +992,16 @@ export default function SceneComposerPage() {
               onUpdateKeyframes={kfs => updateElementKeyframes(selectedElement.id, kfs)}
               bindingLoading={bindingLoading}
               fps={scene.fps || 30}
+            />
+          </div>
+        ) : customTemplateRecord?.input_fields?.length ? (
+          <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
+            <DynamicConfigPanel
+              template={customTemplateRecord}
+              scene={scene}
+              onUpdateScene={setScene}
+              loading={templateLoading}
+              setLoading={setTemplateLoading}
             />
           </div>
         ) : scene.templateConfig ? (
@@ -968,6 +1076,40 @@ export default function SceneComposerPage() {
       {/* Click-away for export menu */}
       {showExportMenu && (
         <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+      )}
+
+      {/* Click-away for save menu */}
+      {showSaveMenu && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowSaveMenu(false)} />
+      )}
+
+      {/* Update Template confirmation modal */}
+      {showUpdateConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-96 shadow-2xl">
+            <h3 className="text-sm font-semibold text-white mb-2">Update Template</h3>
+            <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
+              Overwrite template &ldquo;{customTemplateRecord?.name || activeDataTemplate?.name || scene.templateConfig?.templateId}&rdquo; with the current layout?
+              {!customTemplateId && scene.templateConfig && (
+                <span className="block mt-2 text-zinc-500">This will save a custom copy of the built-in template.</span>
+              )}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowUpdateConfirm(false)}
+                className="px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-400 hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateTemplate}
+                className="px-3 py-1.5 rounded bg-cyan-600/20 border border-cyan-600/50 text-[11px] font-medium text-cyan-300 hover:bg-cyan-600/30 transition"
+              >
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

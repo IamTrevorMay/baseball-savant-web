@@ -104,6 +104,42 @@ export interface StarterCardData {
   command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null }
 }
 
+// ── Custom Template Types ────────────────────────────────────────────────────
+
+export type TemplateInputType = 'player' | 'season' | 'game' | 'team' | 'date-range' | 'metric' | 'pitch-type'
+
+export interface TemplateInputField {
+  id: string
+  type: TemplateInputType
+  label: string
+  required: boolean
+  defaultValue?: any
+  dependsOn?: string
+}
+
+export interface DataQueryConfig {
+  type: 'leaderboard' | 'outing' | 'starter-card' | 'player-stats' | 'custom-sql'
+  endpoint: string
+  paramMapping: Record<string, string>
+}
+
+export interface CustomTemplateRecord {
+  id: string
+  name: string
+  description: string
+  category: string
+  icon: string
+  width: number
+  height: number
+  background: string
+  elements: SceneElement[]
+  input_fields: TemplateInputField[]
+  data_query: DataQueryConfig | null
+  base_template_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ── Scene ───────────────────────────────────────────────────────────────────
 
 export interface Scene {
