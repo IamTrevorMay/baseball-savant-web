@@ -346,10 +346,29 @@ function computeSnapGuides(
 type DragState =
   | { type: 'move'; id: string; startX: number; startY: number; elX: number; elY: number }
   | { type: 'resize'; id: string; handle: string; startX: number; startY: number; elX: number; elY: number; elW: number; elH: number }
+  | { type: 'marquee'; startX: number; startY: number; curX: number; curY: number }
+  | { type: 'group-resize'; handle: string; startX: number; startY: number; bbox: { x: number; y: number; w: number; h: number }; snapshots: { id: string; x: number; y: number; w: number; h: number }[] }
   | null
 
 const HANDLES = ['nw', 'ne', 'sw', 'se'] as const
 const HANDLE_CURSORS: Record<string, string> = { nw: 'nw-resize', ne: 'ne-resize', sw: 'sw-resize', se: 'se-resize' }
+
+// ── Bounding box for multi-select ────────────────────────────────────────────
+
+function getGroupBBox(ids: Set<string>, elements: SceneElement[]): { x: number; y: number; w: number; h: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let count = 0
+  for (const el of elements) {
+    if (!ids.has(el.id)) continue
+    minX = Math.min(minX, el.x)
+    minY = Math.min(minY, el.y)
+    maxX = Math.max(maxX, el.x + el.width)
+    maxY = Math.max(maxY, el.y + el.height)
+    count++
+  }
+  if (count === 0) return null
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
 
 // ── SceneCanvas ──────────────────────────────────────────────────────────────
 
@@ -359,11 +378,12 @@ interface Props {
   selectedIds?: Set<string>
   zoom: number
   onSelect: (id: string | null, additive?: boolean) => void
+  onSelectMany: (ids: string[]) => void
   onUpdateElement: (id: string, updates: Partial<SceneElement>) => void
   canvasRef: React.RefObject<HTMLDivElement | null>
 }
 
-export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSelect, onUpdateElement, canvasRef }: Props) {
+export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef }: Props) {
   const [drag, setDrag] = useState<DragState>(null)
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
 
@@ -391,11 +411,51 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
     [scene.elements]
   )
 
+  // Start group resize from bounding-box handles
+  const handleGroupResizeDown = useCallback(
+    (e: React.MouseEvent, handle: string) => {
+      e.stopPropagation()
+      e.preventDefault()
+      if (!selectedIds || selectedIds.size < 2) return
+      const bbox = getGroupBBox(selectedIds, scene.elements)
+      if (!bbox) return
+      const snapshots = scene.elements
+        .filter(el => selectedIds.has(el.id))
+        .map(el => ({ id: el.id, x: el.x, y: el.y, w: el.width, h: el.height }))
+      setDrag({ type: 'group-resize', handle, startX: e.clientX, startY: e.clientY, bbox, snapshots })
+    },
+    [selectedIds, scene.elements]
+  )
+
+  // Start marquee selection on empty canvas
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target !== e.currentTarget) return
+      if (e.button !== 0) return
+      // Get position relative to canvas
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const x = (e.clientX - rect.left) / zoom
+      const y = (e.clientY - rect.top) / zoom
+      if (!e.shiftKey) onSelect(null) // clear unless shift
+      setDrag({ type: 'marquee', startX: x, startY: y, curX: x, curY: y })
+    },
+    [zoom, onSelect]
+  )
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!drag) return
       const dx = (e.clientX - drag.startX) / zoom
       const dy = (e.clientY - drag.startY) / zoom
+
+      if (drag.type === 'marquee') {
+        const rect = canvasRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const curX = (e.clientX - rect.left) / zoom
+        const curY = (e.clientY - rect.top) / zoom
+        setDrag({ ...drag, curX, curY })
+        return
+      }
 
       if (drag.type === 'move') {
         const el = scene.elements.find(el => el.id === drag.id)
@@ -433,17 +493,55 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
         if (handle.includes('s')) nh = Math.max(20, elH + dy)
         if (handle.includes('n')) { nh = Math.max(20, elH - dy); ny = elY + (elH - nh) }
         onUpdateElement(drag.id, { x: Math.round(nx), y: Math.round(ny), width: Math.round(nw), height: Math.round(nh) })
+      } else if (drag.type === 'group-resize') {
+        const { handle, bbox, snapshots } = drag
+        // Compute new bounding box
+        let nbx = bbox.x, nby = bbox.y, nbw = bbox.w, nbh = bbox.h
+        if (handle.includes('e')) nbw = Math.max(20, bbox.w + dx)
+        if (handle.includes('w')) { nbw = Math.max(20, bbox.w - dx); nbx = bbox.x + (bbox.w - nbw) }
+        if (handle.includes('s')) nbh = Math.max(20, bbox.h + dy)
+        if (handle.includes('n')) { nbh = Math.max(20, bbox.h - dy); nby = bbox.y + (bbox.h - nbh) }
+
+        const scaleX = nbw / bbox.w
+        const scaleY = nbh / bbox.h
+
+        for (const snap of snapshots) {
+          const relX = snap.x - bbox.x
+          const relY = snap.y - bbox.y
+          onUpdateElement(snap.id, {
+            x: Math.round(nbx + relX * scaleX),
+            y: Math.round(nby + relY * scaleY),
+            width: Math.max(10, Math.round(snap.w * scaleX)),
+            height: Math.max(10, Math.round(snap.h * scaleY)),
+          })
+        }
       }
     },
-    [drag, zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds]
+    [drag, zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds, canvasRef]
   )
 
   const handleMouseUp = useCallback(() => {
+    // Finalize marquee selection
+    if (drag?.type === 'marquee') {
+      const x1 = Math.min(drag.startX, drag.curX)
+      const y1 = Math.min(drag.startY, drag.curY)
+      const x2 = Math.max(drag.startX, drag.curX)
+      const y2 = Math.max(drag.startY, drag.curY)
+      // Only select if drag was meaningful (> 4px)
+      if (x2 - x1 > 4 || y2 - y1 > 4) {
+        const hit = scene.elements
+          .filter(el => el.x + el.width > x1 && el.x < x2 && el.y + el.height > y1 && el.y < y2)
+          .map(el => el.id)
+        if (hit.length > 0) onSelectMany(hit)
+      }
+    }
     setDrag(null)
     setSnapGuides([])
-  }, [])
+  }, [drag, scene.elements, onSelectMany])
 
   const allSelected = selectedIds || new Set(selectedId ? [selectedId] : [])
+  const multiSelected = allSelected.size > 1
+  const groupBBox = multiSelected ? getGroupBBox(allSelected, scene.elements) : null
 
   return (
     <div
@@ -468,9 +566,7 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
           transform: `scale(${zoom})`,
           transformOrigin: 'center center',
         }}
-        onMouseDown={e => {
-          if (e.target === e.currentTarget) onSelect(null)
-        }}
+        onMouseDown={handleCanvasMouseDown}
       >
         {/* Grid overlay */}
         <div
@@ -499,10 +595,58 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
           />
         ))}
 
+        {/* Marquee selection rectangle */}
+        {drag?.type === 'marquee' && (() => {
+          const x = Math.min(drag.startX, drag.curX)
+          const y = Math.min(drag.startY, drag.curY)
+          const w = Math.abs(drag.curX - drag.startX)
+          const h = Math.abs(drag.curY - drag.startY)
+          return w > 2 || h > 2 ? (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: x, top: y, width: w, height: h,
+                border: '1px solid #06b6d4',
+                backgroundColor: 'rgba(6,182,212,0.08)',
+                zIndex: 9997,
+              }}
+            />
+          ) : null
+        })()}
+
+        {/* Group bounding box + resize handles */}
+        {groupBBox && !drag && (
+          <>
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: groupBBox.x - 4, top: groupBBox.y - 4,
+                width: groupBBox.w + 8, height: groupBBox.h + 8,
+                border: '1px dashed #06b6d480',
+                zIndex: 9996,
+              }}
+            />
+            {HANDLES.map(h => (
+              <div
+                key={`group-${h}`}
+                className="absolute w-2.5 h-2.5 bg-cyan-500 border border-cyan-300 rounded-sm"
+                style={{
+                  left: h.includes('w') ? groupBBox.x - 9 : groupBBox.x + groupBBox.w + 3,
+                  top: h.includes('n') ? groupBBox.y - 9 : groupBBox.y + groupBBox.h + 3,
+                  cursor: HANDLE_CURSORS[h],
+                  zIndex: 9999,
+                }}
+                onMouseDown={e => handleGroupResizeDown(e, h)}
+              />
+            ))}
+          </>
+        )}
+
         {/* Elements */}
         {[...scene.elements].sort((a, b) => a.zIndex - b.zIndex).map(el => {
           const selected = allSelected.has(el.id)
           const isPrimary = el.id === selectedId
+          const showHandles = isPrimary && !el.locked && !multiSelected
           const p = el.props
 
           // Universal style props
@@ -558,8 +702,8 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
             >
               {renderElementContent(el)}
 
-              {/* Resize handles */}
-              {isPrimary && !el.locked &&
+              {/* Resize handles — single selection only */}
+              {showHandles &&
                 HANDLES.map(h => (
                   <div
                     key={h}

@@ -179,6 +179,12 @@ export default function SceneComposerPage() {
     setSelectedId(id)
   }, [])
 
+  const handleSelectMany = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
+    setSelectedIds(new Set(ids))
+    setSelectedId(ids[0])
+  }, [])
+
   const updateElementKeyframes = useCallback((id: string, keyframes: Keyframe[]) => {
     setScene(prev => ({
       ...prev,
@@ -492,16 +498,21 @@ export default function SceneComposerPage() {
       }
 
       if (selectedId) {
-        const el = scene.elements.find(e => e.id === selectedId)
-        if (!el) return
-
         if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault()
-          deleteElement(selectedId)
+          // Delete all selected elements
+          if (selectedIds.size > 1) {
+            for (const id of selectedIds) deleteElement(id)
+            setSelectedId(null)
+            setSelectedIds(new Set())
+          } else {
+            deleteElement(selectedId)
+          }
           return
         }
         if (e.key === 'Escape') {
           setSelectedId(null)
+          setSelectedIds(new Set())
           return
         }
         if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
@@ -514,22 +525,51 @@ export default function SceneComposerPage() {
           handleSave()
           return
         }
+        // Select all
+        if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+          e.preventDefault()
+          const allIds = scene.elements.map(el => el.id)
+          if (allIds.length > 0) {
+            setSelectedIds(new Set(allIds))
+            setSelectedId(allIds[0])
+          }
+          return
+        }
 
         const step = e.shiftKey ? 10 : 1
-        if (e.key === 'ArrowLeft') { e.preventDefault(); updateElement(selectedId, { x: el.x - step }) }
-        if (e.key === 'ArrowRight') { e.preventDefault(); updateElement(selectedId, { x: el.x + step }) }
-        if (e.key === 'ArrowUp') { e.preventDefault(); updateElement(selectedId, { y: el.y - step }) }
-        if (e.key === 'ArrowDown') { e.preventDefault(); updateElement(selectedId, { y: el.y + step }) }
+        const isArrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+        if (isArrow) {
+          e.preventDefault()
+          // Move all selected elements
+          const idsToMove = selectedIds.size > 1 ? selectedIds : new Set([selectedId])
+          for (const id of idsToMove) {
+            const el = scene.elements.find(el => el.id === id)
+            if (!el || el.locked) continue
+            if (e.key === 'ArrowLeft') updateElement(id, { x: el.x - step })
+            if (e.key === 'ArrowRight') updateElement(id, { x: el.x + step })
+            if (e.key === 'ArrowUp') updateElement(id, { y: el.y - step })
+            if (e.key === 'ArrowDown') updateElement(id, { y: el.y + step })
+          }
+        }
       } else {
         if ((e.metaKey || e.ctrlKey) && e.key === 's') {
           e.preventDefault()
           handleSave()
         }
+        // Select all even when nothing selected
+        if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+          e.preventDefault()
+          const allIds = scene.elements.map(el => el.id)
+          if (allIds.length > 0) {
+            setSelectedIds(new Set(allIds))
+            setSelectedId(allIds[0])
+          }
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedId, scene.elements, deleteElement, duplicateElement, updateElement, showTimeline, currentFrame, addKeyframe, undo, redo])
+  }, [selectedId, selectedIds, scene.elements, deleteElement, duplicateElement, updateElement, showTimeline, currentFrame, addKeyframe, undo, redo])
 
   // ── Zoom ─────────────────────────────────────────────────────────────────
 
@@ -834,6 +874,7 @@ export default function SceneComposerPage() {
             selectedIds={selectedIds}
             zoom={zoom}
             onSelect={handleSelect}
+            onSelectMany={handleSelectMany}
             onUpdateElement={updateElement}
             canvasRef={canvasRef}
           />
