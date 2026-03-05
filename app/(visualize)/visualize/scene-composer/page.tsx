@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import DynamicConfigPanel from '@/components/visualize/scene-composer/DynamicConfigPanel'
+import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlotsPanel'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfigPanel'
@@ -249,6 +250,106 @@ export default function SceneComposerPage() {
       setBindingLoading(false)
     }
   }, [scene.elements, updateElementProps])
+
+  // ── Dynamic Slots ──────────────────────────────────────────────────────────
+
+  const addDynamicSlot = useCallback((): string => {
+    const id = Math.random().toString(36).slice(2, 10)
+    setScene(prev => {
+      const existing = prev.dynamicSlots || []
+      const label = `Player ${existing.length + 1}`
+      const slot: DynamicSlot = { id, label, playerType: 'pitcher', gameYear: 2025 }
+      return { ...prev, dynamicSlots: [...existing, slot] }
+    })
+    return id
+  }, [])
+
+  const updateDynamicSlot = useCallback((id: string, updates: Partial<DynamicSlot>) => {
+    setScene(prev => ({
+      ...prev,
+      dynamicSlots: (prev.dynamicSlots || []).map(s => s.id === id ? { ...s, ...updates } : s),
+    }))
+  }, [])
+
+  const removeDynamicSlot = useCallback((id: string) => {
+    setScene(prev => ({
+      ...prev,
+      dynamicSlots: (prev.dynamicSlots || []).filter(s => s.id !== id),
+      // Clear bindings referencing this slot
+      elements: prev.elements.map(e =>
+        e.dataBinding?.dynamicSlot === id
+          ? { ...e, dataBinding: undefined }
+          : e
+      ),
+    }))
+  }, [])
+
+  const [dynamicFetchLoading, setDynamicFetchLoading] = useState(false)
+
+  const fetchAllDynamic = useCallback(async () => {
+    const slots = scene.dynamicSlots
+    if (!slots?.length) return
+
+    // Collect all dynamic elements grouped by slot
+    const slotElements = new Map<string, { metrics: Set<string>; elements: SceneElement[] }>()
+    for (const el of scene.elements) {
+      if (el.dataBinding?.source !== 'dynamic' || !el.dataBinding.dynamicSlot) continue
+      const slotId = el.dataBinding.dynamicSlot
+      if (!slotElements.has(slotId)) slotElements.set(slotId, { metrics: new Set(), elements: [] })
+      const entry = slotElements.get(slotId)!
+      entry.metrics.add(el.dataBinding.metric)
+      entry.elements.push(el)
+    }
+
+    if (slotElements.size === 0) return
+    setDynamicFetchLoading(true)
+
+    try {
+      // Fetch for each slot
+      const fetches = Array.from(slotElements.entries()).map(async ([slotId, { metrics, elements }]) => {
+        const slot = slots.find(s => s.id === slotId)
+        if (!slot?.playerId) return
+
+        const params = new URLSearchParams({
+          playerId: String(slot.playerId),
+          metrics: Array.from(metrics).join(','),
+          gameYear: String(slot.gameYear),
+        })
+        if (slot.pitchType) params.set('pitchType', slot.pitchType)
+
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        const stats = data.stats || {}
+
+        // Apply results to each element
+        for (const el of elements) {
+          const metric = el.dataBinding!.metric
+          const val = stats[metric]
+          if (val === null || val === undefined) continue
+          if (el.type === 'stat-card') {
+            updateElementProps(el.id, {
+              value: String(val),
+              label: metric.replace(/_/g, ' ').toUpperCase(),
+              sublabel: `${slot.playerName || ''} ${slot.gameYear}`.trim(),
+            })
+          } else if (el.type === 'comparison-bar') {
+            updateElementProps(el.id, {
+              value: Number(val),
+              label: `${slot.playerName || ''} - ${metric.replace(/_/g, ' ')}`,
+            })
+          } else if (el.type === 'text') {
+            updateElementProps(el.id, { text: String(val) })
+          }
+        }
+      })
+
+      await Promise.all(fetches)
+    } catch (err) {
+      console.error('Fetch all dynamic error:', err)
+    } finally {
+      setDynamicFetchLoading(false)
+    }
+  }, [scene.dynamicSlots, scene.elements, updateElementProps])
 
   // ── Keyframe management ──────────────────────────────────────────────────
 
@@ -978,7 +1079,7 @@ export default function SceneComposerPage() {
           />
         </div>
 
-        {/* Right: Properties or Template Config */}
+        {/* Right: Properties or Template Config or Dynamic Slots */}
         {selectedElement ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             <PropertiesPanel
@@ -992,6 +1093,19 @@ export default function SceneComposerPage() {
               onUpdateKeyframes={kfs => updateElementKeyframes(selectedElement.id, kfs)}
               bindingLoading={bindingLoading}
               fps={scene.fps || 30}
+              dynamicSlots={scene.dynamicSlots}
+              onAddDynamicSlot={addDynamicSlot}
+            />
+          </div>
+        ) : (scene.dynamicSlots?.length ?? 0) > 0 ? (
+          <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
+            <DynamicSlotsPanel
+              slots={scene.dynamicSlots!}
+              onUpdateSlot={updateDynamicSlot}
+              onAddSlot={addDynamicSlot}
+              onRemoveSlot={removeDynamicSlot}
+              onFetchAll={fetchAllDynamic}
+              fetchLoading={dynamicFetchLoading}
             />
           </div>
         ) : customTemplateRecord?.input_fields?.length ? (

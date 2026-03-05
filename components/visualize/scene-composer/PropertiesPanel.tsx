@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { SceneElement, DataBinding } from '@/lib/sceneTypes'
+import { SceneElement, DataBinding, DynamicSlot } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import { TEAM_OPTIONS } from '@/lib/stadiumData'
@@ -28,6 +28,8 @@ interface Props {
   onUpdateKeyframes?: (keyframes: import('@/lib/sceneTypes').Keyframe[]) => void
   bindingLoading?: boolean
   fps?: number
+  dynamicSlots?: DynamicSlot[]
+  onAddDynamicSlot?: () => string  // returns new slot ID
 }
 
 // ── Field Helpers ────────────────────────────────────────────────────────────
@@ -167,13 +169,15 @@ function PlayerImageSection({ p, onUpdateProps }: { p: Record<string, any>; onUp
 
 // ── Data Binding Section ─────────────────────────────────────────────────────
 
-function DataBindingSection({ binding, onUpdateBinding, onFetch, loading }: {
+function DataBindingSection({ binding, onUpdateBinding, onFetch, loading, dynamicSlots, onAddDynamicSlot }: {
   binding?: DataBinding
   onUpdateBinding: (b: DataBinding | undefined) => void
   onFetch: () => void
   loading?: boolean
+  dynamicSlots?: DynamicSlot[]
+  onAddDynamicSlot?: () => string
 }) {
-  const [source, setSource] = useState<'manual' | 'statcast' | 'lahman'>(binding?.source || 'manual')
+  const [source, setSource] = useState<'manual' | 'statcast' | 'lahman' | 'dynamic'>(binding?.source || 'manual')
 
   function updateField(field: string, value: any) {
     const base: DataBinding = binding || { playerId: 0, playerName: '', metric: 'avg_velo', source: 'statcast' }
@@ -186,18 +190,54 @@ function DataBindingSection({ binding, onUpdateBinding, onFetch, loading }: {
         label="Source"
         value={source}
         onChange={v => {
-          const s = v as 'manual' | 'statcast' | 'lahman'
+          const s = v as 'manual' | 'statcast' | 'lahman' | 'dynamic'
           setSource(s)
           if (s === 'manual') { onUpdateBinding(undefined) }
+          else if (s === 'dynamic') {
+            const slotId = dynamicSlots?.[0]?.id
+            onUpdateBinding({ playerId: 0, playerName: '', metric: binding?.metric || 'avg_velo', source: 'dynamic', dynamicSlot: slotId })
+          }
           else { updateField('source', s) }
         }}
         options={[
           { value: 'manual', label: 'Manual' },
           { value: 'statcast', label: 'Statcast' },
           { value: 'lahman', label: 'Lahman' },
+          { value: 'dynamic', label: 'Dynamic' },
         ]}
       />
-      {source !== 'manual' && (
+      {source === 'dynamic' && (
+        <>
+          <SelField
+            label="Slot"
+            value={binding?.dynamicSlot || ''}
+            onChange={v => {
+              if (v === '__new__') {
+                const newId = onAddDynamicSlot?.()
+                if (newId) updateField('dynamicSlot', newId)
+              } else {
+                updateField('dynamicSlot', v)
+              }
+            }}
+            options={[
+              ...(dynamicSlots || []).map(s => ({ value: s.id, label: s.label })),
+              { value: '__new__', label: '+ New Slot' },
+            ]}
+          />
+          <SelField
+            label="Metric"
+            value={binding?.metric || 'avg_velo'}
+            onChange={v => updateField('metric', v)}
+            options={SCENE_METRICS}
+          />
+          {binding?.dynamicSlot && (
+            <div className="text-[10px] text-cyan-400/60">
+              Player & season configured in Dynamic Slots panel
+            </div>
+          )}
+        </>
+      )}
+      {(source === 'statcast' || source === 'lahman') && (
         <>
           <PlayerPicker
             label="Pick player..."
@@ -880,7 +920,7 @@ function TypographySection({ p, onUpdateProps }: { p: Record<string, any>; onUpd
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
-export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30 }: Props) {
+export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30, dynamicSlots, onAddDynamicSlot }: Props) {
   const p = element.props
   const b = element.dataBinding
   const showBinding = element.type === 'stat-card' || element.type === 'comparison-bar'
@@ -1031,6 +1071,8 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
           onUpdateBinding={onUpdateBinding}
           onFetch={onFetchBinding}
           loading={bindingLoading}
+          dynamicSlots={dynamicSlots}
+          onAddDynamicSlot={onAddDynamicSlot}
         />
       )}
 

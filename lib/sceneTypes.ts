@@ -1,15 +1,28 @@
 export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot'
 
+// ── Dynamic Slots ───────────────────────────────────────────────────────────
+
+export interface DynamicSlot {
+  id: string
+  label: string         // "Player 1", "Player 2", etc.
+  playerId?: number
+  playerName?: string
+  playerType: 'pitcher' | 'batter'
+  gameYear: number
+  pitchType?: string
+}
+
 // ── Data Binding ────────────────────────────────────────────────────────────
 
 export interface DataBinding {
   playerId: number
   playerName: string
   metric: string
-  source: 'statcast' | 'lahman'
+  source: 'statcast' | 'lahman' | 'dynamic'
   gameYear?: number
   pitchType?: string
   lahmanStat?: string
+  dynamicSlot?: string  // slot ID reference
 }
 
 // ── Animation ───────────────────────────────────────────────────────────────
@@ -154,6 +167,7 @@ export interface Scene {
   fps?: number      // default 30
   templateConfig?: TemplateConfig
   templateData?: TemplateDataRow[]
+  dynamicSlots?: DynamicSlot[]
 }
 
 // ── Catalog ─────────────────────────────────────────────────────────────────
