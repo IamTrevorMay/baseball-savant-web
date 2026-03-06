@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/pitches",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/roster",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/roster",
+      "schedule": "0 23 * * *"
     }
   ]
 }
