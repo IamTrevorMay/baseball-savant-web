@@ -397,13 +397,28 @@ function PlayScreen({
   const hintPenalty = hintsUsed.reduce((sum, used, i) => sum + (used ? HINT_COSTS[i] : 0), 0)
   const potentialScore = Math.max(0, SCORE_TABLE[Math.min(guessNum, 4)] - hintPenalty)
 
+  const [showRules, setShowRules] = useState(false)
+
   return (
     <div className="min-h-screen p-4 max-w-lg mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-[10px]" style={{ color: NES.yellow }}>{year} {type.toUpperCase()}</p>
+        <button onClick={() => setShowRules(!showRules)} className="text-[8px]" style={{ color: NES.yellow }}>
+          {showRules ? '▼' : '▶'} RULES
+        </button>
         <p className="text-[10px]" style={{ color: NES.gray }}>GUESS {Math.min(guessNum + 1, 5)}/5</p>
       </div>
+
+      {showRules && (
+        <div className="border-2 px-3 py-2 mb-4 space-y-1" style={{ borderColor: NES.yellow }}>
+          <p className="text-[8px]" style={{ color: NES.white }}>• Identify the MLB player from Statcast percentile rankings</p>
+          <p className="text-[8px]" style={{ color: NES.white }}>• Start with 3 stats from the hardest tier — miss = 2 more from easier tiers</p>
+          <p className="text-[8px]" style={{ color: NES.white }}>• 5 guesses max</p>
+          <p className="text-[8px]" style={{ color: NES.white }}>• Hints unlock after guesses 2, 3, 4 (cost -3, -5, -7 pts)</p>
+          <p className="text-[8px]" style={{ color: NES.white }}>• Scoring: Guess 1=100, 2=80, 3=60, 4=40, 5=20</p>
+        </div>
+      )}
 
       {/* Stat tiers with score sidebar */}
       <div className="flex gap-3 mb-6">
