@@ -173,6 +173,9 @@ export const HITTER_TIERS: StatDef[][] = [
 ]
 
 // ── Deterministic hashing ──
+// Bump PUZZLE_SEED to rotate all puzzles to new players
+const PUZZLE_SEED = 2
+
 function djb2(str: string): number {
   let hash = 5381
   for (let i = 0; i < str.length; i++) {
@@ -182,12 +185,12 @@ function djb2(str: string): number {
 }
 
 export function dailyPlayerIndex(date: string, year: number, type: string, poolSize: number): number {
-  return djb2(`${date}-${year}-${type}`) % poolSize
+  return djb2(`${date}-${year}-${type}-s${PUZZLE_SEED}`) % poolSize
 }
 
 /** Pick `count` unique indices from [0, statsCount). Deterministic per day/year/type/tier. */
 export function pickStats(date: string, year: number, type: string, tierLevel: number, statsCount: number, count: number): number[] {
-  let h = djb2(`${date}-${year}-${type}-tier${tierLevel}`)
+  let h = djb2(`${date}-${year}-${type}-tier${tierLevel}-s${PUZZLE_SEED}`)
   const picked: number[] = []
   for (let attempt = 0; picked.length < count && attempt < 50; attempt++) {
     const idx = h % statsCount
