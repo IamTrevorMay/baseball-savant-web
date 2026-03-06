@@ -226,6 +226,27 @@ function ComparisonBarRenderer({ props: p, height }: { props: Record<string, any
   )
 }
 
+function ImageRenderer({ props: p, width, height }: { props: Record<string, any>; width: number; height: number }) {
+  const fit = p.objectFit || 'cover'
+  if (!p.src) {
+    return (
+      <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-600 flex flex-col items-center justify-center text-zinc-500 gap-1">
+        <span className="text-2xl">{'\u25a3'}</span>
+        <span className="text-[10px]">No image</span>
+      </div>
+    )
+  }
+  return (
+    <img
+      src={p.src}
+      alt=""
+      className="w-full h-full"
+      style={{ objectFit: fit as any }}
+      draggable={false}
+    />
+  )
+}
+
 function renderElementContent(el: SceneElement) {
   switch (el.type) {
     case 'stat-card':
@@ -236,6 +257,8 @@ function renderElementContent(el: SceneElement) {
       return <ShapeRenderer props={el.props} />
     case 'player-image':
       return <PlayerImageRenderer props={el.props} width={el.width} height={el.height} />
+    case 'image':
+      return <ImageRenderer props={el.props} width={el.width} height={el.height} />
     case 'comparison-bar':
       return <ComparisonBarRenderer props={el.props} height={el.height} />
     case 'pitch-flight':
@@ -384,8 +407,15 @@ interface Props {
 }
 
 export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef }: Props) {
-  const [drag, setDrag] = useState<DragState>(null)
+  const [drag, _setDrag] = useState<DragState>(null)
+  const dragRef = useRef<DragState>(null)
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
+
+  // Keep ref in sync so event handlers always see latest drag state
+  function setDrag(d: DragState) {
+    dragRef.current = d
+    _setDrag(d)
+  }
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, id: string) => {
@@ -393,11 +423,15 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
       e.stopPropagation()
       const el = scene.elements.find(el => el.id === id)
       if (!el) return
-      onSelect(id, e.shiftKey)
+      // If element is already in a multi-selection, don't change selection — just drag
+      const alreadyInGroup = selectedIds && selectedIds.size > 1 && selectedIds.has(id)
+      if (!alreadyInGroup) {
+        onSelect(id, e.shiftKey)
+      }
       if (el.locked) return
       setDrag({ type: 'move', id, startX: e.clientX, startY: e.clientY, elX: el.x, elY: el.y })
     },
-    [scene.elements, onSelect]
+    [scene.elements, onSelect, selectedIds]
   )
 
   const handleResizeDown = useCallback(
@@ -427,75 +461,78 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
     [selectedIds, scene.elements]
   )
 
-  // Start marquee selection on empty canvas
+  // Start marquee selection on empty canvas area
+  // Element mousedown handlers call stopPropagation, so if we reach here
+  // the click is on empty space (or pointer-events-none overlays)
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (e.target !== e.currentTarget) return
       if (e.button !== 0) return
-      // Get position relative to canvas
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      // Ignore if click landed on an element (shouldn't happen due to stopPropagation, but safety)
+      const target = e.target as HTMLElement
+      if (target !== e.currentTarget && !target.hasAttribute('data-canvas-overlay')) return
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
       const x = (e.clientX - rect.left) / zoom
       const y = (e.clientY - rect.top) / zoom
-      if (!e.shiftKey) onSelect(null) // clear unless shift
+      if (!e.shiftKey) onSelect(null)
       setDrag({ type: 'marquee', startX: x, startY: y, curX: x, curY: y })
     },
-    [zoom, onSelect]
+    [zoom, onSelect, canvasRef]
   )
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!drag) return
-      const dx = (e.clientX - drag.startX) / zoom
-      const dy = (e.clientY - drag.startY) / zoom
+  // Use native listener on document for mousemove/mouseup to avoid stale closure issues
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      const d = dragRef.current
+      if (!d) return
 
-      if (drag.type === 'marquee') {
+      const dx = (e.clientX - d.startX) / zoom
+      const dy = (e.clientY - d.startY) / zoom
+
+      if (d.type === 'marquee') {
         const rect = canvasRef.current?.getBoundingClientRect()
         if (!rect) return
         const curX = (e.clientX - rect.left) / zoom
         const curY = (e.clientY - rect.top) / zoom
-        setDrag({ ...drag, curX, curY })
+        setDrag({ ...d, curX, curY })
         return
       }
 
-      if (drag.type === 'move') {
-        const el = scene.elements.find(el => el.id === drag.id)
+      if (d.type === 'move') {
+        const el = scene.elements.find(el => el.id === d.id)
         if (!el) return
 
-        const rawX = drag.elX + dx
-        const rawY = drag.elY + dy
+        const rawX = d.elX + dx
+        const rawY = d.elY + dy
 
-        // Compute snap guides
         const { x: snappedX, y: snappedY, guides } = computeSnapGuides(
           el, rawX, rawY, scene.elements, scene.width, scene.height
         )
         setSnapGuides(guides)
 
-        // Move selected element
         const offsetX = snappedX - el.x
         const offsetY = snappedY - el.y
-        onUpdateElement(drag.id, { x: snappedX, y: snappedY })
+        onUpdateElement(d.id, { x: snappedX, y: snappedY })
 
-        // Move other selected elements (multi-select group move)
-        if (selectedIds && selectedIds.size > 1 && selectedIds.has(drag.id)) {
+        if (selectedIds && selectedIds.size > 1 && selectedIds.has(d.id)) {
           for (const otherId of selectedIds) {
-            if (otherId === drag.id) continue
+            if (otherId === d.id) continue
             const other = scene.elements.find(e => e.id === otherId)
             if (other && !other.locked) {
               onUpdateElement(otherId, { x: other.x + offsetX, y: other.y + offsetY })
             }
           }
         }
-      } else if (drag.type === 'resize') {
-        const { handle, elX, elY, elW, elH } = drag
+      } else if (d.type === 'resize') {
+        const { handle, elX, elY, elW, elH } = d
         let nx = elX, ny = elY, nw = elW, nh = elH
         if (handle.includes('e')) nw = Math.max(20, elW + dx)
         if (handle.includes('w')) { nw = Math.max(20, elW - dx); nx = elX + (elW - nw) }
         if (handle.includes('s')) nh = Math.max(20, elH + dy)
         if (handle.includes('n')) { nh = Math.max(20, elH - dy); ny = elY + (elH - nh) }
-        onUpdateElement(drag.id, { x: Math.round(nx), y: Math.round(ny), width: Math.round(nw), height: Math.round(nh) })
-      } else if (drag.type === 'group-resize') {
-        const { handle, bbox, snapshots } = drag
-        // Compute new bounding box
+        onUpdateElement(d.id, { x: Math.round(nx), y: Math.round(ny), width: Math.round(nw), height: Math.round(nh) })
+      } else if (d.type === 'group-resize') {
+        const { handle, bbox, snapshots } = d
         let nbx = bbox.x, nby = bbox.y, nbw = bbox.w, nbh = bbox.h
         if (handle.includes('e')) nbw = Math.max(20, bbox.w + dx)
         if (handle.includes('w')) { nbw = Math.max(20, bbox.w - dx); nbx = bbox.x + (bbox.w - nbw) }
@@ -516,28 +553,33 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
           })
         }
       }
-    },
-    [drag, zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds, canvasRef]
-  )
-
-  const handleMouseUp = useCallback(() => {
-    // Finalize marquee selection
-    if (drag?.type === 'marquee') {
-      const x1 = Math.min(drag.startX, drag.curX)
-      const y1 = Math.min(drag.startY, drag.curY)
-      const x2 = Math.max(drag.startX, drag.curX)
-      const y2 = Math.max(drag.startY, drag.curY)
-      // Only select if drag was meaningful (> 4px)
-      if (x2 - x1 > 4 || y2 - y1 > 4) {
-        const hit = scene.elements
-          .filter(el => el.x + el.width > x1 && el.x < x2 && el.y + el.height > y1 && el.y < y2)
-          .map(el => el.id)
-        if (hit.length > 0) onSelectMany(hit)
-      }
     }
-    setDrag(null)
-    setSnapGuides([])
-  }, [drag, scene.elements, onSelectMany])
+
+    function onMouseUp() {
+      const d = dragRef.current
+      if (d?.type === 'marquee') {
+        const x1 = Math.min(d.startX, d.curX)
+        const y1 = Math.min(d.startY, d.curY)
+        const x2 = Math.max(d.startX, d.curX)
+        const y2 = Math.max(d.startY, d.curY)
+        if (x2 - x1 > 4 || y2 - y1 > 4) {
+          const hit = scene.elements
+            .filter(el => el.x + el.width > x1 && el.x < x2 && el.y + el.height > y1 && el.y < y2)
+            .map(el => el.id)
+          if (hit.length > 0) onSelectMany(hit)
+        }
+      }
+      setDrag(null)
+      setSnapGuides([])
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds, canvasRef, onSelectMany])
 
   const allSelected = selectedIds || new Set(selectedId ? [selectedId] : [])
   const multiSelected = allSelected.size > 1
@@ -547,9 +589,6 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
     <div
       className="w-full h-full overflow-auto flex items-center justify-center"
       style={{ background: 'radial-gradient(circle at center, #1a1a1e 0%, #09090b 100%)' }}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
     >
       {/* Scene canvas */}
       <div

@@ -318,6 +318,47 @@ async function drawPlayerImage(ctx: CanvasRenderingContext2D, el: SceneElement) 
   ctx.restore()
 }
 
+async function drawImage(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  if (!p.src) return
+  try {
+    const img = await loadImage(p.src)
+    const fit = p.objectFit || 'cover'
+    ctx.save()
+    const rad = p.borderRadius ?? 0
+    if (rad > 0) {
+      roundRect(ctx, x, y, w, h, rad)
+      ctx.clip()
+    }
+    if (fit === 'fill') {
+      ctx.drawImage(img, x, y, w, h)
+    } else if (fit === 'contain') {
+      const imgR = img.width / img.height
+      const boxR = w / h
+      let dw: number, dh: number, dx: number, dy: number
+      if (imgR > boxR) {
+        dw = w; dh = w / imgR; dx = x; dy = y + (h - dh) / 2
+      } else {
+        dh = h; dw = h * imgR; dx = x + (w - dw) / 2; dy = y
+      }
+      ctx.drawImage(img, dx, dy, dw, dh)
+    } else {
+      // cover
+      const imgR = img.width / img.height
+      const boxR = w / h
+      let sx = 0, sy = 0, sw = img.width, sh = img.height
+      if (imgR > boxR) {
+        sw = img.height * boxR; sx = (img.width - sw) / 2
+      } else {
+        sh = img.width / boxR; sy = (img.height - sh) / 2
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h)
+    }
+    ctx.restore()
+  } catch { /* image failed to load */ }
+}
+
 function drawComparisonBar(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
@@ -467,6 +508,9 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
       case 'player-image':
         await drawPlayerImage(ctx, el)
         break
+      case 'image':
+        await drawImage(ctx, el)
+        break
       case 'comparison-bar':
         drawComparisonBar(ctx, el)
         break
@@ -544,6 +588,7 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
       case 'text': drawText(ctx, el); break
       case 'shape': drawShape(ctx, el); break
       case 'player-image': await drawPlayerImage(ctx, el); break
+      case 'image': await drawImage(ctx, el); break
       case 'comparison-bar': drawComparisonBar(ctx, el); break
       case 'pitch-flight': drawPitchFlightStatic(ctx, el); break
       case 'stadium': await drawStadiumStatic(ctx, el); break

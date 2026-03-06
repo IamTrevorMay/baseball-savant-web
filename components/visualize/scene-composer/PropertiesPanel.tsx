@@ -655,6 +655,57 @@ function StadiumSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdate
 
 // ── Ticker Section ──────────────────────────────────────────────────────────
 
+function ImageSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
+  const fileRef = { current: null as HTMLInputElement | null }
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => onUpdateProps({ src: reader.result as string })
+    reader.readAsDataURL(file)
+  }
+  return (
+    <Section title="Image">
+      <input
+        ref={el => { fileRef.current = el }}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={handleFile}
+        className="hidden"
+      />
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="w-full px-3 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-300 hover:text-cyan-400 hover:border-cyan-600/40 transition"
+      >
+        {p.src ? 'Replace Image' : 'Upload Image'}
+      </button>
+      {p.src && (
+        <div className="mt-1 rounded overflow-hidden border border-zinc-700">
+          <img src={p.src} alt="preview" className="w-full h-20 object-contain bg-zinc-900" />
+        </div>
+      )}
+      <SelField
+        label="Fit"
+        value={p.objectFit || 'cover'}
+        onChange={v => onUpdateProps({ objectFit: v })}
+        options={[
+          { value: 'cover', label: 'Cover' },
+          { value: 'contain', label: 'Contain' },
+          { value: 'fill', label: 'Fill' },
+        ]}
+      />
+      {p.src && (
+        <button
+          onClick={() => onUpdateProps({ src: '' })}
+          className="w-full px-3 py-1 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-red-400 hover:text-red-300 transition"
+        >
+          Remove Image
+        </button>
+      )}
+    </Section>
+  )
+}
+
 function TickerSection({ p, onUpdateProps }: { p: Record<string, any>; onUpdateProps: (u: Record<string, any>) => void }) {
   return (
     <>
@@ -1039,6 +1090,10 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
       )}
 
       {/* Comparison Bar */}
+      {element.type === 'image' && (
+        <ImageSection p={p} onUpdateProps={onUpdateProps} />
+      )}
+
       {element.type === 'comparison-bar' && (
         <Section title="Stat Bar">
           <TxtField label="Label" value={p.label} onChange={v => onUpdateProps({ label: v })} />

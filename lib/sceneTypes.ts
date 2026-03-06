@@ -1,4 +1,4 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot'
 
 // ── Dynamic Slots ───────────────────────────────────────────────────────────
 
@@ -177,6 +177,7 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'text', name: 'Text', desc: 'Custom text block', icon: 'T' },
   { type: 'shape', name: 'Shape', desc: 'Rectangle or circle', icon: '\u25a1' },
   { type: 'player-image', name: 'Player', desc: 'MLB headshot', icon: '\u25c9' },
+  { type: 'image', name: 'Image', desc: 'Upload JPG/PNG', icon: '\u25a3' },
   { type: 'comparison-bar', name: 'Stat Bar', desc: 'Horizontal bar', icon: '\u25ac' },
   { type: 'pitch-flight', name: 'Pitch Flight', desc: 'Animated trajectory', icon: '\u2312' },
   { type: 'stadium', name: 'Stadium', desc: '3D field with hit trajectories', icon: '\u26be' },
@@ -216,6 +217,10 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   'player-image': {
     w: 180, h: 220,
     props: { ...UNIVERSAL_STYLE, playerId: null, playerName: '', borderColor: '#06b6d4', showLabel: true, bgColor: 'transparent' },
+  },
+  'image': {
+    w: 300, h: 200,
+    props: { ...UNIVERSAL_STYLE, src: '', objectFit: 'cover' },
   },
   'comparison-bar': {
     w: 400, h: 48,
