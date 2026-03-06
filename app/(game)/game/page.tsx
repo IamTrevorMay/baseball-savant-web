@@ -81,6 +81,54 @@ function saveHistory(record: GameRecord) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
 }
 
+// ── Player Identity (anonymous, localStorage) ──
+const PLAYER_KEY = 'percentile-player'
+interface PlayerIdentity { uuid: string; name: string }
+
+function getPlayerIdentity(): PlayerIdentity | null {
+  try {
+    const raw = localStorage.getItem(PLAYER_KEY)
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch { return null }
+}
+
+function setPlayerIdentity(name: string): PlayerIdentity {
+  const existing = getPlayerIdentity()
+  const identity: PlayerIdentity = { uuid: existing?.uuid ?? crypto.randomUUID(), name }
+  localStorage.setItem(PLAYER_KEY, JSON.stringify(identity))
+  return identity
+}
+
+function submitToLeaderboard(record: GameRecord) {
+  const identity = getPlayerIdentity()
+  if (!identity) return
+  fetch('/api/game/leaderboard/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      player_uuid: identity.uuid,
+      display_name: identity.name,
+      puzzle_year: record.year,
+      puzzle_type: record.type,
+      score: record.score,
+      won: record.won,
+      guesses: record.guesses,
+      hints_used: record.hintsUsed,
+    }),
+  }).catch(() => {})
+}
+
+// ── Leaderboard Types ──
+interface DailyScore {
+  player_uuid: string; display_name: string; score: number
+  won: boolean; guesses: number; hints_used: number
+}
+interface AllTimeLeader {
+  player_uuid: string; display_name: string; total_score: number
+  games_played: number; wins: number; avg_score: number
+}
+
 async function fetchMeta(id: number): Promise<PlayerMeta | null> {
   try {
     const res = await fetch(`/api/game/player-meta?id=${id}`)
@@ -180,11 +228,15 @@ export default function GamePage() {
       const s = Math.max(0, SCORE_TABLE[guessNum] - hintPenalty)
       setGuessRows(newRows); setCompleted(true); setWon(true); setScore(s); setPhase('result')
       saveState(newRows, hintsUsed, true, true, s)
-      saveHistory({ date: gameDay(), year, type, score: s, won: true, guesses: newGuessNum, hintsUsed: hintsUsed.filter(Boolean).length })
+      const winRecord = { date: gameDay(), year, type, score: s, won: true, guesses: newGuessNum, hintsUsed: hintsUsed.filter(Boolean).length }
+      saveHistory(winRecord)
+      submitToLeaderboard(winRecord)
     } else if (newGuessNum >= 5) {
       setGuessRows(newRows); setCompleted(true); setWon(false); setScore(0); setPhase('result')
       saveState(newRows, hintsUsed, true, false, 0)
-      saveHistory({ date: gameDay(), year, type, score: 0, won: false, guesses: 5, hintsUsed: hintsUsed.filter(Boolean).length })
+      const lossRecord = { date: gameDay(), year, type, score: 0, won: false as const, guesses: 5, hintsUsed: hintsUsed.filter(Boolean).length }
+      saveHistory(lossRecord)
+      submitToLeaderboard(lossRecord)
     } else {
       setGuessRows(newRows)
       saveState(newRows, hintsUsed, false, false, 0)
@@ -217,9 +269,27 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
   const [type, setType] = useState<PlayerType>('pitcher')
   const [showRules, setShowRules] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showAllTime, setShowAllTime] = useState(false)
+  const [allTimeLeaders, setAllTimeLeaders] = useState<AllTimeLeader[]>([])
+  const [allTimeLoading, setAllTimeLoading] = useState(false)
   const [history, setHistory] = useState<GameRecord[]>([])
 
   useEffect(() => { setHistory(loadHistory()) }, [])
+
+  const toggleAllTime = () => {
+    const next = !showAllTime
+    setShowAllTime(next)
+    setShowRules(false)
+    setShowHistory(false)
+    if (next && allTimeLeaders.length === 0) {
+      setAllTimeLoading(true)
+      fetch('/api/game/leaderboard/alltime')
+        .then(r => r.json())
+        .then(d => setAllTimeLeaders(d.leaders ?? []))
+        .catch(() => {})
+        .finally(() => setAllTimeLoading(false))
+    }
+  }
 
   const wins = history.filter(h => h.won).length
   const winRate = history.length > 0 ? Math.round((wins / history.length) * 100) : 0
@@ -243,7 +313,7 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
 
       {/* How to Play */}
       <div className="w-full max-w-md">
-        <button onClick={() => { setShowRules(!showRules); setShowHistory(false) }}
+        <button onClick={() => { setShowRules(!showRules); setShowHistory(false); setShowAllTime(false) }}
           className="w-full px-3 py-2 text-[10px] border-2 transition-colors"
           style={{ borderColor: NES.yellow, color: NES.yellow }}>
           {showRules ? '▼' : '▶'} HOW TO PLAY
@@ -261,7 +331,7 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
 
       {/* History */}
       <div className="w-full max-w-md">
-        <button onClick={() => { setShowHistory(!showHistory); setShowRules(false) }}
+        <button onClick={() => { setShowHistory(!showHistory); setShowRules(false); setShowAllTime(false) }}
           className="w-full px-3 py-2 text-[10px] border-2 transition-colors"
           style={{ borderColor: NES.green, color: NES.green }}>
           {showHistory ? '▼' : '▶'} HISTORY
@@ -305,6 +375,48 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
                   ))}
                 </div>
               </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* All-Time Leaderboard */}
+      <div className="w-full max-w-md">
+        <button onClick={toggleAllTime}
+          className="w-full px-3 py-2 text-[10px] border-2 transition-colors"
+          style={{ borderColor: NES.blue, color: NES.blue }}>
+          {showAllTime ? '▼' : '▶'} ALL-TIME LEADERBOARD
+        </button>
+        {showAllTime && (
+          <div className="border-2 border-t-0 px-3 py-3" style={{ borderColor: NES.blue }}>
+            {allTimeLoading ? (
+              <p className="text-[8px] text-center animate-pulse" style={{ color: NES.gray }}>LOADING...</p>
+            ) : allTimeLeaders.length === 0 ? (
+              <p className="text-[8px] text-center" style={{ color: NES.gray }}>NO SCORES YET</p>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex items-center text-[7px] px-1 pb-1 border-b" style={{ borderColor: NES.darkGray, color: NES.gray }}>
+                  <span className="w-6">#</span>
+                  <span className="flex-1">NAME</span>
+                  <span className="w-12 text-right">PTS</span>
+                  <span className="w-8 text-right">W</span>
+                  <span className="w-8 text-right">GP</span>
+                </div>
+                {allTimeLeaders.map((l, i) => {
+                  const isMe = getPlayerIdentity()?.uuid === l.player_uuid
+                  return (
+                    <div key={l.player_uuid}
+                      className="flex items-center text-[8px] px-1 py-0.5"
+                      style={{ background: isMe ? 'rgba(0,168,0,0.15)' : i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent' }}>
+                      <span className="w-6" style={{ color: NES.gray }}>{i + 1}</span>
+                      <span className="flex-1 truncate" style={{ color: isMe ? NES.green : NES.white }}>{l.display_name}</span>
+                      <span className="w-12 text-right" style={{ color: NES.yellow }}>{l.total_score}</span>
+                      <span className="w-8 text-right" style={{ color: NES.green }}>{l.wins}</span>
+                      <span className="w-8 text-right" style={{ color: NES.gray }}>{l.games_played}</span>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         )}
@@ -614,6 +726,51 @@ function StatCard({ stat, def }: { stat: StatResult; def?: StatDef }) {
 // ══════════════════════════════════════════
 //  RESULT SCREEN
 // ══════════════════════════════════════════
+// ── Name Prompt Modal ──
+function NamePromptModal({ onSubmit, onSkip }: { onSubmit: (name: string) => void; onSkip: () => void }) {
+  const [name, setName] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const handleSubmit = () => {
+    const trimmed = name.trim()
+    if (trimmed.length >= 1 && trimmed.length <= 16) onSubmit(trimmed)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }}>
+      <div className="border-2 p-6 w-full max-w-xs text-center space-y-4" style={{ background: NES.bg, borderColor: NES.yellow }}>
+        <p className="text-xs tracking-widest" style={{ color: NES.yellow }}>ENTER CALL SIGN</p>
+        <p className="text-[8px]" style={{ color: NES.gray }}>FOR THE LEADERBOARD (1-16 CHARS)</p>
+        <input
+          ref={inputRef}
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value.slice(0, 16))}
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          maxLength={16}
+          className="w-full px-3 py-2 text-[10px] border-2 bg-transparent outline-none text-center"
+          style={{ borderColor: NES.white, color: NES.white, fontFamily: 'var(--font-pixel), monospace' }}
+          placeholder="YOUR NAME"
+        />
+        <div className="flex gap-3 justify-center">
+          <button onClick={handleSubmit}
+            disabled={name.trim().length < 1}
+            className="px-4 py-2 text-[10px] border-2 transition-colors"
+            style={{ borderColor: name.trim().length >= 1 ? NES.green : NES.darkGray, color: name.trim().length >= 1 ? NES.green : NES.darkGray }}>
+            SUBMIT
+          </button>
+          <button onClick={onSkip}
+            className="px-4 py-2 text-[10px] border-2 transition-colors"
+            style={{ borderColor: NES.gray, color: NES.gray }}>
+            SKIP
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ResultScreen({
   puzzle, guessRows, answerMeta, hintsUsed, won, score, year, type, onBack,
 }: {
@@ -622,12 +779,60 @@ function ResultScreen({
   onBack: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const [showNamePrompt, setShowNamePrompt] = useState(false)
+  const [dailyScores, setDailyScores] = useState<DailyScore[]>([])
+  const [dailyTotal, setDailyTotal] = useState(0)
+  const [leaderboardLoaded, setLeaderboardLoaded] = useState(false)
   const tierDefs = type === 'pitcher' ? PITCHER_TIERS : HITTER_TIERS
   const statDefMap = useMemo(() => {
     const map = new Map<string, StatDef>()
     for (const tier of tierDefs) for (const d of tier) map.set(d.key, d)
     return map
   }, [tierDefs])
+
+  const fetchDaily = useCallback(() => {
+    fetch(`/api/game/leaderboard/daily?year=${year}&type=${type}`)
+      .then(r => r.json())
+      .then(d => { setDailyScores(d.scores ?? []); setDailyTotal(d.total ?? 0); setLeaderboardLoaded(true) })
+      .catch(() => setLeaderboardLoaded(true))
+  }, [year, type])
+
+  // On mount: check identity → submit or show prompt → fetch leaderboard
+  useEffect(() => {
+    const identity = getPlayerIdentity()
+    if (identity) {
+      // Already has identity, score was auto-submitted in submitGuess
+      fetchDaily()
+    } else {
+      setShowNamePrompt(true)
+    }
+  }, [fetchDaily])
+
+  const handleNameSubmit = (name: string) => {
+    const identity = setPlayerIdentity(name)
+    setShowNamePrompt(false)
+    // Submit score now that we have identity
+    fetch('/api/game/leaderboard/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        player_uuid: identity.uuid,
+        display_name: identity.name,
+        puzzle_year: year,
+        puzzle_type: type,
+        score, won,
+        guesses: guessRows.length,
+        hints_used: hintsUsed.filter(Boolean).length,
+      }),
+    }).catch(() => {}).finally(() => fetchDaily())
+  }
+
+  const handleNameSkip = () => {
+    setShowNamePrompt(false)
+    fetchDaily()
+  }
+
+  const playerUuid = getPlayerIdentity()?.uuid
 
   const share = () => {
     const today = gameDay()
@@ -647,6 +852,8 @@ function ResultScreen({
 
   return (
     <div className="min-h-screen p-4 max-w-lg mx-auto flex flex-col items-center">
+      {showNamePrompt && <NamePromptModal onSubmit={handleNameSubmit} onSkip={handleNameSkip} />}
+
       <div className="text-center mb-6 mt-8">
         <p className="text-xs mb-2" style={{ color: won ? NES.green : NES.red }}>
           {won ? 'MISSION COMPLETE' : 'GAME OVER'}
@@ -669,6 +876,40 @@ function ResultScreen({
       {guessRows.length > 0 && (
         <div className="w-full mb-4">
           <GuessGrid guessRows={guessRows} answerMeta={answerMeta} answerRole={puzzle.pool.find(p => p.id === puzzle.answer.id)?.role} type={type} />
+        </div>
+      )}
+
+      {/* Daily Leaderboard */}
+      {leaderboardLoaded && dailyScores.length > 0 && (
+        <div className="w-full mb-6">
+          <p className="text-[8px] mb-2 tracking-widest text-center" style={{ color: NES.gray }}>
+            TODAY&apos;S LEADERBOARD · {dailyTotal} PLAYER{dailyTotal !== 1 ? 'S' : ''}
+          </p>
+          <div className="border-2 px-3 py-2" style={{ borderColor: NES.blue }}>
+            <div className="flex items-center text-[7px] px-1 pb-1 mb-1 border-b" style={{ borderColor: NES.darkGray, color: NES.gray }}>
+              <span className="w-6">#</span>
+              <span className="flex-1">NAME</span>
+              <span className="w-10 text-right">PTS</span>
+              <span className="w-10 text-right">G</span>
+              <span className="w-8 text-right">H</span>
+            </div>
+            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+              {dailyScores.map((s, i) => {
+                const isMe = playerUuid === s.player_uuid
+                return (
+                  <div key={`${s.player_uuid}-${i}`}
+                    className="flex items-center text-[8px] px-1 py-0.5"
+                    style={{ background: isMe ? 'rgba(0,168,0,0.15)' : i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent' }}>
+                    <span className="w-6" style={{ color: NES.gray }}>{i + 1}</span>
+                    <span className="flex-1 truncate" style={{ color: isMe ? NES.green : NES.white }}>{s.display_name}</span>
+                    <span className="w-10 text-right" style={{ color: NES.yellow }}>{s.score}</span>
+                    <span className="w-10 text-right" style={{ color: NES.gray }}>{s.guesses}</span>
+                    <span className="w-8 text-right" style={{ color: NES.gray }}>{s.hints_used}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 

@@ -4,6 +4,7 @@ import './globals.css'
 import AuthProvider from '@/components/AuthProvider'
 import MobileTabBar from '@/components/MobileTabBar'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
+import { Analytics } from '@vercel/analytics/next'
 
 const inter = Inter({ subsets: ['latin'] })
 const bebas = Bebas_Neue({ weight: '400', subsets: ['latin'], variable: '--font-bebas' })
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <MobileTabBar />
         </AuthProvider>
         <ServiceWorkerRegistration />
+        <Analytics />
       </body>
     </html>
   )
