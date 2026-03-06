@@ -8,22 +8,25 @@ const PRIMARY_LINKS = [
   { href: '/hitters', label: 'Hitters' },
   { href: '/leaders', label: 'Leaders' },
   { href: '/reports', label: 'Reports' },
-  { href: '/matchups', label: 'Matchups' },
   { href: '/teams', label: 'Teams' },
 ]
 
-const MORE_LINKS = [
+const ADVANCED_LINKS = [
+  { href: '/abs', label: 'ABS' },
+  { href: '/umpire', label: 'Umpires' },
+  { href: '/matchups', label: 'Matchups' },
   { href: '/sequencing', label: 'Sequencing' },
   { href: '/trends', label: 'Trends' },
   { href: '/park-adjusted', label: 'Park Adj' },
-  { href: '/umpire', label: 'Umpires' },
-  { href: '/abs', label: 'ABS' },
-  { href: '/explore', label: 'Explore' },
   { href: '/analyst', label: 'Analyst' },
+]
+
+const MORE_LINKS = [
+  { href: '/explore', label: 'Explore' },
   { href: '/glossary', label: 'Glossary' },
 ]
 
-const ALL_LINKS = [...PRIMARY_LINKS, ...MORE_LINKS]
+const ALL_LINKS = [...PRIMARY_LINKS, ...ADVANCED_LINKS, ...MORE_LINKS]
 
 interface Props {
   active?: string
@@ -33,19 +36,23 @@ interface Props {
 
 export default function ResearchNav({ active, children, rightContent }: Props) {
   const [open, setOpen] = useState(false)
+  const [advOpen, setAdvOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const advRef = useRef<HTMLDivElement>(null)
   const moreRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
+      if (advRef.current && !advRef.current.contains(e.target as Node)) setAdvOpen(false)
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  const advActive = ADVANCED_LINKS.some(l => l.href === active)
   const moreActive = MORE_LINKS.some(l => l.href === active)
 
   return (
@@ -67,10 +74,34 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
               {link.label}
             </a>
           ))}
+          {/* Advanced Tools dropdown */}
+          <div className="relative" ref={advRef}>
+            <button
+              onClick={() => { setAdvOpen(!advOpen); setMoreOpen(false) }}
+              className={`flex items-center gap-0.5 ${advActive ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}`}
+            >
+              Advanced Tools
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {advOpen && (
+              <div className="absolute top-full right-0 mt-2 w-36 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+                {ADVANCED_LINKS.map(link => (
+                  <a key={link.href} href={link.href}
+                    className={`block px-3 py-1.5 text-xs transition ${
+                      active === link.href ? 'text-emerald-400 bg-zinc-700/30' : 'text-zinc-400 hover:text-white hover:bg-zinc-700/30'
+                    }`}>
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
           {/* More dropdown */}
           <div className="relative" ref={moreRef}>
             <button
-              onClick={() => setMoreOpen(!moreOpen)}
+              onClick={() => { setMoreOpen(!moreOpen); setAdvOpen(false) }}
               className={`flex items-center gap-0.5 ${moreActive ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}`}
             >
               More
