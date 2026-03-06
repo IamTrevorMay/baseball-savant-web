@@ -48,7 +48,7 @@ export const TEAM_DIVISION: Record<string, string> = {
 
 // ── Position categories ──
 const INFIELD = new Set(['C', '1B', '2B', '3B', 'SS'])
-const OUTFIELD = new Set(['LF', 'CF', 'RF', 'OF', 'DH'])
+const OUTFIELD = new Set(['LF', 'CF', 'RF', 'OF'])
 const STARTER = new Set(['SP', 'TWP'])
 const RELIEVER = new Set(['RP', 'CP'])
 
