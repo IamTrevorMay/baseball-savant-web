@@ -457,7 +457,7 @@ function PlayScreen({
       </div>
 
       {/* Guess comparison grid */}
-      {guessRows.length > 0 && answerMeta && (
+      {guessRows.length > 0 && (
         <GuessGrid guessRows={guessRows} answerMeta={answerMeta} answerRole={puzzle.pool.find(p => p.id === puzzle.answer.id)?.role} type={type} />
       )}
 
@@ -488,7 +488,7 @@ function PlayScreen({
 }
 
 // ── Guess Comparison Grid ──
-function GuessGrid({ guessRows, answerMeta, answerRole, type }: { guessRows: GuessRow[]; answerMeta: PlayerMeta; answerRole?: string; type: PlayerType }) {
+function GuessGrid({ guessRows, answerMeta, answerRole, type }: { guessRows: GuessRow[]; answerMeta: PlayerMeta | null; answerRole?: string; type: PlayerType }) {
   const cols = ['#', 'BORN', 'AGE', 'POS']
   return (
     <div className="mb-4">
@@ -509,14 +509,16 @@ function GuessGrid({ guessRows, answerMeta, answerRole, type }: { guessRows: Gue
             </div>
           </div>
         )
+        const posValue = type === 'pitcher' ? (row.role || 'P') : m.position
+        const posAnswer = answerMeta ? (type === 'pitcher' ? (answerRole || 'P') : answerMeta.position) : '?'
         return (
           <div key={i} className="mb-2">
             <p className="text-[9px] mb-1" style={{ color: NES.red }}>{row.name}</p>
             <div className="grid grid-cols-4 gap-1">
-              <CompareCell value={m.number} answer={answerMeta.number} mode="number" />
-              <CompareCell value={m.birthCountry} answer={answerMeta.birthCountry} mode="exact" />
-              <CompareCell value={String(m.age)} answer={String(answerMeta.age)} mode="age" />
-              <CompareCell value={type === 'pitcher' ? (row.role || 'P') : m.position} answer={type === 'pitcher' ? (answerRole || 'P') : answerMeta.position} mode={type === 'pitcher' ? 'exact' : 'position'} playerType={type} />
+              <CompareCell value={m.number} answer={answerMeta?.number ?? '?'} mode="number" />
+              <CompareCell value={m.birthCountry} answer={answerMeta?.birthCountry ?? '?'} mode="exact" />
+              <CompareCell value={String(m.age)} answer={answerMeta ? String(answerMeta.age) : '?'} mode="age" />
+              <CompareCell value={posValue} answer={posAnswer} mode={type === 'pitcher' ? 'exact' : 'position'} playerType={type} />
             </div>
           </div>
         )
@@ -649,7 +651,7 @@ function ResultScreen({
       </div>
 
       {/* Guess comparison grid in results */}
-      {answerMeta && guessRows.length > 0 && (
+      {guessRows.length > 0 && (
         <div className="w-full mb-4">
           <GuessGrid guessRows={guessRows} answerMeta={answerMeta} answerRole={puzzle.pool.find(p => p.id === puzzle.answer.id)?.role} type={type} />
         </div>
