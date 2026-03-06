@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   NES, TIER_LABELS, segmentColors, formatStatValue, percentileColor,
   PITCHER_TIERS, HITTER_TIERS, samePositionCategory, gameDay,
+  SCORE_TABLE, HINT_COSTS, GREEN_BONUS,
   type StatDef,
 } from '@/lib/gameConstants'
 
@@ -100,7 +101,7 @@ function setPlayerIdentity(name: string): PlayerIdentity {
   return identity
 }
 
-function submitToLeaderboard(record: GameRecord) {
+function submitToLeaderboard(data: { year: number; type: PlayerType; guess_ids: number[]; hints_used: number }) {
   const identity = getPlayerIdentity()
   if (!identity) return
   fetch('/api/game/leaderboard/submit', {
@@ -109,12 +110,10 @@ function submitToLeaderboard(record: GameRecord) {
     body: JSON.stringify({
       player_uuid: identity.uuid,
       display_name: identity.name,
-      puzzle_year: record.year,
-      puzzle_type: record.type,
-      score: record.score,
-      won: record.won,
-      guesses: record.guesses,
-      hints_used: record.hintsUsed,
+      puzzle_year: data.year,
+      puzzle_type: data.type,
+      guess_ids: data.guess_ids,
+      hints_used: data.hints_used,
     }),
   }).catch(() => {})
 }
@@ -137,8 +136,22 @@ async function fetchMeta(id: number): Promise<PlayerMeta | null> {
   } catch { return null }
 }
 
-const SCORE_TABLE = [100, 80, 60, 40, 20]
-const HINT_COSTS = [3, 5, 7]
+function countGreenSquares(
+  guessMeta: PlayerMeta | null, answerMeta: PlayerMeta | null,
+  guessRole: string | undefined, answerRole: string | undefined,
+  playerType: PlayerType,
+): number {
+  if (!guessMeta || !answerMeta) return 0
+  let greens = 0
+  if (guessMeta.number === answerMeta.number) greens++
+  if (guessMeta.birthCountry === answerMeta.birthCountry) greens++
+  if (guessMeta.age === answerMeta.age) greens++
+  // Position: pitchers compare role, hitters compare position
+  const guessPos = playerType === 'pitcher' ? (guessRole || 'P') : guessMeta.position
+  const answerPos = playerType === 'pitcher' ? (answerRole || 'P') : answerMeta.position
+  if (guessPos === answerPos) greens++
+  return greens
+}
 
 // ══════════════════════════════════════════
 //  MAIN COMPONENT
@@ -222,26 +235,33 @@ export default function GamePage() {
     const newRows = [...guessRows, row]
     const isCorrect = player.id === puzzle.answer.id
     const newGuessNum = guessNum + 1
+    const answerRole = puzzle.pool.find(p => p.id === puzzle.answer.id)?.role
+
+    // Count green bonuses from all wrong guesses (excluding current if correct)
+    const wrongRows = isCorrect ? guessRows : newRows
+    const greenBonus = wrongRows.reduce((sum, r) => {
+      if (r.id === puzzle.answer.id) return sum
+      return sum + countGreenSquares(r.meta, answerMeta, r.role, answerRole, type) * GREEN_BONUS
+    }, 0)
 
     if (isCorrect) {
       const hintPenalty = hintsUsed.reduce((sum, used, i) => sum + (used ? HINT_COSTS[i] : 0), 0)
-      const s = Math.max(0, SCORE_TABLE[guessNum] - hintPenalty)
+      const s = Math.min(100, Math.max(0, SCORE_TABLE[guessNum] - hintPenalty + greenBonus))
       setGuessRows(newRows); setCompleted(true); setWon(true); setScore(s); setPhase('result')
       saveState(newRows, hintsUsed, true, true, s)
-      const winRecord = { date: gameDay(), year, type, score: s, won: true, guesses: newGuessNum, hintsUsed: hintsUsed.filter(Boolean).length }
-      saveHistory(winRecord)
-      submitToLeaderboard(winRecord)
+      saveHistory({ date: gameDay(), year, type, score: s, won: true, guesses: newGuessNum, hintsUsed: hintsUsed.filter(Boolean).length })
+      submitToLeaderboard({ year, type, guess_ids: newRows.map(r => r.id), hints_used: hintsUsed.filter(Boolean).length })
     } else if (newGuessNum >= 5) {
-      setGuessRows(newRows); setCompleted(true); setWon(false); setScore(0); setPhase('result')
-      saveState(newRows, hintsUsed, true, false, 0)
-      const lossRecord = { date: gameDay(), year, type, score: 0, won: false as const, guesses: 5, hintsUsed: hintsUsed.filter(Boolean).length }
-      saveHistory(lossRecord)
-      submitToLeaderboard(lossRecord)
+      const lossScore = Math.min(100, greenBonus)
+      setGuessRows(newRows); setCompleted(true); setWon(false); setScore(lossScore); setPhase('result')
+      saveState(newRows, hintsUsed, true, false, lossScore)
+      saveHistory({ date: gameDay(), year, type, score: lossScore, won: false as const, guesses: 5, hintsUsed: hintsUsed.filter(Boolean).length })
+      submitToLeaderboard({ year, type, guess_ids: newRows.map(r => r.id), hints_used: hintsUsed.filter(Boolean).length })
     } else {
       setGuessRows(newRows)
       saveState(newRows, hintsUsed, false, false, 0)
     }
-  }, [puzzle, completed, guessRows, guessNum, hintsUsed, saveState])
+  }, [puzzle, completed, guessRows, guessNum, hintsUsed, answerMeta, type, saveState])
 
   const useHint = useCallback((idx: number) => {
     const newHints = [...hintsUsed]
@@ -309,7 +329,7 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
       <h1 className="text-xl sm:text-2xl text-center leading-relaxed" style={{ color: NES.red }}>
         PERCENTILE
       </h1>
-      <p className="text-xs" style={{ color: NES.yellow }}>STATCAST EDITION</p>
+      <p className="text-xs" style={{ color: NES.yellow }}>A MAYDAY! GAME.</p>
 
       {/* How to Play */}
       <div className="w-full max-w-md">
@@ -447,6 +467,19 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
       <button onClick={() => onStart(year, type)} className="text-xs animate-blink" style={{ color: NES.white }}>
         PRESS START
       </button>
+
+      {/* Beta feedback */}
+      <div className="text-center mt-4">
+        <p className="text-[8px] mb-2" style={{ color: NES.gray }}>
+          THIS GAME IS IN BETA. HELP US IMPROVE IT BY TELLING US WHAT YOU THINK!
+        </p>
+        <a href="https://www.iamtrevormay.com/survey/6381658" target="_blank" rel="noopener noreferrer"
+          className="inline-block px-4 py-2 text-[10px] border-2 transition-colors hover:bg-white/10"
+          style={{ borderColor: NES.red, color: NES.red }}>
+          TELL US WHAT YOU THINK
+        </a>
+      </div>
+
       <style>{`
         @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
         .animate-blink { animation: blink 1s steps(1) infinite; }
@@ -820,8 +853,7 @@ function ResultScreen({
         display_name: identity.name,
         puzzle_year: year,
         puzzle_type: type,
-        score, won,
-        guesses: guessRows.length,
+        guess_ids: guessRows.map(r => r.id),
         hints_used: hintsUsed.filter(Boolean).length,
       }),
     }).catch(() => {}).finally(() => fetchDaily())

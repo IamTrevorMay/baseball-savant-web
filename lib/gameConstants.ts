@@ -210,6 +210,11 @@ export function pickStats(date: string, year: number, type: string, tierLevel: n
   return picked
 }
 
+// ── Scoring constants ──
+export const SCORE_TABLE = [100, 80, 60, 40, 20]
+export const HINT_COSTS = [3, 5, 7]
+export const GREEN_BONUS = 2
+
 // ── Format helpers ──
 export function formatStatValue(value: number, def: StatDef): string {
   if (value == null || isNaN(value)) return '—'
