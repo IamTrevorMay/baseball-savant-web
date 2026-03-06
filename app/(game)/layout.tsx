@@ -3,7 +3,7 @@ import { Press_Start_2P } from 'next/font/google'
 const pixel = Press_Start_2P({ weight: '400', subsets: ['latin'], variable: '--font-pixel' })
 
 export const metadata = {
-  title: 'Percentile — Statcast Edition',
+  title: 'Percentile — A Mayday Game',
   description: 'Daily MLB percentile guessing game',
 }
 

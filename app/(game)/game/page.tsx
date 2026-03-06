@@ -250,7 +250,7 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
         </button>
         {showRules && (
           <div className="border-2 border-t-0 px-3 py-2 space-y-1" style={{ borderColor: NES.yellow }}>
-            <p className="text-[8px]" style={{ color: NES.white }}>• Identify the MLB player from Statcast percentile rankings</p>
+            <p className="text-[8px]" style={{ color: NES.white }}>• Identify the MLB player from their percentile rankings</p>
             <p className="text-[8px]" style={{ color: NES.white }}>• Start with 3 stats from the hardest tier — miss = 2 more from easier tiers</p>
             <p className="text-[8px]" style={{ color: NES.white }}>• 5 guesses max</p>
             <p className="text-[8px]" style={{ color: NES.white }}>• Hints unlock after guesses 2, 3, 4 (cost -3, -5, -7 pts)</p>
@@ -412,7 +412,7 @@ function PlayScreen({
 
       {showRules && (
         <div className="border-2 px-3 py-2 mb-4 space-y-1" style={{ borderColor: NES.yellow }}>
-          <p className="text-[8px]" style={{ color: NES.white }}>• Identify the MLB player from Statcast percentile rankings</p>
+          <p className="text-[8px]" style={{ color: NES.white }}>• Identify the MLB player from their percentile rankings</p>
           <p className="text-[8px]" style={{ color: NES.white }}>• Start with 3 stats from the hardest tier — miss = 2 more from easier tiers</p>
           <p className="text-[8px]" style={{ color: NES.white }}>• 5 guesses max</p>
           <p className="text-[8px]" style={{ color: NES.white }}>• Hints unlock after guesses 2, 3, 4 (cost -3, -5, -7 pts)</p>
