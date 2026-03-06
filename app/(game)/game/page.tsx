@@ -123,8 +123,9 @@ export default function GamePage() {
       setYear(y)
       setType(t)
 
-      // Fetch answer metadata
-      fetchMeta(data.answer.id).then(setAnswerMeta)
+      // Fetch answer metadata (await so grid works immediately)
+      const aMeta = await fetchMeta(data.answer.id)
+      setAnswerMeta(aMeta)
 
       // Check saved state
       const saved = localStorage.getItem(storageKey(y, t))
