@@ -394,6 +394,9 @@ function PlayScreen({
   const hintValues = [puzzle.hints.league, puzzle.hints.hand, puzzle.hints.team]
   const hintUnlockAt = [1, 2, 3]
 
+  const hintPenalty = hintsUsed.reduce((sum, used, i) => sum + (used ? HINT_COSTS[i] : 0), 0)
+  const potentialScore = Math.max(0, SCORE_TABLE[Math.min(guessNum, 4)] - hintPenalty)
+
   return (
     <div className="min-h-screen p-4 max-w-lg mx-auto">
       {/* Header */}
@@ -402,23 +405,34 @@ function PlayScreen({
         <p className="text-[10px]" style={{ color: NES.gray }}>GUESS {Math.min(guessNum + 1, 5)}/5</p>
       </div>
 
-      {/* Stat tiers */}
-      <div className="space-y-4 mb-6">
-        {puzzle.tiers.slice(0, visibleTiers).map((tier, ti) => (
-          <div key={ti}>
-            <p className="text-[8px] mb-2 tracking-widest" style={{ color: NES.gray }}>{TIER_LABELS[ti]}</p>
-            <div className={`grid gap-2 ${ti === 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              {tier.stats.map(stat => (
-                <StatCard key={stat.key} stat={stat} def={statDefMap.get(stat.key)} />
-              ))}
-            </div>
-          </div>
-        ))}
-        {visibleTiers < 5 && (
-          <p className="text-[8px] text-center" style={{ color: NES.darkGray }}>
-            {5 - visibleTiers} TIER{5 - visibleTiers > 1 ? 'S' : ''} REMAINING...
+      {/* Stat tiers with score sidebar */}
+      <div className="flex gap-3 mb-6">
+        {/* Score indicator */}
+        <div className="flex flex-col items-center justify-center shrink-0 w-10">
+          <p className="text-lg font-bold" style={{ color: potentialScore > 60 ? NES.green : potentialScore > 20 ? NES.yellow : NES.red }}>
+            {potentialScore}
           </p>
-        )}
+          <p className="text-[6px]" style={{ color: NES.gray }}>PTS</p>
+        </div>
+
+        {/* Stat tiers */}
+        <div className="space-y-4 flex-1 min-w-0">
+          {puzzle.tiers.slice(0, visibleTiers).map((tier, ti) => (
+            <div key={ti}>
+              <p className="text-[8px] mb-2 tracking-widest" style={{ color: NES.gray }}>{TIER_LABELS[ti]}</p>
+              <div className={`grid gap-2 ${ti === 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                {tier.stats.map(stat => (
+                  <StatCard key={stat.key} stat={stat} def={statDefMap.get(stat.key)} />
+                ))}
+              </div>
+            </div>
+          ))}
+          {visibleTiers < 5 && (
+            <p className="text-[8px] text-center" style={{ color: NES.darkGray }}>
+              {5 - visibleTiers} TIER{5 - visibleTiers > 1 ? 'S' : ''} REMAINING...
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Hints */}
