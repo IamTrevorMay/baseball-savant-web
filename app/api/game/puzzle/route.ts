@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { SEASON_CONSTANTS } from '@/lib/constants-data'
 import {
   PITCHER_TIERS, HITTER_TIERS,
-  dailyPlayerIndex, pickStats, TIER_LABELS, leagueForTeam, gameDay,
+  dailyPlayerIndex, pickStats, TIER_LABELS, leagueForTeam, gameDay, secondsUntilReset,
   type StatDef,
 } from '@/lib/gameConstants'
 
@@ -37,8 +37,13 @@ export async function GET(req: NextRequest) {
   const dateStr = gameDay()
   const cacheKey = `${year}-${type}-${dateStr}`
 
+  const ttl = secondsUntilReset()
+  const cacheHeaders = { 'Cache-Control': `public, s-maxage=${ttl}, stale-while-revalidate=60` }
+
   const cached = cache.get(cacheKey)
-  if (cached && Date.now() - cached.ts < 3600_000) return NextResponse.json(cached.data)
+  if (cached && Date.now() - cached.ts < 3600_000) {
+    return NextResponse.json(cached.data, { headers: cacheHeaders })
+  }
 
   try {
     const data = type === 'pitcher'
@@ -46,7 +51,7 @@ export async function GET(req: NextRequest) {
       : await buildHitterPuzzle(year, dateStr)
     cache.set(cacheKey, { data, ts: Date.now() })
     for (const [k, v] of cache) { if (Date.now() - v.ts > 86400_000) cache.delete(k) }
-    return NextResponse.json(data)
+    return NextResponse.json(data, { headers: cacheHeaders })
   } catch (e: unknown) {
     console.error('Puzzle API error:', e)
     return NextResponse.json({ error: 'Failed to build puzzle' }, { status: 500 })

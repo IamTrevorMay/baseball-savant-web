@@ -55,5 +55,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json([])
   }
 
-  return NextResponse.json(data || [])
+  return NextResponse.json(data || [], {
+    headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=60' },
+  })
 }

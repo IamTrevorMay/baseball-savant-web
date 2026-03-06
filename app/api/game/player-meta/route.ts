@@ -15,8 +15,10 @@ export async function GET(req: NextRequest) {
   const id = parseInt(req.nextUrl.searchParams.get('id') || '0')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
+  const metaHeaders = { 'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=3600' }
+
   const cached = cache.get(id)
-  if (cached) return NextResponse.json(cached)
+  if (cached) return NextResponse.json(cached, { headers: metaHeaders })
 
   try {
     const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${id}`, {
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest) {
     }
 
     cache.set(id, meta)
-    return NextResponse.json(meta)
+    return NextResponse.json(meta, { headers: metaHeaders })
   } catch {
     return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 })
   }

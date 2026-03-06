@@ -6,6 +6,16 @@ export function gameDay(): string {
   return `${eastern.getFullYear()}-${String(eastern.getMonth() + 1).padStart(2, '0')}-${String(eastern.getDate()).padStart(2, '0')}`
 }
 
+/** Seconds until the next 11am ET reset (for CDN cache TTL). */
+export function secondsUntilReset(): number {
+  const now = new Date()
+  const eastern = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const next = new Date(eastern)
+  next.setHours(11, 0, 0, 0)
+  if (eastern.getHours() >= 11) next.setDate(next.getDate() + 1)
+  return Math.max(60, Math.floor((next.getTime() - eastern.getTime()) / 1000))
+}
+
 // ── NES Palette ──
 export const NES = {
   bg: '#0C0C0C',

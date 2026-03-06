@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/roster",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/game/warmup",
+      "schedule": "5 15 * * *"
+    },
+    {
+      "path": "/api/game/warmup",
+      "schedule": "5 16 * * *"
     }
   ]
 }
