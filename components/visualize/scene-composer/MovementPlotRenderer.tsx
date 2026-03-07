@@ -89,9 +89,11 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
     ctx.lineTo(cx, height - pad)
     ctx.stroke()
 
-    // Tick marks at 12" and 24"
+    // Tick marks at 12" and 24" with numeric labels
     ctx.fillStyle = '#71717a'
     ctx.font = '9px Inter, system-ui, sans-serif'
+    ctx.strokeStyle = '#52525b'
+    // Horizontal axis ticks + labels
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     for (const val of [12, -12]) {
@@ -100,15 +102,18 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
       ctx.moveTo(tx, cy - 3)
       ctx.lineTo(tx, cy + 3)
       ctx.stroke()
+      ctx.fillText(`${val}"`, tx, cy + 5)
     }
+    // Vertical axis ticks + labels
+    ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
-    ctx.textAlign = 'left'
     for (const val of [12, -12]) {
       const ty = toY(val)
       ctx.beginPath()
       ctx.moveTo(cx - 3, ty)
       ctx.lineTo(cx + 3, ty)
       ctx.stroke()
+      ctx.fillText(`${val}"`, cx - 6, ty)
     }
 
     // Axis labels

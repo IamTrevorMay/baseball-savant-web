@@ -29,7 +29,7 @@ const supabase = createClient(
 )
 
 function computePlus(avg: number, mean: number, stddev: number): number {
-  return ((avg - mean) / stddev) * 10 + 100
+  return ((avg - mean) / stddev) * 15 + 100
 }
 
 function invertPlus(avg: number, mean: number, stddev: number): number {

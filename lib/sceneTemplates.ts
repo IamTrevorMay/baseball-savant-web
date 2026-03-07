@@ -1491,24 +1491,24 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         textTransform: 'uppercase',
       }))
 
-      // Table header — 10 columns
+      // Table header — 11 columns
       const cols = [
         { label: 'Pitch', x: 60, w: 165 },
-        { label: '#', x: 230, w: 55 },
-        { label: 'Velo', x: 290, w: 80 },
-        { label: 'IVB', x: 375, w: 75 },
-        { label: 'HBreak', x: 455, w: 80 },
-        { label: 'Arm\u00b0', x: 540, w: 70 },
-        { label: 'Ext', x: 615, w: 65 },
-        { label: 'Miss', x: 685, w: 75 },
-        { label: 'Close%', x: 765, w: 75 },
-        { label: 'Brink', x: 845, w: 75 },
-        { label: 'Cmd+', x: 925, w: 85 },
+        { label: '#', x: 225, w: 50 },
+        { label: 'Velo', x: 280, w: 75 },
+        { label: 'IVB', x: 360, w: 70 },
+        { label: 'HBreak', x: 435, w: 80 },
+        { label: 'Ext', x: 520, w: 65 },
+        { label: 'Whiffs', x: 590, w: 70 },
+        { label: 'Stuff+', x: 665, w: 75 },
+        { label: 'Unique', x: 745, w: 70 },
+        { label: 'Decp', x: 820, w: 70 },
+        { label: 'Cmd+', x: 895, w: 85 },
       ]
 
       for (const col of cols) {
         elements.push(el('text', col.x, 340, col.w, 36, {
-          text: col.label, fontSize: 16, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
+          text: col.label, fontSize: 18, fontWeight: 600, color: '#52525b', textAlign: col.x === 60 ? 'left' : 'center',
           textTransform: 'uppercase',
         }))
       }
@@ -1542,7 +1542,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
 
           // Pitch name
           elements.push(el('text', 92, ry + 10, 130, rowH - 20, {
-            text: row.pitch_name, fontSize: 22, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
+            text: row.pitch_name, fontSize: 26, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
           }))
 
           // Stats (indices 1-10 match cols[1]-cols[10])
@@ -1551,18 +1551,26 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
             row.avg_velo?.toFixed(1) || '--',
             row.avg_ivb?.toFixed(1) || '--',
             row.avg_hbreak?.toFixed(1) || '--',
-            row.avg_arm_angle?.toFixed(1) || '--',
             row.avg_ext?.toFixed(1) || '--',
-            row.avg_missfire != null ? row.avg_missfire.toFixed(1) : '--',
-            row.close_pct != null ? row.close_pct.toFixed(1) + '%' : '--',
-            row.avg_brink != null ? row.avg_brink.toFixed(2) : '--',
+            String(row.whiffs ?? 0),
+            row.stuff_plus != null ? String(Math.round(row.stuff_plus)) : '--',
+            row.unique_score != null ? row.unique_score.toFixed(1) : '--',
+            row.deception_score != null ? row.deception_score.toFixed(1) : '--',
             row.cmd_plus != null ? String(Math.round(row.cmd_plus)) : '--',
           ]
           for (let j = 0; j < vals.length; j++) {
-            const isPlus = j === 9 // Cmd+ column
+            const isStuffPlus = j === 6 // Stuff+ column
+            const isCmdPlus = j === 9 // Cmd+ column
+            const isPlusCol = isStuffPlus || isCmdPlus
+            let color = '#a1a1aa'
+            if (isStuffPlus && row.stuff_plus != null) {
+              color = row.stuff_plus >= 100 ? '#10b981' : '#ef4444'
+            } else if (isCmdPlus && row.cmd_plus != null) {
+              color = row.cmd_plus >= 100 ? '#10b981' : '#ef4444'
+            }
             elements.push(el('text', cols[j + 1].x, ry + 10, cols[j + 1].w, rowH - 20, {
-              text: vals[j], fontSize: 22, fontWeight: isPlus ? 700 : 500,
-              color: isPlus && row.cmd_plus != null ? (row.cmd_plus >= 100 ? '#10b981' : '#ef4444') : '#a1a1aa',
+              text: vals[j], fontSize: 26, fontWeight: isPlusCol ? 700 : 500,
+              color,
               textAlign: 'center',
             }))
           }

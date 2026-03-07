@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
+import { computeStuffRV, computePlus, STUFF_LEAGUE_BY_YEAR } from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -58,8 +59,8 @@ export async function GET(req: NextRequest) {
     const gamePk = sp.get('gamePk')
     if (!gamePk) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
 
-    // Run queries in parallel (4 queries — no more season command lookup)
-    const [boxscoreRes, arsenalRes, locationsRes, metaRes] = await Promise.all([
+    // Run queries in parallel (6 queries)
+    const [boxscoreRes, arsenalRes, locationsRes, metaRes, pitchLevelRes, deceptionRes] = await Promise.all([
       // 1. MLB Stats API boxscore
       fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`).then(r => r.json()).catch(() => null),
 
@@ -97,6 +98,25 @@ export async function GET(req: NextRequest) {
         WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
         GROUP BY game_date
         LIMIT 1
+      `),
+
+      // 5. Pitch-level data for stuff+ and whiffs
+      q(`
+        SELECT pitch_name, description, stuff_plus, p_throws,
+               release_speed, pfx_x, pfx_z, release_spin_rate, spin_axis,
+               release_extension, release_pos_x, release_pos_z, arm_angle,
+               vx0, vy0, vz0, ax, ay, az, game_year
+        FROM pitches
+        WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
+          AND pitch_name IS NOT NULL
+      `),
+
+      // 6. Season-level deception scores
+      q(`
+        SELECT pitch_name, unique_score, deception_score
+        FROM pitcher_season_deception
+        WHERE pitcher = ${pitcherId}
+          AND game_year = (SELECT game_year FROM pitches WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk} LIMIT 1)
       `),
     ])
 
@@ -143,8 +163,53 @@ export async function GET(req: NextRequest) {
 
     const cmd = computeOutingCommand(pitchRows)
 
+    // Compute per-pitch-type whiffs and stuff+ from pitch-level data
+    const rawPitches: any[] = pitchLevelRes.data || []
+    const pitchByType: Record<string, any[]> = {}
+    for (const p of rawPitches) {
+      const name = p.pitch_name
+      if (!pitchByType[name]) pitchByType[name] = []
+      pitchByType[name].push(p)
+    }
+
+    const whiffsByType: Record<string, number> = {}
+    const stuffPlusByType: Record<string, number | null> = {}
+    for (const [name, pts] of Object.entries(pitchByType)) {
+      // Whiffs: count swinging strikes
+      whiffsByType[name] = pts.filter((p: any) =>
+        typeof p.description === 'string' && p.description.includes('swinging_strike')
+      ).length
+
+      // Stuff+: average DB column, fallback to computeStuffRV + computePlus
+      const stuffArr = pts.filter((p: any) => p.stuff_plus != null).map((p: any) => Number(p.stuff_plus))
+      if (stuffArr.length > 0) {
+        stuffPlusByType[name] = Math.round(stuffArr.reduce((s, v) => s + v, 0) / stuffArr.length)
+      } else {
+        // Fallback: compute from pitch mechanics
+        const year = pts[0]?.game_year || 2025
+        const rvArr = pts.map((p: any) => computeStuffRV(p)).filter((v): v is number => v != null)
+        const league = (STUFF_LEAGUE_BY_YEAR as any)[year]?.[name]
+        if (rvArr.length > 0 && league) {
+          const avgRV = rvArr.reduce((s, v) => s + v, 0) / rvArr.length
+          stuffPlusByType[name] = Math.round(computePlus(avgRV, league.mean, league.stddev))
+        } else {
+          stuffPlusByType[name] = null
+        }
+      }
+    }
+
+    // Build deception lookup
+    const deceptionByType: Record<string, { unique_score: number | null; deception_score: number | null }> = {}
+    for (const r of (deceptionRes.data || [])) {
+      deceptionByType[r.pitch_name] = {
+        unique_score: r.unique_score != null ? Number(r.unique_score) : null,
+        deception_score: r.deception_score != null ? Number(r.deception_score) : null,
+      }
+    }
+
     const arsenal = (arsenalRes.data || []).map((r: any) => {
       const cmdRow = cmd.byPitch[r.pitch_name] || {}
+      const dec = deceptionByType[r.pitch_name] || {}
       return {
         pitch_name: r.pitch_name,
         count: Number(r.count),
@@ -153,9 +218,10 @@ export async function GET(req: NextRequest) {
         avg_hbreak: Number(r.avg_hbreak),
         avg_arm_angle: Number(r.avg_arm_angle),
         avg_ext: Number(r.avg_ext),
-        avg_missfire: cmdRow.avg_missfire ?? null,
-        close_pct: cmdRow.close_pct ?? null,
-        avg_brink: cmdRow.avg_brink ?? null,
+        whiffs: whiffsByType[r.pitch_name] || 0,
+        stuff_plus: stuffPlusByType[r.pitch_name] ?? null,
+        unique_score: dec.unique_score ?? null,
+        deception_score: dec.deception_score ?? null,
         cmd_plus: cmdRow.cmd_plus ?? null,
       }
     })

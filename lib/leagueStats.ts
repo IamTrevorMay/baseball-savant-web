@@ -858,7 +858,7 @@ export function percentileColor(pct: number): string {
 }
 
 export function computePlus(pitcherAvg: number, leagueMean: number, leagueStddev: number): number {
-  return ((pitcherAvg - leagueMean) / leagueStddev) * 10 + 100
+  return ((pitcherAvg - leagueMean) / leagueStddev) * 15 + 100
 }
 
 // Normal CDF approximation (Abramowitz & Stegun)

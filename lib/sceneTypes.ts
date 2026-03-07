@@ -92,7 +92,7 @@ export interface OutingData {
   game_date: string
   opponent: string
   game_line: { ip: string; h: number; r: number; er: number; bb: number; k: number; pitches: number }
-  arsenal: { pitch_name: string; count: number; avg_velo: number; avg_ivb: number; avg_hbreak: number; avg_arm_angle: number; avg_ext: number; avg_missfire: number | null; close_pct: number | null; avg_brink: number | null; cmd_plus: number | null }[]
+  arsenal: { pitch_name: string; count: number; avg_velo: number; avg_ivb: number; avg_hbreak: number; avg_arm_angle: number; avg_ext: number; whiffs: number; stuff_plus: number | null; unique_score: number | null; deception_score: number | null; cmd_plus: number | null }[]
   locations: { plate_x: number; plate_z: number; pitch_name: string }[]
   command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null }
 }
