@@ -76,7 +76,6 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       AVG(CASE WHEN arm_angle IS NOT NULL THEN arm_angle END) AS arm_angle,
       AVG(estimated_ba_using_speedangle) AS xba_against,
       100.0 * COUNT(*) FILTER (WHERE pitch_number = 1 AND (zone BETWEEN 1 AND 9 OR description IN ('called_strike','swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt'))) / NULLIF(COUNT(*) FILTER (WHERE pitch_number = 1), 0) AS first_strike_pct,
-      COUNT(DISTINCT pitch_type) AS pitch_type_count,
       -- T2: fb_spin, fb_ivb, extension, zone_pct, breaking_spin, fb_usage_pct
       AVG(CASE WHEN pitch_type IN ('FF','SI') THEN release_spin_rate END) AS fb_spin,
       AVG(CASE WHEN pitch_type IN ('FF','SI') THEN pfx_z * 12 END) AS fb_ivb,
