@@ -82,6 +82,7 @@ export interface StatDef {
   format: 'pct' | 'num' | 'mph' | 'rpm' | 'in' | 'ft' | 'deg' | 'rate' | 'count'
   decimals: number
   invertPercentile?: boolean
+  traditional?: boolean
   desc?: string
 }
 
@@ -94,7 +95,10 @@ export const PITCHER_TIERS: StatDef[][] = [
     { key: 'arm_angle', label: 'Arm Angle', unit: '°', format: 'deg', decimals: 1, desc: 'Release point arm slot angle' },
     { key: 'xba_against', label: 'xBA Against', unit: '', format: 'num', decimals: 3, invertPercentile: true, desc: 'Expected batting average allowed based on exit velo and launch angle' },
     { key: 'first_strike_pct', label: 'F-Strike%', unit: '%', format: 'pct', decimals: 1, desc: 'Percentage of plate appearances starting with a strike' },
-    { key: 'pitch_type_count', label: 'Pitch Types', unit: '', format: 'count', decimals: 0, desc: 'Number of distinct pitch types thrown' },
+    { key: 'walks', label: 'Walks', unit: '', format: 'count', decimals: 0, invertPercentile: true, traditional: true, desc: 'Total walks issued' },
+    { key: 'hr_allowed', label: 'HR Allowed', unit: '', format: 'count', decimals: 0, invertPercentile: true, traditional: true, desc: 'Total home runs allowed' },
+    { key: 'whip', label: 'WHIP', unit: '', format: 'num', decimals: 2, invertPercentile: true, traditional: true, desc: 'Walks plus hits per inning pitched' },
+    { key: 'k_per_9', label: 'K/9', unit: '', format: 'num', decimals: 1, traditional: true, desc: 'Strikeouts per 9 innings' },
   ],
   // L2 – ENCRYPTED
   [
@@ -143,6 +147,9 @@ export const HITTER_TIERS: StatDef[][] = [
     { key: 'oppo_pct', label: 'Oppo%', unit: '%', format: 'pct', decimals: 1, desc: 'Percentage of batted balls hit to opposite field' },
     { key: 'ld_pct', label: 'LD%', unit: '%', format: 'pct', decimals: 1, desc: 'Percentage of batted balls that are line drives' },
     { key: 'popup_pct', label: 'Popup%', unit: '%', format: 'pct', decimals: 1, desc: 'Percentage of batted balls that are popups' },
+    { key: 'rbi', label: 'RBIs', unit: '', format: 'count', decimals: 0, traditional: true, desc: 'Runs batted in' },
+    { key: 'slg', label: 'SLG%', unit: '', format: 'num', decimals: 3, traditional: true, desc: 'Slugging percentage' },
+    { key: 'obp', label: 'OBP', unit: '', format: 'num', decimals: 3, traditional: true, desc: 'On-base percentage' },
   ],
   // L2 – ENCRYPTED
   [
@@ -198,9 +205,28 @@ export function dailyPlayerIndex(date: string, year: number, type: string, poolS
   return djb2(`${date}-${year}-${type}-s${PUZZLE_SEED}`) % poolSize
 }
 
-/** Pick `count` unique indices from [0, statsCount). Deterministic per day/year/type/tier. */
-export function pickStats(date: string, year: number, type: string, tierLevel: number, statsCount: number, count: number): number[] {
+/** Pick `count` unique indices from [0, statsCount). Deterministic per day/year/type/tier.
+ *  When guaranteedIndices is provided, exactly 1 pick comes from that set and the rest from the complement. */
+export function pickStats(date: string, year: number, type: string, tierLevel: number, statsCount: number, count: number, guaranteedIndices?: number[]): number[] {
   let h = djb2(`${date}-${year}-${type}-tier${tierLevel}-s${PUZZLE_SEED}`)
+
+  if (guaranteedIndices && guaranteedIndices.length > 0) {
+    // Pick exactly 1 from guaranteed set
+    const gIdx = h % guaranteedIndices.length
+    const guaranteed = guaranteedIndices[gIdx]
+    h = ((h << 5) + h + 99) >>> 0
+
+    // Pick remaining from non-guaranteed indices
+    const others = Array.from({ length: statsCount }, (_, i) => i).filter(i => !guaranteedIndices.includes(i))
+    const picked: number[] = [guaranteed]
+    for (let attempt = 0; picked.length < count && attempt < 50; attempt++) {
+      const idx = others[h % others.length]
+      if (!picked.includes(idx)) picked.push(idx)
+      h = ((h << 5) + h + attempt + 1) >>> 0
+    }
+    return picked
+  }
+
   const picked: number[] = []
   for (let attempt = 0; picked.length < count && attempt < 50; attempt++) {
     const idx = h % statsCount

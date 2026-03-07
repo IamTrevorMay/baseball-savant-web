@@ -70,7 +70,7 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       MODE() WITHIN GROUP (ORDER BY p_throws) AS hand,
       MODE() WITHIN GROUP (ORDER BY CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END) AS team,
       CASE WHEN COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::numeric / NULLIF(COUNT(DISTINCT game_pk), 0) > 0.5 THEN 'SP' ELSE 'RP' END AS role,
-      -- T1: fb_hb, gb_pct, arm_angle, xba_against, first_strike_pct, pitch_type_count
+      -- T1: fb_hb, gb_pct, arm_angle, xba_against, first_strike_pct + traditional stats
       AVG(CASE WHEN pitch_type IN ('FF','SI','FC') THEN ABS(pfx_x) * 12 END) AS fb_hb,
       100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS gb_pct,
       AVG(CASE WHEN arm_angle IS NOT NULL THEN arm_angle END) AS arm_angle,
@@ -108,7 +108,9 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       COUNT(DISTINCT CASE WHEN events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) AS k,
       COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','catcher_interf','sac_bunt','sac_fly') THEN CONCAT(game_pk, at_bat_number) END) / 3.0 AS ip_est,
       COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END) AS pa,
-      AVG(estimated_woba_using_speedangle) AS xwoba_val
+      AVG(estimated_woba_using_speedangle) AS xwoba_val,
+      COUNT(DISTINCT CASE WHEN events = 'walk' THEN CONCAT(game_pk, at_bat_number) END) AS walks_count,
+      COUNT(DISTINCT CASE WHEN events IN ('single','double','triple','home_run') THEN CONCAT(game_pk, at_bat_number) END) AS hits_count
     FROM pitches
     WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN')
     GROUP BY pitcher, player_name
@@ -119,19 +121,23 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
     SELECT raw_q.*,
       CASE WHEN raw_q.ip_est > 0 THEN (13.0 * raw_q.hr + 3.0 * raw_q.bb_hbp - 2.0 * raw_q.k) / raw_q.ip_est + ${sc.cfip} ELSE NULL END AS fip,
       CASE WHEN raw_q.ip_est > 0 AND raw_q.xwoba_val IS NOT NULL THEN ((COALESCE(raw_q.xwoba_val, ${sc.woba}) - ${sc.woba}) / ${sc.woba_scale}) * (raw_q.pa / raw_q.ip_est) * 9.0 + ${sc.lg_era} ELSE NULL END AS xera,
-      raw_q.k_pct - raw_q.bb_pct AS k_minus_bb
+      raw_q.k_pct - raw_q.bb_pct AS k_minus_bb,
+      raw_q.walks_count AS walks,
+      raw_q.hr AS hr_allowed,
+      CASE WHEN raw_q.ip_est > 0 THEN (raw_q.walks_count + raw_q.hits_count) / raw_q.ip_est ELSE NULL END AS whip,
+      CASE WHEN raw_q.ip_est > 0 THEN (raw_q.k * 9.0) / raw_q.ip_est ELSE NULL END AS k_per_9
     FROM ${rawSub}
   ) comp_q`
 
   // All 30 stat columns + 30 percentile columns
   const statKeys = [
-    'fb_hb','gb_pct','arm_angle','xba_against','first_strike_pct','pitch_type_count',
+    'fb_hb','gb_pct','arm_angle','xba_against','first_strike_pct','walks','hr_allowed','whip','k_per_9',
     'fb_spin','fb_ivb','extension','zone_pct','breaking_spin','fb_usage_pct',
     'csw_pct','chase_rate','avg_ev_against','swstr_pct','put_away_pct','contact_pct_against',
     'whiff_pct','barrel_pct_against','hard_hit_pct_against','fip','xwoba_against','babip_against',
     'fb_velo','k_pct','bb_pct','xera','k_minus_bb','avg_velo',
   ]
-  const invertSet = new Set(['xba_against','avg_ev_against','contact_pct_against','barrel_pct_against','hard_hit_pct_against','fip','xwoba_against','babip_against','bb_pct','xera'])
+  const invertSet = new Set(['xba_against','avg_ev_against','contact_pct_against','barrel_pct_against','hard_hit_pct_against','fip','xwoba_against','babip_against','bb_pct','xera','walks','hr_allowed','whip'])
 
   const selectCols = statKeys.map(k => `comp_q.${k}`).join(', ')
   const pctlCols = statKeys.map(k => {
@@ -203,7 +209,16 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
       AVG(p.estimated_woba_using_speedangle) AS xwoba,
       AVG(p.estimated_ba_using_speedangle) AS xba_for_iso,
       AVG(p.estimated_slg_using_speedangle) AS xslg_for_iso,
-      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS hr_per_pa
+      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS hr_per_pa,
+      -- Traditional stat components
+      COUNT(DISTINCT CASE WHEN p.events = 'single' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS singles,
+      COUNT(DISTINCT CASE WHEN p.events = 'double' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS doubles,
+      COUNT(DISTINCT CASE WHEN p.events = 'triple' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS triples,
+      COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS hr_count,
+      COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_bunt','sac_fly','catcher_interf') THEN CONCAT(p.game_pk, p.at_bat_number) END) AS ab,
+      COUNT(DISTINCT CASE WHEN p.events IN ('walk','hit_by_pitch') THEN CONCAT(p.game_pk, p.at_bat_number) END) AS bb_hbp_count,
+      COUNT(DISTINCT CASE WHEN p.events = 'sac_fly' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS sf,
+      SUM(CASE WHEN p.events IS NOT NULL THEN COALESCE(p.post_bat_score, 0) - COALESCE(p.bat_score, 0) ELSE 0 END) AS rbi_raw
     FROM pitches p
     JOIN players pl ON pl.id = p.batter
     WHERE p.game_year = ${year} AND p.pitch_type NOT IN ('PO','IN')
@@ -215,13 +230,16 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
     SELECT raw_q.*,
       ss.sprint_speed,
       raw_q.xslg_for_iso - raw_q.xba_for_iso AS iso_x,
-      raw_q.k_pct - raw_q.bb_pct AS k_minus_bb
+      raw_q.k_pct - raw_q.bb_pct AS k_minus_bb,
+      raw_q.rbi_raw AS rbi,
+      CASE WHEN raw_q.ab > 0 THEN (raw_q.singles + 2.0*raw_q.doubles + 3.0*raw_q.triples + 4.0*raw_q.hr_count)::numeric / raw_q.ab ELSE NULL END AS slg,
+      CASE WHEN (raw_q.ab + raw_q.bb_hbp_count + raw_q.sf) > 0 THEN (raw_q.singles + raw_q.doubles + raw_q.triples + raw_q.hr_count + raw_q.bb_hbp_count)::numeric / (raw_q.ab + raw_q.bb_hbp_count + raw_q.sf) ELSE NULL END AS obp
     FROM ${rawSub}
     LEFT JOIN sprint_speed ss ON ss.player_id = raw_q.player_id AND ss.season = ${year}
   ) spd_q`
 
   const statKeys = [
-    'gb_pct','fb_pct','pull_pct','oppo_pct','ld_pct','popup_pct',
+    'gb_pct','fb_pct','pull_pct','oppo_pct','ld_pct','popup_pct','rbi','slg','obp',
     'sweet_spot_pct','zone_contact_pct','hr_fb_pct','contact_pct','z_swing_pct','pitch_per_pa',
     'xba','sprint_speed','whiff_pct','chase_rate','o_swing_pct','babip',
     'barrel_pct','max_ev','xslg','hard_hit_pct','iso_x','woba',
@@ -265,7 +283,10 @@ function buildResponse(
 ) {
   const tiers = tierDefs.map((defs, i) => {
     const count = i === 0 ? 3 : 2 // 3 stats on first tier, 2 on rest
-    const indices = pickStats(dateStr, year, type, i, defs.length, count)
+    const guaranteed = i === 0
+      ? defs.map((d, idx) => d.traditional ? idx : -1).filter(idx => idx >= 0)
+      : undefined
+    const indices = pickStats(dateStr, year, type, i, defs.length, count, guaranteed)
     const picked = indices.map(idx => defs[idx])
     return {
       level: i,
