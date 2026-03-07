@@ -140,22 +140,9 @@ export default function PlayerDashboard() {
   async function fetchData() {
     setDataLoading(true)
     try {
-      let allRows: any[] = []
-      let from = 0
-      const pageSize = 1000
-
-      while (true) {
-        const { data: rows, error } = await supabase
-          .from("pitches").select("*").eq("pitcher", pitcherId)
-          .order("game_date", { ascending: false })
-          .range(from, from + pageSize - 1)
-        if (error) { console.error("Fetch error:", error.message); break }
-        if (!rows || rows.length === 0) break
-        allRows = allRows.concat(rows)
-        if (rows.length < pageSize) break
-        from += pageSize
-        if (allRows.length >= 50000) break
-      }
+      const res = await fetch(`/api/player-data?id=${pitcherId}&col=pitcher`)
+      if (!res.ok) throw new Error('Failed to fetch player data')
+      const { rows: allRows } = await res.json() as { rows: any[] }
 
 
 
