@@ -1158,27 +1158,6 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
     ]),
   },
   {
-    id: 'percentile-ranks', name: 'Percentile Rankings', category: 'advanced',
-    description: 'MLB-style percentile bars', icon: '\ud83d\udcca',
-    width: 1920, height: 1080,
-    build: () => scene('Percentile Rankings', 1920, 1080, '#09090b', [
-      el('text', 100, 40, 1720, 60, { text: 'PERCENTILE RANKINGS', fontSize: 44, fontWeight: 800, color: '#ffffff', textAlign: 'center' }),
-      el('player-image', 100, 140, 300, 380, { playerId: null, playerName: '', borderColor: '#06b6d4', showLabel: true }),
-      el('text', 100, 540, 300, 40, { text: 'PLAYER NAME', fontSize: 24, fontWeight: 700, color: '#ffffff', textAlign: 'center' }),
-      el('comparison-bar', 500, 160, 1340, 56, { label: 'Exit Velocity (92nd)', value: 92, maxValue: 100, color: '#ef4444', showValue: true }),
-      el('comparison-bar', 500, 240, 1340, 56, { label: 'Barrel% (88th)', value: 88, maxValue: 100, color: '#ef4444', showValue: true }),
-      el('comparison-bar', 500, 320, 1340, 56, { label: 'Hard Hit% (85th)', value: 85, maxValue: 100, color: '#f97316', showValue: true }),
-      el('comparison-bar', 500, 400, 1340, 56, { label: 'xwOBA (78th)', value: 78, maxValue: 100, color: '#f97316', showValue: true }),
-      el('comparison-bar', 500, 480, 1340, 56, { label: 'xBA (72nd)', value: 72, maxValue: 100, color: '#eab308', showValue: true }),
-      el('comparison-bar', 500, 560, 1340, 56, { label: 'K% (65th)', value: 65, maxValue: 100, color: '#eab308', showValue: true }),
-      el('comparison-bar', 500, 640, 1340, 56, { label: 'BB% (58th)', value: 58, maxValue: 100, color: '#06b6d4', showValue: true }),
-      el('comparison-bar', 500, 720, 1340, 56, { label: 'Sprint Speed (45th)', value: 45, maxValue: 100, color: '#3b82f6', showValue: true }),
-      el('comparison-bar', 500, 800, 1340, 56, { label: 'Chase Rate (82nd)', value: 82, maxValue: 100, color: '#f97316', showValue: true }),
-      el('comparison-bar', 500, 880, 1340, 56, { label: 'Whiff% (55th)', value: 55, maxValue: 100, color: '#06b6d4', showValue: true }),
-      el('text', 500, 960, 1340, 24, { text: 'Source: Baseball Savant | Percentile vs. MLB hitters', fontSize: 14, fontWeight: 400, color: '#52525b', textAlign: 'left' }),
-    ]),
-  },
-  {
     id: 'pitch-design', name: 'Pitch Design Card', category: 'advanced',
     description: 'Spin rate, axis, efficiency', icon: '\u2699',
     width: 1920, height: 1080,
@@ -2014,6 +1993,94 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         width: 1080,
         height: 1350,
         background: '#111827',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: config,
+      }
+    },
+  },
+
+  // ── Percentile Rankings ──────────────────────────────────────────────────
+  {
+    id: 'percentile-rankings',
+    name: 'Percentile Rankings',
+    category: 'advanced',
+    description: 'Data-driven percentile bars for a single player',
+    icon: '\ud83d\udcca',
+    width: 1920,
+    height: 1080,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+    },
+    rebuild: (config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const name = config.playerName || 'Player Name'
+      const percentiles: { key: string; label: string; value: any; percentile: number }[] = data || []
+      const year = config.dateRange.type === 'season' ? config.dateRange.year : ''
+      const typeLabel = config.playerType === 'batter' ? 'Hitters' : 'Pitchers'
+
+      function pctlColor(p: number): string {
+        if (p <= 20) return '#ef4444'
+        if (p <= 40) return '#f97316'
+        if (p <= 60) return '#eab308'
+        if (p <= 80) return '#06b6d4'
+        return '#3b82f6'
+      }
+
+      // Title
+      elements.push(el('text', 100, 30, 1720, 60, {
+        text: `${name} \u2014 Percentile Rankings`, fontSize: 44, fontWeight: 800, color: '#ffffff', textAlign: 'center',
+      }))
+
+      // Subtitle
+      elements.push(el('text', 100, 95, 1720, 28, {
+        text: `${year} Season \u00b7 vs. MLB ${typeLabel}`, fontSize: 18, fontWeight: 400, color: '#71717a', textAlign: 'center',
+      }))
+
+      // Player image
+      elements.push(el('player-image', 100, 150, 300, 380, {
+        playerId: config.playerId || null, playerName: name, borderColor: '#06b6d4', showLabel: true,
+      }))
+
+      // Player name under image
+      elements.push(el('text', 100, 550, 300, 40, {
+        text: name, fontSize: 24, fontWeight: 700, color: '#ffffff', textAlign: 'center',
+      }))
+
+      // Comparison bars
+      const barStartY = 150
+      const barH = 56
+      const barGap = 24
+      const barX = 480
+      const barW = 1360
+
+      for (let i = 0; i < 10; i++) {
+        const item = percentiles[i]
+        const y = barStartY + i * (barH + barGap)
+        const pctl = item?.percentile ?? 50
+        const label = item?.label ?? '—'
+        const color = pctlColor(pctl)
+
+        elements.push(el('comparison-bar', barX, y, barW, barH, {
+          label, value: pctl, maxValue: 100, color, showValue: true,
+        }))
+      }
+
+      // Source footnote
+      elements.push(el('text', 480, barStartY + 10 * (barH + barGap) + 10, barW, 24, {
+        text: `Source: Statcast | Percentile vs. MLB ${typeLabel}`, fontSize: 14, fontWeight: 400, color: '#52525b', textAlign: 'left',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: `${name} — Percentile Rankings`,
+        width: 1920,
+        height: 1080,
+        background: '#09090b',
         elements,
         duration: 5,
         fps: 30,

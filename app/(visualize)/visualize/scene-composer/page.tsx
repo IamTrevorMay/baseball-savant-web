@@ -12,6 +12,7 @@ import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlot
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfigPanel'
+import PercentileConfigPanel from '@/components/visualize/scene-composer/PercentileConfigPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
 import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
@@ -595,6 +596,25 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── Percentile Rankings ──────────────────────────────────────────
+      if (config.templateId === 'percentile-rankings') {
+        if (!config.playerId) {
+          const rebuilt = template.rebuild(config, [])
+          setScene(rebuilt)
+          setSelectedId(null)
+          setSelectedIds(new Set())
+          return
+        }
+        const year = config.dateRange.type === 'season' ? config.dateRange.year : 2025
+        const res = await fetch(`/api/scene-stats?percentile=true&playerId=${config.playerId}&playerType=${config.playerType}&gameYear=${year}`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.percentiles || [])
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Default leaderboard logic ──────────────────────────────────────
       const params = new URLSearchParams({
         leaderboard: 'true',
@@ -1127,6 +1147,13 @@ export default function SceneComposerPage() {
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             {(scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
               <OutingConfigPanel
+                config={scene.templateConfig}
+                onUpdateConfig={updateTemplateConfig}
+                onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
+                loading={templateLoading}
+              />
+            ) : scene.templateConfig.templateId === 'percentile-rankings' ? (
+              <PercentileConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}
                 onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}

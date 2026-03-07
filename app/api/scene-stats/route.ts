@@ -366,6 +366,74 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ leaderboard: result })
     }
 
+    // ── Percentile mode (for single-player percentile rankings) ─────────
+    if (sp.get('percentile') === 'true') {
+      const playerId = sp.get('playerId')
+      const playerType = sp.get('playerType') || 'pitcher'
+      const gameYear = parseInt(sp.get('gameYear') || '2025')
+
+      if (!playerId) return NextResponse.json({ error: 'playerId required' }, { status: 400 })
+      const pid = parseInt(playerId)
+      const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
+      const minSample = playerType === 'batter' ? 150 : 300
+
+      // Define metrics for each player type
+      const pitcherMetrics: { key: string; label: string; expr: string; invert?: boolean }[] = [
+        { key: 'avg_velo', label: 'FB Velo', expr: METRICS['avg_velo'] },
+        { key: 'k_pct', label: 'K%', expr: METRICS['k_pct'] },
+        { key: 'bb_pct', label: 'BB%', expr: METRICS['bb_pct'], invert: true },
+        { key: 'whiff_pct', label: 'Whiff%', expr: METRICS['whiff_pct'] },
+        { key: 'chase_pct', label: 'Chase Rate', expr: METRICS['chase_pct'] },
+        { key: 'barrel_pct', label: 'Barrel% Against', expr: METRICS['barrel_pct'], invert: true },
+        { key: 'hard_hit_pct', label: 'Hard Hit% Against', expr: METRICS['hard_hit_pct'], invert: true },
+        { key: 'csw_pct', label: 'CSW%', expr: METRICS['csw_pct'] },
+        { key: 'avg_xwoba', label: 'xwOBA Against', expr: METRICS['avg_xwoba'], invert: true },
+        { key: 'avg_spin', label: 'FB Spin', expr: METRICS['avg_spin'] },
+      ]
+
+      const batterMetrics: { key: string; label: string; expr: string; invert?: boolean }[] = [
+        { key: 'avg_ev', label: 'Avg EV', expr: METRICS['avg_ev'] },
+        { key: 'max_ev', label: 'Max EV', expr: METRICS['max_ev'] },
+        { key: 'barrel_pct', label: 'Barrel%', expr: METRICS['barrel_pct'] },
+        { key: 'hard_hit_pct', label: 'Hard Hit%', expr: METRICS['hard_hit_pct'] },
+        { key: 'k_pct', label: 'K%', expr: METRICS['k_pct'], invert: true },
+        { key: 'bb_pct', label: 'BB%', expr: METRICS['bb_pct'] },
+        { key: 'avg_xwoba', label: 'xwOBA', expr: METRICS['avg_xwoba'] },
+        { key: 'avg_xba', label: 'xBA', expr: METRICS['avg_xba'] },
+        { key: 'chase_pct', label: 'Chase Rate', expr: METRICS['chase_pct'], invert: true },
+        { key: 'whiff_pct', label: 'Whiff%', expr: METRICS['whiff_pct'], invert: true },
+      ]
+
+      const metrics = playerType === 'batter' ? batterMetrics : pitcherMetrics
+
+      // Run one query per metric in parallel
+      const results = await Promise.all(metrics.map(async (m) => {
+        const orderDir = m.invert ? 'DESC' : 'ASC'
+        const sql = `
+          SELECT player_id, metric_value,
+            ROUND(PERCENT_RANK() OVER (ORDER BY metric_value ${orderDir}) * 100) AS pctl
+          FROM (
+            SELECT p.${groupCol} AS player_id, ${m.expr} AS metric_value
+            FROM pitches p JOIN players pl ON pl.id = p.${groupCol}
+            WHERE game_year = ${gameYear} AND pitch_type NOT IN ('PO','IN')
+            GROUP BY p.${groupCol} HAVING COUNT(*) >= ${minSample}
+          ) sub
+        `
+        const { data, error } = await q(sql)
+        if (error) return { key: m.key, label: m.label, value: null, percentile: 50 }
+        const row = (data || []).find((r: any) => r.player_id === pid)
+        if (!row) return { key: m.key, label: m.label, value: null, percentile: 50 }
+        return {
+          key: m.key,
+          label: m.label,
+          value: row.metric_value,
+          percentile: Number(row.pctl) || 0,
+        }
+      }))
+
+      return NextResponse.json({ percentiles: results })
+    }
+
     const playerId = sp.get('playerId')
     if (!playerId) return NextResponse.json({ error: 'playerId required' }, { status: 400 })
 
