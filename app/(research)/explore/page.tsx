@@ -74,21 +74,33 @@ export default function ExplorePage() {
   useEffect(() => {
     async function loadOptions() {
       const o: Record<string, string[]> = {}
-      const cols = ['pitch_type', 'pitch_name', 'type', 'events', 'description', 'bb_type',
-        'game_type', 'stand', 'p_throws', 'home_team', 'away_team', 'inning_topbot',
-        'if_fielding_alignment', 'of_fielding_alignment']
-      const results = await Promise.all(
-        cols.map(col => supabase.rpc('get_distinct_values', { col_name: col }))
-      )
-      cols.forEach((col, i) => {
-        const data = results[i].data
-        if (data) o[col] = data.map((r: any) => r.value).filter(Boolean).sort()
-      })
+
+      // Static options for known Statcast vocabularies (avoids slow DISTINCT scans on 7M+ rows)
+      o.pitch_type = ['AB','CH','CS','CU','EP','FA','FC','FF','FO','FS','IN','KC','KN','PO','SC','SI','SL','ST','SV','UN']
+      o.pitch_name = ['4-Seam Fastball','Changeup','Curveball','Cutter','Eephus','Forkball','Knuckle Curve','Knuckleball','Other','Screwball','Sinker','Slider','Slow Curve','Slurve','Split-Finger','Sweeper']
+      o.stand = ['L', 'R']
+      o.p_throws = ['L', 'R']
+      o.game_type = ['D', 'E', 'F', 'L', 'P', 'R', 'S', 'W']
+      o.inning_topbot = ['Bot', 'Top']
+      o.bb_type = ['fly_ball', 'ground_ball', 'line_drive', 'popup']
       o.balls = ['0', '1', '2', '3']
       o.strikes = ['0', '1', '2']
       o.outs_when_up = ['0', '1', '2']
       o.inning = Array.from({ length: 18 }, (_, i) => String(i + 1))
       o.zone = Array.from({ length: 14 }, (_, i) => String(i + 1))
+
+      // Only query DISTINCT for columns that genuinely vary (teams, events, descriptions, alignments, years)
+      const dynamicCols = ['type', 'events', 'description',
+        'home_team', 'away_team',
+        'if_fielding_alignment', 'of_fielding_alignment']
+      const results = await Promise.all(
+        dynamicCols.map(col => supabase.rpc('get_distinct_values', { col_name: col }).then(r => r, () => ({ data: null })))
+      )
+      dynamicCols.forEach((col, i) => {
+        const data = (results[i] as any)?.data
+        if (data) o[col] = data.map((r: any) => r.value).filter(Boolean).sort()
+      })
+
       const { data: yd } = await supabase.rpc('get_distinct_values', { col_name: 'game_year' })
       if (yd) o.game_year = yd.map((r: any) => r.value).filter(Boolean).sort().reverse()
       setOptionsCache(o)
