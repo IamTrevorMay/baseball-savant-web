@@ -10,7 +10,7 @@ export const metadata = {
 export default function GameLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className={`${pixel.variable} antialiased fixed inset-0 overflow-y-auto`}
+      className={`${pixel.variable} antialiased fixed inset-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]`}
       style={{ background: '#0C0C0C', color: '#FCFCFC', fontFamily: 'var(--font-pixel), monospace' }}
     >
       {children}

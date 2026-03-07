@@ -442,10 +442,10 @@ function MenuScreen({ onStart, error }: { onStart: (y: number, t: PlayerType) =>
         )}
       </div>
 
-      <div className="flex flex-wrap justify-center gap-2 max-w-md">
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 sm:gap-2 w-full max-w-md">
         {Array.from({ length: 11 }, (_, i) => 2015 + i).map(y => (
           <button key={y} onClick={() => setYear(y)}
-            className="px-3 py-2 text-[10px] border-2 transition-colors"
+            className="py-2 text-[10px] border-2 transition-colors"
             style={{ borderColor: y === year ? NES.green : NES.gray, color: y === year ? NES.green : NES.gray, background: y === year ? 'rgba(0,168,0,0.15)' : 'transparent' }}>
             {y}
           </button>
@@ -572,7 +572,7 @@ function PlayScreen({
           <p className="text-lg font-bold" style={{ color: potentialScore > 60 ? NES.green : potentialScore > 20 ? NES.yellow : NES.red }}>
             {potentialScore}
           </p>
-          <p className="text-[6px]" style={{ color: NES.gray }}>PTS</p>
+          <p className="text-[7px]" style={{ color: NES.gray }}>PTS</p>
         </div>
 
         {/* Stat tiers */}
@@ -580,7 +580,7 @@ function PlayScreen({
           {puzzle.tiers.slice(0, visibleTiers).map((tier, ti) => (
             <div key={ti}>
               <p className="text-[8px] mb-2 tracking-widest" style={{ color: NES.gray }}>{TIER_LABELS[ti]}</p>
-              <div className={`grid gap-2 ${ti === 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-2 ${ti === 0 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
                 {tier.stats.map(stat => (
                   <StatCard key={stat.key} stat={stat} def={statDefMap.get(stat.key)} />
                 ))}
@@ -604,7 +604,7 @@ function PlayScreen({
             <button key={label}
               onClick={() => unlocked && !used && onHint(i)}
               disabled={!unlocked || used}
-              className="px-3 py-2 text-[8px] border-2 transition-colors"
+              className="px-2 sm:px-3 py-2 text-[7px] sm:text-[8px] border-2 transition-colors"
               style={{
                 borderColor: used ? NES.green : unlocked ? NES.yellow : NES.darkGray,
                 color: used ? NES.green : unlocked ? NES.yellow : NES.darkGray,
@@ -631,10 +631,10 @@ function PlayScreen({
           className="w-full px-3 py-3 text-[10px] border-2 bg-transparent outline-none"
           style={{ borderColor: NES.white, color: NES.white, fontFamily: 'var(--font-pixel), monospace' }} />
         {showResults && searchResults.length > 0 && (
-          <div className="absolute left-0 right-0 border-2 border-t-0 z-40 max-h-48 overflow-y-auto"
+          <div className="absolute left-0 right-0 border-2 border-t-0 z-40 max-h-32 sm:max-h-48 overflow-y-auto"
             style={{ borderColor: NES.white, background: NES.bg }}>
             {searchResults.map(r => (
-              <button key={r.id} onMouseDown={() => handleSelect(r)}
+              <button key={r.id} onPointerDown={() => handleSelect(r)}
                 className="w-full text-left px-3 py-2 text-[10px] hover:bg-white/10 transition-colors block"
                 style={{ color: NES.white, fontFamily: 'var(--font-pixel), monospace' }}>
                 {r.name}
@@ -726,11 +726,21 @@ function ordinal(n: number): string {
 
 // ── Stat Card (improved percentile visibility) ──
 function StatCard({ stat, def }: { stat: StatResult; def?: StatDef }) {
+  const [showTooltip, setShowTooltip] = useState(false)
   const fallbackDef: StatDef = def ?? { key: stat.key, label: stat.label, unit: stat.unit || '', format: 'num', decimals: 1 }
   const colors = segmentColors(stat.percentile)
   const pColor = percentileColor(stat.percentile)
+
+  useEffect(() => {
+    if (!showTooltip) return
+    const dismiss = () => setShowTooltip(false)
+    document.addEventListener('pointerdown', dismiss)
+    return () => document.removeEventListener('pointerdown', dismiss)
+  }, [showTooltip])
+
   return (
-    <div className="group/stat relative border-2 p-2" style={{ borderColor: NES.gray }}>
+    <div className="group/stat relative border-2 p-2" style={{ borderColor: NES.gray }}
+      onClick={e => { if (def?.desc) { e.stopPropagation(); setShowTooltip(v => !v) } }}>
       <p className="text-[7px] mb-1 truncate" style={{ color: NES.gray }}>{stat.label}</p>
       <p className="text-sm mb-2" style={{ color: NES.white }}>
         {formatStatValue(stat.value, fallbackDef)}
@@ -745,9 +755,9 @@ function StatCard({ stat, def }: { stat: StatResult; def?: StatDef }) {
       <p className="text-xs text-right font-bold" style={{ color: pColor }}>
         {stat.percentile}<span className="text-[7px]">{ordinal(stat.percentile)}</span>
       </p>
-      {/* Tooltip */}
+      {/* Tooltip — hover on desktop, tap on mobile */}
       {def?.desc && (
-        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 hidden group-hover/stat:block px-2 py-1.5 text-[8px] whitespace-normal max-w-[180px] leading-snug border-2 text-center"
+        <span className={`pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 px-2 py-1.5 text-[8px] whitespace-normal max-w-[180px] leading-snug border-2 text-center ${showTooltip ? 'block' : 'hidden group-hover/stat:block'}`}
           style={{ background: NES.bg, color: NES.white, borderColor: NES.gray }}>
           {def.desc}
         </span>
@@ -772,7 +782,7 @@ function NamePromptModal({ onSubmit, onSkip }: { onSubmit: (name: string) => voi
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }}>
-      <div className="border-2 p-6 w-full max-w-xs text-center space-y-4" style={{ background: NES.bg, borderColor: NES.yellow }}>
+      <div className="border-2 p-6 w-full max-w-[17rem] text-center space-y-4" style={{ background: NES.bg, borderColor: NES.yellow }}>
         <p className="text-xs tracking-widest" style={{ color: NES.yellow }}>ENTER CALL SIGN</p>
         <p className="text-[8px]" style={{ color: NES.gray }}>FOR THE LEADERBOARD (1-16 CHARS)</p>
         <input
@@ -950,7 +960,7 @@ function ResultScreen({
         {puzzle.tiers.map((tier, ti) => (
           <div key={ti}>
             <p className="text-[8px] mb-1 tracking-widest" style={{ color: NES.gray }}>{TIER_LABELS[ti]}</p>
-            <div className={`grid gap-2 ${ti === 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            <div className={`grid gap-2 ${ti === 0 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
               {tier.stats.map(stat => (
                 <StatCard key={stat.key} stat={stat} def={statDefMap.get(stat.key)} />
               ))}
