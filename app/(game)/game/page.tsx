@@ -7,6 +7,7 @@ import {
   SCORE_TABLE, HINT_COSTS, GREEN_BONUS,
   type StatDef,
 } from '@/lib/gameConstants'
+import { containsProfanity } from '@/lib/profanityFilter'
 
 // ── Types ──
 type Phase = 'menu' | 'loading' | 'play' | 'result'
@@ -523,9 +524,13 @@ function PlayScreen({
   const guessedIds = useMemo(() => new Set(guessRows.map(g => g.id)), [guessRows])
   const searchResults = useMemo(() => {
     if (query.length < 2) return []
-    const q = query.toLowerCase()
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean)
     return puzzle.pool
-      .filter(p => !guessedIds.has(p.id) && p.name.toLowerCase().includes(q))
+      .filter(p => {
+        if (guessedIds.has(p.id)) return false
+        const name = p.name.toLowerCase()
+        return words.every(w => name.includes(w))
+      })
       .slice(0, 8)
   }, [query, puzzle.pool, guessedIds])
 
@@ -772,12 +777,16 @@ function StatCard({ stat, def }: { stat: StatResult; def?: StatDef }) {
 // ── Name Prompt Modal ──
 function NamePromptModal({ onSubmit, onSkip }: { onSubmit: (name: string) => void; onSkip: () => void }) {
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { inputRef.current?.focus() }, [])
 
   const handleSubmit = () => {
     const trimmed = name.trim()
-    if (trimmed.length >= 1 && trimmed.length <= 16) onSubmit(trimmed)
+    if (trimmed.length < 1 || trimmed.length > 16) return
+    if (containsProfanity(trimmed)) { setNameError('INAPPROPRIATE NAME'); return }
+    setNameError('')
+    onSubmit(trimmed)
   }
 
   return (
@@ -789,13 +798,14 @@ function NamePromptModal({ onSubmit, onSkip }: { onSubmit: (name: string) => voi
           ref={inputRef}
           type="text"
           value={name}
-          onChange={e => setName(e.target.value.slice(0, 16))}
+          onChange={e => { setName(e.target.value.slice(0, 16)); setNameError('') }}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
           maxLength={16}
           className="w-full px-3 py-2 text-[10px] border-2 bg-transparent outline-none text-center"
           style={{ borderColor: NES.white, color: NES.white, fontFamily: 'var(--font-pixel), monospace' }}
           placeholder="YOUR NAME"
         />
+        {nameError && <p className="text-[8px]" style={{ color: NES.red }}>{nameError}</p>}
         <div className="flex gap-3 justify-center">
           <button onClick={handleSubmit}
             disabled={name.trim().length < 1}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { gameDay, dailyPlayerIndex, SCORE_TABLE, HINT_COSTS, GREEN_BONUS } from '@/lib/gameConstants'
 import { SEASON_CONSTANTS } from '@/lib/constants-data'
+import { containsProfanity } from '@/lib/profanityFilter'
 
 // ── Pool cache (same for all submissions on the same day) ──
 const poolCache = new Map<string, { pool: PoolEntry[]; ts: number }>()
@@ -114,6 +115,8 @@ export async function POST(req: NextRequest) {
     // ── Constraint validation ──
     if (display_name.length < 1 || display_name.length > 16)
       return NextResponse.json({ error: 'Display name must be 1-16 characters' }, { status: 400 })
+    if (containsProfanity(display_name))
+      return NextResponse.json({ error: 'Inappropriate display name' }, { status: 400 })
     if (!['pitcher', 'hitter'].includes(puzzle_type))
       return NextResponse.json({ error: 'Invalid puzzle type' }, { status: 400 })
     if (![...Object.keys(SEASON_CONSTANTS)].map(Number).includes(puzzle_year))
