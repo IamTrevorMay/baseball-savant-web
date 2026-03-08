@@ -155,16 +155,29 @@ export default function TemplateBuilderPage() {
     }))
   }, [])
 
-  function applyStatToElement(elId: string, elType: ElementType, metric: string, val: any, playerName: string, sublabel: string) {
-    if (val == null) return
+  function formatStatValue(val: any, format?: string): string {
+    if (val == null) return '—'
+    const n = Number(val)
+    if (isNaN(n)) return String(val)
+    switch (format) {
+      case '1f': return n.toFixed(1)
+      case 'integer': return Math.round(n).toString()
+      case 'percent': return `${n.toFixed(1)}%`
+      case '3f': return n.toFixed(3)
+      default: return String(val)
+    }
+  }
+
+  function applyStatToElement(elId: string, elType: ElementType, metric: string, val: any, playerName: string, sublabel: string, format?: string) {
+    const formatted = formatStatValue(val, format)
     if (elType === 'stat-card') {
-      updateElementProps(elId, { value: String(val), label: metric.replace(/_/g, ' ').toUpperCase(), sublabel })
+      updateElementProps(elId, { value: formatted, label: metric.replace(/_/g, ' ').toUpperCase(), sublabel })
     } else if (elType === 'comparison-bar') {
-      updateElementProps(elId, { value: Number(val), label: `${playerName} - ${metric.replace(/_/g, ' ')}` })
+      updateElementProps(elId, { value: val != null ? Number(val) : 0, label: `${playerName} - ${metric.replace(/_/g, ' ')}` })
     } else if (elType === 'text') {
-      updateElementProps(elId, { text: String(val) })
+      updateElementProps(elId, { text: formatted })
     } else {
-      updateElementProps(elId, { value: String(val) })
+      updateElementProps(elId, { value: formatted })
     }
   }
 
@@ -351,6 +364,7 @@ export default function TemplateBuilderPage() {
       if (metrics.size > 0) {
         const params = new URLSearchParams({
           playerId: String(section.playerId),
+          playerType: section.playerType,
           metrics: Array.from(metrics).join(','),
           gameYear: String(section.gameYear),
         })
@@ -363,7 +377,7 @@ export default function TemplateBuilderPage() {
       // Apply stats to elements
       for (const el of sectionElements) {
         if (!el.sectionBinding) continue
-        const { metric } = el.sectionBinding
+        const { metric, format } = el.sectionBinding
 
         if (metric === '__player__') {
           // Player-image: set playerId and playerName
@@ -371,7 +385,7 @@ export default function TemplateBuilderPage() {
         } else {
           const val = stats[metric]
           const sublabel = `${section.playerName || ''} ${section.gameYear}`.trim()
-          applyStatToElement(el.id, el.type, metric, val, section.playerName || '', sublabel)
+          applyStatToElement(el.id, el.type, metric, val, section.playerName || '', sublabel, format)
         }
       }
     } catch (err) {

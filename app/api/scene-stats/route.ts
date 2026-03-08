@@ -491,7 +491,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Build WHERE clauses
-    const where: string[] = [`pitcher = ${parseInt(playerId)}`, "pitch_type NOT IN ('PO', 'IN')"]
+    const playerType = sp.get('playerType') || 'pitcher'
+    const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
+    const where: string[] = [`${groupCol} = ${parseInt(playerId)}`, "pitch_type NOT IN ('PO', 'IN')"]
     if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
     if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
     if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
