@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Scene, SceneElement, ElementType, DataSchemaType, DataBinding,
+  Scene, SceneElement, ElementType, DataSchemaType, DataBinding, DynamicSlot,
   RepeaterConfig, TemplateBinding, CustomTemplateRecord,
   createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
@@ -15,6 +15,7 @@ import { DATA_DRIVEN_TEMPLATES } from '@/lib/sceneTemplates'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
+import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlotsPanel'
 import DataSchemaSelector from '@/components/visualize/template-builder/DataSchemaSelector'
 import TemplateBindingSection from '@/components/visualize/template-builder/TemplateBindingSection'
 import RepeaterPanel from '@/components/visualize/template-builder/RepeaterPanel'
@@ -142,6 +143,19 @@ export default function TemplateBuilderPage() {
     }))
   }, [])
 
+  function applyStatToElement(elId: string, elType: ElementType, metric: string, val: any, playerName: string, sublabel: string) {
+    if (val == null) return
+    if (elType === 'stat-card') {
+      updateElementProps(elId, { value: String(val), label: metric.replace(/_/g, ' ').toUpperCase(), sublabel })
+    } else if (elType === 'comparison-bar') {
+      updateElementProps(elId, { value: Number(val), label: `${playerName} - ${metric.replace(/_/g, ' ')}` })
+    } else if (elType === 'text') {
+      updateElementProps(elId, { text: String(val) })
+    } else {
+      updateElementProps(elId, { value: String(val) })
+    }
+  }
+
   const fetchBinding = useCallback(async (id: string) => {
     const el = scene.elements.find(e => e.id === id)
     if (!el?.dataBinding) return
@@ -149,7 +163,20 @@ export default function TemplateBuilderPage() {
 
     setBindingLoading(true)
     try {
-      if (b.source === 'statcast') {
+      if (b.source === 'dynamic') {
+        const slot = scene.dynamicSlots?.find(s => s.id === b.dynamicSlot)
+        if (!slot?.playerId) return
+        const params = new URLSearchParams({
+          playerId: String(slot.playerId),
+          metrics: b.metric,
+          gameYear: String(slot.gameYear),
+        })
+        if (slot.pitchType) params.set('pitchType', slot.pitchType)
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        const val = data.stats?.[b.metric]
+        applyStatToElement(id, el.type, b.metric, val, slot.playerName || '', `${slot.playerName || ''} ${slot.gameYear}`.trim())
+      } else if (b.source === 'statcast') {
         const params = new URLSearchParams({
           playerId: String(b.playerId),
           metrics: b.metric,
@@ -159,22 +186,94 @@ export default function TemplateBuilderPage() {
         const res = await fetch(`/api/scene-stats?${params}`)
         const data = await res.json()
         const val = data.stats?.[b.metric]
-        if (val != null) {
-          if (el.type === 'stat-card') {
-            updateElementProps(id, { value: String(val), label: b.metric.replace(/_/g, ' ').toUpperCase(), sublabel: `${b.playerName} ${b.gameYear || ''}`.trim() })
-          } else if (el.type === 'comparison-bar') {
-            updateElementProps(id, { value: Number(val), label: `${b.playerName} - ${b.metric.replace(/_/g, ' ')}` })
-          } else if (el.type === 'text') {
-            updateElementProps(id, { text: String(val) })
-          }
-        }
+        applyStatToElement(id, el.type, b.metric, val, b.playerName, `${b.playerName} ${b.gameYear || ''}`.trim())
       }
     } catch (err) {
       console.error('Binding fetch error:', err)
     } finally {
       setBindingLoading(false)
     }
-  }, [scene.elements, updateElementProps])
+  }, [scene.elements, scene.dynamicSlots, updateElementProps])
+
+  // ── Dynamic Slots ─────────────────────────────────────────────────────────
+
+  const addDynamicSlot = useCallback((): string => {
+    const id = Math.random().toString(36).slice(2, 10)
+    setScene(prev => {
+      const existing = prev.dynamicSlots || []
+      const label = `Player ${existing.length + 1}`
+      const slot: DynamicSlot = { id, label, playerType: 'pitcher', gameYear: 2025 }
+      return { ...prev, dynamicSlots: [...existing, slot] }
+    })
+    return id
+  }, [])
+
+  const updateDynamicSlot = useCallback((id: string, updates: Partial<DynamicSlot>) => {
+    setScene(prev => ({
+      ...prev,
+      dynamicSlots: (prev.dynamicSlots || []).map(s => s.id === id ? { ...s, ...updates } : s),
+    }))
+  }, [])
+
+  const removeDynamicSlot = useCallback((id: string) => {
+    setScene(prev => ({
+      ...prev,
+      dynamicSlots: (prev.dynamicSlots || []).filter(s => s.id !== id),
+      elements: prev.elements.map(e =>
+        e.dataBinding?.dynamicSlot === id ? { ...e, dataBinding: undefined } : e
+      ),
+    }))
+  }, [])
+
+  const [dynamicFetchLoading, setDynamicFetchLoading] = useState(false)
+
+  const fetchAllDynamic = useCallback(async () => {
+    const slots = scene.dynamicSlots
+    if (!slots?.length) return
+
+    const slotElements = new Map<string, { metrics: Set<string>; elements: SceneElement[] }>()
+    for (const el of scene.elements) {
+      if (el.dataBinding?.source !== 'dynamic' || !el.dataBinding.dynamicSlot) continue
+      const slotId = el.dataBinding.dynamicSlot
+      if (!slotElements.has(slotId)) slotElements.set(slotId, { metrics: new Set(), elements: [] })
+      const entry = slotElements.get(slotId)!
+      entry.metrics.add(el.dataBinding.metric)
+      entry.elements.push(el)
+    }
+
+    if (slotElements.size === 0) return
+    setDynamicFetchLoading(true)
+
+    try {
+      const fetches = Array.from(slotElements.entries()).map(async ([slotId, { metrics, elements }]) => {
+        const slot = slots.find(s => s.id === slotId)
+        if (!slot?.playerId) return
+
+        const params = new URLSearchParams({
+          playerId: String(slot.playerId),
+          metrics: Array.from(metrics).join(','),
+          gameYear: String(slot.gameYear),
+        })
+        if (slot.pitchType) params.set('pitchType', slot.pitchType)
+
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        const stats = data.stats || {}
+
+        for (const el of elements) {
+          const metric = el.dataBinding!.metric
+          const val = stats[metric]
+          applyStatToElement(el.id, el.type, metric, val, slot.playerName || '', `${slot.playerName || ''} ${slot.gameYear}`.trim())
+        }
+      })
+
+      await Promise.all(fetches)
+    } catch (err) {
+      console.error('Fetch all dynamic error:', err)
+    } finally {
+      setDynamicFetchLoading(false)
+    }
+  }, [scene.elements, scene.dynamicSlots, updateElementProps])
 
   const deleteElement = useCallback(
     (id: string) => {
@@ -585,6 +684,8 @@ export default function TemplateBuilderPage() {
                   onDelete={() => deleteElement(selectedElement.id)}
                   onDuplicate={() => duplicateElement(selectedElement.id)}
                   bindingLoading={bindingLoading}
+                  dynamicSlots={scene.dynamicSlots}
+                  onAddDynamicSlot={addDynamicSlot}
                 />
                 {/* Template binding section */}
                 <div className="px-3 pb-3">
@@ -596,7 +697,15 @@ export default function TemplateBuilderPage() {
                 </div>
               </div>
             ) : (
-              <div className="p-3">
+              <div className="p-3 space-y-4">
+                <DynamicSlotsPanel
+                  slots={scene.dynamicSlots || []}
+                  onUpdateSlot={updateDynamicSlot}
+                  onAddSlot={addDynamicSlot}
+                  onRemoveSlot={removeDynamicSlot}
+                  onFetchAll={fetchAllDynamic}
+                  fetchLoading={dynamicFetchLoading}
+                />
                 <RepeaterPanel
                   repeater={repeater}
                   selectedIds={selectedIds}
