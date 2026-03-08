@@ -861,6 +861,7 @@ export default function TemplateBuilderPage() {
                   onRemoveSection={removeInputSection}
                   onFetchSection={fetchInputSection}
                   onSelectElements={highlightSectionElements}
+                  onUpdateElementBinding={(elId, binding) => updateSectionBinding(elId, binding)}
                   fetchLoading={sectionFetchLoading}
                 />
                 <div className="h-px bg-zinc-800" />

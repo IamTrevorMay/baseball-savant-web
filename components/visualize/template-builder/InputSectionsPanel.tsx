@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { InputSection, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
+import { InputSection, SectionBinding, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 
@@ -39,15 +39,17 @@ interface Props {
   onRemoveSection: (id: string) => void
   onFetchSection: (id: string) => void
   onSelectElements: (ids: string[]) => void
+  onUpdateElementBinding: (elementId: string, binding: SectionBinding | undefined) => void
   fetchLoading: string | null
 }
 
 export default function InputSectionsPanel({
   sections, selectedIds, elements, onAddSection, onUpdateSection,
-  onRemoveSection, onFetchSection, onSelectElements, fetchLoading,
+  onRemoveSection, onFetchSection, onSelectElements, onUpdateElementBinding, fetchLoading,
 }: Props) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
 
   function handleCreate() {
     const name = newName.trim() || `Section ${sections.length + 1}`
@@ -164,25 +166,65 @@ export default function InputSectionsPanel({
               </select>
             </div>
 
-            {/* Bound elements list */}
-            {sectionElements.length > 0 && (
-              <div className="mb-2 space-y-0.5">
-                <div className="text-[9px] text-zinc-600 uppercase tracking-wider mb-1">Bound Elements</div>
-                {sectionElements.map(el => (
+            {/* Bound elements list — collapsible */}
+            {sectionElements.length > 0 && (() => {
+              const isExpanded = expandedSections.has(section.id)
+              return (
+                <div className="mb-2">
                   <button
-                    key={el.id}
-                    onClick={() => onSelectElements([el.id])}
-                    className="w-full flex items-center gap-1.5 px-1.5 py-1 rounded text-left hover:bg-zinc-700/50 transition"
+                    onClick={() => setExpandedSections(prev => {
+                      const next = new Set(prev)
+                      if (next.has(section.id)) next.delete(section.id)
+                      else next.add(section.id)
+                      return next
+                    })}
+                    className="w-full flex items-center gap-1.5 text-left hover:bg-zinc-700/30 rounded px-1 py-0.5 transition"
                   >
-                    <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">{ELEMENT_ICONS[el.type] || '?'}</span>
-                    <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
-                    <span className="text-[9px] text-emerald-500/70 truncate max-w-[80px]">
-                      {el.sectionBinding ? getMetricLabel(el.sectionBinding.metric) : '—'}
-                    </span>
+                    <span className={`text-[9px] text-zinc-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>{'\u25b6'}</span>
+                    <span className="text-[9px] text-zinc-600 uppercase tracking-wider flex-1">Elements ({sectionElements.length})</span>
                   </button>
-                ))}
-              </div>
-            )}
+                  {isExpanded && (
+                    <div className="mt-1 space-y-1 pl-1">
+                      {sectionElements.map(el => {
+                        const isPlayerImage = el.type === 'player-image'
+                        const binding = el.sectionBinding
+                        return (
+                          <div key={el.id} className="rounded bg-zinc-900/50 border border-zinc-700/30 px-1.5 py-1.5">
+                            {/* Row: icon + type + select on canvas */}
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">{ELEMENT_ICONS[el.type] || '?'}</span>
+                              <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
+                              <button
+                                onClick={() => onSelectElements([el.id])}
+                                className="text-[9px] text-zinc-600 hover:text-zinc-300 transition shrink-0"
+                                title="Select on canvas"
+                              >{'\u25ce'}</button>
+                            </div>
+                            {/* Metric selector */}
+                            {isPlayerImage ? (
+                              <div className="text-[9px] text-zinc-600 px-1">Auto: player image</div>
+                            ) : (
+                              <select
+                                value={binding?.metric || 'avg_velo'}
+                                onChange={e => {
+                                  if (!binding) return
+                                  onUpdateElementBinding(el.id, { ...binding, metric: e.target.value })
+                                }}
+                                className="w-full bg-zinc-800 border border-zinc-700/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:border-emerald-600 outline-none"
+                              >
+                                {SCENE_METRICS.map(m => (
+                                  <option key={m.value} value={m.value}>{m.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Edit button — select all section elements */}
             <div className="flex gap-1.5">
