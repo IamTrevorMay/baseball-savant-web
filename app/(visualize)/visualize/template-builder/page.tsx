@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Scene, SceneElement, ElementType, DataSchemaType, DataBinding, DynamicSlot,
   RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputSection, SectionBinding,
-  createElement, SCENE_PRESETS,
+  ALL_SECTION_INPUTS, createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import { useSceneHistory } from '@/lib/useSceneHistory'
@@ -35,6 +35,14 @@ function defaultScene(): Scene {
 }
 
 const ZOOM_STEPS = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0]
+
+/** Ensure loaded sections have enabledInputs (backwards compat) */
+function normalizeSections(sections: InputSection[]): InputSection[] {
+  return sections.map(s => ({
+    ...s,
+    enabledInputs: s.enabledInputs ?? [...ALL_SECTION_INPUTS],
+  }))
+}
 
 export default function TemplateBuilderPage() {
   const router = useRouter()
@@ -80,7 +88,7 @@ export default function TemplateBuilderPage() {
             })
             setSchemaType(t.schemaType)
             setRepeater(t.repeater)
-            setInputSections(t.inputSections || [])
+            setInputSections(normalizeSections(t.inputSections || []))
             setSaveId(t.id)
           }
         })
@@ -287,6 +295,7 @@ export default function TemplateBuilderPage() {
       id: sectionId,
       label: name,
       elementIds,
+      enabledInputs: [...ALL_SECTION_INPUTS],
       playerType: 'pitcher',
       gameYear: 2025,
     }
@@ -679,7 +688,7 @@ export default function TemplateBuilderPage() {
     })
     setSchemaType(template.schemaType)
     setRepeater(template.repeater)
-    setInputSections(template.inputSections || [])
+    setInputSections(normalizeSections(template.inputSections || []))
     setSaveId(template.id)
     setSelectedId(null)
     setSelectedIds(new Set())

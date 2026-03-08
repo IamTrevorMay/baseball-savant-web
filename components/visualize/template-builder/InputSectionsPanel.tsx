@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { InputSection, SectionBinding, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
+import { InputSection, SectionBinding, SectionInputKey, SECTION_INPUT_OPTIONS, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 
@@ -49,7 +49,8 @@ export default function InputSectionsPanel({
 }: Props) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  const [expandedElements, setExpandedElements] = useState<Set<string>>(new Set())
+  const [configuringInputs, setConfiguringInputs] = useState<Set<string>>(new Set())
 
   function handleCreate() {
     const name = newName.trim() || `Section ${sections.length + 1}`
@@ -58,10 +59,18 @@ export default function InputSectionsPanel({
     setNewName('')
   }
 
-  function getMetricLabel(metric: string): string {
-    if (metric === '__player__') return 'Player Image'
-    const m = SCENE_METRICS.find(sm => sm.value === metric)
-    return m?.label || metric
+  function toggleInput(sectionId: string, key: SectionInputKey) {
+    const section = sections.find(s => s.id === sectionId)
+    if (!section) return
+    const current = section.enabledInputs
+    const next = current.includes(key)
+      ? current.filter(k => k !== key)
+      : [...current, key]
+    onUpdateSection(sectionId, { enabledInputs: next })
+  }
+
+  function has(section: InputSection, key: SectionInputKey): boolean {
+    return section.enabledInputs.includes(key)
   }
 
   return (
@@ -70,17 +79,31 @@ export default function InputSectionsPanel({
 
       {sections.map(section => {
         const sectionElements = elements.filter(e => section.elementIds.includes(e.id))
+        const isElementsExpanded = expandedElements.has(section.id)
+        const isConfiguring = configuringInputs.has(section.id)
 
         return (
           <div key={section.id} className="mb-3 p-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/50">
-            {/* Header: editable name + element count + remove */}
-            <div className="flex items-center justify-between gap-2 mb-2">
+            {/* Header: editable name + gear + element count + remove */}
+            <div className="flex items-center justify-between gap-1.5 mb-2">
               <input
                 type="text"
                 value={section.label}
                 onChange={e => onUpdateSection(section.id, { label: e.target.value })}
-                className="flex-1 bg-transparent text-xs font-semibold text-white border-none outline-none hover:bg-zinc-700/50 focus:bg-zinc-700/50 px-1 py-0.5 rounded transition"
+                className="flex-1 bg-transparent text-xs font-semibold text-white border-none outline-none hover:bg-zinc-700/50 focus:bg-zinc-700/50 px-1 py-0.5 rounded transition min-w-0"
               />
+              <button
+                onClick={() => setConfiguringInputs(prev => {
+                  const next = new Set(prev)
+                  if (next.has(section.id)) next.delete(section.id)
+                  else next.add(section.id)
+                  return next
+                })}
+                className={`text-[11px] transition shrink-0 px-1 rounded ${
+                  isConfiguring ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-300'
+                }`}
+                title="Configure inputs"
+              >{'\u2699'}</button>
               <span className="text-[9px] text-zinc-500 bg-zinc-700/50 px-1.5 py-0.5 rounded shrink-0">
                 {sectionElements.length} el
               </span>
@@ -88,145 +111,171 @@ export default function InputSectionsPanel({
                 onClick={() => onRemoveSection(section.id)}
                 className="text-zinc-600 hover:text-red-400 text-xs transition shrink-0"
                 title="Remove section"
-              >
-                {'\u2715'}
-              </button>
+              >{'\u2715'}</button>
             </div>
 
-            {/* Player picker */}
-            <div className="mb-2">
-              <PlayerPicker
-                label="Search player..."
-                playerType={section.playerType === 'batter' ? 'hitter' : 'pitcher'}
-                onSelect={(id, name) => onUpdateSection(section.id, { playerId: id, playerName: name })}
-              />
-              {section.playerName && (
-                <div className="flex items-center gap-1 mt-1">
-                  <span className="text-[10px] text-cyan-400/70 truncate flex-1">{section.playerName}</span>
-                  <button
-                    onClick={() => onUpdateSection(section.id, { playerId: undefined, playerName: undefined })}
-                    className="text-zinc-600 hover:text-zinc-400 text-[10px] transition shrink-0"
-                  >{'\u2715'}</button>
+            {/* Input toggles — shown when gear is active */}
+            {isConfiguring && (
+              <div className="mb-2 p-1.5 rounded bg-zinc-900/60 border border-zinc-700/30">
+                <div className="text-[9px] text-zinc-600 uppercase tracking-wider mb-1.5">Visible Inputs</div>
+                <div className="flex flex-wrap gap-1">
+                  {SECTION_INPUT_OPTIONS.map(opt => {
+                    const on = has(section, opt.key)
+                    return (
+                      <button
+                        key={opt.key}
+                        onClick={() => toggleInput(section.id, opt.key)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition border ${
+                          on
+                            ? 'bg-emerald-600/20 border-emerald-600/40 text-emerald-300'
+                            : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
                 </div>
-              )}
-            </div>
-
-            {/* Player type toggle */}
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] text-zinc-500 shrink-0">Type</span>
-              <div className="flex rounded overflow-hidden border border-zinc-700">
-                <button
-                  onClick={() => onUpdateSection(section.id, { playerType: 'pitcher' })}
-                  className={`px-2 py-0.5 text-[10px] transition ${
-                    section.playerType === 'pitcher'
-                      ? 'bg-emerald-600/20 text-emerald-300'
-                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  Pitcher
-                </button>
-                <button
-                  onClick={() => onUpdateSection(section.id, { playerType: 'batter' })}
-                  className={`px-2 py-0.5 text-[10px] transition ${
-                    section.playerType === 'batter'
-                      ? 'bg-emerald-600/20 text-emerald-300'
-                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  Batter
-                </button>
               </div>
-            </div>
+            )}
 
-            {/* Season */}
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] text-zinc-500 shrink-0">Season</span>
-              <select
-                value={section.gameYear}
-                onChange={e => onUpdateSection(section.id, { gameYear: Number(e.target.value) })}
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:border-emerald-600 outline-none"
-              >
-                {YEARS.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
+            {/* Player picker — conditional */}
+            {has(section, 'playerPicker') && (
+              <div className="mb-2">
+                <PlayerPicker
+                  label="Search player..."
+                  playerType={section.playerType === 'batter' ? 'hitter' : 'pitcher'}
+                  onSelect={(id, name) => onUpdateSection(section.id, { playerId: id, playerName: name })}
+                />
+                {section.playerName && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-[10px] text-cyan-400/70 truncate flex-1">{section.playerName}</span>
+                    <button
+                      onClick={() => onUpdateSection(section.id, { playerId: undefined, playerName: undefined })}
+                      className="text-zinc-600 hover:text-zinc-400 text-[10px] transition shrink-0"
+                    >{'\u2715'}</button>
+                  </div>
+                )}
+              </div>
+            )}
 
-            {/* Pitch type */}
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] text-zinc-500 shrink-0">Pitch Type</span>
-              <select
-                value={section.pitchType || ''}
-                onChange={e => onUpdateSection(section.id, { pitchType: e.target.value || undefined })}
-                className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:border-emerald-600 outline-none"
-              >
-                {PITCH_TYPES.map(pt => (
-                  <option key={pt.value} value={pt.value}>{pt.label}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bound elements list — collapsible */}
-            {sectionElements.length > 0 && (() => {
-              const isExpanded = expandedSections.has(section.id)
-              return (
-                <div className="mb-2">
+            {/* Player type toggle — conditional */}
+            {has(section, 'playerType') && (
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] text-zinc-500 shrink-0">Type</span>
+                <div className="flex rounded overflow-hidden border border-zinc-700">
                   <button
-                    onClick={() => setExpandedSections(prev => {
-                      const next = new Set(prev)
-                      if (next.has(section.id)) next.delete(section.id)
-                      else next.add(section.id)
-                      return next
-                    })}
-                    className="w-full flex items-center gap-1.5 text-left hover:bg-zinc-700/30 rounded px-1 py-0.5 transition"
+                    onClick={() => onUpdateSection(section.id, { playerType: 'pitcher' })}
+                    className={`px-2 py-0.5 text-[10px] transition ${
+                      section.playerType === 'pitcher'
+                        ? 'bg-emerald-600/20 text-emerald-300'
+                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
                   >
-                    <span className={`text-[9px] text-zinc-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>{'\u25b6'}</span>
-                    <span className="text-[9px] text-zinc-600 uppercase tracking-wider flex-1">Elements ({sectionElements.length})</span>
+                    Pitcher
                   </button>
-                  {isExpanded && (
-                    <div className="mt-1 space-y-1 pl-1">
-                      {sectionElements.map(el => {
-                        const isPlayerImage = el.type === 'player-image'
-                        const binding = el.sectionBinding
-                        return (
-                          <div key={el.id} className="rounded bg-zinc-900/50 border border-zinc-700/30 px-1.5 py-1.5">
-                            {/* Row: icon + type + select on canvas */}
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">{ELEMENT_ICONS[el.type] || '?'}</span>
-                              <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
-                              <button
-                                onClick={() => onSelectElements([el.id])}
-                                className="text-[9px] text-zinc-600 hover:text-zinc-300 transition shrink-0"
-                                title="Select on canvas"
-                              >{'\u25ce'}</button>
-                            </div>
-                            {/* Metric selector */}
-                            {isPlayerImage ? (
-                              <div className="text-[9px] text-zinc-600 px-1">Auto: player image</div>
-                            ) : (
-                              <select
-                                value={binding?.metric || 'avg_velo'}
-                                onChange={e => {
-                                  if (!binding) return
-                                  onUpdateElementBinding(el.id, { ...binding, metric: e.target.value })
-                                }}
-                                className="w-full bg-zinc-800 border border-zinc-700/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:border-emerald-600 outline-none"
-                              >
-                                {SCENE_METRICS.map(m => (
-                                  <option key={m.value} value={m.value}>{m.label}</option>
-                                ))}
-                              </select>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                  <button
+                    onClick={() => onUpdateSection(section.id, { playerType: 'batter' })}
+                    className={`px-2 py-0.5 text-[10px] transition ${
+                      section.playerType === 'batter'
+                        ? 'bg-emerald-600/20 text-emerald-300'
+                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    Batter
+                  </button>
                 </div>
-              )
-            })()}
+              </div>
+            )}
 
-            {/* Edit button — select all section elements */}
+            {/* Season — conditional */}
+            {has(section, 'season') && (
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] text-zinc-500 shrink-0">Season</span>
+                <select
+                  value={section.gameYear}
+                  onChange={e => onUpdateSection(section.id, { gameYear: Number(e.target.value) })}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:border-emerald-600 outline-none"
+                >
+                  {YEARS.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Pitch type — conditional */}
+            {has(section, 'pitchType') && (
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] text-zinc-500 shrink-0">Pitch Type</span>
+                <select
+                  value={section.pitchType || ''}
+                  onChange={e => onUpdateSection(section.id, { pitchType: e.target.value || undefined })}
+                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:border-emerald-600 outline-none"
+                >
+                  {PITCH_TYPES.map(pt => (
+                    <option key={pt.value} value={pt.value}>{pt.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Bound elements list — collapsible, collapsed by default */}
+            {sectionElements.length > 0 && (
+              <div className="mb-2">
+                <button
+                  onClick={() => setExpandedElements(prev => {
+                    const next = new Set(prev)
+                    if (next.has(section.id)) next.delete(section.id)
+                    else next.add(section.id)
+                    return next
+                  })}
+                  className="w-full flex items-center gap-1.5 text-left hover:bg-zinc-700/30 rounded px-1 py-0.5 transition"
+                >
+                  <span className={`text-[9px] text-zinc-600 transition-transform ${isElementsExpanded ? 'rotate-90' : ''}`}>{'\u25b6'}</span>
+                  <span className="text-[9px] text-zinc-600 uppercase tracking-wider flex-1">Elements ({sectionElements.length})</span>
+                </button>
+                {isElementsExpanded && (
+                  <div className="mt-1 space-y-1 pl-1">
+                    {sectionElements.map(el => {
+                      const isPlayerImage = el.type === 'player-image'
+                      const binding = el.sectionBinding
+                      return (
+                        <div key={el.id} className="rounded bg-zinc-900/50 border border-zinc-700/30 px-1.5 py-1.5">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">{ELEMENT_ICONS[el.type] || '?'}</span>
+                            <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
+                            <button
+                              onClick={() => onSelectElements([el.id])}
+                              className="text-[9px] text-zinc-600 hover:text-zinc-300 transition shrink-0"
+                              title="Select on canvas"
+                            >{'\u25ce'}</button>
+                          </div>
+                          {isPlayerImage ? (
+                            <div className="text-[9px] text-zinc-600 px-1">Auto: player image</div>
+                          ) : (
+                            <select
+                              value={binding?.metric || 'avg_velo'}
+                              onChange={e => {
+                                if (!binding) return
+                                onUpdateElementBinding(el.id, { ...binding, metric: e.target.value })
+                              }}
+                              className="w-full bg-zinc-800 border border-zinc-700/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:border-emerald-600 outline-none"
+                            >
+                              {SCENE_METRICS.map(m => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Edit + Fetch buttons */}
             <div className="flex gap-1.5">
               <button
                 onClick={() => onSelectElements(section.elementIds)}

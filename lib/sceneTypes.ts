@@ -49,10 +49,22 @@ export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percen
 
 export const MAX_INPUT_SECTIONS = 5
 
+export type SectionInputKey = 'playerPicker' | 'playerType' | 'season' | 'pitchType'
+
+export const SECTION_INPUT_OPTIONS: { key: SectionInputKey; label: string }[] = [
+  { key: 'playerPicker', label: 'Player' },
+  { key: 'playerType', label: 'Type' },
+  { key: 'season', label: 'Season' },
+  { key: 'pitchType', label: 'Pitch Type' },
+]
+
+export const ALL_SECTION_INPUTS: SectionInputKey[] = ['playerPicker', 'playerType', 'season', 'pitchType']
+
 export interface InputSection {
   id: string
   label: string            // user-chosen name, e.g. "Player One"
   elementIds: string[]     // SceneElement IDs bound to this section
+  enabledInputs: SectionInputKey[]  // which input controls to show
   playerType: 'pitcher' | 'batter'
   playerId?: number
   playerName?: string
