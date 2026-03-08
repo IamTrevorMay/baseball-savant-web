@@ -45,26 +45,27 @@ export interface TemplateBinding {
 
 export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percentile' | 'generic'
 
-// ── Input Field Types (for custom template config panels) ────────────────
+// ── Input Sections (for template builder) ────────────────────────────────
 
-export type InputFieldType =
-  | 'playerType' | 'primaryStat' | 'secondaryStat' | 'tertiaryStat'
-  | 'dateRange' | 'pitchType' | 'sortDir' | 'count' | 'minSample'
-  | 'playerPicker' | 'title'
+export const MAX_INPUT_SECTIONS = 5
 
-export const INPUT_FIELD_META: { type: InputFieldType; label: string; description: string }[] = [
-  { type: 'playerType', label: 'Player Type', description: 'Pitcher/Batter toggle' },
-  { type: 'primaryStat', label: 'Primary Stat', description: 'Main stat selector' },
-  { type: 'secondaryStat', label: 'Secondary Stat', description: 'Optional 2nd stat' },
-  { type: 'tertiaryStat', label: 'Tertiary Stat', description: 'Optional 3rd stat' },
-  { type: 'dateRange', label: 'Date Range', description: 'Season or custom dates' },
-  { type: 'pitchType', label: 'Pitch Type', description: 'Filter by pitch type' },
-  { type: 'sortDir', label: 'Sort Direction', description: 'Asc/Desc toggle' },
-  { type: 'count', label: 'Count', description: 'Number of results' },
-  { type: 'minSample', label: 'Min Sample', description: 'Minimum qualifier' },
-  { type: 'playerPicker', label: 'Player Search', description: 'Player autocomplete' },
-  { type: 'title', label: 'Title Override', description: 'Custom title text' },
-]
+export interface InputSection {
+  id: string
+  label: string            // user-chosen name, e.g. "Player One"
+  elementIds: string[]     // SceneElement IDs bound to this section
+  playerType: 'pitcher' | 'batter'
+  playerId?: number
+  playerName?: string
+  gameYear: number         // default 2025
+  pitchType?: string       // undefined = all
+}
+
+export interface SectionBinding {
+  sectionId: string
+  metric: string           // SCENE_METRICS key, e.g. 'avg_velo'; '__player__' for player-image
+  format?: 'raw' | '1f' | 'integer' | 'percent' | '3f'
+  targetProp?: string      // auto-detected if omitted
+}
 
 export interface RepeaterConfig {
   enabled: boolean
@@ -86,7 +87,7 @@ export interface CustomTemplateRecord {
   elements: SceneElement[]
   schemaType: DataSchemaType
   repeater: RepeaterConfig | null
-  inputFields?: InputFieldType[]
+  inputSections?: InputSection[]
   base_template_id?: string
   created_at: string
   updated_at: string
@@ -108,6 +109,7 @@ export interface SceneElement {
   props: Record<string, any>
   dataBinding?: DataBinding
   templateBinding?: TemplateBinding
+  sectionBinding?: SectionBinding
   enterFrame?: number
   exitFrame?: number
   keyframes?: Keyframe[]

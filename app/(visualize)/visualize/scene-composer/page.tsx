@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, InputFieldType, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
@@ -13,7 +13,6 @@ import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPan
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfigPanel'
 import PercentileConfigPanel from '@/components/visualize/scene-composer/PercentileConfigPanel'
-import CustomTemplateConfigPanel from '@/components/visualize/scene-composer/CustomTemplateConfigPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
 import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
@@ -1164,14 +1163,11 @@ export default function SceneComposerPage() {
         ) : scene.templateConfig ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             {scene.templateConfig.templateId.startsWith('custom:') ? (
-              <CustomTemplateConfigPanel
-                config={scene.templateConfig}
-                inputFields={customTemplateRecord?.inputFields || []}
-                templateName={scene.name}
-                onUpdateConfig={updateTemplateConfig}
-                onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
-                loading={templateLoading}
-              />
+              <div className="p-3">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium mb-1">Custom Template</div>
+                <div className="text-[12px] text-cyan-400 font-semibold mb-3">{scene.name}</div>
+                <p className="text-[10px] text-zinc-600">Edit in Template Builder to configure input sections.</p>
+              </div>
             ) : (scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
               <OutingConfigPanel
                 config={scene.templateConfig}

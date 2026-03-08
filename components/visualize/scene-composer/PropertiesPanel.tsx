@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { SceneElement, DataBinding, DynamicSlot } from '@/lib/sceneTypes'
+import { SceneElement, DataBinding, DynamicSlot, InputSection, SectionBinding } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import { TEAM_OPTIONS } from '@/lib/stadiumData'
@@ -30,6 +30,8 @@ interface Props {
   fps?: number
   dynamicSlots?: DynamicSlot[]
   onAddDynamicSlot?: () => string  // returns new slot ID
+  inputSections?: InputSection[]
+  onUpdateSectionBinding?: (binding: SectionBinding | undefined) => void
 }
 
 // ── Field Helpers ────────────────────────────────────────────────────────────
@@ -994,7 +996,7 @@ function TypographySection({ p, onUpdateProps }: { p: Record<string, any>; onUpd
 
 // ── Panel ────────────────────────────────────────────────────────────────────
 
-export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30, dynamicSlots, onAddDynamicSlot }: Props) {
+export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUpdateBinding, onFetchBinding, onDelete, onDuplicate, onUpdateKeyframes, bindingLoading, fps = 30, dynamicSlots, onAddDynamicSlot, inputSections, onUpdateSectionBinding }: Props) {
   const p = element.props
   const b = element.dataBinding
   const showBinding = true
@@ -1143,6 +1145,76 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
 
       {/* Team Color Theme */}
       <TeamColorSection element={element} onUpdate={onUpdate} onUpdateProps={onUpdateProps} />
+
+      {/* Section Binding (Template Builder) */}
+      {inputSections && inputSections.length > 0 && element.sectionBinding && onUpdateSectionBinding && (
+        <Section title="Section Binding">
+          {(() => {
+            const sec = inputSections.find(s => s.id === element.sectionBinding!.sectionId)
+            const isPlayerImage = element.type === 'player-image'
+            return (
+              <div className="space-y-2">
+                {/* Section name badge */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-600/20 border border-emerald-600/30 text-emerald-400">
+                    {sec?.label || 'Unknown'}
+                  </span>
+                </div>
+
+                {isPlayerImage ? (
+                  <p className="text-[10px] text-zinc-500">Auto-binds to section player</p>
+                ) : (
+                  <>
+                    {/* Metric selector */}
+                    <div>
+                      <label className="text-[10px] text-zinc-500 block mb-1">Metric</label>
+                      <select
+                        value={element.sectionBinding!.metric}
+                        onChange={e => onUpdateSectionBinding({
+                          ...element.sectionBinding!,
+                          metric: e.target.value,
+                        })}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+                      >
+                        {SCENE_METRICS.map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Format selector */}
+                    <div>
+                      <label className="text-[10px] text-zinc-500 block mb-1">Format</label>
+                      <select
+                        value={element.sectionBinding!.format || 'raw'}
+                        onChange={e => onUpdateSectionBinding({
+                          ...element.sectionBinding!,
+                          format: e.target.value as SectionBinding['format'],
+                        })}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+                      >
+                        <option value="raw">Raw</option>
+                        <option value="1f">1 decimal (96.2)</option>
+                        <option value="integer">Integer (96)</option>
+                        <option value="percent">Percent (42.1%)</option>
+                        <option value="3f">3 decimals (.321)</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                {/* Remove from section */}
+                <button
+                  onClick={() => onUpdateSectionBinding(undefined)}
+                  className="w-full px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-[10px] text-zinc-500 hover:text-red-400 hover:border-red-600/30 transition"
+                >
+                  Remove from Section
+                </button>
+              </div>
+            )
+          })()}
+        </Section>
+      )}
 
       {/* Data Binding */}
       {showBinding && (

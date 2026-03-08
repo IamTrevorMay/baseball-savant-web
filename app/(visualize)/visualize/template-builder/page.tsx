@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Scene, SceneElement, ElementType, DataSchemaType, DataBinding, DynamicSlot,
-  RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputFieldType,
+  RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputSection, SectionBinding,
   createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
@@ -19,7 +19,7 @@ import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlot
 import DataSchemaSelector from '@/components/visualize/template-builder/DataSchemaSelector'
 import TemplateBindingSection from '@/components/visualize/template-builder/TemplateBindingSection'
 import RepeaterPanel from '@/components/visualize/template-builder/RepeaterPanel'
-import InputFieldsPanel from '@/components/visualize/template-builder/InputFieldsPanel'
+import InputSectionsPanel from '@/components/visualize/template-builder/InputSectionsPanel'
 
 function defaultScene(): Scene {
   return {
@@ -48,7 +48,8 @@ export default function TemplateBuilderPage() {
   const [zoom, setZoom] = useState(0.5)
   const [schemaType, setSchemaType] = useState<DataSchemaType>('leaderboard')
   const [repeater, setRepeater] = useState<RepeaterConfig | null>(null)
-  const [inputFields, setInputFields] = useState<InputFieldType[]>([])
+  const [inputSections, setInputSections] = useState<InputSection[]>([])
+  const [sectionFetchLoading, setSectionFetchLoading] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveId, setSaveId] = useState<string | null>(editId)
   const [loaded, setLoaded] = useState(false)
@@ -79,7 +80,7 @@ export default function TemplateBuilderPage() {
             })
             setSchemaType(t.schemaType)
             setRepeater(t.repeater)
-            setInputFields(t.inputFields || [])
+            setInputSections(t.inputSections || [])
             setSaveId(t.id)
           }
         })
@@ -278,6 +279,112 @@ export default function TemplateBuilderPage() {
     }
   }, [scene.elements, scene.dynamicSlots, updateElementProps])
 
+  // ── Input Sections ─────────────────────────────────────────────────────
+
+  const addInputSection = useCallback((name: string, elementIds: string[]) => {
+    const sectionId = Math.random().toString(36).slice(2, 10)
+    const section: InputSection = {
+      id: sectionId,
+      label: name,
+      elementIds,
+      playerType: 'pitcher',
+      gameYear: 2025,
+    }
+    setInputSections(prev => [...prev, section])
+    // Set sectionBinding on each element
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => {
+        if (!elementIds.includes(e.id)) return e
+        const binding: SectionBinding = e.type === 'player-image'
+          ? { sectionId, metric: '__player__' }
+          : { sectionId, metric: 'avg_velo', format: '1f' }
+        return { ...e, sectionBinding: binding }
+      }),
+    }))
+  }, [])
+
+  const updateInputSection = useCallback((id: string, updates: Partial<InputSection>) => {
+    setInputSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+  }, [])
+
+  const removeInputSection = useCallback((id: string) => {
+    setInputSections(prev => prev.filter(s => s.id !== id))
+    // Clear sectionBinding from elements that belong to this section
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e =>
+        e.sectionBinding?.sectionId === id ? { ...e, sectionBinding: undefined } : e
+      ),
+    }))
+  }, [])
+
+  const fetchInputSection = useCallback(async (sectionId: string) => {
+    const section = inputSections.find(s => s.id === sectionId)
+    if (!section?.playerId) return
+
+    const sectionElements = scene.elements.filter(e =>
+      e.sectionBinding?.sectionId === sectionId
+    )
+    if (sectionElements.length === 0) return
+
+    setSectionFetchLoading(sectionId)
+    try {
+      // Collect metrics (excluding __player__)
+      const metrics = new Set<string>()
+      for (const el of sectionElements) {
+        if (el.sectionBinding && el.sectionBinding.metric !== '__player__') {
+          metrics.add(el.sectionBinding.metric)
+        }
+      }
+
+      let stats: Record<string, any> = {}
+      if (metrics.size > 0) {
+        const params = new URLSearchParams({
+          playerId: String(section.playerId),
+          metrics: Array.from(metrics).join(','),
+          gameYear: String(section.gameYear),
+        })
+        if (section.pitchType) params.set('pitchType', section.pitchType)
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        stats = data.stats || {}
+      }
+
+      // Apply stats to elements
+      for (const el of sectionElements) {
+        if (!el.sectionBinding) continue
+        const { metric } = el.sectionBinding
+
+        if (metric === '__player__') {
+          // Player-image: set playerId and playerName
+          updateElementProps(el.id, { playerId: section.playerId, playerName: section.playerName || '' })
+        } else {
+          const val = stats[metric]
+          const sublabel = `${section.playerName || ''} ${section.gameYear}`.trim()
+          applyStatToElement(el.id, el.type, metric, val, section.playerName || '', sublabel)
+        }
+      }
+    } catch (err) {
+      console.error('Section fetch error:', err)
+    } finally {
+      setSectionFetchLoading(null)
+    }
+  }, [inputSections, scene.elements, updateElementProps])
+
+  const highlightSectionElements = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
+    setSelectedIds(new Set(ids))
+    setSelectedId(ids[0])
+  }, [])
+
+  const updateSectionBinding = useCallback((id: string, binding: SectionBinding | undefined) => {
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => (e.id === id ? { ...e, sectionBinding: binding } : e)),
+    }))
+  }, [])
+
   const deleteElement = useCallback(
     (id: string) => {
       setScene(prev => ({ ...prev, elements: prev.elements.filter(e => e.id !== id) }))
@@ -288,6 +395,14 @@ export default function TemplateBuilderPage() {
         const newIds = prev.elementIds.filter(eid => eid !== id)
         if (newIds.length === 0) return null
         return { ...prev, elementIds: newIds }
+      })
+      // Also remove from input sections; remove section if empty
+      setInputSections(prev => {
+        const updated = prev.map(s => ({
+          ...s,
+          elementIds: s.elementIds.filter(eid => eid !== id),
+        }))
+        return updated.filter(s => s.elementIds.length > 0)
       })
     },
     [selectedId]
@@ -455,7 +570,7 @@ export default function TemplateBuilderPage() {
         elements: scene.elements,
         schemaType,
         repeater,
-        inputFields,
+        inputSections,
         base_template_id: forkId || undefined,
       }
 
@@ -564,7 +679,7 @@ export default function TemplateBuilderPage() {
     })
     setSchemaType(template.schemaType)
     setRepeater(template.repeater)
-    setInputFields(template.inputFields || [])
+    setInputSections(template.inputSections || [])
     setSaveId(template.id)
     setSelectedId(null)
     setSelectedIds(new Set())
@@ -723,6 +838,8 @@ export default function TemplateBuilderPage() {
                   bindingLoading={bindingLoading}
                   dynamicSlots={scene.dynamicSlots}
                   onAddDynamicSlot={addDynamicSlot}
+                  inputSections={inputSections}
+                  onUpdateSectionBinding={binding => updateSectionBinding(selectedElement.id, binding)}
                 />
                 {/* Template binding section */}
                 <div className="px-3 pb-3">
@@ -735,9 +852,16 @@ export default function TemplateBuilderPage() {
               </div>
             ) : (
               <div className="p-3 space-y-4">
-                <InputFieldsPanel
-                  enabledFields={inputFields}
-                  onChange={setInputFields}
+                <InputSectionsPanel
+                  sections={inputSections}
+                  selectedIds={selectedIds}
+                  elements={scene.elements}
+                  onAddSection={addInputSection}
+                  onUpdateSection={updateInputSection}
+                  onRemoveSection={removeInputSection}
+                  onFetchSection={fetchInputSection}
+                  onSelectElements={highlightSectionElements}
+                  fetchLoading={sectionFetchLoading}
                 />
                 <div className="h-px bg-zinc-800" />
                 <DynamicSlotsPanel
@@ -777,9 +901,9 @@ export default function TemplateBuilderPage() {
             {boundCount} bound
           </span>
         )}
-        {inputFields.length > 0 && (
+        {inputSections.length > 0 && (
           <span className="text-[10px] text-emerald-500">
-            {inputFields.length} input field{inputFields.length !== 1 ? 's' : ''}
+            {inputSections.length} section{inputSections.length !== 1 ? 's' : ''}
           </span>
         )}
         {repeater?.enabled && (
