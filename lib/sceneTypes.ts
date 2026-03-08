@@ -35,6 +35,41 @@ export interface Keyframe {
   easing: EasingFunction
 }
 
+// ── Template Binding (for custom template builder) ──────────────────────────
+
+export interface TemplateBinding {
+  fieldPath: string          // e.g. 'player_name', 'primary_value'
+  targetProp?: string        // which prop to fill (auto-detected if omitted)
+  format?: 'raw' | '1f' | 'integer' | 'percent' | '3f'
+}
+
+export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percentile' | 'generic'
+
+export interface RepeaterConfig {
+  enabled: boolean
+  elementIds: string[]
+  direction: 'vertical' | 'horizontal'
+  offset: number
+  count: number
+}
+
+export interface CustomTemplateRecord {
+  id: string
+  name: string
+  description: string
+  category: string
+  icon: string
+  width: number
+  height: number
+  background: string
+  elements: SceneElement[]
+  schemaType: DataSchemaType
+  repeater: RepeaterConfig | null
+  base_template_id?: string
+  created_at: string
+  updated_at: string
+}
+
 // ── Scene Element ───────────────────────────────────────────────────────────
 
 export interface SceneElement {
@@ -50,6 +85,7 @@ export interface SceneElement {
   locked: boolean
   props: Record<string, any>
   dataBinding?: DataBinding
+  templateBinding?: TemplateBinding
   enterFrame?: number
   exitFrame?: number
   keyframes?: Keyframe[]

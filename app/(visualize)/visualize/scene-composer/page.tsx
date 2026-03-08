@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
+import { createCustomRebuild } from '@/lib/customTemplateRebuild'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlotsPanel'
@@ -589,6 +590,23 @@ export default function SceneComposerPage() {
     fetchAndRebuildTemplate(config)
   }
 
+  function loadCustomTemplate(template: CustomTemplateRecord) {
+    const rebuild = createCustomRebuild(template)
+    const config: TemplateConfig = {
+      templateId: `custom:${template.id}`,
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+    }
+    const initial = rebuild(config, [])
+    setScene({ ...initial, templateConfig: config })
+    setSelectedId(null)
+    setSelectedIds(new Set())
+    setCurrentFrame(0)
+    setPlaying(false)
+    setCustomTemplateId(template.id)
+  }
+
   function updateTemplateConfig(updates: Partial<TemplateConfig>) {
     if (!scene.templateConfig) return
     const newConfig = { ...scene.templateConfig, ...updates }
@@ -1014,7 +1032,7 @@ export default function SceneComposerPage() {
       <div className="flex-1 flex min-h-0">
         {/* Left: Element Library */}
         <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} />
+          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} onLoadCustomTemplate={loadCustomTemplate} />
         </div>
 
         {/* Center: Canvas */}
