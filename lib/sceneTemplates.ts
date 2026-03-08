@@ -1881,25 +1881,25 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         text: 'Pitch Type Metrics', fontSize: 22, fontWeight: 800, color: '#e4e4e7', textAlign: 'center',
       }))
 
-      // Table header
+      // Table header — 11 columns matching outing report layout
       const tCols = [
-        { label: 'Type', x: 30, w: 140, align: 'left' },
-        { label: '#', x: 175, w: 45, align: 'center' },
-        { label: 'Velo', x: 225, w: 75, align: 'center' },
-        { label: 'IVB', x: 305, w: 70, align: 'center' },
-        { label: 'HB', x: 380, w: 65, align: 'center' },
-        { label: 'Str%', x: 450, w: 65, align: 'center' },
-        { label: 'SwStr%', x: 520, w: 70, align: 'center' },
-        { label: 'CSW%', x: 595, w: 70, align: 'center' },
-        { label: 'xSLGcon', x: 670, w: 85, align: 'center' },
-        { label: 'Stuff+', x: 760, w: 80, align: 'center' },
-        { label: 'Triton+', x: 845, w: 80, align: 'center' },
+        { label: 'Pitch', x: 30, w: 150, align: 'left' },
+        { label: '#', x: 185, w: 45, align: 'center' },
+        { label: 'Velo', x: 235, w: 75, align: 'center' },
+        { label: 'IVB', x: 315, w: 70, align: 'center' },
+        { label: 'HBreak', x: 390, w: 80, align: 'center' },
+        { label: 'Ext', x: 475, w: 65, align: 'center' },
+        { label: 'Whiffs', x: 545, w: 70, align: 'center' },
+        { label: 'Stuff+', x: 620, w: 75, align: 'center' },
+        { label: 'Unique', x: 700, w: 70, align: 'center' },
+        { label: 'Decp', x: 775, w: 70, align: 'center' },
+        { label: 'Cmd+', x: 850, w: 80, align: 'center' },
       ]
 
       const headerY = 830
       for (const col of tCols) {
         elements.push(el('text', col.x, headerY, col.w, 24, {
-          text: col.label, fontSize: 12, fontWeight: 700, color: '#52525b',
+          text: col.label, fontSize: 13, fontWeight: 700, color: '#52525b',
           textAlign: col.align, textTransform: 'uppercase',
         }))
       }
@@ -1923,6 +1923,11 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
           }))
         }
 
+        // Divider line between rows
+        elements.push(el('shape', 30, ry + rowH, 900, 1, {
+          shape: 'rect', fill: '#374151', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+        }))
+
         // Color dot
         const dotColor = getPitchColor(m.pitch_name)
         elements.push(el('shape', 38, ry + 16, 18, 18, {
@@ -1930,69 +1935,39 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         }))
 
         // Pitch name
-        elements.push(el('text', 60, ry + 8, 110, rowH - 16, {
-          text: m.pitch_name, fontSize: 14, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
+        elements.push(el('text', 60, ry + 4, 120, rowH - 8, {
+          text: m.pitch_name, fontSize: 16, fontWeight: 600, color: '#e4e4e7', textAlign: 'left',
         }))
 
-        // Count
-        elements.push(el('text', tCols[1].x, ry + 8, tCols[1].w, rowH - 16, {
-          text: String(m.count), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
-        }))
-
-        // Velo with diff
-        const diffColor = m.velo_diff > 0 ? '#ef4444' : m.velo_diff < -2 ? '#06b6d4' : '#71717a'
-        const diffStr = m.velo_diff !== 0 ? ` (${m.velo_diff > 0 ? '+' : ''}${m.velo_diff.toFixed(0)})` : ''
-        elements.push(el('text', tCols[2].x, ry + 8, tCols[2].w, rowH - 16, {
-          text: `${m.avg_velo.toFixed(1)}`, fontSize: 14, fontWeight: 500, color: '#e4e4e7', textAlign: 'center',
-        }))
-        if (diffStr) {
-          elements.push(el('text', tCols[2].x + 40, ry + 8, 40, rowH - 16, {
-            text: diffStr, fontSize: 10, fontWeight: 500, color: diffColor, textAlign: 'left',
+        // Data values
+        const vals = [
+          String(m.count),
+          m.avg_velo.toFixed(1),
+          m.avg_ivb.toFixed(1),
+          m.avg_hb.toFixed(1),
+          m.avg_ext.toFixed(1),
+          String(m.whiffs),
+          String(Math.round(m.stuff_plus)),
+          m.unique_score != null ? m.unique_score.toFixed(1) : '--',
+          m.deception_score != null ? m.deception_score.toFixed(1) : '--',
+          m.cmd_plus != null ? String(Math.round(m.cmd_plus)) : '--',
+        ]
+        for (let j = 0; j < vals.length; j++) {
+          const isStuffPlus = j === 6
+          const isCmdPlus = j === 9
+          const isPlusCol = isStuffPlus || isCmdPlus
+          let color = '#a1a1aa'
+          if (isStuffPlus) {
+            color = m.stuff_plus >= 100 ? '#10b981' : '#ef4444'
+          } else if (isCmdPlus && m.cmd_plus != null) {
+            color = m.cmd_plus >= 100 ? '#10b981' : '#ef4444'
+          }
+          elements.push(el('text', tCols[j + 1].x, ry + 4, tCols[j + 1].w, rowH - 8, {
+            text: vals[j], fontSize: 16, fontWeight: isPlusCol ? 700 : 500,
+            color,
+            textAlign: 'center',
           }))
         }
-
-        // IVB, HB
-        elements.push(el('text', tCols[3].x, ry + 8, tCols[3].w, rowH - 16, {
-          text: m.avg_ivb.toFixed(1), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
-        }))
-        elements.push(el('text', tCols[4].x, ry + 8, tCols[4].w, rowH - 16, {
-          text: m.avg_hb.toFixed(1), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
-        }))
-
-        // Str%
-        elements.push(el('text', tCols[5].x, ry + 8, tCols[5].w, rowH - 16, {
-          text: m.str_pct.toFixed(0) + '%', fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'center',
-        }))
-
-        // SwStr%
-        const swstrColor = m.swstr_pct >= 15 ? '#10b981' : m.swstr_pct >= 10 ? '#f59e0b' : '#a1a1aa'
-        elements.push(el('text', tCols[6].x, ry + 8, tCols[6].w, rowH - 16, {
-          text: m.swstr_pct.toFixed(1) + '%', fontSize: 14, fontWeight: 500, color: swstrColor, textAlign: 'center',
-        }))
-
-        // CSW%
-        const cswColor = m.csw_pct >= 32 ? '#10b981' : m.csw_pct >= 25 ? '#f59e0b' : '#a1a1aa'
-        elements.push(el('text', tCols[7].x, ry + 8, tCols[7].w, rowH - 16, {
-          text: m.csw_pct.toFixed(1) + '%', fontSize: 14, fontWeight: 600, color: cswColor, textAlign: 'center',
-        }))
-
-        // xSLGcon
-        const xslgColor = m.xslgcon > 0 ? (m.xslgcon <= 0.300 ? '#10b981' : m.xslgcon <= 0.500 ? '#f59e0b' : '#ef4444') : '#71717a'
-        elements.push(el('text', tCols[8].x, ry + 8, tCols[8].w, rowH - 16, {
-          text: m.xslgcon > 0 ? m.xslgcon.toFixed(3) : '--', fontSize: 14, fontWeight: 500, color: xslgColor, textAlign: 'center',
-        }))
-
-        // Stuff+
-        const stuffColor = m.stuff_plus >= 100 ? '#10b981' : '#ef4444'
-        elements.push(el('text', tCols[9].x, ry + 8, tCols[9].w, rowH - 16, {
-          text: String(Math.round(m.stuff_plus)), fontSize: 14, fontWeight: 700, color: stuffColor, textAlign: 'center',
-        }))
-
-        // Triton+
-        const tritonColor = m.triton_plus >= 100 ? '#10b981' : '#ef4444'
-        elements.push(el('text', tCols[10].x, ry + 8, tCols[10].w, rowH - 16, {
-          text: String(Math.round(m.triton_plus)), fontSize: 14, fontWeight: 700, color: tritonColor, textAlign: 'center',
-        }))
       }
 
       return {

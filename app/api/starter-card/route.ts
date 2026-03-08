@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const season = yearRes.data?.[0]?.game_year || 2025
 
     // Run all queries in parallel
-    const [boxscoreRes, allPitchesRes, metaRes, playerRes, seasonUsageRes, seasonMovementRes] = await Promise.all([
+    const [boxscoreRes, allPitchesRes, metaRes, playerRes, seasonUsageRes, seasonMovementRes, deceptionRes] = await Promise.all([
       // 1. MLB boxscore
       fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`).then(r => r.json()).catch(() => null),
 
@@ -106,6 +106,13 @@ export async function GET(req: NextRequest) {
           AND pitch_name IS NOT NULL
           AND pfx_x IS NOT NULL AND pfx_z IS NOT NULL
         GROUP BY pitch_name
+      `),
+
+      // 7. Season-level deception scores
+      q(`
+        SELECT pitch_name, unique_score, deception_score
+        FROM pitcher_season_deception
+        WHERE pitcher = ${pitcherId} AND game_year = ${season}
       `),
     ])
 
@@ -217,6 +224,15 @@ export async function GET(req: NextRequest) {
     }
     const avgFbVelo = fbVeloN > 0 ? fbVeloSum / fbVeloN : null
 
+    // Build deception lookup
+    const deceptionByType: Record<string, { unique_score: number | null; deception_score: number | null }> = {}
+    for (const r of (deceptionRes.data || [])) {
+      deceptionByType[r.pitch_name] = {
+        unique_score: r.unique_score != null ? Number(r.unique_score) : null,
+        deception_score: r.deception_score != null ? Number(r.deception_score) : null,
+      }
+    }
+
     const pitchMetrics: any[] = []
     const usageData: any[] = []
 
@@ -262,6 +278,12 @@ export async function GET(req: NextRequest) {
 
       const veloDiff = avgFbVelo != null ? avgVelo - avgFbVelo : 0
 
+      // Avg extension
+      const extArr = pts.filter((p: any) => p.release_extension != null).map((p: any) => p.release_extension)
+      const avgExt = extArr.length > 0 ? extArr.reduce((s: number, v: number) => s + v, 0) / extArr.length : 0
+
+      const dec = deceptionByType[ptName] || {}
+
       pitchMetrics.push({
         pitch_name: ptName,
         count,
@@ -269,11 +291,16 @@ export async function GET(req: NextRequest) {
         velo_diff: +veloDiff.toFixed(1),
         avg_ivb: +avgIvb.toFixed(1),
         avg_hb: +avgHb.toFixed(1),
+        avg_ext: +avgExt.toFixed(1),
         str_pct: +strPct.toFixed(1),
         swstr_pct: +swstrPct.toFixed(1),
         csw_pct: +ptCswPct.toFixed(1),
         xslgcon: +xslgcon.toFixed(3),
         stuff_plus: +avgStuff.toFixed(0),
+        whiffs: ptSwStr,
+        unique_score: dec.unique_score ?? null,
+        deception_score: dec.deception_score ?? null,
+        cmd_plus: null as number | null, // filled in below
         triton_plus: 0, // filled in below
       })
 
@@ -321,10 +348,11 @@ export async function GET(req: NextRequest) {
     const tritonGrade = plusToGrade(tritonPlus)
     const startGrade = tritonGrade
 
-    // Fill in triton_plus per pitch
+    // Fill in cmd_plus and triton_plus per pitch
     for (const pm of pitchMetrics) {
-      const ptCmd = cmd.byPitch[pm.pitch_name]?.cmd_plus ?? 100
-      pm.triton_plus = +((0.5 * pm.stuff_plus + 0.5 * ptCmd)).toFixed(0)
+      const ptCmd = cmd.byPitch[pm.pitch_name]?.cmd_plus ?? null
+      pm.cmd_plus = ptCmd != null ? +ptCmd.toFixed(0) : null
+      pm.triton_plus = +((0.5 * pm.stuff_plus + 0.5 * (ptCmd ?? 100))).toFixed(0)
     }
 
     // ── Primary fastball ─────────────────────────────────────────────────

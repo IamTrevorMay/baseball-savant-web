@@ -56,10 +56,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [])
 
   async function loadProfile() {
-    const res = await fetch('/api/me')
-    const { profile: prof, permissions: perms } = await res.json()
-    setProfile(prof)
-    setPermissions(perms ?? [])
+    try {
+      const res = await fetch('/api/me')
+      if (!res.ok) { setLoading(false); return }
+      const { profile: prof, permissions: perms } = await res.json()
+      setProfile(prof)
+      setPermissions(perms ?? [])
+    } catch { /* ignore */ }
     setLoading(false)
   }
 
