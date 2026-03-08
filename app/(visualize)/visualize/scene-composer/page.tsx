@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, InputFieldType, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
@@ -13,6 +13,7 @@ import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPan
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfigPanel'
 import PercentileConfigPanel from '@/components/visualize/scene-composer/PercentileConfigPanel'
+import CustomTemplateConfigPanel from '@/components/visualize/scene-composer/CustomTemplateConfigPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
 import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
@@ -36,6 +37,7 @@ export default function SceneComposerPage() {
   const [showSaveMenu, setShowSaveMenu] = useState(false)
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false)
   const [customTemplateId, setCustomTemplateId] = useState<string | null>(null)
+  const [customTemplateRecord, setCustomTemplateRecord] = useState<CustomTemplateRecord | null>(null)
 
   // Timeline state
   const [showTimeline, setShowTimeline] = useState(false)
@@ -467,6 +469,7 @@ export default function SceneComposerPage() {
     setPlaying(false)
     setShowGallery(false)
     setCustomTemplateId(null)
+    setCustomTemplateRecord(null)
   }
 
   async function handleUpdateTemplate() {
@@ -483,6 +486,85 @@ export default function SceneComposerPage() {
     : null
 
   async function fetchAndRebuildTemplate(config: TemplateConfig) {
+    // ── Custom templates ─────────────────────────────────────────────────
+    if (config.templateId.startsWith('custom:') && customTemplateRecord) {
+      setTemplateLoading(true)
+      try {
+        const rebuild = createCustomRebuild(customTemplateRecord)
+        const schemaType = customTemplateRecord.schemaType
+
+        if (schemaType === 'outing' || schemaType === 'starter-card') {
+          if (!config.playerId || !config.gamePk) {
+            const rebuilt = rebuild(config, null)
+            setScene({ ...rebuilt, templateConfig: config })
+            setSelectedId(null)
+            setSelectedIds(new Set())
+            return
+          }
+          const endpoint = schemaType === 'starter-card' ? '/api/starter-card' : '/api/pitcher-outing'
+          const res = await fetch(`${endpoint}?pitcherId=${config.playerId}&gamePk=${config.gamePk}`)
+          const json = await res.json()
+          const data = schemaType === 'starter-card' ? json.data : json.outing
+          const rebuilt = rebuild(config, data || null)
+          setScene({ ...rebuilt, templateConfig: config })
+          setSelectedId(null)
+          setSelectedIds(new Set())
+          return
+        }
+
+        if (schemaType === 'percentile') {
+          if (!config.playerId) {
+            const rebuilt = rebuild(config, [])
+            setScene({ ...rebuilt, templateConfig: config })
+            setSelectedId(null)
+            setSelectedIds(new Set())
+            return
+          }
+          const year = config.dateRange.type === 'season' ? config.dateRange.year : 2025
+          const res = await fetch(`/api/scene-stats?percentile=true&playerId=${config.playerId}&playerType=${config.playerType}&gameYear=${year}`)
+          const json = await res.json()
+          const rebuilt = rebuild(config, json.percentiles || [])
+          setScene({ ...rebuilt, templateConfig: config })
+          setSelectedId(null)
+          setSelectedIds(new Set())
+          return
+        }
+
+        // Default: leaderboard / generic fetch
+        const params = new URLSearchParams({
+          leaderboard: 'true',
+          metric: config.primaryStat,
+          playerType: config.playerType,
+          limit: String(config.count || 5),
+          sortDir: config.sortDir || 'desc',
+          minSample: String(config.minSample ?? (config.playerType === 'batter' ? 150 : 300)),
+        })
+        if (config.dateRange.type === 'season') {
+          params.set('gameYear', String(config.dateRange.year))
+        } else {
+          params.set('dateFrom', config.dateRange.from)
+          params.set('dateTo', config.dateRange.to)
+        }
+        if (config.pitchType) params.set('pitchType', config.pitchType)
+        if (config.secondaryStat) params.set('secondaryMetric', config.secondaryStat)
+        if (config.tertiaryStat) params.set('tertiaryMetric', config.tertiaryStat)
+
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        const rows: TemplateDataRow[] = data.leaderboard || []
+        const rebuilt = rebuild(config, rows)
+        setScene({ ...rebuilt, templateConfig: config })
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      } catch (err) {
+        console.error('Custom template fetch error:', err)
+      } finally {
+        setTemplateLoading(false)
+      }
+      return
+    }
+
     const template = DATA_DRIVEN_TEMPLATES.find(t => t.id === config.templateId)
     if (!template) return
 
@@ -605,6 +687,7 @@ export default function SceneComposerPage() {
     setCurrentFrame(0)
     setPlaying(false)
     setCustomTemplateId(template.id)
+    setCustomTemplateRecord(template)
   }
 
   function updateTemplateConfig(updates: Partial<TemplateConfig>) {
@@ -1080,7 +1163,16 @@ export default function SceneComposerPage() {
           </div>
         ) : scene.templateConfig ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            {(scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
+            {scene.templateConfig.templateId.startsWith('custom:') ? (
+              <CustomTemplateConfigPanel
+                config={scene.templateConfig}
+                inputFields={customTemplateRecord?.inputFields || []}
+                templateName={scene.name}
+                onUpdateConfig={updateTemplateConfig}
+                onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
+                loading={templateLoading}
+              />
+            ) : (scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
               <OutingConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}

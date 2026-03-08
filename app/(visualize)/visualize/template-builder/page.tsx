@@ -4,14 +4,14 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Scene, SceneElement, ElementType, DataSchemaType, DataBinding, DynamicSlot,
-  RepeaterConfig, TemplateBinding, CustomTemplateRecord,
+  RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputFieldType,
   createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { getSampleData } from '@/lib/templateBindingSchemas'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
-import { DATA_DRIVEN_TEMPLATES } from '@/lib/sceneTemplates'
+import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
@@ -19,6 +19,7 @@ import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlot
 import DataSchemaSelector from '@/components/visualize/template-builder/DataSchemaSelector'
 import TemplateBindingSection from '@/components/visualize/template-builder/TemplateBindingSection'
 import RepeaterPanel from '@/components/visualize/template-builder/RepeaterPanel'
+import InputFieldsPanel from '@/components/visualize/template-builder/InputFieldsPanel'
 
 function defaultScene(): Scene {
   return {
@@ -47,6 +48,7 @@ export default function TemplateBuilderPage() {
   const [zoom, setZoom] = useState(0.5)
   const [schemaType, setSchemaType] = useState<DataSchemaType>('leaderboard')
   const [repeater, setRepeater] = useState<RepeaterConfig | null>(null)
+  const [inputFields, setInputFields] = useState<InputFieldType[]>([])
   const [saving, setSaving] = useState(false)
   const [saveId, setSaveId] = useState<string | null>(editId)
   const [loaded, setLoaded] = useState(false)
@@ -77,6 +79,7 @@ export default function TemplateBuilderPage() {
             })
             setSchemaType(t.schemaType)
             setRepeater(t.repeater)
+            setInputFields(t.inputFields || [])
             setSaveId(t.id)
           }
         })
@@ -452,6 +455,7 @@ export default function TemplateBuilderPage() {
         elements: scene.elements,
         schemaType,
         repeater,
+        inputFields,
         base_template_id: forkId || undefined,
       }
 
@@ -534,6 +538,39 @@ export default function TemplateBuilderPage() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   })
+
+  // ── Template Loading ──────────────────────────────────────────────────────
+
+  function loadDataDrivenIntoBuilder(template: DataDrivenTemplate) {
+    const config = { templateId: template.id, ...template.defaultConfig }
+    const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
+    const built = template.rebuild(config, sampleData)
+    setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+    setSchemaType('leaderboard')
+    setSelectedId(null)
+    setSelectedIds(new Set())
+  }
+
+  function loadCustomIntoBuilder(template: CustomTemplateRecord) {
+    setScene({
+      id: template.id,
+      name: template.name,
+      width: template.width,
+      height: template.height,
+      background: template.background,
+      elements: template.elements,
+      duration: 5,
+      fps: 30,
+    })
+    setSchemaType(template.schemaType)
+    setRepeater(template.repeater)
+    setInputFields(template.inputFields || [])
+    setSaveId(template.id)
+    setSelectedId(null)
+    setSelectedIds(new Set())
+    // Update URL
+    window.history.replaceState(null, '', `/visualize/template-builder?edit=${template.id}`)
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -652,7 +689,7 @@ export default function TemplateBuilderPage() {
         {/* Left: Element Library (elements + presets tabs only) */}
         {!previewing && (
           <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} />
+            <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
           </div>
         )}
 
@@ -698,6 +735,11 @@ export default function TemplateBuilderPage() {
               </div>
             ) : (
               <div className="p-3 space-y-4">
+                <InputFieldsPanel
+                  enabledFields={inputFields}
+                  onChange={setInputFields}
+                />
+                <div className="h-px bg-zinc-800" />
                 <DynamicSlotsPanel
                   slots={scene.dynamicSlots || []}
                   onUpdateSlot={updateDynamicSlot}
@@ -733,6 +775,11 @@ export default function TemplateBuilderPage() {
         {boundCount > 0 && (
           <span className="text-[10px] text-emerald-500">
             {boundCount} bound
+          </span>
+        )}
+        {inputFields.length > 0 && (
+          <span className="text-[10px] text-emerald-500">
+            {inputFields.length} input field{inputFields.length !== 1 ? 's' : ''}
           </span>
         )}
         {repeater?.enabled && (

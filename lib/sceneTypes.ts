@@ -45,6 +45,27 @@ export interface TemplateBinding {
 
 export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percentile' | 'generic'
 
+// ── Input Field Types (for custom template config panels) ────────────────
+
+export type InputFieldType =
+  | 'playerType' | 'primaryStat' | 'secondaryStat' | 'tertiaryStat'
+  | 'dateRange' | 'pitchType' | 'sortDir' | 'count' | 'minSample'
+  | 'playerPicker' | 'title'
+
+export const INPUT_FIELD_META: { type: InputFieldType; label: string; description: string }[] = [
+  { type: 'playerType', label: 'Player Type', description: 'Pitcher/Batter toggle' },
+  { type: 'primaryStat', label: 'Primary Stat', description: 'Main stat selector' },
+  { type: 'secondaryStat', label: 'Secondary Stat', description: 'Optional 2nd stat' },
+  { type: 'tertiaryStat', label: 'Tertiary Stat', description: 'Optional 3rd stat' },
+  { type: 'dateRange', label: 'Date Range', description: 'Season or custom dates' },
+  { type: 'pitchType', label: 'Pitch Type', description: 'Filter by pitch type' },
+  { type: 'sortDir', label: 'Sort Direction', description: 'Asc/Desc toggle' },
+  { type: 'count', label: 'Count', description: 'Number of results' },
+  { type: 'minSample', label: 'Min Sample', description: 'Minimum qualifier' },
+  { type: 'playerPicker', label: 'Player Search', description: 'Player autocomplete' },
+  { type: 'title', label: 'Title Override', description: 'Custom title text' },
+]
+
 export interface RepeaterConfig {
   enabled: boolean
   elementIds: string[]
@@ -65,6 +86,7 @@ export interface CustomTemplateRecord {
   elements: SceneElement[]
   schemaType: DataSchemaType
   repeater: RepeaterConfig | null
+  inputFields?: InputFieldType[]
   base_template_id?: string
   created_at: string
   updated_at: string
