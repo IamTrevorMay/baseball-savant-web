@@ -197,7 +197,7 @@ function PlayerImageRenderer({ props: p, width, height }: { props: Record<string
 
 function ComparisonBarRenderer({ props: p, height }: { props: Record<string, any>; height: number }) {
   const pct = Math.min(100, Math.max(0, (p.value / p.maxValue) * 100))
-  const labelSize = Math.max(10, Math.min(16, height * 0.28))
+  const labelSize = p.fontSize > 0 ? p.fontSize : Math.max(10, Math.min(16, height * 0.28))
   const barH = Math.max(6, height * 0.35)
   const gap = Math.max(2, height * 0.06)
   const barBg = p.barBgColor || '#27272a'

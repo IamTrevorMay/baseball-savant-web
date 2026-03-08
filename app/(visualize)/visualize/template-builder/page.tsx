@@ -3,10 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Scene, SceneElement, ElementType, DataSchemaType,
+  Scene, SceneElement, ElementType, DataSchemaType, DataBinding,
   RepeaterConfig, TemplateBinding, CustomTemplateRecord,
   createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
+import { SCENE_METRICS } from '@/lib/reportMetrics'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { getSampleData } from '@/lib/templateBindingSchemas'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
@@ -131,6 +132,49 @@ export default function TemplateBuilderPage() {
       elements: prev.elements.map(e => (e.id === id ? { ...e, props: { ...e.props, ...propUpdates } } : e)),
     }))
   }, [])
+
+  const [bindingLoading, setBindingLoading] = useState(false)
+
+  const updateBinding = useCallback((id: string, binding: DataBinding | undefined) => {
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => (e.id === id ? { ...e, dataBinding: binding } : e)),
+    }))
+  }, [])
+
+  const fetchBinding = useCallback(async (id: string) => {
+    const el = scene.elements.find(e => e.id === id)
+    if (!el?.dataBinding) return
+    const b = el.dataBinding
+
+    setBindingLoading(true)
+    try {
+      if (b.source === 'statcast') {
+        const params = new URLSearchParams({
+          playerId: String(b.playerId),
+          metrics: b.metric,
+          ...(b.gameYear && { gameYear: String(b.gameYear) }),
+        })
+        if (b.pitchType) params.set('pitchType', b.pitchType)
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        const val = data.stats?.[b.metric]
+        if (val != null) {
+          if (el.type === 'stat-card') {
+            updateElementProps(id, { value: String(val), label: b.metric.replace(/_/g, ' ').toUpperCase(), sublabel: `${b.playerName} ${b.gameYear || ''}`.trim() })
+          } else if (el.type === 'comparison-bar') {
+            updateElementProps(id, { value: Number(val), label: `${b.playerName} - ${b.metric.replace(/_/g, ' ')}` })
+          } else if (el.type === 'text') {
+            updateElementProps(id, { text: String(val) })
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Binding fetch error:', err)
+    } finally {
+      setBindingLoading(false)
+    }
+  }, [scene.elements, updateElementProps])
 
   const deleteElement = useCallback(
     (id: string) => {
@@ -536,10 +580,11 @@ export default function TemplateBuilderPage() {
                   element={selectedElement}
                   onUpdate={updates => updateElement(selectedElement.id, updates)}
                   onUpdateProps={propUpdates => updateElementProps(selectedElement.id, propUpdates)}
-                  onUpdateBinding={() => {}}
-                  onFetchBinding={() => {}}
+                  onUpdateBinding={binding => updateBinding(selectedElement.id, binding)}
+                  onFetchBinding={() => fetchBinding(selectedElement.id)}
                   onDelete={() => deleteElement(selectedElement.id)}
                   onDuplicate={() => duplicateElement(selectedElement.id)}
+                  bindingLoading={bindingLoading}
                 />
                 {/* Template binding section */}
                 <div className="px-3 pb-3">

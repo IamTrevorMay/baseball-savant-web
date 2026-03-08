@@ -802,12 +802,28 @@ function TransitionSection({ element, onUpdateKeyframes, fps }: { element: Scene
 
 // ── Team Color Section ──────────────────────────────────────────────────────
 
+const DEFAULT_THEME_COLORS: Record<string, Record<string, any>> = {
+  'stat-card': { color: '#06b6d4' },
+  'text': { color: '#ffffff' },
+  'shape': { fill: '#18181b', stroke: '#06b6d4' },
+  'player-image': { borderColor: '#06b6d4' },
+  'comparison-bar': { color: '#06b6d4' },
+  'ticker': { color: '#ffffff', bgColor: '#09090b' },
+}
+
 function TeamColorSection({ element, onUpdate, onUpdateProps }: { element: SceneElement; onUpdate: (u: Partial<SceneElement>) => void; onUpdateProps: (u: Record<string, any>) => void }) {
+  const [selected, setSelected] = useState('')
+
   function applyTheme(teamKey: string) {
+    setSelected(teamKey)
+    if (!teamKey) {
+      // Reset to defaults
+      const defaults = DEFAULT_THEME_COLORS[element.type]
+      if (defaults) onUpdateProps(defaults)
+      return
+    }
     const tc = TEAM_COLORS[teamKey]
     if (!tc) return
-    const p = element.props
-    // Apply primary color to main color fields based on element type
     switch (element.type) {
       case 'stat-card':
         onUpdateProps({ color: tc.primary })
@@ -833,9 +849,9 @@ function TeamColorSection({ element, onUpdate, onUpdateProps }: { element: Scene
   return (
     <Section title="Team Theme">
       <select
-        onChange={e => { if (e.target.value) applyTheme(e.target.value) }}
+        value={selected}
+        onChange={e => applyTheme(e.target.value)}
         className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 focus:border-cyan-600 outline-none"
-        defaultValue=""
       >
         {TEAM_COLOR_OPTIONS.map(o => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -1099,6 +1115,8 @@ export default function PropertiesPanel({ element, onUpdate, onUpdateProps, onUp
           <TxtField label="Label" value={p.label} onChange={v => onUpdateProps({ label: v })} />
           <NumField label="Value" value={p.value} onChange={v => onUpdateProps({ value: v })} step={0.1} />
           <NumField label="Max" value={p.maxValue} onChange={v => onUpdateProps({ maxValue: v })} step={0.1} />
+          <NumField label="Font Size" value={p.fontSize || 0} onChange={v => onUpdateProps({ fontSize: v })} min={0} max={120} />
+          <div className="text-[9px] text-zinc-600 -mt-1">0 = auto-scale to bar height</div>
           <ClrField label="Color" value={p.color} onChange={v => onUpdateProps({ color: v })} />
           <ClrField label="Track BG" value={p.barBgColor || '#27272a'} onChange={v => onUpdateProps({ barBgColor: v })} />
           <BoolField label="Show Value" value={p.showValue} onChange={v => onUpdateProps({ showValue: v })} />
