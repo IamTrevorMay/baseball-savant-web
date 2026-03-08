@@ -145,8 +145,7 @@ export default function HomePage() {
   function getDivisions(league: string) {
     const order = league === 'AL' ? AL_ORDER : NL_ORDER
     return order.map(name => {
-      const abbrev = name.replace('AL ','').replace('NL ','')
-      return divisions.find(d => d.divisionAbbrev === name || d.division?.includes(abbrev)) || null
+      return divisions.find(d => d.league === league && (d.divisionAbbrev === name || d.division === name)) || null
     }).filter(Boolean) as Division[]
   }
 
