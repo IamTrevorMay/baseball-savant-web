@@ -49,16 +49,31 @@ export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percen
 
 export const MAX_INPUT_SECTIONS = 5
 
-export type SectionInputKey = 'playerPicker' | 'playerType' | 'season' | 'pitchType'
+export type SectionInputKey =
+  | 'playerPicker' | 'playerType' | 'season' | 'pitchType'
+  | 'primaryStat' | 'secondaryStat' | 'tertiaryStat'
+  | 'dateRange' | 'sortDir' | 'count' | 'minSample' | 'title'
 
-export const SECTION_INPUT_OPTIONS: { key: SectionInputKey; label: string }[] = [
-  { key: 'playerPicker', label: 'Player' },
-  { key: 'playerType', label: 'Type' },
-  { key: 'season', label: 'Season' },
-  { key: 'pitchType', label: 'Pitch Type' },
+export const SECTION_INPUT_OPTIONS: { key: SectionInputKey; label: string; group: string }[] = [
+  // Core
+  { key: 'playerPicker', label: 'Player', group: 'Core' },
+  { key: 'playerType', label: 'Player Type', group: 'Core' },
+  { key: 'title', label: 'Title', group: 'Core' },
+  // Filters
+  { key: 'season', label: 'Season', group: 'Filters' },
+  { key: 'pitchType', label: 'Pitch Type', group: 'Filters' },
+  { key: 'dateRange', label: 'Date Range', group: 'Filters' },
+  // Stats
+  { key: 'primaryStat', label: 'Primary Stat', group: 'Stats' },
+  { key: 'secondaryStat', label: 'Secondary Stat', group: 'Stats' },
+  { key: 'tertiaryStat', label: 'Tertiary Stat', group: 'Stats' },
+  // Options
+  { key: 'sortDir', label: 'Sort Direction', group: 'Options' },
+  { key: 'count', label: 'Count', group: 'Options' },
+  { key: 'minSample', label: 'Min Sample', group: 'Options' },
 ]
 
-export const ALL_SECTION_INPUTS: SectionInputKey[] = ['playerPicker', 'playerType', 'season', 'pitchType']
+export const ALL_SECTION_INPUTS: SectionInputKey[] = SECTION_INPUT_OPTIONS.map(o => o.key)
 
 export interface InputSection {
   id: string
@@ -70,6 +85,15 @@ export interface InputSection {
   playerName?: string
   gameYear: number         // default 2025
   pitchType?: string       // undefined = all
+  // Extended fields
+  primaryStat?: string
+  secondaryStat?: string
+  tertiaryStat?: string
+  dateRange?: { type: 'season'; year: number } | { type: 'custom'; from: string; to: string }
+  sortDir?: 'asc' | 'desc'
+  count?: number
+  minSample?: number
+  title?: string
 }
 
 export interface SectionBinding {
