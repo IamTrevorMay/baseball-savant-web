@@ -4,6 +4,7 @@ import TridentLogo from '@/components/TridentLogo'
 
 const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
+  { href: '/explore', label: 'Explore' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
   { href: '/leaders', label: 'Leaders' },
@@ -22,7 +23,6 @@ const ADVANCED_LINKS = [
 ]
 
 const MORE_LINKS = [
-  { href: '/explore', label: 'Explore' },
   { href: '/glossary', label: 'Glossary' },
 ]
 

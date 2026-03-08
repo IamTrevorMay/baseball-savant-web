@@ -40,8 +40,27 @@ export async function POST(req: NextRequest) {
       WHERE game_year = ${safeYear}
     `.trim()
 
-    const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+    // Fetch avg stuff_plus per pitcher × pitch type from pitches table
+    const stuffSql = `
+      SELECT pitcher, pitch_name, ROUND(AVG(stuff_plus)::numeric, 1) AS avg_stuff_plus
+      FROM pitches
+      WHERE game_year = ${safeYear} AND pitch_name IS NOT NULL AND stuff_plus IS NOT NULL
+      GROUP BY pitcher, pitch_name
+    `.trim()
+
+    const [{ data, error }, stuffRes] = await Promise.all([
+      supabase.rpc('run_query', { query_text: sql }),
+      supabase.rpc('run_query', { query_text: stuffSql }),
+    ])
     if (error) return NextResponse.json({ error: error.message, sql }, { status: 500 })
+
+    // Build stuff+ lookup: pitcher → pitch_name → avg_stuff_plus
+    const stuffMap = new Map<number, Record<string, number>>()
+    for (const row of (stuffRes.data || [])) {
+      const id = row.pitcher
+      if (!stuffMap.has(id)) stuffMap.set(id, {})
+      stuffMap.get(id)![row.pitch_name] = Number(row.avg_stuff_plus)
+    }
 
     // Pivot: one flat row per pitcher
     const pitcherMap = new Map<number, Record<string, any>>()
@@ -77,6 +96,9 @@ export async function POST(req: NextRequest) {
         p[`${pt}_vdev_plus`] = row.vdev_plus != null ? Number(row.vdev_plus) : null
         p[`${pt}_missfire_plus`] = row.missfire_plus != null ? Number(row.missfire_plus) : null
         p[`${pt}_close_pct_plus`] = row.close_pct_plus != null ? Number(row.close_pct_plus) : null
+        p[`${pt}_cmd_plus`] = row.cmd_plus != null ? Number(row.cmd_plus) : null
+        p[`${pt}_rpcom_plus`] = row.rpcom_plus != null ? Number(row.rpcom_plus) : null
+        p[`${pt}_stuff_plus`] = stuffMap.get(id)?.[row.pitch_name] ?? null
         p[`${pt}_waste_pct`] = row.waste_pct != null ? Number(row.waste_pct) : null
 
         // Accumulate for weighted cmd_plus / rpcom_plus

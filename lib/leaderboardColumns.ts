@@ -299,13 +299,15 @@ const RAW_METRICS = [
 ]
 
 const PLUS_METRICS = [
+  { suffix: 'cmd_plus', label: 'Cmd+', hasPlus: true },
+  { suffix: 'rpcom_plus', label: 'RPCom+', hasPlus: true },
+  { suffix: 'stuff_plus', label: 'Stuff+', hasPlus: true },
   { suffix: 'brink_plus', label: 'Brink+', hasPlus: true },
   { suffix: 'cluster_plus', label: 'Cluster+', hasPlus: true },
   { suffix: 'hdev_plus', label: 'HDev+', hasPlus: true },
   { suffix: 'vdev_plus', label: 'VDev+', hasPlus: true },
   { suffix: 'missfire_plus', label: 'Missfire+', hasPlus: true },
   { suffix: 'close_pct_plus', label: 'Close+', hasPlus: true },
-  { suffix: 'stuff_plus', label: 'Stuff+', hasPlus: true },
   { suffix: 'waste_pct', label: 'Waste%', hasPlus: false },
 ]
 
