@@ -41,9 +41,10 @@ const DIV_MAP: Record<number, { division: string; divAbbrev: string; league: str
 
 export async function GET(req: NextRequest) {
   const season = req.nextUrl.searchParams.get('season') || new Date().getFullYear().toString()
+  const type = req.nextUrl.searchParams.get('type') === 'spring' ? 'springTraining' : 'regularSeason'
 
   try {
-    const url = `https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason&hydrate=team`
+    const url = `https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=${type}&hydrate=team`
     const resp = await fetch(url, { next: { revalidate: 300 } })
     if (!resp.ok) return NextResponse.json({ error: 'MLB API error' }, { status: 502 })
 

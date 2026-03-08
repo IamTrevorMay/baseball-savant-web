@@ -109,6 +109,7 @@ export default function HomePage() {
   const [standingsLoading, setStandingsLoading] = useState(true)
   const [season, setSeason] = useState(new Date().getFullYear())
   const [view, setView] = useState<'division'|'league'|'wildcard'>('division')
+  const [standingsType, setStandingsType] = useState<'regular'|'spring'>('regular')
 
   /* fetch scores on date change + auto-refresh every 30s */
   useEffect(() => {
@@ -137,8 +138,9 @@ export default function HomePage() {
 
   useEffect(() => {
     setStandingsLoading(true)
-    fetch(`/api/standings?season=${season}`).then(r => r.json()).then(d => { if (d.divisions) setDivisions(d.divisions); setStandingsLoading(false) }).catch(() => setStandingsLoading(false))
-  }, [season])
+    const typeParam = standingsType === 'spring' ? '&type=spring' : ''
+    fetch(`/api/standings?season=${season}${typeParam}`).then(r => r.json()).then(d => { if (d.divisions) setDivisions(d.divisions); setStandingsLoading(false) }).catch(() => setStandingsLoading(false))
+  }, [season, standingsType])
 
   function getDivisions(league: string) {
     const order = league === 'AL' ? AL_ORDER : NL_ORDER
@@ -165,7 +167,7 @@ export default function HomePage() {
     return `${days}d ago`
   }
 
-  const years = Array.from({length: 11}, (_, i) => new Date().getFullYear() - i)
+  const years = Array.from({length: new Date().getFullYear() - 2014}, (_, i) => new Date().getFullYear() - i)
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
@@ -283,7 +285,20 @@ export default function HomePage() {
         {/* ─── Standings Section ─── */}
         <div>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">MLB Standings</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-white">MLB Standings</h2>
+              {/* Spring Training toggle */}
+              <button
+                onClick={() => setStandingsType(prev => prev === 'regular' ? 'spring' : 'regular')}
+                className={`px-2.5 py-1 rounded text-[10px] font-semibold uppercase tracking-wide transition ${
+                  standingsType === 'spring'
+                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/40'
+                    : 'bg-zinc-800 text-zinc-500 border border-zinc-700 hover:text-zinc-300'
+                }`}
+              >
+                Spring Training
+              </button>
+            </div>
             <div className="flex items-center gap-3">
               <div className="flex gap-1">
                 {(['division','league','wildcard'] as const).map(v => (
