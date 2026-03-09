@@ -115,9 +115,9 @@ function LauncherContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const denied = searchParams.get('denied')
-  // If no user session (preview mode or not logged in), show all tools as accessible
-  const effectivePermissions = user ? permissions : ['research', 'mechanics', 'models', 'compete', 'visualize']
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
+  // If no user session (preview mode or not logged in), show all tools as accessible
+  const effectivePermissions = !user ? ['research', 'mechanics', 'models', 'compete', 'visualize'] : isAdmin ? TOOLS.map(t => t.id) : permissions
   const visibleTools = isAdmin ? [...TOOLS, ADMIN_TOOL] : TOOLS
 
   // In PWA standalone mode, redirect to Compete tab
