@@ -92,6 +92,8 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
     }
   }, [animationPhase, asset, fps])
 
+  const assetOpacity = asset.opacity ?? 1
+
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
     return (
@@ -104,6 +106,7 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
           width: asset.canvas_width,
           height: asset.canvas_height,
           zIndex: asset.layer,
+          opacity: assetOpacity,
         }}
       >
         <div
@@ -133,6 +136,7 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
           width: asset.canvas_width,
           height: asset.canvas_height,
           zIndex: asset.layer,
+          opacity: assetOpacity,
         }}
       >
         <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" />
@@ -151,6 +155,7 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
           width: asset.canvas_width,
           height: asset.canvas_height,
           zIndex: asset.layer,
+          opacity: assetOpacity,
         }}
       >
         <video

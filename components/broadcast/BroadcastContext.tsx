@@ -10,6 +10,7 @@ interface BroadcastContextValue {
   session: BroadcastSession | null
   visibleAssetIds: Set<string>
   selectedAssetId: string | null
+  previewingAssetId: string | null
   loading: boolean
 
   setProject: (p: BroadcastProject) => void
@@ -19,6 +20,7 @@ interface BroadcastContextValue {
   updateAsset: (id: string, updates: Partial<BroadcastAsset>) => void
   removeAsset: (id: string) => void
   toggleAssetVisibility: (id: string) => void
+  previewAsset: (id: string) => void
   goLive: () => Promise<string | null>
   endSession: () => Promise<void>
   sendEvent: (event: string, payload: any) => void
@@ -38,6 +40,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [session, setSession] = useState<BroadcastSession | null>(null)
   const [visibleAssetIds, setVisibleAssetIds] = useState<Set<string>>(new Set())
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
+  const [previewingAssetId, setPreviewingAssetId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
@@ -93,31 +96,107 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
   }, [])
 
-  const toggleAssetVisibility = useCallback((assetId: string) => {
+  const flashTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+
+  const showAsset = useCallback((assetId: string) => {
     setVisibleAssetIds(prev => {
       const next = new Set(prev)
-      const isVisible = next.has(assetId)
-      if (isVisible) {
-        next.delete(assetId)
-        sendEvent('asset:hide', { assetId })
-      } else {
-        next.add(assetId)
-        sendEvent('asset:show', { assetId })
-      }
-
-      // Persist active state to session
+      next.add(assetId)
+      sendEvent('asset:show', { assetId })
       if (session) {
-        const visibleAssets = Array.from(next)
         fetch(`/api/broadcast/sessions`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: session.id, active_state: { visibleAssets } }),
+          body: JSON.stringify({ id: session.id, active_state: { visibleAssets: Array.from(next) } }),
         }).catch(console.error)
       }
-
       return next
     })
   }, [session, sendEvent])
+
+  const hideAsset = useCallback((assetId: string) => {
+    setVisibleAssetIds(prev => {
+      const next = new Set(prev)
+      next.delete(assetId)
+      sendEvent('asset:hide', { assetId })
+      if (session) {
+        fetch(`/api/broadcast/sessions`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: session.id, active_state: { visibleAssets: Array.from(next) } }),
+        }).catch(console.error)
+      }
+      return next
+    })
+  }, [session, sendEvent])
+
+  const toggleAssetVisibility = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    const mode = asset?.trigger_mode || 'toggle'
+    const isVisible = visibleAssetIds.has(assetId)
+
+    switch (mode) {
+      case 'show':
+        if (!isVisible) showAsset(assetId)
+        break
+      case 'hide':
+        if (isVisible) hideAsset(assetId)
+        break
+      case 'flash': {
+        // Clear any existing flash timer
+        const existing = flashTimersRef.current.get(assetId)
+        if (existing) clearTimeout(existing)
+        showAsset(assetId)
+        const duration = (asset?.trigger_duration || 3) * 1000
+        const timer = setTimeout(() => {
+          hideAsset(assetId)
+          flashTimersRef.current.delete(assetId)
+        }, duration)
+        flashTimersRef.current.set(assetId, timer)
+        break
+      }
+      default: // toggle
+        if (isVisible) hideAsset(assetId)
+        else showAsset(assetId)
+    }
+  }, [assets, visibleAssetIds, showAsset, hideAsset])
+
+  const previewAsset = useCallback((id: string) => {
+    if (previewingAssetId) return // already previewing
+    setPreviewingAssetId(id)
+    const asset = assets.find(a => a.id === id)
+    const enterFrames = asset?.enter_transition?.durationFrames || 15
+    const exitFrames = asset?.exit_transition?.durationFrames || 15
+    const fps = project?.settings?.fps || 30
+    const enterMs = (enterFrames / fps) * 1000
+    const exitMs = (exitFrames / fps) * 1000
+    const holdMs = 1000
+
+    // enter → hold → exit → clear
+    setTimeout(() => {
+      setPreviewingAssetId(`${id}:exit`)
+      setTimeout(() => {
+        setPreviewingAssetId(null)
+      }, exitMs + 100)
+    }, enterMs + holdMs)
+  }, [previewingAssetId, assets, project])
+
+  // Keyboard hotkey listener
+  useEffect(() => {
+    if (!session) return
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const key = e.key.toLowerCase()
+      const asset = assets.find(a => a.hotkey_key === key)
+      if (asset) {
+        e.preventDefault()
+        toggleAssetVisibility(asset.id)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session, assets, toggleAssetVisibility])
 
   const goLive = useCallback(async () => {
     if (!project) return null
@@ -174,9 +253,9 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
 
   return (
     <BroadcastCtx.Provider value={{
-      project, assets, session, visibleAssetIds, selectedAssetId, loading,
+      project, assets, session, visibleAssetIds, selectedAssetId, previewingAssetId, loading,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
-      toggleAssetVisibility, goLive, endSession, sendEvent,
+      toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
     }}>
       {children}
     </BroadcastCtx.Provider>

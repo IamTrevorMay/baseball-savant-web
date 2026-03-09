@@ -58,8 +58,34 @@ export default function TriggerBar() {
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: isVisible ? color : '#52525b' }}
               />
+              {asset.trigger_mode === 'flash' && (
+                <span className="shrink-0" title={`Flash ${asset.trigger_duration || 3}s`}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-amber-400">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+                  </svg>
+                </span>
+              )}
+              {asset.trigger_mode === 'show' && (
+                <span className="shrink-0" title="Show only">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-400">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                  </svg>
+                </span>
+              )}
+              {asset.trigger_mode === 'hide' && (
+                <span className="shrink-0" title="Hide only">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-zinc-500">
+                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" /><path d="M1 1l22 22" />
+                  </svg>
+                </span>
+              )}
               {asset.template_id && <span className="text-amber-400 text-[9px]" title="Template asset">{'\u26A1'}</span>}
               {label}
+              {asset.hotkey_key && (
+                <span className="ml-0.5 px-1 py-0 text-[9px] font-mono bg-zinc-700 text-zinc-300 rounded" title={`Key: ${asset.hotkey_key.toUpperCase()}`}>
+                  {asset.hotkey_key.toUpperCase()}
+                </span>
+              )}
             </button>
           )
         })}

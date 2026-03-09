@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import { BroadcastAsset } from '@/lib/broadcastTypes'
 import { SceneElement } from '@/lib/sceneTypes'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
 import { useBroadcast } from './BroadcastContext'
+import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
@@ -53,19 +54,13 @@ function computeWrapperStyle(el: SceneElement): React.CSSProperties {
 }
 
 function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: boolean }) {
+  const assetOpacity = asset.opacity ?? 1
+  const dimmedOpacity = isVisible ? assetOpacity : assetOpacity * 0.3
+
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
     return (
-      <div
-        className="absolute"
-        style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          opacity: isVisible ? 1 : 0.3,
-        }}
-      >
+      <div className="w-full h-full" style={{ opacity: dimmedOpacity }}>
         <div className="relative w-full h-full" style={{ background: asset.scene_config.background === 'transparent' ? undefined : asset.scene_config.background }}>
           {[...elements].sort((a, b) => a.zIndex - b.zIndex).map(el => (
             <div key={el.id} className="absolute" style={computeWrapperStyle(el)}>
@@ -79,16 +74,7 @@ function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: 
 
   if (asset.asset_type === 'image' && asset.storage_path) {
     return (
-      <div
-        className="absolute"
-        style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          opacity: isVisible ? 1 : 0.3,
-        }}
-      >
+      <div className="w-full h-full" style={{ opacity: dimmedOpacity }}>
         <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" draggable={false} />
       </div>
     )
@@ -96,16 +82,7 @@ function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: 
 
   if (asset.asset_type === 'video' && asset.storage_path) {
     return (
-      <div
-        className="absolute flex items-center justify-center bg-zinc-800/50"
-        style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          opacity: isVisible ? 1 : 0.3,
-        }}
-      >
+      <div className="w-full h-full flex items-center justify-center bg-zinc-800/50" style={{ opacity: dimmedOpacity }}>
         <div className="text-zinc-500 text-sm flex flex-col items-center gap-1">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <polygon points="5 3 19 12 5 21 5 3" />
@@ -119,8 +96,49 @@ function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: 
   return null
 }
 
+function PreviewAnimationWrapper({ asset, previewingAssetId, children }: { asset: BroadcastAsset; previewingAssetId: string | null; children: React.ReactNode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const styleRef = useRef<HTMLStyleElement | null>(null)
+
+  useEffect(() => {
+    if (!wrapperRef.current) return
+    const isEnter = previewingAssetId === asset.id
+    const isExit = previewingAssetId === `${asset.id}:exit`
+    if (!isEnter && !isExit) {
+      // Clean up any leftover animation
+      if (styleRef.current) { removeKeyframes(styleRef.current); styleRef.current = null }
+      wrapperRef.current.style.animation = ''
+      return
+    }
+
+    const transition = isEnter ? asset.enter_transition : asset.exit_transition
+    const result = generateCSSAnimation(
+      transition,
+      isEnter ? 'enter' : 'exit',
+      asset.canvas_width,
+      asset.canvas_height,
+      asset.canvas_x,
+      asset.canvas_y,
+      30,
+    )
+
+    if (result) {
+      if (styleRef.current) removeKeyframes(styleRef.current)
+      styleRef.current = injectKeyframes(result.keyframes)
+      wrapperRef.current.style.animation = result.animation
+    }
+
+    return () => {
+      if (styleRef.current) { removeKeyframes(styleRef.current); styleRef.current = null }
+      if (wrapperRef.current) wrapperRef.current.style.animation = ''
+    }
+  }, [previewingAssetId, asset])
+
+  return <div ref={wrapperRef} className="w-full h-full">{children}</div>
+}
+
 export default function BroadcastCanvas() {
-  const { assets, visibleAssetIds, selectedAssetId, setSelectedAssetId, updateAsset } = useBroadcast()
+  const { assets, visibleAssetIds, selectedAssetId, setSelectedAssetId, updateAsset, previewingAssetId } = useBroadcast()
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; assetX: number; assetY: number } | null>(null)
 
@@ -213,28 +231,37 @@ export default function BroadcastCanvas() {
         />
 
         {/* Assets sorted by layer */}
-        {[...assets].sort((a, b) => a.layer - b.layer).map(asset => (
-          <div
-            key={asset.id}
-            className={`absolute cursor-grab ${selectedAssetId === asset.id ? 'ring-2 ring-red-400 ring-offset-1 ring-offset-transparent' : ''}`}
-            style={{
-              left: asset.canvas_x,
-              top: asset.canvas_y,
-              width: asset.canvas_width,
-              height: asset.canvas_height,
-              zIndex: asset.layer,
-            }}
-            onMouseDown={e => handleAssetMouseDown(e, asset)}
-            onClick={e => { e.stopPropagation(); setSelectedAssetId(asset.id) }}
-          >
-            <AssetPreview asset={asset} isVisible={visibleAssetIds.has(asset.id)} />
+        {[...assets].sort((a, b) => a.layer - b.layer).map(asset => {
+          const isPreviewing = previewingAssetId === asset.id || previewingAssetId === `${asset.id}:exit`
+          return (
+            <div
+              key={asset.id}
+              className={`absolute cursor-grab ${selectedAssetId === asset.id ? 'ring-2 ring-red-400 ring-offset-1 ring-offset-transparent' : ''}`}
+              style={{
+                left: asset.canvas_x,
+                top: asset.canvas_y,
+                width: asset.canvas_width,
+                height: asset.canvas_height,
+                zIndex: asset.layer,
+              }}
+              onMouseDown={e => handleAssetMouseDown(e, asset)}
+              onClick={e => { e.stopPropagation(); setSelectedAssetId(asset.id) }}
+            >
+              {isPreviewing ? (
+                <PreviewAnimationWrapper asset={asset} previewingAssetId={previewingAssetId}>
+                  <AssetPreview asset={asset} isVisible={true} />
+                </PreviewAnimationWrapper>
+              ) : (
+                <AssetPreview asset={asset} isVisible={visibleAssetIds.has(asset.id)} />
+              )}
 
-            {/* Label */}
-            <div className="absolute -top-5 left-0 text-[10px] font-medium text-zinc-400 bg-zinc-900/80 px-1.5 py-0.5 rounded truncate max-w-[200px]">
-              {asset.name}
+              {/* Label */}
+              <div className="absolute -top-5 left-0 text-[10px] font-medium text-zinc-400 bg-zinc-900/80 px-1.5 py-0.5 rounded truncate max-w-[200px]">
+                {asset.name}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

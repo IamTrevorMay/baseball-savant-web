@@ -16,9 +16,11 @@ interface SavedScene {
 }
 
 export default function AssetLibrary() {
-  const { assets, selectedAssetId, setSelectedAssetId, addAsset, removeAsset, project } = useBroadcast()
+  const { assets, selectedAssetId, setSelectedAssetId, addAsset, removeAsset, updateAsset, project } = useBroadcast()
   const [showImport, setShowImport] = useState(false)
   const [showTemplateImport, setShowTemplateImport] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
   const [scenes, setScenes] = useState<SavedScene[]>([])
   const [customTemplates, setCustomTemplates] = useState<CustomTemplateRecord[]>([])
   const [loadingScenes, setLoadingScenes] = useState(false)
@@ -313,7 +315,41 @@ export default function AssetLibrary() {
                   {getAssetIcon(asset)}
                 </div>
 
-                <span className="text-xs text-zinc-300 truncate flex-1">{asset.name}</span>
+                {editingId === asset.id ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={() => {
+                      if (editValue.trim() && editValue !== asset.name) {
+                        updateAsset(asset.id, { name: editValue.trim() })
+                        fetch('/api/broadcast/assets', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: asset.id, name: editValue.trim() }),
+                        }).catch(console.error)
+                      }
+                      setEditingId(null)
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                    className="flex-1 text-xs text-white bg-zinc-800 border border-zinc-600 rounded px-1 py-0.5 outline-none"
+                    onClick={e => e.stopPropagation()}
+                  />
+                ) : (
+                  <span
+                    className="text-xs text-zinc-300 truncate flex-1"
+                    onDoubleClick={e => {
+                      e.stopPropagation()
+                      setEditingId(asset.id)
+                      setEditValue(asset.name)
+                    }}
+                  >
+                    {asset.name}
+                  </span>
+                )}
 
                 <button
                   onClick={e => { e.stopPropagation(); handleDelete(asset.id) }}
