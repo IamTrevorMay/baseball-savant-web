@@ -172,21 +172,28 @@ export default function TemplateDataPanel({ asset }: Props) {
       // Determine effective globalInputType: section data override > template definition
       const effectiveType = primaryData.globalInputType || primarySection?.globalInputType
 
+      // Derive gameYear from dateRange (globalInputType stores year in dateRange, not gameYear)
+      const dr = primaryData.dateRange || primarySection?.dateRange
+      const resolvedGameYear = primaryData.gameYear
+        || (dr?.type === 'season' ? dr.year : undefined)
+        || primarySection?.gameYear
+        || 2025
+
       if (latestTemplate.schemaType === 'leaderboard' || effectiveType === 'leaderboard') {
         // Leaderboard mode: fetch from scene-stats API
         const params = new URLSearchParams({ leaderboard: 'true' })
-        params.set('metric', primaryData.primaryStat || 'avg_velo')
+        params.set('metric', primaryData.primaryStat || primarySection?.primaryStat || 'avg_velo')
         params.set('playerType', primaryData.playerType || primarySection?.playerType || 'pitcher')
-        if (primaryData.gameYear) params.set('gameYear', String(primaryData.gameYear))
-        if (primaryData.pitchType) params.set('pitchType', primaryData.pitchType)
-        if (primaryData.secondaryStat) params.set('secondaryMetric', primaryData.secondaryStat)
-        if (primaryData.tertiaryStat) params.set('tertiaryMetric', primaryData.tertiaryStat)
-        if (primaryData.sortDir) params.set('sortDir', primaryData.sortDir)
-        if (primaryData.count) params.set('limit', String(primaryData.count))
-        if (primaryData.minSample) params.set('minSample', String(primaryData.minSample))
-        if (primaryData.dateRange?.type === 'custom') {
-          params.set('dateFrom', primaryData.dateRange.from)
-          params.set('dateTo', primaryData.dateRange.to)
+        params.set('gameYear', String(resolvedGameYear))
+        if (primaryData.pitchType || primarySection?.pitchType) params.set('pitchType', (primaryData.pitchType || primarySection?.pitchType)!)
+        if (primaryData.secondaryStat || primarySection?.secondaryStat) params.set('secondaryMetric', (primaryData.secondaryStat || primarySection?.secondaryStat)!)
+        if (primaryData.tertiaryStat || primarySection?.tertiaryStat) params.set('tertiaryMetric', (primaryData.tertiaryStat || primarySection?.tertiaryStat)!)
+        if (primaryData.sortDir || primarySection?.sortDir) params.set('sortDir', primaryData.sortDir || primarySection?.sortDir || 'desc')
+        if (primaryData.count || primarySection?.count) params.set('limit', String(primaryData.count || primarySection?.count))
+        if (primaryData.minSample || primarySection?.minSample) params.set('minSample', String(primaryData.minSample || primarySection?.minSample))
+        if (dr?.type === 'custom') {
+          params.set('dateFrom', dr.from)
+          params.set('dateTo', dr.to)
         }
 
         const statsRes = await fetch(`/api/scene-stats?${params.toString()}`)
@@ -206,7 +213,7 @@ export default function TemplateDataPanel({ asset }: Props) {
           playerType: primaryData.playerType || primarySection?.playerType || 'pitcher',
           metrics: [primaryData.primaryStat, primaryData.secondaryStat, primaryData.tertiaryStat].filter(Boolean).join(',') || 'avg_velo',
         })
-        if (primaryData.gameYear) params.set('gameYear', String(primaryData.gameYear))
+        params.set('gameYear', String(resolvedGameYear))
         if (primaryData.pitchType) params.set('pitchType', primaryData.pitchType)
 
         const statsRes = await fetch(`/api/scene-stats?${params.toString()}`)
@@ -230,7 +237,7 @@ export default function TemplateDataPanel({ asset }: Props) {
         primaryStat: primaryData.primaryStat || 'avg_velo',
         secondaryStat: primaryData.secondaryStat,
         tertiaryStat: primaryData.tertiaryStat,
-        dateRange: primaryData.dateRange || { type: 'season' as const, year: primaryData.gameYear || 2025 },
+        dateRange: dr || { type: 'season' as const, year: resolvedGameYear },
         pitchType: primaryData.pitchType,
         title: primaryData.title,
         sortDir: primaryData.sortDir,

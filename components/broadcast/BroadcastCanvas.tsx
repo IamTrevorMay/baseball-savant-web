@@ -137,6 +137,13 @@ function PreviewAnimationWrapper({ asset, previewingAssetId, children }: { asset
   return <div ref={wrapperRef} className="w-full h-full">{children}</div>
 }
 
+type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+const HANDLE_CURSORS: Record<ResizeHandle, string> = {
+  n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+  ne: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', sw: 'nesw-resize',
+}
+
 export default function BroadcastCanvas() {
   const { assets, visibleAssetIds, selectedAssetId, setSelectedAssetId, updateAsset, previewingAssetId } = useBroadcast()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -205,6 +212,62 @@ export default function BroadcastCanvas() {
     document.addEventListener('mouseup', onUp)
   }
 
+  function handleResizeMouseDown(e: React.MouseEvent, asset: BroadcastAsset, handle: ResizeHandle) {
+    e.stopPropagation()
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origX = asset.canvas_x
+    const origY = asset.canvas_y
+    const origW = asset.canvas_width
+    const origH = asset.canvas_height
+
+    function onMove(me: MouseEvent) {
+      const dx = (me.clientX - startX) / zoom
+      const dy = (me.clientY - startY) / zoom
+
+      let newX = origX, newY = origY, newW = origW, newH = origH
+
+      // Horizontal
+      if (handle.includes('e')) newW = Math.max(40, Math.round(origW + dx))
+      if (handle.includes('w')) { newW = Math.max(40, Math.round(origW - dx)); newX = Math.round(origX + origW - newW) }
+      // Vertical
+      if (handle.includes('s')) newH = Math.max(40, Math.round(origH + dy))
+      if (handle.includes('n')) { newH = Math.max(40, Math.round(origH - dy)); newY = Math.round(origY + origH - newH) }
+
+      // Hold Shift for aspect-ratio lock
+      if (me.shiftKey && (handle === 'se' || handle === 'sw' || handle === 'ne' || handle === 'nw')) {
+        const ratio = origW / origH
+        if (Math.abs(dx) > Math.abs(dy)) {
+          newH = Math.round(newW / ratio)
+          if (handle.includes('n')) newY = Math.round(origY + origH - newH)
+        } else {
+          newW = Math.round(newH * ratio)
+          if (handle.includes('w')) newX = Math.round(origX + origW - newW)
+        }
+      }
+
+      updateAsset(asset.id, { canvas_x: newX, canvas_y: newY, canvas_width: newW, canvas_height: newH })
+    }
+
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      // Persist
+      const a = assets.find(a => a.id === asset.id)
+      if (a) {
+        fetch('/api/broadcast/assets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: a.id, canvas_x: a.canvas_x, canvas_y: a.canvas_y, canvas_width: a.canvas_width, canvas_height: a.canvas_height }),
+        }).catch(console.error)
+      }
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
+
   return (
     <div ref={measRef} className="flex-1 overflow-hidden flex items-center justify-center bg-zinc-950">
       <div
@@ -233,10 +296,11 @@ export default function BroadcastCanvas() {
         {/* Assets sorted by layer */}
         {[...assets].sort((a, b) => a.layer - b.layer).map(asset => {
           const isPreviewing = previewingAssetId === asset.id || previewingAssetId === `${asset.id}:exit`
+          const isSelected = selectedAssetId === asset.id
           return (
             <div
               key={asset.id}
-              className={`absolute cursor-grab ${selectedAssetId === asset.id ? 'ring-2 ring-red-400 ring-offset-1 ring-offset-transparent' : ''}`}
+              className={`absolute ${isSelected ? '' : 'cursor-grab'}`}
               style={{
                 left: asset.canvas_x,
                 top: asset.canvas_y,
@@ -253,6 +317,46 @@ export default function BroadcastCanvas() {
                 </PreviewAnimationWrapper>
               ) : (
                 <AssetPreview asset={asset} isVisible={visibleAssetIds.has(asset.id)} />
+              )}
+
+              {/* Selection outline + resize handles */}
+              {isSelected && (
+                <>
+                  <div className="absolute inset-0 border-2 border-red-400 pointer-events-none rounded-sm" />
+                  {/* Corner handles */}
+                  {(['nw', 'ne', 'sw', 'se'] as ResizeHandle[]).map(h => (
+                    <div
+                      key={h}
+                      className="absolute w-3 h-3 bg-red-400 border border-red-300 rounded-sm"
+                      style={{
+                        cursor: HANDLE_CURSORS[h],
+                        ...(h.includes('n') ? { top: -5 } : { bottom: -5 }),
+                        ...(h.includes('w') ? { left: -5 } : { right: -5 }),
+                      }}
+                      onMouseDown={e => handleResizeMouseDown(e, asset, h)}
+                    />
+                  ))}
+                  {/* Edge handles */}
+                  {(['n', 's', 'e', 'w'] as ResizeHandle[]).map(h => (
+                    <div
+                      key={h}
+                      className="absolute bg-red-400/80 rounded-sm"
+                      style={{
+                        cursor: HANDLE_CURSORS[h],
+                        ...(h === 'n' || h === 's' ? { left: '50%', marginLeft: -8, width: 16, height: 3 } : { top: '50%', marginTop: -8, width: 3, height: 16 }),
+                        ...(h === 'n' ? { top: -3 } : {}),
+                        ...(h === 's' ? { bottom: -3 } : {}),
+                        ...(h === 'e' ? { right: -3 } : {}),
+                        ...(h === 'w' ? { left: -3 } : {}),
+                      }}
+                      onMouseDown={e => handleResizeMouseDown(e, asset, h)}
+                    />
+                  ))}
+                  {/* Size label */}
+                  <div className="absolute -bottom-5 right-0 text-[9px] text-zinc-500 bg-zinc-900/80 px-1 py-0.5 rounded font-mono">
+                    {asset.canvas_width}x{asset.canvas_height}
+                  </div>
+                </>
               )}
 
               {/* Label */}
