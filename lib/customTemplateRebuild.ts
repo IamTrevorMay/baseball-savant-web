@@ -17,12 +17,27 @@ function getNestedValue(obj: any, path: string): any {
 
 function resolveBinding(element: SceneElement, row: any): SceneElement {
   const binding = element.templateBinding
-  if (!binding) return element
+  const sBinding = element.sectionBinding
 
-  const rawValue = getNestedValue(row, binding.fieldPath)
-  const formatted = formatValue(rawValue, binding.format)
+  // Support both templateBinding and sectionBinding (template builder uses sectionBinding)
+  const fieldPath = binding?.fieldPath || (sBinding ? sBinding.metric : null)
+  if (!fieldPath) return element
 
-  const targetProp = binding.targetProp || autoDetectTarget(element)
+  const format = binding?.format || sBinding?.format
+  const targetPropOverride = binding?.targetProp || sBinding?.targetProp
+
+  // Special case: __player__ binding maps to playerId
+  if (fieldPath === '__player__') {
+    const newProps = { ...element.props }
+    newProps.playerId = row.player_id || row.pitcher_id || row.batter_id || null
+    newProps.playerName = row.player_name || row.pitcher_name || ''
+    return { ...element, props: newProps }
+  }
+
+  const rawValue = getNestedValue(row, fieldPath)
+  const formatted = formatValue(rawValue, format)
+
+  const targetProp = targetPropOverride || autoDetectTarget(element)
   const newProps = { ...element.props }
 
   if (targetProp === 'playerId') {

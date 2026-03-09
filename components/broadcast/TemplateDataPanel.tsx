@@ -208,10 +208,20 @@ export default function TemplateDataPanel({ asset }: Props) {
         }
       } else if (primaryData.playerId) {
         // Single-player modes (outing, starter-card, generic, percentile)
+        // Collect ALL metrics from element sectionBindings + panel selections
+        const allBoundMetrics = new Set<string>()
+        if (primaryData.primaryStat) allBoundMetrics.add(primaryData.primaryStat)
+        if (primaryData.secondaryStat) allBoundMetrics.add(primaryData.secondaryStat)
+        if (primaryData.tertiaryStat) allBoundMetrics.add(primaryData.tertiaryStat)
+        for (const el of latestTemplate.elements) {
+          const m = el.sectionBinding?.metric || el.templateBinding?.fieldPath
+          if (m && m !== '__player__') allBoundMetrics.add(m)
+        }
+
         const params = new URLSearchParams({
           playerId: String(primaryData.playerId),
           playerType: primaryData.playerType || primarySection?.playerType || 'pitcher',
-          metrics: [primaryData.primaryStat, primaryData.secondaryStat, primaryData.tertiaryStat].filter(Boolean).join(',') || 'avg_velo',
+          metrics: allBoundMetrics.size > 0 ? Array.from(allBoundMetrics).join(',') : 'avg_velo',
         })
         params.set('gameYear', String(resolvedGameYear))
         if (primaryData.pitchType) params.set('pitchType', primaryData.pitchType)
@@ -297,11 +307,11 @@ export default function TemplateDataPanel({ asset }: Props) {
     if (!template || !asset.template_id) return
     setApplying(true)
     try {
-      // Save updated inputSections back to the template
+      // Save updated inputSections + element bindings back to the template
       await fetch(`/api/custom-templates/${asset.template_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputSections: template.inputSections }),
+        body: JSON.stringify({ schemaType: template.schemaType, inputSections: template.inputSections, elements: template.elements }),
       })
       // Then re-apply to rebuild with updated bindings
       await handleApply()
