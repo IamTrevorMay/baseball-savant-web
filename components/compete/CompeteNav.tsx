@@ -8,6 +8,7 @@ const TABS = [
   { label: 'Schedule', href: '/compete/schedule' },
   { label: 'Monitor', href: '/compete/whoop' },
   { label: 'Reports', href: '/compete/reports' },
+  { label: 'Review', href: '/compete/review' },
   { label: 'Messages', href: '/compete/messages' },
 ]
 
