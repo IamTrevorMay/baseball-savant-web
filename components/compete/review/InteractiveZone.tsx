@@ -12,6 +12,11 @@ const VIEW_X_MAX = 2.5
 const VIEW_Z_MIN = 0
 const VIEW_Z_MAX = 5
 
+const BASEBALL_RADIUS = 1.45 // inches
+const CENTER_X = 0 // feet
+const CENTER_Z = 2.5 // feet
+const CENTER_HALF = 2 // inches → ±2" → 4×4" box
+
 interface InteractiveZoneProps {
   mode: 'target' | 'review' | 'results'
   width: number
@@ -19,6 +24,7 @@ interface InteractiveZoneProps {
   target?: { x: number; z: number } | null
   onTargetSet?: (x: number, z: number) => void
   actualPitch?: { plate_x: number; plate_z: number; pitch_name: string }
+  edgeDistance?: number
   allPitches?: Array<{ plate_x: number; plate_z: number; pitch_name: string; score: number }>
   allTargets?: Array<{ x: number; z: number }>
 }
@@ -39,8 +45,15 @@ function toPlateZ(canvasY: number, padY: number, plotArea: number): number {
   return VIEW_Z_MAX - ((canvasY - padY) / plotArea) * (VIEW_Z_MAX - VIEW_Z_MIN)
 }
 
+/** Convert inches to canvas pixels */
+function inchesToCanvas(inches: number, plotW: number): number {
+  const feetPerInch = 1 / 12
+  const viewWidthFeet = VIEW_X_MAX - VIEW_X_MIN
+  return (inches * feetPerInch / viewWidthFeet) * plotW
+}
+
 export default function InteractiveZone({
-  mode, width, height, target, onTargetSet, actualPitch, allPitches, allTargets
+  mode, width, height, target, onTargetSet, actualPitch, edgeDistance, allPitches, allTargets
 }: InteractiveZoneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -64,6 +77,7 @@ export default function InteractiveZone({
 
     const cx = (x: number) => toCanvasX(x, padX, plotW)
     const cy = (z: number) => toCanvasY(z, padY, plotArea)
+    const inToPx = (inches: number) => inchesToCanvas(inches, plotW)
 
     // Background
     ctx.fillStyle = '#09090b'
@@ -96,6 +110,18 @@ export default function InteractiveZone({
     }
     ctx.globalAlpha = 1
 
+    // 4×4" center box (dashed, subtle)
+    const cbCx = cx(CENTER_X)
+    const cbCy = cy(CENTER_Z)
+    const cbHalf = inToPx(CENTER_HALF)
+    ctx.setLineDash([4, 4])
+    ctx.strokeStyle = '#52525b'
+    ctx.lineWidth = 1
+    ctx.globalAlpha = 0.5
+    ctx.strokeRect(cbCx - cbHalf, cbCy - cbHalf, cbHalf * 2, cbHalf * 2)
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+
     // Home plate
     const px = cx(0)
     const py = cy(0)
@@ -113,13 +139,13 @@ export default function InteractiveZone({
 
     // ── Mode: target ──
     if (mode === 'target' && target) {
-      drawCrosshair(ctx, cx(target.x), cy(target.z), '#f59e0b', 14)
+      drawBaseballCircle(ctx, cx(target.x), cy(target.z), inToPx(BASEBALL_RADIUS))
     }
 
     // ── Mode: review ──
     if (mode === 'review') {
       if (target) {
-        drawCrosshair(ctx, cx(target.x), cy(target.z), '#f59e0b', 14)
+        drawBaseballCircle(ctx, cx(target.x), cy(target.z), inToPx(BASEBALL_RADIUS))
       }
       if (actualPitch) {
         const ax = cx(actualPitch.plate_x)
@@ -135,25 +161,34 @@ export default function InteractiveZone({
         ctx.lineWidth = 1
         ctx.stroke()
 
-        // Dashed line from target to actual
+        // Dashed line from circle edge to actual pitch
         if (target) {
           const tx = cx(target.x)
           const ty = cy(target.z)
+          const circleR = inToPx(BASEBALL_RADIUS)
+
+          // Calculate point on circle edge closest to actual pitch
+          const lineLen = Math.sqrt((ax - tx) ** 2 + (ay - ty) ** 2)
+          let edgeX = tx
+          let edgeY = ty
+          if (lineLen > 0) {
+            edgeX = tx + (ax - tx) / lineLen * circleR
+            edgeY = ty + (ay - ty) / lineLen * circleR
+          }
+
           ctx.setLineDash([4, 4])
           ctx.strokeStyle = '#a1a1aa'
           ctx.lineWidth = 1.5
           ctx.beginPath()
-          ctx.moveTo(tx, ty)
+          ctx.moveTo(edgeX, edgeY)
           ctx.lineTo(ax, ay)
           ctx.stroke()
           ctx.setLineDash([])
 
-          // Distance label
-          const dx = (actualPitch.plate_x - target.x) * 12
-          const dz = (actualPitch.plate_z - target.z) * 12
-          const dist = Math.sqrt(dx * dx + dz * dz)
-          const midX = (tx + ax) / 2
-          const midY = (ty + ay) / 2
+          // Edge distance label
+          const dist = edgeDistance ?? 0
+          const midX = (edgeX + ax) / 2
+          const midY = (edgeY + ay) / 2
           ctx.font = 'bold 12px Inter, system-ui, sans-serif'
           ctx.fillStyle = '#e4e4e7'
           ctx.textAlign = 'center'
@@ -165,22 +200,20 @@ export default function InteractiveZone({
 
     // ── Mode: results ──
     if (mode === 'results') {
-      // Draw targets as amber × marks
+      // Draw targets as small amber circles
       if (allTargets) {
+        const r = inToPx(BASEBALL_RADIUS) * 0.6
         for (const t of allTargets) {
           const tx = cx(t.x)
           const tz = cy(t.z)
-          ctx.strokeStyle = '#f59e0b'
-          ctx.lineWidth = 1.5
+          ctx.globalAlpha = 0.25
+          ctx.fillStyle = '#f59e0b'
+          ctx.beginPath()
+          ctx.arc(tx, tz, r, 0, Math.PI * 2)
+          ctx.fill()
           ctx.globalAlpha = 0.5
-          const s = 4
-          ctx.beginPath()
-          ctx.moveTo(tx - s, tz - s)
-          ctx.lineTo(tx + s, tz + s)
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.moveTo(tx + s, tz - s)
-          ctx.lineTo(tx - s, tz + s)
+          ctx.strokeStyle = '#f59e0b'
+          ctx.lineWidth = 1
           ctx.stroke()
         }
         ctx.globalAlpha = 1
@@ -227,7 +260,7 @@ export default function InteractiveZone({
         }
       }
     }
-  }, [mode, width, height, target, actualPitch, allPitches, allTargets, padX, padY, plotW, plotArea, plotH, keyHeight])
+  }, [mode, width, height, target, actualPitch, edgeDistance, allPitches, allTargets, padX, padY, plotW, plotArea, plotH, keyHeight])
 
   useEffect(() => { draw() }, [draw])
 
@@ -260,21 +293,25 @@ export default function InteractiveZone({
   )
 }
 
-function drawCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, size: number) {
-  ctx.strokeStyle = color
+function drawBaseballCircle(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
+  // Filled circle
+  ctx.globalAlpha = 0.25
+  ctx.fillStyle = '#f59e0b'
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.globalAlpha = 1
+
+  // Stroke
+  ctx.strokeStyle = '#f59e0b'
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(x - size, y)
-  ctx.lineTo(x + size, y)
-  ctx.stroke()
-  ctx.beginPath()
-  ctx.moveTo(x, y - size)
-  ctx.lineTo(x, y + size)
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
   ctx.stroke()
 
   // Center dot
-  ctx.fillStyle = color
+  ctx.fillStyle = '#f59e0b'
   ctx.beginPath()
-  ctx.arc(x, y, 3, 0, Math.PI * 2)
+  ctx.arc(x, y, 2, 0, Math.PI * 2)
   ctx.fill()
 }

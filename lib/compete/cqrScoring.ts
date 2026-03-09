@@ -1,20 +1,51 @@
 export interface CQRPitchResult {
   pitchIndex: number
   distanceInches: number
+  edgeDistanceInches: number
   zone: number
   score: number
 }
 
+const BASEBALL_RADIUS = 1.45 // inches (2.9" diameter)
+
+// Strike zone boundaries in feet
+const ZONE_LEFT = -17 / 24
+const ZONE_RIGHT = 17 / 24
+const ZONE_BOT = 1.5
+const ZONE_TOP = 3.5
+
+// Center box: ±2" from zone center (x=0, z=2.5ft) → 4×4" box
+const CENTER_X = 0 // feet
+const CENTER_Z = 2.5 // feet
+const CENTER_HALF = 2 // inches
+
+/** Check if pitch lands in the 4×4" center box (zone center ±2"). */
+export function isInCenterBox(plate_x: number, plate_z: number): boolean {
+  const dx = Math.abs(plate_x - CENTER_X) * 12
+  const dz = Math.abs(plate_z - CENTER_Z) * 12
+  return dx <= CENTER_HALF && dz <= CENTER_HALF
+}
+
+/** Distance in inches from pitch to nearest strike zone edge. Returns 0 if inside zone. */
+export function distanceOutsideZone(plate_x: number, plate_z: number): number {
+  // All in feet first
+  const dx = Math.max(0, ZONE_LEFT - plate_x, plate_x - ZONE_RIGHT)
+  const dz = Math.max(0, ZONE_BOT - plate_z, plate_z - ZONE_TOP)
+  return Math.sqrt(dx * dx + dz * dz) * 12 // convert to inches
+}
+
 /**
  * Score a single pitch based on target vs actual location.
- * Rules evaluated in order (first match wins):
- * 1. Zone 5 (center-center) → 0
- * 2. ≤2" → 100
- * 3. ≤3" → 80
- * 4. ≤4" → 60
- * 5. >4" AND ball (zone > 9 or zone = 0) → 0
- * 6. ≤5" (in zone) → 30
- * 7. >5" → 0
+ *
+ * Edge distance = max(0, centerDistance - baseballRadius)
+ *
+ * Tiers (evaluated in order):
+ * 1. Actual in 4×4" center box → 0
+ * 2. Edge distance ≤ 2" → 100
+ * 3. Edge distance ≤ 4" → 75
+ * 4. Edge distance ≤ 6" AND not >4" outside zone → 50
+ * 5. Edge distance ≤ 8" AND not >4" outside zone → 25
+ * 6. Everything else → 0
  */
 export function scorePitch(
   target: { x: number; z: number },
@@ -25,27 +56,28 @@ export function scorePitch(
   const dx = (actual.plate_x - target.x) * 12
   const dz = (actual.plate_z - target.z) * 12
   const distanceInches = Math.sqrt(dx * dx + dz * dz)
+  const edgeDistanceInches = Math.max(0, distanceInches - BASEBALL_RADIUS)
+
+  const outsideDist = distanceOutsideZone(actual.plate_x, actual.plate_z)
+  const tooFarOutside = outsideDist > 4
 
   let score: number
 
-  if (zone === 5) {
+  if (isInCenterBox(actual.plate_x, actual.plate_z)) {
     score = 0
-  } else if (distanceInches <= 2) {
+  } else if (edgeDistanceInches <= 2) {
     score = 100
-  } else if (distanceInches <= 3) {
-    score = 80
-  } else if (distanceInches <= 4) {
-    score = 60
-  } else if (zone > 9 || zone === 0) {
-    // Ball — more than 4" away
-    score = 0
-  } else if (distanceInches <= 5) {
-    score = 30
+  } else if (edgeDistanceInches <= 4) {
+    score = 75
+  } else if (edgeDistanceInches <= 6 && !tooFarOutside) {
+    score = 50
+  } else if (edgeDistanceInches <= 8 && !tooFarOutside) {
+    score = 25
   } else {
     score = 0
   }
 
-  return { pitchIndex, distanceInches, zone, score }
+  return { pitchIndex, distanceInches, edgeDistanceInches, zone, score }
 }
 
 /** Average of all pitch scores, rounded to nearest integer. */
@@ -64,11 +96,6 @@ export function computeCQR(results: CQRPitchResult[]): number {
  * Returns 0 if outside the zone.
  */
 export function getTargetZone(x: number, z: number): number {
-  const ZONE_LEFT = -17 / 24
-  const ZONE_RIGHT = 17 / 24
-  const ZONE_BOT = 1.5
-  const ZONE_TOP = 3.5
-
   if (x < ZONE_LEFT || x > ZONE_RIGHT || z < ZONE_BOT || z > ZONE_TOP) return 0
 
   const colWidth = (ZONE_RIGHT - ZONE_LEFT) / 3

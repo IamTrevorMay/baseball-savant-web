@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { createClient } from '@/lib/supabase/server'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -11,12 +12,32 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
  *
  * Mode B — Pitch data:
  *   ?pitcherId=X&gamePk=Y
+ *
+ * Mode C — Saved reviews:
+ *   ?saved=true
  */
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
-    const pitcherId = sp.get('pitcherId')
 
+    // ── Mode C: Saved Reviews ─────────────────────────────────────────
+    if (sp.get('saved') === 'true') {
+      const sb = await createClient()
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) return NextResponse.json({ reviews: [] })
+
+      const { data, error } = await sb
+        .from('cqr_reviews')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ reviews: data || [] })
+    }
+
+    const pitcherId = sp.get('pitcherId')
     if (!pitcherId) return NextResponse.json({ error: 'pitcherId required' }, { status: 400 })
 
     // ── Mode A: Game List ────────────────────────────────────────────────
@@ -86,6 +107,50 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ pitches })
   } catch (err: any) {
     console.error('compete/review error:', err)
+    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })
+  }
+}
+
+/**
+ * POST /api/compete/review
+ * Save a completed CQR review.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const sb = await createClient()
+    const { data: { user } } = await sb.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const body = await req.json()
+    const { pitcher_id, pitcher_name, game_pk, game_date, opponent, cqr_score, pitch_count, results, targets, breakdown } = body
+
+    if (!pitcher_id || !game_pk) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    const { data, error } = await sb
+      .from('cqr_reviews')
+      .insert({
+        user_id: user.id,
+        pitcher_id,
+        pitcher_name,
+        game_pk,
+        game_date,
+        opponent,
+        cqr_score,
+        pitch_count,
+        results,
+        targets,
+        breakdown,
+      })
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ review: data })
+  } catch (err: any) {
+    console.error('compete/review POST error:', err)
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })
   }
 }
