@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
+import { Scene, SceneElement, ElementType, DataBinding, DynamicSlot, Keyframe, EasingFunction, TemplateConfig, TemplateDataRow, CustomTemplateRecord, InputSection, SectionBinding, createElement, createDefaultScene, SCENE_PRESETS } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
+import { MLB_TEAM_COLORS } from '@/lib/reportMetrics'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
+import InputSectionsPanel from '@/components/visualize/template-builder/InputSectionsPanel'
 import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlotsPanel'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
@@ -40,6 +42,11 @@ export default function SceneComposerPage() {
   const [showBroadcastExport, setShowBroadcastExport] = useState(false)
   const [broadcastProjects, setBroadcastProjects] = useState<{id:string;name:string}[]>([])
   const [broadcastExporting, setBroadcastExporting] = useState(false)
+
+  // Input sections (from custom templates)
+  const [inputSections, setInputSections] = useState<InputSection[]>([])
+  const [sectionFetchLoading, setSectionFetchLoading] = useState<string | null>(null)
+  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
 
   // Timeline state
   const [showTimeline, setShowTimeline] = useState(false)
@@ -360,6 +367,196 @@ export default function SceneComposerPage() {
     }
   }, [scene.dynamicSlots, scene.elements, updateElementProps])
 
+  // ── Input Sections (custom templates) ────────────────────────────────────
+
+  const addInputSection = useCallback((name: string, elementIds: string[]) => {
+    const sectionId = Math.random().toString(36).slice(2, 10)
+    const section: InputSection = {
+      id: sectionId,
+      label: name,
+      elementIds,
+      enabledInputs: [],
+      playerType: 'pitcher',
+      gameYear: 2025,
+    }
+    setInputSections(prev => [...prev, section])
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => {
+        if (!elementIds.includes(e.id)) return e
+        const binding: SectionBinding = e.type === 'player-image'
+          ? { sectionId, metric: '__player__' }
+          : { sectionId, metric: 'avg_velo', format: '1f' }
+        return { ...e, sectionBinding: binding }
+      }),
+    }))
+  }, [])
+
+  const updateInputSection = useCallback((id: string, updates: Partial<InputSection>) => {
+    setInputSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+  }, [])
+
+  const removeInputSection = useCallback((id: string) => {
+    setInputSections(prev => prev.filter(s => s.id !== id))
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e =>
+        e.sectionBinding?.sectionId === id ? { ...e, sectionBinding: undefined } : e
+      ),
+    }))
+  }, [])
+
+  const updateSectionBinding = useCallback((id: string, binding: SectionBinding | undefined) => {
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => (e.id === id ? { ...e, sectionBinding: binding } : e)),
+    }))
+  }, [])
+
+  const fetchInputSection = useCallback(async (sectionId: string) => {
+    const section = inputSections.find(s => s.id === sectionId)
+    if (!section) return
+
+    const sectionElements = scene.elements.filter(e =>
+      e.sectionBinding?.sectionId === sectionId
+    )
+    if (sectionElements.length === 0) return
+
+    setSectionFetchLoading(sectionId)
+    try {
+      // ── Live Game branch ──
+      if (section.globalInputType === 'live-game' && section.gamePk) {
+        const res = await fetch(`/api/scores?date=${section.gameDate || ''}`)
+        const data = await res.json()
+        const games = data.games || []
+        const game = games.find((g: any) => g.gamePk === section.gamePk)
+        if (!game) { setSectionFetchLoading(null); return }
+
+        const half = game.inningHalf === 'Top' ? 'TOP' : game.inningHalf === 'Bottom' ? 'BOT' : ''
+        const awayAbbrev = game.away.abbrev || ''
+        const homeAbbrev = game.home.abbrev || ''
+        const outsNum = game.outs ?? 0
+
+        const stats: Record<string, string> = {
+          away_abbrev: awayAbbrev,
+          home_abbrev: homeAbbrev,
+          away_name: game.away.name || '',
+          home_name: game.home.name || '',
+          away_abbrev_themed: awayAbbrev,
+          home_abbrev_themed: homeAbbrev,
+          matchup_themed: `${awayAbbrev} - ${homeAbbrev}`,
+          away_score: String(Math.round(game.away.score ?? 0)),
+          home_score: String(Math.round(game.home.score ?? 0)),
+          inning_display: game.inningHalf && game.inningOrdinal ? `${game.inningHalf} ${game.inningOrdinal}` : '',
+          inning_half: game.inningHalf || '',
+          inning_ordinal: game.inningOrdinal || '',
+          outs: `${outsNum} ${outsNum === 1 ? 'out' : 'outs'}`,
+          game_state: game.state || '',
+          detailed_state: game.detailedState || '',
+          state_line: game.inningOrdinal ? `${half} ${game.inningOrdinal} \u00b7 ${outsNum} OUT` : game.detailedState || '',
+          on_first: game.onFirst ? '\u25c9' : '\u25cb',
+          on_second: game.onSecond ? '\u25c9' : '\u25cb',
+          on_third: game.onThird ? '\u25c9' : '\u25cb',
+          pitcher_name: game.pitcher?.name || '',
+          batter_name: game.batter?.name || '',
+          probable_away: game.probableAway?.name || '',
+          probable_home: game.probableHome?.name || '',
+        }
+
+        const awayColor = MLB_TEAM_COLORS[awayAbbrev] || '#ffffff'
+        const homeColor = MLB_TEAM_COLORS[homeAbbrev] || '#ffffff'
+        const themedColors: Record<string, string> = {
+          away_abbrev_themed: awayColor,
+          home_abbrev_themed: homeColor,
+          matchup_themed: awayColor,
+        }
+
+        for (const el of sectionElements) {
+          if (!el.sectionBinding) continue
+          const { metric } = el.sectionBinding
+          const val = stats[metric] ?? ''
+          applyStatToElement(el.id, el.type, metric, val, '', '')
+          if (themedColors[metric]) {
+            updateElementProps(el.id, { color: themedColors[metric] })
+          }
+        }
+        setSectionFetchLoading(null)
+        return
+      }
+
+      // ── Player / standard branch ──
+      if (!section.playerId) { setSectionFetchLoading(null); return }
+
+      const metrics = new Set<string>()
+      for (const el of sectionElements) {
+        if (el.sectionBinding && el.sectionBinding.metric !== '__player__') {
+          metrics.add(el.sectionBinding.metric)
+        }
+      }
+
+      let stats: Record<string, any> = {}
+      if (metrics.size > 0) {
+        const params = new URLSearchParams({
+          playerId: String(section.playerId),
+          playerType: section.playerType,
+          metrics: Array.from(metrics).join(','),
+          gameYear: String(section.gameYear),
+        })
+        if (section.pitchType) params.set('pitchType', section.pitchType)
+        const res = await fetch(`/api/scene-stats?${params}`)
+        const data = await res.json()
+        stats = data.stats || {}
+      }
+
+      for (const el of sectionElements) {
+        if (!el.sectionBinding) continue
+        const { metric, format } = el.sectionBinding
+        if (metric === '__player__') {
+          updateElementProps(el.id, { playerId: section.playerId, playerName: section.playerName || '' })
+        } else {
+          const val = stats[metric]
+          const sublabel = `${section.playerName || ''} ${section.gameYear}`.trim()
+          applyStatToElement(el.id, el.type, metric, val, section.playerName || '', sublabel)
+        }
+      }
+    } catch (err) {
+      console.error('Section fetch error:', err)
+    } finally {
+      setSectionFetchLoading(null)
+    }
+  }, [inputSections, scene.elements, updateElementProps])
+
+  // Live game auto-refresh
+  const liveGameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (liveGameIntervalRef.current) {
+      clearInterval(liveGameIntervalRef.current)
+      liveGameIntervalRef.current = null
+    }
+    const liveGameSections = inputSections.filter(
+      s => s.globalInputType === 'live-game' && s.gamePk
+    )
+    if (liveGameSections.length === 0) return
+    liveGameIntervalRef.current = setInterval(() => {
+      for (const section of liveGameSections) {
+        fetchInputSection(section.id)
+      }
+    }, 30_000)
+    return () => {
+      if (liveGameIntervalRef.current) {
+        clearInterval(liveGameIntervalRef.current)
+        liveGameIntervalRef.current = null
+      }
+    }
+  }, [inputSections, fetchInputSection])
+
+  const highlightSectionElements = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
+    setSelectedIds(new Set(ids))
+    setSelectedId(ids[0])
+  }, [])
+
   // ── Keyframe management ──────────────────────────────────────────────────
 
   const addKeyframe = useCallback((elementId: string, frame: number) => {
@@ -472,6 +669,7 @@ export default function SceneComposerPage() {
     setShowGallery(false)
     setCustomTemplateId(null)
     setCustomTemplateRecord(null)
+    setInputSections([])
   }
 
   async function handleUpdateTemplate() {
@@ -670,6 +868,7 @@ export default function SceneComposerPage() {
     setSelectedIds(new Set())
     setCurrentFrame(0)
     setPlaying(false)
+    setInputSections([])
     // Auto-fetch data
     fetchAndRebuildTemplate(config)
   }
@@ -690,6 +889,7 @@ export default function SceneComposerPage() {
     setPlaying(false)
     setCustomTemplateId(template.id)
     setCustomTemplateRecord(template)
+    setInputSections(template.inputSections || [])
   }
 
   function updateTemplateConfig(updates: Partial<TemplateConfig>) {
@@ -1141,6 +1341,7 @@ export default function SceneComposerPage() {
             scene={displayScene}
             selectedId={selectedId}
             selectedIds={selectedIds}
+            highlightedIds={highlightedIds}
             zoom={zoom}
             onSelect={handleSelect}
             onSelectMany={handleSelectMany}
@@ -1149,8 +1350,8 @@ export default function SceneComposerPage() {
           />
         </div>
 
-        {/* Right: Properties or Template Config or Dynamic Slots */}
-        {selectedElement ? (
+        {/* Right: Properties or Template Config or Input Sections */}
+        {selectedElement && selectedIds.size <= 1 ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             <PropertiesPanel
               element={selectedElement}
@@ -1165,6 +1366,24 @@ export default function SceneComposerPage() {
               fps={scene.fps || 30}
               dynamicSlots={scene.dynamicSlots}
               onAddDynamicSlot={addDynamicSlot}
+              inputSections={inputSections}
+              onUpdateSectionBinding={binding => updateSectionBinding(selectedElement.id, binding)}
+            />
+          </div>
+        ) : inputSections.length > 0 || selectedIds.size > 1 ? (
+          <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 p-3">
+            <InputSectionsPanel
+              sections={inputSections}
+              selectedIds={selectedIds}
+              elements={scene.elements}
+              onAddSection={addInputSection}
+              onUpdateSection={updateInputSection}
+              onRemoveSection={removeInputSection}
+              onFetchSection={fetchInputSection}
+              onSelectElements={highlightSectionElements}
+              onUpdateElementBinding={(elId, binding) => updateSectionBinding(elId, binding)}
+              onHoverElement={(id) => setHighlightedIds(id ? new Set([id]) : new Set())}
+              fetchLoading={sectionFetchLoading}
             />
           </div>
         ) : (scene.dynamicSlots?.length ?? 0) > 0 ? (
@@ -1180,13 +1399,7 @@ export default function SceneComposerPage() {
           </div>
         ) : scene.templateConfig ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            {scene.templateConfig.templateId.startsWith('custom:') ? (
-              <div className="p-3">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium mb-1">Custom Template</div>
-                <div className="text-[12px] text-cyan-400 font-semibold mb-3">{scene.name}</div>
-                <p className="text-[10px] text-zinc-600">Edit in Template Builder to configure input sections.</p>
-              </div>
-            ) : (scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
+            {(scene.templateConfig.templateId === 'pitcher-outing-report' || scene.templateConfig.templateId === 'starter-card') ? (
               <OutingConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}
