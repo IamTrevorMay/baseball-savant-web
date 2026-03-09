@@ -39,6 +39,17 @@ const TABS = [
     ),
   },
   {
+    id: 'broadcast',
+    label: 'Broadcast',
+    href: '/broadcast',
+    color: { active: 'text-red-400', inactive: 'text-zinc-500' },
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" />
+      </svg>
+    ),
+  },
+  {
     id: 'admin',
     label: 'Admin',
     href: '/admin',
@@ -61,6 +72,7 @@ const PREFIX_MAP: Record<string, string> = {
   '/analyst': 'research',
   '/glossary': 'research',
   '/models': 'models',
+  '/broadcast': 'broadcast',
   '/admin': 'admin',
 }
 

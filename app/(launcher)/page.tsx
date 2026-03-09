@@ -72,6 +72,19 @@ const TOOLS = [
     ),
     available: true,
   },
+  {
+    id: 'broadcast',
+    name: 'Broadcast',
+    description: 'OBS overlay graphics controller',
+    href: '/broadcast',
+    color: 'red',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8" /><path d="M12 17v4" /><circle cx="12" cy="10" r="2" /><path d="M8.5 6.5a5 5 0 0 1 7 0" /><path d="M6 4a9 9 0 0 1 12 0" />
+      </svg>
+    ),
+    available: true,
+  },
 ]
 
 const COLOR_MAP: Record<string, { bg: string; text: string; border: string; iconBg: string }> = {

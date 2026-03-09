@@ -1,0 +1,8 @@
+html, body {
+  background: transparent !important;
+  overflow: hidden;
+  width: 1920px;
+  height: 1080px;
+  margin: 0;
+  padding: 0;
+}

@@ -1,0 +1,61 @@
+{
+  "SDKVersion": 2,
+  "Author": "Triton",
+  "CodePath": "bin/plugin.js",
+  "Description": "Control Triton Broadcast overlays from your Stream Deck",
+  "Name": "Triton Broadcast",
+  "Icon": "images/plugin-icon",
+  "URL": "https://github.com/triton-broadcast",
+  "Version": "1.0.0",
+  "OS": [
+    { "Platform": "mac", "MinimumVersion": "10.15" },
+    { "Platform": "windows", "MinimumVersion": "10" }
+  ],
+  "Software": {
+    "MinimumVersion": "6.0"
+  },
+  "Category": "Triton Broadcast",
+  "CategoryIcon": "images/category-icon",
+  "Actions": [
+    {
+      "Icon": "images/toggle-asset",
+      "Name": "Toggle Asset",
+      "States": [
+        {
+          "Image": "images/asset-off",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        },
+        {
+          "Image": "images/asset-on",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Tooltip": "Show/hide a broadcast asset",
+      "UUID": "com.triton.broadcast.toggle-asset",
+      "PropertyInspectorPath": "ui/property-inspector.html",
+      "SupportedInMultiActions": true
+    },
+    {
+      "Icon": "images/play-video",
+      "Name": "Play Video",
+      "States": [
+        {
+          "Image": "images/video-off",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        },
+        {
+          "Image": "images/video-on",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Tooltip": "Play/stop a video asset",
+      "UUID": "com.triton.broadcast.play-video",
+      "PropertyInspectorPath": "ui/property-inspector.html",
+      "SupportedInMultiActions": true
+    }
+  ]
+}

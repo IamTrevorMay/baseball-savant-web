@@ -37,6 +37,9 @@ export default function SceneComposerPage() {
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false)
   const [customTemplateId, setCustomTemplateId] = useState<string | null>(null)
   const [customTemplateRecord, setCustomTemplateRecord] = useState<CustomTemplateRecord | null>(null)
+  const [showBroadcastExport, setShowBroadcastExport] = useState(false)
+  const [broadcastProjects, setBroadcastProjects] = useState<{id:string;name:string}[]>([])
+  const [broadcastExporting, setBroadcastExporting] = useState(false)
 
   // Timeline state
   const [showTimeline, setShowTimeline] = useState(false)
@@ -1076,6 +1079,21 @@ export default function SceneComposerPage() {
           Clear
         </button>
 
+        {/* Export to Broadcast */}
+        <button
+          onClick={async () => {
+            setShowBroadcastExport(true)
+            try {
+              const res = await fetch('/api/broadcast/projects')
+              const data = await res.json()
+              setBroadcastProjects(data.projects || [])
+            } catch {}
+          }}
+          className="px-3 py-1 rounded bg-red-500/15 border border-red-500/40 text-[11px] font-medium text-red-400 hover:bg-red-500/25 transition"
+        >
+          Broadcast
+        </button>
+
         {/* Export dropdown */}
         <div className="relative">
           <button
@@ -1274,6 +1292,61 @@ export default function SceneComposerPage() {
                 Update
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Export to Broadcast modal */}
+      {showBroadcastExport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowBroadcastExport(false)}>
+          <div className="w-[420px] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-white mb-1">Export to Broadcast</h3>
+            <p className="text-[11px] text-zinc-500 mb-4">Send this scene as a triggerable overlay asset</p>
+            {broadcastProjects.length === 0 ? (
+              <div className="text-center py-6 text-zinc-500 text-xs">
+                No broadcast projects found. Create one in the Broadcast tool first.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {broadcastProjects.map(proj => (
+                  <button
+                    key={proj.id}
+                    disabled={broadcastExporting}
+                    onClick={async () => {
+                      setBroadcastExporting(true)
+                      try {
+                        await fetch('/api/broadcast/assets', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            project_id: proj.id,
+                            name: scene.name,
+                            asset_type: 'scene',
+                            scene_config: {
+                              width: scene.width,
+                              height: scene.height,
+                              background: scene.background,
+                              elements: scene.elements,
+                            },
+                            canvas_width: scene.width,
+                            canvas_height: scene.height,
+                          }),
+                        })
+                        setShowBroadcastExport(false)
+                      } catch (err) {
+                        console.error('Failed to export:', err)
+                      }
+                      setBroadcastExporting(false)
+                    }}
+                    className="w-full text-left px-4 py-3 bg-zinc-800 border border-zinc-700 hover:border-red-500/40 rounded-lg transition disabled:opacity-50"
+                  >
+                    <div className="text-xs font-medium text-white">{proj.name}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setShowBroadcastExport(false)} className="mt-4 w-full px-3 py-1.5 text-[11px] text-zinc-400 hover:text-zinc-200 transition">
+              Cancel
+            </button>
           </div>
         </div>
       )}

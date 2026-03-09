@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Triton Broadcast</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 12px;
+      color: #d4d4d8;
+      background: #18181b;
+      margin: 0;
+      padding: 12px;
+    }
+    .sdpi-wrapper { margin-bottom: 10px; }
+    label {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #71717a;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    input, select {
+      width: 100%;
+      box-sizing: border-box;
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 4px;
+      color: #fafafa;
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: #ef4444;
+    }
+    button {
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 4px;
+    }
+    button:hover { background: #dc2626; }
+    .status {
+      font-size: 10px;
+      color: #71717a;
+      margin-top: 4px;
+    }
+    .status.connected { color: #22c55e; }
+    .status.error { color: #ef4444; }
+    h3 {
+      font-size: 11px;
+      color: #a1a1aa;
+      border-bottom: 1px solid #3f3f46;
+      padding-bottom: 4px;
+      margin: 16px 0 8px;
+    }
+  </style>
+</head>
+<body>
+  <h3>Connection</h3>
+
+  <div class="sdpi-wrapper">
+    <label>Supabase URL</label>
+    <input type="text" id="supabaseUrl" placeholder="https://xxx.supabase.co" />
+  </div>
+
+  <div class="sdpi-wrapper">
+    <label>Supabase Anon Key</label>
+    <input type="text" id="supabaseKey" placeholder="eyJ..." />
+  </div>
+
+  <div class="sdpi-wrapper">
+    <button id="btnConnect" onclick="saveConnection()">Save Connection</button>
+    <div id="connStatus" class="status">Not connected</div>
+  </div>
+
+  <h3>Session</h3>
+
+  <div class="sdpi-wrapper">
+    <label>Session ID</label>
+    <input type="text" id="sessionId" placeholder="Paste broadcast session ID" />
+  </div>
+
+  <div class="sdpi-wrapper">
+    <button onclick="loadAssets()">Load Assets</button>
+  </div>
+
+  <h3>Asset</h3>
+
+  <div class="sdpi-wrapper">
+    <label>Asset</label>
+    <select id="assetSelect">
+      <option value="">-- Select asset --</option>
+    </select>
+  </div>
+
+  <div class="sdpi-wrapper">
+    <button onclick="saveSettings()">Save</button>
+  </div>
+
+  <script src="property-inspector.js"></script>
+</body>
+</html>

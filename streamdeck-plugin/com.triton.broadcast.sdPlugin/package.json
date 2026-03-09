@@ -1,0 +1,12 @@
+{
+  "name": "triton-broadcast-streamdeck",
+  "version": "1.0.0",
+  "description": "Stream Deck plugin for Triton Broadcast overlay control",
+  "main": "bin/plugin.js",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}

@@ -159,6 +159,42 @@ export const TRANSITIONS: TransitionPreset[] = [
     },
   },
 
+  // Broadcast-specific
+  {
+    id: 'wipe-left',
+    name: 'Wipe Left',
+    category: 'enter',
+    icon: '\u25b6',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, width: 0, height: el.height, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+    ],
+  },
+  {
+    id: 'wipe-right',
+    name: 'Wipe Right',
+    category: 'enter',
+    icon: '\u25c0',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x + el.width, y: el.y, width: 0, height: el.height, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+    ],
+  },
+  {
+    id: 'drop-in',
+    name: 'Drop In',
+    category: 'enter',
+    icon: '\u2b07',
+    generate: (el, start, dur) => {
+      const bounceFrame = Math.floor(dur * 0.6)
+      return [
+        { frame: start, props: { x: el.x, y: -el.height, width: Math.round(el.width * 0.8), height: Math.round(el.height * 0.8), opacity: 0 }, easing: 'ease-in' as EasingFunction },
+        { frame: start + bounceFrame, props: { x: el.x, y: el.y + Math.round(el.height * 0.05), width: Math.round(el.width * 1.02), height: Math.round(el.height * 1.02), opacity: 1 }, easing: 'ease-out' as EasingFunction },
+        { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'ease-in-out' as EasingFunction },
+      ]
+    },
+  },
+
   // Emphasis
   {
     id: 'pulse',
