@@ -956,7 +956,7 @@ export default function TemplateBuilderPage() {
         {/* Right: Properties Panel or Repeater Panel */}
         {!previewing && (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            {selectedElement ? (
+            {selectedElement && selectedIds.size <= 1 ? (
               <div>
                 <PropertiesPanel
                   element={selectedElement}
