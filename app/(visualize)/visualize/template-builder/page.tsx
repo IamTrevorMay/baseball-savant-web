@@ -679,6 +679,14 @@ export default function TemplateBuilderPage() {
 
   // ── Template Loading ──────────────────────────────────────────────────────
 
+  function loadSceneTemplate(loaded: Scene) {
+    setScene({ ...loaded, templateConfig: undefined, templateData: undefined })
+    setSelectedId(null)
+    setSelectedIds(new Set())
+    setSaveId(null)
+    window.history.replaceState(null, '', '/visualize/template-builder')
+  }
+
   function loadDataDrivenIntoBuilder(template: DataDrivenTemplate) {
     const config = { templateId: template.id, ...template.defaultConfig }
     const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
@@ -827,7 +835,7 @@ export default function TemplateBuilderPage() {
         {/* Left: Element Library (elements + presets tabs only) */}
         {!previewing && (
           <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
+            <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadSceneTemplate} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
           </div>
         )}
 
