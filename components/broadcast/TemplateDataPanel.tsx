@@ -6,6 +6,7 @@ import { BroadcastAsset, TemplateDataValues } from '@/lib/broadcastTypes'
 import { InputSection, CustomTemplateRecord, SectionInputKey } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
+import { DATA_DRIVEN_TEMPLATES } from '@/lib/sceneTemplates'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 
 const PITCH_TYPES = [
@@ -125,7 +126,6 @@ export default function TemplateDataPanel({ asset }: Props) {
       }
 
       // 3. Resolve template with data
-      const rebuild = createCustomRebuild(latestTemplate)
       const config = {
         templateId: latestTemplate.id,
         playerType: (primaryData.playerType || primarySection?.playerType || 'pitcher') as 'pitcher' | 'batter',
@@ -141,7 +141,14 @@ export default function TemplateDataPanel({ asset }: Props) {
         playerId: primaryData.playerId,
         playerName: primaryData.playerName,
       }
-      const resolvedScene = rebuild(config, resolvedData || [])
+
+      // Use built-in template's rebuild if this was forked from one
+      const builtinTemplate = latestTemplate.base_template_id
+        ? DATA_DRIVEN_TEMPLATES.find(t => t.id === latestTemplate.base_template_id)
+        : null
+      const resolvedScene = builtinTemplate
+        ? builtinTemplate.rebuild(config, resolvedData || [])
+        : createCustomRebuild(latestTemplate)(config, resolvedData || [])
 
       // 4. Build new scene_config
       const newSceneConfig = {

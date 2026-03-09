@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useBroadcast } from './BroadcastContext'
 import { BroadcastAsset } from '@/lib/broadcastTypes'
 import { CustomTemplateRecord } from '@/lib/sceneTypes'
+import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
+import { getSampleData } from '@/lib/templateBindingSchemas'
 
 interface SavedScene {
   id: string
@@ -18,7 +20,7 @@ export default function AssetLibrary() {
   const [showImport, setShowImport] = useState(false)
   const [showTemplateImport, setShowTemplateImport] = useState(false)
   const [scenes, setScenes] = useState<SavedScene[]>([])
-  const [templates, setTemplates] = useState<CustomTemplateRecord[]>([])
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplateRecord[]>([])
   const [loadingScenes, setLoadingScenes] = useState(false)
   const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [importing, setImporting] = useState<string | null>(null)
@@ -39,8 +41,8 @@ export default function AssetLibrary() {
     setLoadingTemplates(true)
     fetch('/api/custom-templates')
       .then(r => r.json())
-      .then(d => setTemplates(d.templates || []))
-      .catch(() => setTemplates([]))
+      .then(d => setCustomTemplates(d.templates || []))
+      .catch(() => setCustomTemplates([]))
       .finally(() => setLoadingTemplates(false))
   }, [showTemplateImport])
 
@@ -48,7 +50,6 @@ export default function AssetLibrary() {
     if (!project) return
     setImporting(sceneId)
     try {
-      // Fetch full scene config
       const res = await fetch(`/api/scenes/${sceneId}`)
       const data = await res.json()
       if (!data.scene) return
@@ -84,7 +85,7 @@ export default function AssetLibrary() {
     }
   }
 
-  async function importTemplate(template: CustomTemplateRecord) {
+  async function importCustomTemplate(template: CustomTemplateRecord) {
     if (!project) return
     setImporting(template.id)
     try {
@@ -120,6 +121,76 @@ export default function AssetLibrary() {
     }
   }
 
+  async function importBuiltinTemplate(template: DataDrivenTemplate) {
+    if (!project) return
+    setImporting(template.id)
+    try {
+      // Build the scene with sample data to get elements
+      const config = { templateId: template.id, ...template.defaultConfig }
+      const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
+      const builtScene = template.rebuild(config, sampleData)
+
+      // Auto-save as a custom template so we get a DB ID for linking
+      const saveRes = await fetch('/api/custom-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: template.name,
+          description: template.description,
+          category: template.category,
+          icon: template.icon,
+          width: template.width,
+          height: template.height,
+          background: builtScene.background,
+          elements: builtScene.elements,
+          schemaType: 'leaderboard',
+          inputSections: [{
+            id: 'main',
+            label: 'Main',
+            elementIds: [],
+            enabledInputs: ['playerType', 'season', 'primaryStat', 'secondaryStat', 'tertiaryStat', 'sortDir', 'count', 'minSample', 'pitchType', 'title'],
+            playerType: template.defaultConfig.playerType || 'pitcher',
+            gameYear: template.defaultConfig.dateRange?.type === 'season' ? template.defaultConfig.dateRange.year : 2025,
+          }],
+          base_template_id: template.id,
+        }),
+      })
+      const saveData = await saveRes.json()
+      if (!saveData.id) throw new Error('Failed to save template')
+
+      // Create broadcast asset linked to the saved template
+      const assetRes = await fetch('/api/broadcast/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: project.id,
+          name: template.name,
+          asset_type: 'scene',
+          template_id: saveData.id,
+          template_data: { sections: {} },
+          scene_config: {
+            width: template.width,
+            height: template.height,
+            background: builtScene.background,
+            elements: builtScene.elements,
+          },
+          canvas_width: template.width,
+          canvas_height: template.height,
+          sort_order: assets.length,
+        }),
+      })
+      const assetData = await assetRes.json()
+      if (assetData.asset) {
+        addAsset(assetData.asset)
+        setShowTemplateImport(false)
+      }
+    } catch (err) {
+      console.error('Failed to import built-in template:', err)
+    } finally {
+      setImporting(null)
+    }
+  }
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     if (!project || !e.target.files?.length) return
     const file = e.target.files[0]
@@ -127,7 +198,6 @@ export default function AssetLibrary() {
     const assetType = isVideo ? 'video' : 'image'
 
     try {
-      // Upload to API
       const formData = new FormData()
       formData.append('file', file)
       formData.append('project_id', project.id)
@@ -139,7 +209,6 @@ export default function AssetLibrary() {
       const data = await res.json()
       if (!data.url) return
 
-      // Create asset
       const assetRes = await fetch('/api/broadcast/assets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -181,6 +250,11 @@ export default function AssetLibrary() {
     if (asset.asset_type === 'video') return 'V'
     return 'I'
   }
+
+  const allTemplateItems = [
+    ...DATA_DRIVEN_TEMPLATES.map(t => ({ type: 'builtin' as const, builtin: t, id: t.id, name: t.name, icon: t.icon, description: t.description, width: t.width, height: t.height, inputCount: 0 })),
+    ...customTemplates.map(t => ({ type: 'custom' as const, custom: t, id: t.id, name: t.name, icon: t.icon, description: t.description, width: t.width, height: t.height, inputCount: t.inputSections?.length || 0 })),
+  ]
 
   return (
     <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col h-full">
@@ -232,7 +306,6 @@ export default function AssetLibrary() {
                 }`}
                 onClick={() => setSelectedAssetId(asset.id)}
               >
-                {/* Type icon */}
                 <div
                   className="w-6 h-6 rounded flex items-center justify-center text-[10px] shrink-0"
                   style={{ backgroundColor: asset.hotkey_color + '20', color: asset.hotkey_color }}
@@ -337,31 +410,64 @@ export default function AssetLibrary() {
                 <div className="flex justify-center py-8">
                   <div className="w-6 h-6 border-2 border-zinc-700 border-t-amber-400 rounded-full animate-spin" />
                 </div>
-              ) : templates.length === 0 ? (
-                <div className="text-center py-8 text-zinc-500 text-sm">No templates found. Create one in Template Builder first.</div>
+              ) : allTemplateItems.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500 text-sm">No templates available</div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {templates.map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => importTemplate(t)}
-                      disabled={importing === t.id}
-                      className="bg-zinc-800 border border-zinc-700 hover:border-amber-500/40 rounded-lg p-3 text-left transition disabled:opacity-50"
-                    >
-                      <div className="w-full h-24 bg-zinc-900 rounded mb-2 flex items-center justify-center text-3xl">
-                        {t.icon || '\u26A1'}
+                <div className="space-y-4">
+                  {/* Built-in Templates */}
+                  {DATA_DRIVEN_TEMPLATES.length > 0 && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-emerald-500 font-medium mb-2">Built-in Templates</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {DATA_DRIVEN_TEMPLATES.map(t => (
+                          <button
+                            key={t.id}
+                            onClick={() => importBuiltinTemplate(t)}
+                            disabled={importing === t.id}
+                            className="bg-zinc-800 border border-zinc-700 hover:border-emerald-500/40 rounded-lg p-3 text-left transition disabled:opacity-50"
+                          >
+                            <div className="w-full h-20 bg-zinc-900 rounded mb-2 flex items-center justify-center text-2xl">
+                              {t.icon}
+                            </div>
+                            <div className="text-xs font-medium text-white truncate">{t.name}</div>
+                            <div className="text-[10px] text-zinc-500 mt-0.5">{t.width}x{t.height}</div>
+                            {t.description && <div className="text-[10px] text-zinc-600 mt-0.5 truncate">{t.description}</div>}
+                            {importing === t.id && <div className="text-[10px] text-amber-400 mt-1">Importing...</div>}
+                          </button>
+                        ))}
                       </div>
-                      <div className="text-xs font-medium text-white truncate">{t.name}</div>
-                      <div className="text-[10px] text-zinc-500 mt-0.5">
-                        {t.width}x{t.height}
-                        {t.inputSections && t.inputSections.length > 0 && (
-                          <span className="ml-1 text-amber-500">{t.inputSections.length} input{t.inputSections.length > 1 ? 's' : ''}</span>
-                        )}
+                    </div>
+                  )}
+
+                  {/* Custom Templates (from DB) */}
+                  {customTemplates.length > 0 && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-amber-500 font-medium mb-2">Custom Templates</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {customTemplates.map(t => (
+                          <button
+                            key={t.id}
+                            onClick={() => importCustomTemplate(t)}
+                            disabled={importing === t.id}
+                            className="bg-zinc-800 border border-zinc-700 hover:border-amber-500/40 rounded-lg p-3 text-left transition disabled:opacity-50"
+                          >
+                            <div className="w-full h-20 bg-zinc-900 rounded mb-2 flex items-center justify-center text-2xl">
+                              {t.icon || '\u26A1'}
+                            </div>
+                            <div className="text-xs font-medium text-white truncate">{t.name}</div>
+                            <div className="text-[10px] text-zinc-500 mt-0.5">
+                              {t.width}x{t.height}
+                              {t.inputSections && t.inputSections.length > 0 && (
+                                <span className="ml-1 text-amber-500">{t.inputSections.length} input{t.inputSections.length > 1 ? 's' : ''}</span>
+                              )}
+                            </div>
+                            {t.description && <div className="text-[10px] text-zinc-600 mt-0.5 truncate">{t.description}</div>}
+                            {importing === t.id && <div className="text-[10px] text-amber-400 mt-1">Importing...</div>}
+                          </button>
+                        ))}
                       </div>
-                      {t.description && <div className="text-[10px] text-zinc-600 mt-0.5 truncate">{t.description}</div>}
-                      {importing === t.id && <div className="text-[10px] text-amber-400 mt-1">Importing...</div>}
-                    </button>
-                  ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
