@@ -53,6 +53,7 @@ export default function TemplateBuilderPage() {
   const [scene, setScene, { undo, redo, canUndo, canRedo }] = useSceneHistory<Scene>(defaultScene())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
   const [zoom, setZoom] = useState(0.5)
   const [schemaType, setSchemaType] = useState<DataSchemaType>('leaderboard')
   const [repeater, setRepeater] = useState<RepeaterConfig | null>(null)
@@ -920,6 +921,7 @@ export default function TemplateBuilderPage() {
             scene={displayScene}
             selectedId={previewing ? null : selectedId}
             selectedIds={previewing ? undefined : selectedIds}
+            highlightedIds={previewing ? undefined : highlightedIds}
             zoom={zoom}
             onSelect={previewing ? () => {} : handleSelect}
             onSelectMany={previewing ? () => {} : handleSelectMany}
@@ -968,6 +970,7 @@ export default function TemplateBuilderPage() {
                   onFetchSection={fetchInputSection}
                   onSelectElements={highlightSectionElements}
                   onUpdateElementBinding={(elId, binding) => updateSectionBinding(elId, binding)}
+                  onHoverElement={(id) => setHighlightedIds(id ? new Set([id]) : new Set())}
                   fetchLoading={sectionFetchLoading}
                 />
                 <div className="h-px bg-zinc-800" />

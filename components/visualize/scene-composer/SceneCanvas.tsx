@@ -127,6 +127,7 @@ interface Props {
   scene: Scene
   selectedId: string | null
   selectedIds?: Set<string>
+  highlightedIds?: Set<string>
   zoom: number
   onSelect: (id: string | null, additive?: boolean) => void
   onSelectMany: (ids: string[]) => void
@@ -134,7 +135,7 @@ interface Props {
   canvasRef: React.RefObject<HTMLDivElement | null>
 }
 
-export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef }: Props) {
+export default function SceneCanvas({ scene, selectedId, selectedIds, highlightedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef }: Props) {
   const [drag, _setDrag] = useState<DragState>(null)
   const dragRef = useRef<DragState>(null)
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
@@ -441,7 +442,9 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
             opacity: el.opacity,
             transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
             zIndex: el.zIndex,
-            outline: selected ? `2px solid ${isPrimary ? '#06b6d4' : '#06b6d480'}` : undefined,
+            outline: selected
+              ? `2px solid ${isPrimary ? '#06b6d4' : '#06b6d480'}`
+              : highlightedIds?.has(el.id) ? '2px solid #10b981' : undefined,
             outlineOffset: 2,
           }
 

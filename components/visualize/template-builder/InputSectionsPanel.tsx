@@ -51,12 +51,13 @@ interface Props {
   onFetchSection: (id: string) => void
   onSelectElements: (ids: string[]) => void
   onUpdateElementBinding: (elementId: string, binding: SectionBinding | undefined) => void
+  onHoverElement?: (id: string | null) => void
   fetchLoading: string | null
 }
 
 export default function InputSectionsPanel({
   sections, selectedIds, elements, onAddSection, onUpdateSection,
-  onRemoveSection, onFetchSection, onSelectElements, onUpdateElementBinding, fetchLoading,
+  onRemoveSection, onFetchSection, onSelectElements, onUpdateElementBinding, onHoverElement, fetchLoading,
 }: Props) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -569,7 +570,12 @@ export default function InputSectionsPanel({
                       const metricOptions = isLiveGame ? GAME_METRICS : SCENE_METRICS
                       const defaultMetric = isLiveGame ? 'away_abbrev' : 'avg_velo'
                       return (
-                        <div key={el.id} className="rounded bg-zinc-900/50 border border-zinc-700/30 px-1.5 py-1.5">
+                        <div
+                          key={el.id}
+                          className="rounded bg-zinc-900/50 border border-zinc-700/30 px-1.5 py-1.5 hover:border-emerald-600/40 transition"
+                          onMouseEnter={() => onHoverElement?.(el.id)}
+                          onMouseLeave={() => onHoverElement?.(null)}
+                        >
                           <div className="flex items-center gap-1.5 mb-1">
                             <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">{ELEMENT_ICONS[el.type] || '?'}</span>
                             <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
