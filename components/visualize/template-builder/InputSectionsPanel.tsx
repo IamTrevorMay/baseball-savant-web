@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { InputSection, SectionBinding, SectionInputKey, SECTION_INPUT_OPTIONS, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
+import { useState, useEffect } from 'react'
+import { InputSection, SectionBinding, SectionInputKey, GlobalInputType, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 
@@ -20,6 +20,25 @@ const ELEMENT_ICONS: Record<string, string> = {
   'stat-card': '#', 'text': 'T', 'shape': '\u25a1', 'player-image': '\u25c9',
   'image': '\u25a3', 'comparison-bar': '\u25ac', 'pitch-flight': '\u2312',
   'stadium': '\u26be', 'ticker': '\u21c4', 'zone-plot': '\u25ce', 'movement-plot': '\u25c8',
+}
+
+const GLOBAL_INPUT_TYPES: { value: GlobalInputType; label: string; icon: string }[] = [
+  { value: 'player', label: 'Player', icon: '\u25c9' },
+  { value: 'live-game', label: 'Live Game', icon: '\u26be' },
+  { value: 'leaderboard', label: 'Leaderboard', icon: '\u2261' },
+  { value: 'team', label: 'Team', icon: '\u25a3' },
+]
+
+interface GameInfo {
+  gamePk: number
+  state: string
+  detailedState: string
+  away: { abbrev: string; score: number | null }
+  home: { abbrev: string; score: number | null }
+  inningOrdinal: string | null
+  inningHalf: string | null
+  probableAway: { id: number; name: string } | null
+  probableHome: { id: number; name: string } | null
 }
 
 interface Props {
@@ -42,7 +61,12 @@ export default function InputSectionsPanel({
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [expandedElements, setExpandedElements] = useState<Set<string>>(new Set())
-  const [configuringInputs, setConfiguringInputs] = useState<Set<string>>(new Set())
+  const [configuringSection, setConfiguringSection] = useState<string | null>(null)
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState<string | null>(null)
+
+  // Live game state
+  const [gamesBySection, setGamesBySection] = useState<Record<string, GameInfo[]>>({})
+  const [gamesLoading, setGamesLoading] = useState<string | null>(null)
 
   function handleCreate() {
     const name = newName.trim() || `Section ${sections.length + 1}`
@@ -51,26 +75,89 @@ export default function InputSectionsPanel({
     setNewName('')
   }
 
-  function toggleInput(sectionId: string, key: SectionInputKey) {
-    const section = sections.find(s => s.id === sectionId)
-    if (!section) return
-    const current = section.enabledInputs
-    const next = current.includes(key)
-      ? current.filter(k => k !== key)
-      : [...current, key]
-    onUpdateSection(sectionId, { enabledInputs: next })
+  function handleSetGlobalType(sectionId: string, type: GlobalInputType) {
+    // Reset secondary inputs when changing type
+    onUpdateSection(sectionId, {
+      globalInputType: type,
+      playerId: undefined,
+      playerName: undefined,
+      pitchType: undefined,
+      primaryStat: undefined,
+      secondaryStat: undefined,
+      tertiaryStat: undefined,
+      sortDir: undefined,
+      count: undefined,
+      minSample: undefined,
+      leaderboardType: type === 'leaderboard' ? 'players' : undefined,
+      gameDate: undefined,
+      gamePk: undefined,
+      dateRange: { type: 'season', year: 2025 },
+    })
+    setTypeDropdownOpen(null)
+    setConfiguringSection(sectionId)
   }
 
-  function has(section: InputSection, key: SectionInputKey): boolean {
-    return section.enabledInputs.includes(key)
+  async function fetchGamesForDate(sectionId: string, date: string) {
+    setGamesLoading(sectionId)
+    try {
+      const res = await fetch(`/api/scores?date=${date}`)
+      const data = await res.json()
+      setGamesBySection(prev => ({ ...prev, [sectionId]: data.games || [] }))
+    } catch (err) {
+      console.error('Failed to fetch games:', err)
+    } finally {
+      setGamesLoading(null)
+    }
   }
 
-  // Group toggle options for rendering
-  const groups: { group: string; options: typeof SECTION_INPUT_OPTIONS }[] = []
-  for (const opt of SECTION_INPUT_OPTIONS) {
-    let g = groups.find(g => g.group === opt.group)
-    if (!g) { g = { group: opt.group, options: [] }; groups.push(g) }
-    g.options.push(opt)
+  function handleApply(sectionId: string) {
+    setConfiguringSection(null)
+  }
+
+  // Derive a compact summary for applied state
+  function getSummary(section: InputSection): string {
+    const parts: string[] = []
+
+    if (!section.globalInputType) return 'No input configured'
+
+    switch (section.globalInputType) {
+      case 'player':
+        parts.push(section.playerType === 'pitcher' ? 'Pitcher' : 'Batter')
+        if (section.playerName) parts.push(section.playerName)
+        break
+      case 'leaderboard':
+        parts.push('Leaderboard')
+        if (section.leaderboardType) parts.push(section.leaderboardType === 'team' ? 'Team' : 'Players')
+        break
+      case 'team':
+        parts.push('Team')
+        break
+      case 'live-game':
+        parts.push('Live Game')
+        if (section.gamePk) {
+          const games = gamesBySection[section.id] || []
+          const game = games.find(g => g.gamePk === section.gamePk)
+          if (game) parts.push(`${game.away.abbrev} @ ${game.home.abbrev}`)
+        }
+        break
+    }
+
+    // Date range
+    const dr = section.dateRange
+    if (dr) {
+      if (dr.type === 'season') parts.push(String(dr.year))
+      else parts.push(`${dr.from} \u2013 ${dr.to}`)
+    }
+
+    // Pitch type
+    if (section.pitchType) {
+      const pt = PITCH_TYPES.find(p => p.value === section.pitchType)
+      parts.push(pt?.label || section.pitchType)
+    } else if (section.globalInputType !== 'live-game' && section.globalInputType !== 'team') {
+      parts.push('All Pitches')
+    }
+
+    return parts.join(' \u00b7 ')
   }
 
   // Stat metric selector helper
@@ -92,6 +179,270 @@ export default function InputSectionsPanel({
     )
   }
 
+  // Date range controls (shared between player, leaderboard, team)
+  function DateRangeInputs({ section }: { section: InputSection }) {
+    const dr = section.dateRange || { type: 'season' as const, year: section.gameYear }
+    return (
+      <div className="mb-2">
+        <label className="text-[10px] text-zinc-500 block mb-1">Date Range</label>
+        <div className="flex gap-1 mb-1.5">
+          {(['season', 'custom'] as const).map(dt => (
+            <button
+              key={dt}
+              onClick={() => {
+                if (dt === 'season') onUpdateSection(section.id, { dateRange: { type: 'season', year: section.gameYear } })
+                else onUpdateSection(section.id, { dateRange: { type: 'custom', from: `${section.gameYear}-03-27`, to: `${section.gameYear}-09-28` } })
+              }}
+              className={`flex-1 px-2 py-0.5 rounded text-[10px] font-medium transition border ${
+                dr.type === dt
+                  ? 'bg-emerald-600/20 border-emerald-600/40 text-emerald-300'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {dt === 'season' ? 'Season' : 'Custom'}
+            </button>
+          ))}
+        </div>
+        {dr.type === 'season' ? (
+          <select
+            value={dr.year}
+            onChange={e => onUpdateSection(section.id, { dateRange: { type: 'season', year: Number(e.target.value) } })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+          >
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        ) : (
+          <div className="space-y-1">
+            <input
+              type="date"
+              value={dr.from}
+              onChange={e => onUpdateSection(section.id, { dateRange: { ...dr as { type: 'custom'; from: string; to: string }, from: e.target.value } })}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+            />
+            <input
+              type="date"
+              value={dr.to}
+              onChange={e => onUpdateSection(section.id, { dateRange: { ...dr as { type: 'custom'; from: string; to: string }, to: e.target.value } })}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Player type toggle
+  function PlayerTypeToggle({ section }: { section: InputSection }) {
+    return (
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[10px] text-zinc-500 shrink-0">Type</span>
+        <div className="flex rounded overflow-hidden border border-zinc-700">
+          {(['pitcher', 'batter'] as const).map(pt => (
+            <button
+              key={pt}
+              onClick={() => onUpdateSection(section.id, { playerType: pt })}
+              className={`px-2 py-0.5 text-[10px] transition ${
+                section.playerType === pt
+                  ? 'bg-emerald-600/20 text-emerald-300'
+                  : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {pt === 'pitcher' ? 'Pitcher' : 'Batter'}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Pitch type select
+  function PitchTypeSelect({ section }: { section: InputSection }) {
+    return (
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[10px] text-zinc-500 shrink-0">Pitch Type</span>
+        <select
+          value={section.pitchType || ''}
+          onChange={e => onUpdateSection(section.id, { pitchType: e.target.value || undefined })}
+          className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+        >
+          {PITCH_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
+        </select>
+      </div>
+    )
+  }
+
+  // Configure mode content per global type
+  function ConfigureContent({ section }: { section: InputSection }) {
+    switch (section.globalInputType) {
+      case 'player':
+        return (
+          <>
+            <PlayerTypeToggle section={section} />
+            <DateRangeInputs section={section} />
+            <PitchTypeSelect section={section} />
+          </>
+        )
+
+      case 'leaderboard':
+        return (
+          <>
+            {/* Leaderboard type */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] text-zinc-500 shrink-0">Leaderboard</span>
+              <div className="flex rounded overflow-hidden border border-zinc-700">
+                {(['players', 'team'] as const).map(lt => (
+                  <button
+                    key={lt}
+                    onClick={() => onUpdateSection(section.id, { leaderboardType: lt })}
+                    className={`px-2 py-0.5 text-[10px] transition ${
+                      (section.leaderboardType || 'players') === lt
+                        ? 'bg-emerald-600/20 text-emerald-300'
+                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {lt === 'players' ? 'Players' : 'Team'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <PlayerTypeToggle section={section} />
+            <DateRangeInputs section={section} />
+            <PitchTypeSelect section={section} />
+            <MetricSelect label="Primary Stat" value={section.primaryStat} onChange={v => onUpdateSection(section.id, { primaryStat: v })} />
+            <MetricSelect label="Secondary Stat" value={section.secondaryStat} onChange={v => onUpdateSection(section.id, { secondaryStat: v })} />
+            <MetricSelect label="Tertiary Stat" value={section.tertiaryStat} onChange={v => onUpdateSection(section.id, { tertiaryStat: v })} />
+            {/* Sort Direction */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] text-zinc-500 shrink-0">Sort</span>
+              <div className="flex rounded overflow-hidden border border-zinc-700">
+                {(['desc', 'asc'] as const).map(dir => (
+                  <button
+                    key={dir}
+                    onClick={() => onUpdateSection(section.id, { sortDir: dir })}
+                    className={`px-2 py-0.5 text-[10px] transition ${
+                      (section.sortDir || 'desc') === dir
+                        ? 'bg-emerald-600/20 text-emerald-300'
+                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {dir === 'desc' ? 'Desc' : 'Asc'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Count */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] text-zinc-500 shrink-0">Count</span>
+              <input
+                type="number"
+                value={section.count ?? 5}
+                onChange={e => onUpdateSection(section.id, { count: Math.max(1, parseInt(e.target.value) || 5) })}
+                min={1} max={50}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+              />
+            </div>
+            {/* Min Sample */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-[10px] text-zinc-500 shrink-0">Min Sample</span>
+              <input
+                type="number"
+                value={section.minSample ?? 300}
+                onChange={e => onUpdateSection(section.id, { minSample: Math.max(0, parseInt(e.target.value) || 0) })}
+                min={0} step={50}
+                className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+              />
+            </div>
+          </>
+        )
+
+      case 'team':
+        return <DateRangeInputs section={section} />
+
+      case 'live-game':
+        return <LiveGameInputs section={section} />
+
+      default:
+        return null
+    }
+  }
+
+  // Live game inputs: date picker + game cards
+  function LiveGameInputs({ section }: { section: InputSection }) {
+    const games = gamesBySection[section.id] || []
+    const isLoading = gamesLoading === section.id
+
+    return (
+      <>
+        <div className="mb-2">
+          <label className="text-[10px] text-zinc-500 block mb-0.5">Game Date</label>
+          <input
+            type="date"
+            value={section.gameDate || ''}
+            onChange={e => {
+              const date = e.target.value
+              onUpdateSection(section.id, { gameDate: date, gamePk: undefined })
+              if (date) fetchGamesForDate(section.id, date)
+            }}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+          />
+        </div>
+
+        {isLoading && (
+          <div className="text-[10px] text-zinc-500 py-2 text-center">Loading games...</div>
+        )}
+
+        {!isLoading && section.gameDate && games.length === 0 && (
+          <div className="text-[10px] text-zinc-600 py-2 text-center">No games found</div>
+        )}
+
+        {!isLoading && games.length > 0 && (
+          <div className="space-y-1 mb-2 max-h-48 overflow-y-auto">
+            {games.map(game => {
+              const selected = section.gamePk === game.gamePk
+              return (
+                <button
+                  key={game.gamePk}
+                  onClick={() => onUpdateSection(section.id, { gamePk: game.gamePk })}
+                  className={`w-full text-left px-2 py-1.5 rounded text-[10px] transition border ${
+                    selected
+                      ? 'bg-emerald-600/20 border-emerald-600/40 text-emerald-300'
+                      : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{game.away.abbrev} @ {game.home.abbrev}</span>
+                    <span className={`text-[9px] ${
+                      game.state === 'Live' ? 'text-red-400' :
+                      game.state === 'Final' ? 'text-zinc-500' : 'text-zinc-600'
+                    }`}>
+                      {game.state === 'Live'
+                        ? `${game.inningHalf === 'Top' ? '\u25b2' : '\u25bc'} ${game.inningOrdinal}`
+                        : game.detailedState}
+                    </span>
+                  </div>
+                  {game.state !== 'Preview' && game.away.score != null && (
+                    <div className="text-[9px] text-zinc-600 mt-0.5">
+                      {game.away.abbrev} {game.away.score} - {game.home.abbrev} {game.home.score}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </>
+    )
+  }
+
+  // Fetch games on mount for sections that already have a gameDate
+  useEffect(() => {
+    for (const section of sections) {
+      if (section.globalInputType === 'live-game' && section.gameDate && !gamesBySection[section.id]) {
+        fetchGamesForDate(section.id, section.gameDate)
+      }
+    }
+  }, [sections])
+
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium mb-3">Input Sections</div>
@@ -99,8 +450,10 @@ export default function InputSectionsPanel({
       {sections.map(section => {
         const sectionElements = elements.filter(e => section.elementIds.includes(e.id))
         const isElementsExpanded = expandedElements.has(section.id)
-        const isConfiguring = configuringInputs.has(section.id)
-        const enabledCount = section.enabledInputs.length
+        const isConfiguring = configuringSection === section.id
+        const isDropdownOpen = typeDropdownOpen === section.id
+        const hasType = !!section.globalInputType
+        const isApplied = hasType && !isConfiguring
 
         return (
           <div key={section.id} className="mb-3 p-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/50">
@@ -112,21 +465,11 @@ export default function InputSectionsPanel({
                 onChange={e => onUpdateSection(section.id, { label: e.target.value })}
                 className="flex-1 bg-transparent text-xs font-semibold text-white border-none outline-none hover:bg-zinc-700/50 focus:bg-zinc-700/50 px-1 py-0.5 rounded transition min-w-0"
               />
-              <button
-                onClick={() => setConfiguringInputs(prev => {
-                  const next = new Set(prev)
-                  if (next.has(section.id)) next.delete(section.id)
-                  else next.add(section.id)
-                  return next
-                })}
-                className={`text-[11px] transition shrink-0 px-1 rounded ${
-                  isConfiguring ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-300'
-                }`}
-                title="Configure inputs"
-              >{'\u2699'}</button>
-              <span className="text-[9px] text-zinc-500 bg-zinc-700/50 px-1.5 py-0.5 rounded shrink-0">
-                {enabledCount} in
-              </span>
+              {hasType && (
+                <span className="text-[9px] text-emerald-400/70 bg-emerald-600/10 px-1.5 py-0.5 rounded shrink-0">
+                  {GLOBAL_INPUT_TYPES.find(t => t.value === section.globalInputType)?.label}
+                </span>
+              )}
               <button
                 onClick={() => onRemoveSection(section.id)}
                 className="text-zinc-600 hover:text-red-400 text-xs transition shrink-0"
@@ -134,250 +477,71 @@ export default function InputSectionsPanel({
               >{'\u2715'}</button>
             </div>
 
-            {/* Input toggles — grouped */}
-            {isConfiguring && (
-              <div className="mb-2 p-1.5 rounded bg-zinc-900/60 border border-zinc-700/30 space-y-2">
-                <div className="text-[9px] text-zinc-600 uppercase tracking-wider">Toggle Inputs</div>
-                {groups.map(g => (
-                  <div key={g.group}>
-                    <div className="text-[8px] text-zinc-600 uppercase tracking-wider mb-1">{g.group}</div>
-                    <div className="flex flex-wrap gap-1">
-                      {g.options.map(opt => {
-                        const on = has(section, opt.key)
-                        return (
-                          <button
-                            key={opt.key}
-                            onClick={() => toggleInput(section.id, opt.key)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition border ${
-                              on
-                                ? 'bg-emerald-600/20 border-emerald-600/40 text-emerald-300'
-                                : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── Rendered input controls (only enabled ones) ── */}
-
-            {/* Title */}
-            {has(section, 'title') && (
-              <div className="mb-2">
-                <label className="text-[10px] text-zinc-500 block mb-0.5">Title</label>
-                <input
-                  type="text"
-                  value={section.title || ''}
-                  onChange={e => onUpdateSection(section.id, { title: e.target.value || undefined })}
-                  placeholder="Auto-generated"
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-600 outline-none"
-                />
-              </div>
-            )}
-
-            {/* Player picker */}
-            {has(section, 'playerPicker') && (
-              <div className="mb-2">
-                <PlayerPicker
-                  label="Search player..."
-                  playerType={section.playerType === 'batter' ? 'hitter' : 'pitcher'}
-                  onSelect={(id, name) => onUpdateSection(section.id, { playerId: id, playerName: name })}
-                />
-                {section.playerName && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="text-[10px] text-cyan-400/70 truncate flex-1">{section.playerName}</span>
-                    <button
-                      onClick={() => onUpdateSection(section.id, { playerId: undefined, playerName: undefined })}
-                      className="text-zinc-600 hover:text-zinc-400 text-[10px] transition shrink-0"
-                    >{'\u2715'}</button>
+            {/* ── Empty state: no globalInputType ── */}
+            {!hasType && !isConfiguring && (
+              <div className="relative">
+                <button
+                  onClick={() => setTypeDropdownOpen(isDropdownOpen ? null : section.id)}
+                  className="w-full px-3 py-2 rounded border border-dashed border-zinc-600 text-[11px] text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition"
+                >
+                  + Add Input
+                </button>
+                {isDropdownOpen && (
+                  <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+                    {GLOBAL_INPUT_TYPES.map(t => (
+                      <button
+                        key={t.value}
+                        onClick={() => handleSetGlobalType(section.id, t.value)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-zinc-300 hover:bg-zinc-700/70 hover:text-white transition text-left"
+                      >
+                        <span className="text-sm w-5 text-center">{t.icon}</span>
+                        <span>{t.label}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Player type toggle */}
-            {has(section, 'playerType') && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[10px] text-zinc-500 shrink-0">Type</span>
-                <div className="flex rounded overflow-hidden border border-zinc-700">
-                  {(['pitcher', 'batter'] as const).map(pt => (
-                    <button
-                      key={pt}
-                      onClick={() => onUpdateSection(section.id, { playerType: pt })}
-                      className={`px-2 py-0.5 text-[10px] transition ${
-                        section.playerType === pt
-                          ? 'bg-emerald-600/20 text-emerald-300'
-                          : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      {pt === 'pitcher' ? 'Pitcher' : 'Batter'}
-                    </button>
-                  ))}
+            {/* ── Configure mode ── */}
+            {isConfiguring && hasType && (
+              <div className="mb-2 p-2 rounded bg-zinc-900/60 border border-zinc-700/30">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[9px] text-zinc-600 uppercase tracking-wider">Configure</span>
+                  <button
+                    onClick={() => {
+                      // Change type — show dropdown again
+                      onUpdateSection(section.id, { globalInputType: undefined })
+                      setConfiguringSection(null)
+                      setTypeDropdownOpen(section.id)
+                    }}
+                    className="text-[9px] text-zinc-600 hover:text-zinc-400 transition"
+                  >
+                    Change type
+                  </button>
                 </div>
-              </div>
-            )}
-
-            {/* Season */}
-            {has(section, 'season') && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[10px] text-zinc-500 shrink-0">Season</span>
-                <select
-                  value={section.gameYear}
-                  onChange={e => onUpdateSection(section.id, { gameYear: Number(e.target.value) })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+                <ConfigureContent section={section} />
+                <button
+                  onClick={() => handleApply(section.id)}
+                  className="w-full mt-2 px-3 py-1.5 rounded bg-emerald-600/20 border border-emerald-600/50 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-600/30 transition"
                 >
-                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+                  Apply
+                </button>
               </div>
             )}
 
-            {/* Date Range */}
-            {has(section, 'dateRange') && (() => {
-              const dr = section.dateRange || { type: 'season' as const, year: section.gameYear }
-              return (
-                <div className="mb-2">
-                  <label className="text-[10px] text-zinc-500 block mb-1">Date Range</label>
-                  <div className="flex gap-1 mb-1.5">
-                    {(['season', 'custom'] as const).map(dt => (
-                      <button
-                        key={dt}
-                        onClick={() => {
-                          if (dt === 'season') onUpdateSection(section.id, { dateRange: { type: 'season', year: section.gameYear } })
-                          else onUpdateSection(section.id, { dateRange: { type: 'custom', from: `${section.gameYear}-03-27`, to: `${section.gameYear}-09-28` } })
-                        }}
-                        className={`flex-1 px-2 py-0.5 rounded text-[10px] font-medium transition border ${
-                          dr.type === dt
-                            ? 'bg-emerald-600/20 border-emerald-600/40 text-emerald-300'
-                            : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
-                        }`}
-                      >
-                        {dt === 'season' ? 'Season' : 'Custom'}
-                      </button>
-                    ))}
-                  </div>
-                  {dr.type === 'season' ? (
-                    <select
-                      value={dr.year}
-                      onChange={e => onUpdateSection(section.id, { dateRange: { type: 'season', year: Number(e.target.value) } })}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
-                    >
-                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                  ) : (
-                    <div className="space-y-1">
-                      <input
-                        type="date"
-                        value={dr.from}
-                        onChange={e => onUpdateSection(section.id, { dateRange: { ...dr as { type: 'custom'; from: string; to: string }, from: e.target.value } })}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
-                      />
-                      <input
-                        type="date"
-                        value={dr.to}
-                        onChange={e => onUpdateSection(section.id, { dateRange: { ...dr as { type: 'custom'; from: string; to: string }, to: e.target.value } })}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
-                      />
-                    </div>
-                  )}
+            {/* ── Applied state: compact summary ── */}
+            {isApplied && (
+              <div className="mb-2">
+                <div className="px-2 py-1.5 rounded bg-zinc-900/40 border border-zinc-700/30 text-[10px] text-zinc-400 mb-1.5">
+                  {getSummary(section)}
                 </div>
-              )
-            })()}
-
-            {/* Pitch type */}
-            {has(section, 'pitchType') && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[10px] text-zinc-500 shrink-0">Pitch Type</span>
-                <select
-                  value={section.pitchType || ''}
-                  onChange={e => onUpdateSection(section.id, { pitchType: e.target.value || undefined })}
-                  className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
+                <button
+                  onClick={() => setConfiguringSection(section.id)}
+                  className="w-full px-2 py-1 rounded bg-zinc-700/40 border border-zinc-600/50 text-[10px] text-zinc-400 hover:text-white transition"
                 >
-                  {PITCH_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
-                </select>
-              </div>
-            )}
-
-            {/* Primary Stat */}
-            {has(section, 'primaryStat') && (
-              <MetricSelect
-                label="Primary Stat"
-                value={section.primaryStat}
-                onChange={v => onUpdateSection(section.id, { primaryStat: v })}
-              />
-            )}
-
-            {/* Secondary Stat */}
-            {has(section, 'secondaryStat') && (
-              <MetricSelect
-                label="Secondary Stat"
-                value={section.secondaryStat}
-                onChange={v => onUpdateSection(section.id, { secondaryStat: v })}
-              />
-            )}
-
-            {/* Tertiary Stat */}
-            {has(section, 'tertiaryStat') && (
-              <MetricSelect
-                label="Tertiary Stat"
-                value={section.tertiaryStat}
-                onChange={v => onUpdateSection(section.id, { tertiaryStat: v })}
-              />
-            )}
-
-            {/* Sort Direction */}
-            {has(section, 'sortDir') && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[10px] text-zinc-500 shrink-0">Sort</span>
-                <div className="flex rounded overflow-hidden border border-zinc-700">
-                  {(['desc', 'asc'] as const).map(dir => (
-                    <button
-                      key={dir}
-                      onClick={() => onUpdateSection(section.id, { sortDir: dir })}
-                      className={`px-2 py-0.5 text-[10px] transition ${
-                        (section.sortDir || 'desc') === dir
-                          ? 'bg-emerald-600/20 text-emerald-300'
-                          : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      {dir === 'desc' ? 'Desc' : 'Asc'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Count */}
-            {has(section, 'count') && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[10px] text-zinc-500 shrink-0">Count</span>
-                <input
-                  type="number"
-                  value={section.count ?? 5}
-                  onChange={e => onUpdateSection(section.id, { count: Math.max(1, parseInt(e.target.value) || 5) })}
-                  min={1}
-                  max={50}
-                  className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
-                />
-              </div>
-            )}
-
-            {/* Min Sample */}
-            {has(section, 'minSample') && (
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[10px] text-zinc-500 shrink-0">Min Sample</span>
-                <input
-                  type="number"
-                  value={section.minSample ?? 300}
-                  onChange={e => onUpdateSection(section.id, { minSample: Math.max(0, parseInt(e.target.value) || 0) })}
-                  min={0}
-                  step={50}
-                  className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 focus:border-emerald-600 outline-none"
-                />
+                  Edit Inputs
+                </button>
               </div>
             )}
 
@@ -446,7 +610,12 @@ export default function InputSectionsPanel({
               </button>
               <button
                 onClick={() => onFetchSection(section.id)}
-                disabled={!section.playerId || fetchLoading === section.id}
+                disabled={
+                  (section.globalInputType === 'player' && !section.playerId) ||
+                  (section.globalInputType === 'live-game' && !section.gamePk) ||
+                  (!section.globalInputType) ||
+                  fetchLoading === section.id
+                }
                 className="flex-1 px-2 py-1.5 rounded bg-emerald-600/20 border border-emerald-600/50 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-600/30 transition disabled:opacity-40"
               >
                 {fetchLoading === section.id ? 'Fetching...' : 'Fetch Data'}

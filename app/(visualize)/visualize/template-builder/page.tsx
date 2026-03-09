@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Scene, SceneElement, ElementType, DataSchemaType, DataBinding, DynamicSlot,
   RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputSection, SectionBinding,
-  ALL_SECTION_INPUTS, createElement, SCENE_PRESETS,
+  createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
 import { SCENE_METRICS } from '@/lib/reportMetrics'
 import { useSceneHistory } from '@/lib/useSceneHistory'
@@ -40,7 +40,7 @@ const ZOOM_STEPS = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0]
 function normalizeSections(sections: InputSection[]): InputSection[] {
   return sections.map(s => ({
     ...s,
-    enabledInputs: s.enabledInputs ?? [...ALL_SECTION_INPUTS],
+    enabledInputs: s.enabledInputs ?? [],
   }))
 }
 
@@ -308,7 +308,7 @@ export default function TemplateBuilderPage() {
       id: sectionId,
       label: name,
       elementIds,
-      enabledInputs: [...ALL_SECTION_INPUTS],
+      enabledInputs: [],
       playerType: 'pitcher',
       gameYear: 2025,
     }

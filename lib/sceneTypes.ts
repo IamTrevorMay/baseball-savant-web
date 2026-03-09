@@ -54,32 +54,17 @@ export type SectionInputKey =
   | 'primaryStat' | 'secondaryStat' | 'tertiaryStat'
   | 'dateRange' | 'sortDir' | 'count' | 'minSample' | 'title'
 
-export const SECTION_INPUT_OPTIONS: { key: SectionInputKey; label: string; group: string }[] = [
-  // Core
-  { key: 'playerPicker', label: 'Player', group: 'Core' },
-  { key: 'playerType', label: 'Player Type', group: 'Core' },
-  { key: 'title', label: 'Title', group: 'Core' },
-  // Filters
-  { key: 'season', label: 'Season', group: 'Filters' },
-  { key: 'pitchType', label: 'Pitch Type', group: 'Filters' },
-  { key: 'dateRange', label: 'Date Range', group: 'Filters' },
-  // Stats
-  { key: 'primaryStat', label: 'Primary Stat', group: 'Stats' },
-  { key: 'secondaryStat', label: 'Secondary Stat', group: 'Stats' },
-  { key: 'tertiaryStat', label: 'Tertiary Stat', group: 'Stats' },
-  // Options
-  { key: 'sortDir', label: 'Sort Direction', group: 'Options' },
-  { key: 'count', label: 'Count', group: 'Options' },
-  { key: 'minSample', label: 'Min Sample', group: 'Options' },
-]
-
-export const ALL_SECTION_INPUTS: SectionInputKey[] = SECTION_INPUT_OPTIONS.map(o => o.key)
+export type GlobalInputType = 'player' | 'live-game' | 'leaderboard' | 'team'
 
 export interface InputSection {
   id: string
   label: string            // user-chosen name, e.g. "Player One"
   elementIds: string[]     // SceneElement IDs bound to this section
-  enabledInputs: SectionInputKey[]  // which input controls to show
+  enabledInputs: SectionInputKey[]  // kept for backwards compat — auto-derived from globalInputType
+  globalInputType?: GlobalInputType
+  leaderboardType?: 'players' | 'team'  // for leaderboard: players vs team ranking
+  gameDate?: string        // for live game date picker
+  gamePk?: number          // for live game selection
   playerType: 'pitcher' | 'batter'
   playerId?: number
   playerName?: string
