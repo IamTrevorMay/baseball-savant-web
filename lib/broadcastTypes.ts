@@ -41,7 +41,12 @@ export interface TemplateDataValues {
     count?: number
     minSample?: number
     title?: string
+    globalInputType?: 'player' | 'live-game' | 'leaderboard' | 'team'
+    leaderboardType?: 'players' | 'team'
+    gameDate?: string
+    gamePk?: number
   }>
+  themeTeam?: string
 }
 
 export interface BroadcastAsset {
@@ -65,6 +70,10 @@ export interface BroadcastAsset {
   layer: number
   enter_transition: TransitionConfig | null
   exit_transition: TransitionConfig | null
+  opacity: number
+  trigger_mode: 'toggle' | 'flash' | 'show' | 'hide'
+  trigger_duration: number
+  hotkey_key: string | null
   hotkey_label: string
   hotkey_color: string
   sort_order: number

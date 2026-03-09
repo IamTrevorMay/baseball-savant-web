@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useBroadcast } from './BroadcastContext'
 import { BroadcastAsset, TemplateDataValues } from '@/lib/broadcastTypes'
-import { InputSection, CustomTemplateRecord, SectionInputKey } from '@/lib/sceneTypes'
-import { SCENE_METRICS } from '@/lib/reportMetrics'
+import { InputSection, CustomTemplateRecord, SectionInputKey, GlobalInputType, SceneElement, SectionBinding } from '@/lib/sceneTypes'
+import { SCENE_METRICS, GAME_METRICS } from '@/lib/reportMetrics'
+import { TEAM_COLORS, TEAM_COLOR_OPTIONS, TeamPalette } from '@/lib/teamColors'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
 import { DATA_DRIVEN_TEMPLATES } from '@/lib/sceneTemplates'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
@@ -20,6 +21,31 @@ const PITCH_TYPES = [
 
 const YEARS = Array.from({ length: 11 }, (_, i) => 2025 - i)
 
+const ELEMENT_ICONS: Record<string, string> = {
+  'stat-card': '#', 'text': 'T', 'shape': '\u25a1', 'player-image': '\u25c9',
+  'image': '\u25a3', 'comparison-bar': '\u25ac', 'pitch-flight': '\u2312',
+  'stadium': '\u26be', 'ticker': '\u21c4', 'zone-plot': '\u25ce', 'movement-plot': '\u25c8',
+}
+
+const GLOBAL_INPUT_TYPES: { value: GlobalInputType; label: string; icon: string }[] = [
+  { value: 'player', label: 'Player', icon: '\u25c9' },
+  { value: 'live-game', label: 'Live Game', icon: '\u26be' },
+  { value: 'leaderboard', label: 'Leaderboard', icon: '\u2261' },
+  { value: 'team', label: 'Team', icon: '\u25a3' },
+]
+
+type Tab = 'inputs' | 'elements' | 'theme'
+
+interface GameInfo {
+  gamePk: number
+  state: string
+  detailedState: string
+  away: { abbrev: string; score: number | null }
+  home: { abbrev: string; score: number | null }
+  inningOrdinal: string | null
+  inningHalf: string | null
+}
+
 interface Props {
   asset: BroadcastAsset
 }
@@ -29,9 +55,15 @@ export default function TemplateDataPanel({ asset }: Props) {
   const [template, setTemplate] = useState<CustomTemplateRecord | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [activeTab, setActiveTab] = useState<Tab>('inputs')
   const [sectionData, setSectionData] = useState<TemplateDataValues['sections']>(
     asset.template_data?.sections || {}
   )
+  const [themeTeam, setThemeTeam] = useState(asset.template_data?.themeTeam || '')
+
+  // Live game state
+  const [gamesBySection, setGamesBySection] = useState<Record<string, GameInfo[]>>({})
+  const [gamesLoading, setGamesLoading] = useState<string | null>(null)
 
   // Fetch the linked template (always latest)
   useEffect(() => {
@@ -47,7 +79,21 @@ export default function TemplateDataPanel({ asset }: Props) {
   // Sync section data when asset changes externally
   useEffect(() => {
     setSectionData(asset.template_data?.sections || {})
+    setThemeTeam(asset.template_data?.themeTeam || '')
   }, [asset.id])
+
+  // Fetch games for live-game sections on mount
+  useEffect(() => {
+    if (!template) return
+    for (const section of template.inputSections || []) {
+      const data = sectionData[section.id]
+      const gType = data?.globalInputType || section.globalInputType
+      const gDate = data?.gameDate || section.gameDate
+      if (gType === 'live-game' && gDate && !gamesBySection[section.id]) {
+        fetchGamesForDate(section.id, gDate)
+      }
+    }
+  }, [template])
 
   const updateSection = useCallback((sectionId: string, updates: Record<string, any>) => {
     setSectionData(prev => ({
@@ -58,6 +104,48 @@ export default function TemplateDataPanel({ asset }: Props) {
 
   function has(section: InputSection, key: SectionInputKey): boolean {
     return section.enabledInputs.includes(key)
+  }
+
+  async function fetchGamesForDate(sectionId: string, date: string) {
+    setGamesLoading(sectionId)
+    try {
+      const res = await fetch(`/api/scores?date=${date}`)
+      const data = await res.json()
+      setGamesBySection(prev => ({ ...prev, [sectionId]: data.games || [] }))
+    } catch (err) {
+      console.error('Failed to fetch games:', err)
+    } finally {
+      setGamesLoading(null)
+    }
+  }
+
+  function applyThemeToElements(elements: SceneElement[], tc: TeamPalette): SceneElement[] {
+    return elements.map(el => {
+      const newProps = { ...el.props }
+      switch (el.type) {
+        case 'stat-card':
+          newProps.color = tc.primary
+          break
+        case 'text':
+          newProps.color = tc.primary
+          break
+        case 'shape':
+          newProps.fill = tc.secondary
+          newProps.stroke = tc.primary
+          break
+        case 'player-image':
+          newProps.borderColor = tc.primary
+          break
+        case 'comparison-bar':
+          newProps.color = tc.primary
+          break
+        case 'ticker':
+          newProps.color = tc.accent
+          newProps.bgColor = tc.primary
+          break
+      }
+      return { ...el, props: newProps }
+    })
   }
 
   async function handleApply() {
@@ -81,7 +169,10 @@ export default function TemplateDataPanel({ asset }: Props) {
       const primarySection = sections[0]
       const primaryData = sectionData[primarySection?.id] || {}
 
-      if (latestTemplate.schemaType === 'leaderboard') {
+      // Determine effective globalInputType: section data override > template definition
+      const effectiveType = primaryData.globalInputType || primarySection?.globalInputType
+
+      if (latestTemplate.schemaType === 'leaderboard' || effectiveType === 'leaderboard') {
         // Leaderboard mode: fetch from scene-stats API
         const params = new URLSearchParams({ leaderboard: 'true' })
         params.set('metric', primaryData.primaryStat || 'avg_velo')
@@ -101,6 +192,13 @@ export default function TemplateDataPanel({ asset }: Props) {
         const statsRes = await fetch(`/api/scene-stats?${params.toString()}`)
         const statsData = await statsRes.json()
         resolvedData = statsData.leaderboard || []
+      } else if (effectiveType === 'live-game') {
+        // Live game mode: fetch from live-game API
+        if (primaryData.gamePk) {
+          const res = await fetch(`/api/live-game?gamePk=${primaryData.gamePk}`)
+          const data = await res.json()
+          resolvedData = data.game ? [data.game] : []
+        }
       } else if (primaryData.playerId) {
         // Single-player modes (outing, starter-card, generic, percentile)
         const params = new URLSearchParams({
@@ -150,16 +248,21 @@ export default function TemplateDataPanel({ asset }: Props) {
         ? builtinTemplate.rebuild(config, resolvedData || [])
         : createCustomRebuild(latestTemplate)(config, resolvedData || [])
 
-      // 4. Build new scene_config
+      // 4. Build new scene_config — apply theme if set
+      let elements = resolvedScene.elements
+      if (themeTeam && TEAM_COLORS[themeTeam]) {
+        elements = applyThemeToElements(elements, TEAM_COLORS[themeTeam])
+      }
+
       const newSceneConfig = {
         width: resolvedScene.width,
         height: resolvedScene.height,
         background: resolvedScene.background,
-        elements: resolvedScene.elements,
+        elements,
       }
 
       // 5. Update local state + persist
-      const templateDataPayload: TemplateDataValues = { sections: sectionData }
+      const templateDataPayload: TemplateDataValues = { sections: sectionData, themeTeam: themeTeam || undefined }
       updateAsset(asset.id, { scene_config: newSceneConfig, template_data: templateDataPayload })
 
       await fetch('/api/broadcast/assets', {
@@ -179,6 +282,24 @@ export default function TemplateDataPanel({ asset }: Props) {
     } catch (err) {
       console.error('Failed to apply template:', err)
     } finally {
+      setApplying(false)
+    }
+  }
+
+  async function handleSaveElementBindings() {
+    if (!template || !asset.template_id) return
+    setApplying(true)
+    try {
+      // Save updated inputSections back to the template
+      await fetch(`/api/custom-templates/${asset.template_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputSections: template.inputSections }),
+      })
+      // Then re-apply to rebuild with updated bindings
+      await handleApply()
+    } catch (err) {
+      console.error('Failed to save element bindings:', err)
       setApplying(false)
     }
   }
@@ -206,205 +327,67 @@ export default function TemplateDataPanel({ asset }: Props) {
     )
   }
 
+  // All elements across all sections for theme tab
+  const allElements = asset.scene_config?.elements || []
+
   return (
     <div className="border-b border-zinc-800">
+      {/* Header */}
       <div className="px-4 py-2 bg-amber-500/5 border-b border-amber-500/20">
         <div className="text-[10px] uppercase tracking-wider text-amber-500 font-medium">Template Data</div>
         <p className="text-[11px] text-zinc-500 mt-0.5">{template.name}</p>
       </div>
 
+      {/* Tab bar */}
+      <div className="flex border-b border-zinc-800">
+        {(['inputs', 'elements', 'theme'] as Tab[]).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider transition ${
+              activeTab === tab
+                ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
+                : 'text-zinc-600 hover:text-zinc-400'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
       <div className="px-4 py-3 space-y-4">
-        {sections.map(section => {
-          const data = sectionData[section.id] || {}
-          return (
-            <div key={section.id} className="space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">{section.label}</div>
+        {activeTab === 'inputs' && (
+          <InputsTab
+            sections={sections}
+            sectionData={sectionData}
+            updateSection={updateSection}
+            has={has}
+            gamesBySection={gamesBySection}
+            gamesLoading={gamesLoading}
+            fetchGamesForDate={fetchGamesForDate}
+          />
+        )}
 
-              {/* Player Picker */}
-              {has(section, 'playerPicker') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Player</label>
-                  <PlayerPicker
-                    label={data.playerName || 'Search player...'}
-                    playerType={data.playerType === 'batter' ? 'hitter' : 'pitcher'}
-                    onSelect={(id, name) => updateSection(section.id, { playerId: id, playerName: name })}
-                  />
-                  {data.playerName && (
-                    <div className="text-[10px] text-amber-400 mt-0.5">{data.playerName}</div>
-                  )}
-                </div>
-              )}
+        {activeTab === 'elements' && (
+          <ElementsTab
+            sections={sections}
+            template={template}
+            setTemplate={setTemplate}
+            sectionData={sectionData}
+          />
+        )}
 
-              {/* Player Type */}
-              {has(section, 'playerType') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Player Type</label>
-                  <select
-                    value={data.playerType || section.playerType || 'pitcher'}
-                    onChange={e => updateSection(section.id, { playerType: e.target.value })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  >
-                    <option value="pitcher">Pitcher</option>
-                    <option value="batter">Batter</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Season */}
-              {has(section, 'season') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Season</label>
-                  <select
-                    value={data.gameYear || section.gameYear || 2025}
-                    onChange={e => updateSection(section.id, { gameYear: parseInt(e.target.value) })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  >
-                    {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {/* Pitch Type */}
-              {has(section, 'pitchType') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Pitch Type</label>
-                  <select
-                    value={data.pitchType || ''}
-                    onChange={e => updateSection(section.id, { pitchType: e.target.value || undefined })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  >
-                    {PITCH_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {/* Title */}
-              {has(section, 'title') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Title</label>
-                  <input
-                    value={data.title || ''}
-                    onChange={e => updateSection(section.id, { title: e.target.value })}
-                    placeholder="Custom title..."
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  />
-                </div>
-              )}
-
-              {/* Primary Stat */}
-              {has(section, 'primaryStat') && (
-                <MetricSelect
-                  label="Primary Stat"
-                  value={data.primaryStat}
-                  onChange={v => updateSection(section.id, { primaryStat: v })}
-                />
-              )}
-
-              {/* Secondary Stat */}
-              {has(section, 'secondaryStat') && (
-                <MetricSelect
-                  label="Secondary Stat"
-                  value={data.secondaryStat}
-                  onChange={v => updateSection(section.id, { secondaryStat: v })}
-                />
-              )}
-
-              {/* Tertiary Stat */}
-              {has(section, 'tertiaryStat') && (
-                <MetricSelect
-                  label="Tertiary Stat"
-                  value={data.tertiaryStat}
-                  onChange={v => updateSection(section.id, { tertiaryStat: v })}
-                />
-              )}
-
-              {/* Date Range */}
-              {has(section, 'dateRange') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Date Range</label>
-                  <select
-                    value={data.dateRange?.type || 'season'}
-                    onChange={e => {
-                      if (e.target.value === 'season') {
-                        updateSection(section.id, { dateRange: { type: 'season', year: data.gameYear || 2025 } })
-                      } else {
-                        updateSection(section.id, { dateRange: { type: 'custom', from: '', to: '' } })
-                      }
-                    }}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none mb-1"
-                  >
-                    <option value="season">Full Season</option>
-                    <option value="custom">Custom Range</option>
-                  </select>
-                  {data.dateRange?.type === 'custom' && (
-                    <div className="grid grid-cols-2 gap-1">
-                      <input
-                        type="date"
-                        value={data.dateRange.from || ''}
-                        onChange={e => updateSection(section.id, { dateRange: { ...data.dateRange, from: e.target.value } })}
-                        className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-zinc-200 outline-none"
-                      />
-                      <input
-                        type="date"
-                        value={data.dateRange.to || ''}
-                        onChange={e => updateSection(section.id, { dateRange: { ...data.dateRange, to: e.target.value } })}
-                        className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-zinc-200 outline-none"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Sort Direction */}
-              {has(section, 'sortDir') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Sort</label>
-                  <select
-                    value={data.sortDir || 'desc'}
-                    onChange={e => updateSection(section.id, { sortDir: e.target.value })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  >
-                    <option value="desc">Descending</option>
-                    <option value="asc">Ascending</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Count */}
-              {has(section, 'count') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Count</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={25}
-                    value={data.count || 5}
-                    onChange={e => updateSection(section.id, { count: parseInt(e.target.value) || 5 })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  />
-                </div>
-              )}
-
-              {/* Min Sample */}
-              {has(section, 'minSample') && (
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-0.5">Min Sample</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={data.minSample || 300}
-                    onChange={e => updateSection(section.id, { minSample: parseInt(e.target.value) || 300 })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
-                  />
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {activeTab === 'theme' && (
+          <ThemeTab
+            themeTeam={themeTeam}
+            setThemeTeam={setThemeTeam}
+          />
+        )}
 
         {/* Apply Button */}
         <button
-          onClick={handleApply}
+          onClick={activeTab === 'elements' ? handleSaveElementBindings : handleApply}
           disabled={applying}
           className="w-full px-3 py-2 text-[11px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-500/30 disabled:opacity-50 transition flex items-center justify-center gap-2"
         >
@@ -419,6 +402,723 @@ export default function TemplateDataPanel({ asset }: Props) {
         </button>
       </div>
     </div>
+  )
+}
+
+// ── Inputs Tab ──────────────────────────────────────────────────────────────
+
+function InputsTab({
+  sections,
+  sectionData,
+  updateSection,
+  has,
+  gamesBySection,
+  gamesLoading,
+  fetchGamesForDate,
+}: {
+  sections: InputSection[]
+  sectionData: TemplateDataValues['sections']
+  updateSection: (id: string, updates: Record<string, any>) => void
+  has: (section: InputSection, key: SectionInputKey) => boolean
+  gamesBySection: Record<string, GameInfo[]>
+  gamesLoading: string | null
+  fetchGamesForDate: (sectionId: string, date: string) => void
+}) {
+  return (
+    <>
+      {sections.map(section => {
+        const data = sectionData[section.id] || {}
+        // Effective type: section data can override, or fall back to template definition
+        const effectiveType = data.globalInputType || section.globalInputType
+
+        return (
+          <div key={section.id} className="space-y-2">
+            {/* Section header */}
+            <div className="flex items-center gap-2">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">{section.label}</div>
+              {effectiveType && (
+                <span className="text-[9px] text-amber-400/70 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                  {GLOBAL_INPUT_TYPES.find(t => t.value === effectiveType)?.label || effectiveType}
+                </span>
+              )}
+            </div>
+
+            {/* globalInputType controls */}
+            {effectiveType ? (
+              <GlobalInputControls
+                section={section}
+                data={data}
+                effectiveType={effectiveType}
+                updateSection={updateSection}
+                gamesBySection={gamesBySection}
+                gamesLoading={gamesLoading}
+                fetchGamesForDate={fetchGamesForDate}
+              />
+            ) : (
+              /* Legacy: enabledInputs-based flat controls */
+              <LegacyInputControls
+                section={section}
+                data={data}
+                updateSection={updateSection}
+                has={has}
+              />
+            )}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+// ── Global Input Type Controls ──────────────────────────────────────────────
+
+function GlobalInputControls({
+  section,
+  data,
+  effectiveType,
+  updateSection,
+  gamesBySection,
+  gamesLoading,
+  fetchGamesForDate,
+}: {
+  section: InputSection
+  data: Record<string, any>
+  effectiveType: GlobalInputType
+  updateSection: (id: string, updates: Record<string, any>) => void
+  gamesBySection: Record<string, GameInfo[]>
+  gamesLoading: string | null
+  fetchGamesForDate: (sectionId: string, date: string) => void
+}) {
+  switch (effectiveType) {
+    case 'player':
+      return (
+        <>
+          <PlayerTypeToggle sectionId={section.id} value={data.playerType || section.playerType || 'pitcher'} updateSection={updateSection} />
+          <div>
+            <label className="text-[9px] text-zinc-600 block mb-0.5">Player</label>
+            <PlayerPicker
+              label={data.playerName || 'Search player...'}
+              playerType={data.playerType === 'batter' ? 'hitter' : 'pitcher'}
+              onSelect={(id, name) => updateSection(section.id, { playerId: id, playerName: name })}
+            />
+            {data.playerName && (
+              <div className="text-[10px] text-amber-400 mt-0.5">{data.playerName}</div>
+            )}
+          </div>
+          <DateRangeInputs sectionId={section.id} data={data} section={section} updateSection={updateSection} />
+          <PitchTypeSelect sectionId={section.id} value={data.pitchType} updateSection={updateSection} />
+        </>
+      )
+
+    case 'leaderboard':
+      return (
+        <>
+          {/* Leaderboard type toggle */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] text-zinc-600 shrink-0">Leaderboard</span>
+            <div className="flex rounded overflow-hidden border border-zinc-700">
+              {(['players', 'team'] as const).map(lt => (
+                <button
+                  key={lt}
+                  onClick={() => updateSection(section.id, { leaderboardType: lt })}
+                  className={`px-2 py-0.5 text-[10px] transition ${
+                    (data.leaderboardType || section.leaderboardType || 'players') === lt
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {lt === 'players' ? 'Players' : 'Team'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <PlayerTypeToggle sectionId={section.id} value={data.playerType || section.playerType || 'pitcher'} updateSection={updateSection} />
+          <DateRangeInputs sectionId={section.id} data={data} section={section} updateSection={updateSection} />
+          <PitchTypeSelect sectionId={section.id} value={data.pitchType || section.pitchType} updateSection={updateSection} />
+          <MetricSelect label="Primary Stat" value={data.primaryStat || section.primaryStat} onChange={v => updateSection(section.id, { primaryStat: v })} />
+          <MetricSelect label="Secondary Stat" value={data.secondaryStat || section.secondaryStat} onChange={v => updateSection(section.id, { secondaryStat: v })} />
+          <MetricSelect label="Tertiary Stat" value={data.tertiaryStat || section.tertiaryStat} onChange={v => updateSection(section.id, { tertiaryStat: v })} />
+          {/* Sort */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] text-zinc-600 shrink-0">Sort</span>
+            <div className="flex rounded overflow-hidden border border-zinc-700">
+              {(['desc', 'asc'] as const).map(dir => (
+                <button
+                  key={dir}
+                  onClick={() => updateSection(section.id, { sortDir: dir })}
+                  className={`px-2 py-0.5 text-[10px] transition ${
+                    (data.sortDir || section.sortDir || 'desc') === dir
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {dir === 'desc' ? 'Desc' : 'Asc'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Count */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] text-zinc-600 shrink-0">Count</span>
+            <input
+              type="number"
+              value={data.count ?? section.count ?? 5}
+              onChange={e => updateSection(section.id, { count: Math.max(1, parseInt(e.target.value) || 5) })}
+              min={1} max={50}
+              className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+            />
+          </div>
+          {/* Min Sample */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] text-zinc-600 shrink-0">Min Sample</span>
+            <input
+              type="number"
+              value={data.minSample ?? section.minSample ?? 300}
+              onChange={e => updateSection(section.id, { minSample: Math.max(0, parseInt(e.target.value) || 0) })}
+              min={0} step={50}
+              className="w-20 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+            />
+          </div>
+        </>
+      )
+
+    case 'team':
+      return <DateRangeInputs sectionId={section.id} data={data} section={section} updateSection={updateSection} />
+
+    case 'live-game':
+      return (
+        <LiveGameInputs
+          section={section}
+          data={data}
+          updateSection={updateSection}
+          gamesBySection={gamesBySection}
+          gamesLoading={gamesLoading}
+          fetchGamesForDate={fetchGamesForDate}
+        />
+      )
+
+    default:
+      return null
+  }
+}
+
+// ── Legacy Input Controls (enabledInputs-based) ────────────────────────────
+
+function LegacyInputControls({
+  section,
+  data,
+  updateSection,
+  has,
+}: {
+  section: InputSection
+  data: Record<string, any>
+  updateSection: (id: string, updates: Record<string, any>) => void
+  has: (section: InputSection, key: SectionInputKey) => boolean
+}) {
+  return (
+    <>
+      {has(section, 'playerPicker') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Player</label>
+          <PlayerPicker
+            label={data.playerName || 'Search player...'}
+            playerType={data.playerType === 'batter' ? 'hitter' : 'pitcher'}
+            onSelect={(id, name) => updateSection(section.id, { playerId: id, playerName: name })}
+          />
+          {data.playerName && (
+            <div className="text-[10px] text-amber-400 mt-0.5">{data.playerName}</div>
+          )}
+        </div>
+      )}
+
+      {has(section, 'playerType') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Player Type</label>
+          <select
+            value={data.playerType || section.playerType || 'pitcher'}
+            onChange={e => updateSection(section.id, { playerType: e.target.value })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          >
+            <option value="pitcher">Pitcher</option>
+            <option value="batter">Batter</option>
+          </select>
+        </div>
+      )}
+
+      {has(section, 'season') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Season</label>
+          <select
+            value={data.gameYear || section.gameYear || 2025}
+            onChange={e => updateSection(section.id, { gameYear: parseInt(e.target.value) })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          >
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      )}
+
+      {has(section, 'pitchType') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Pitch Type</label>
+          <select
+            value={data.pitchType || ''}
+            onChange={e => updateSection(section.id, { pitchType: e.target.value || undefined })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          >
+            {PITCH_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      {has(section, 'title') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Title</label>
+          <input
+            value={data.title || ''}
+            onChange={e => updateSection(section.id, { title: e.target.value })}
+            placeholder="Custom title..."
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          />
+        </div>
+      )}
+
+      {has(section, 'primaryStat') && (
+        <MetricSelect label="Primary Stat" value={data.primaryStat} onChange={v => updateSection(section.id, { primaryStat: v })} />
+      )}
+      {has(section, 'secondaryStat') && (
+        <MetricSelect label="Secondary Stat" value={data.secondaryStat} onChange={v => updateSection(section.id, { secondaryStat: v })} />
+      )}
+      {has(section, 'tertiaryStat') && (
+        <MetricSelect label="Tertiary Stat" value={data.tertiaryStat} onChange={v => updateSection(section.id, { tertiaryStat: v })} />
+      )}
+
+      {has(section, 'dateRange') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Date Range</label>
+          <select
+            value={data.dateRange?.type || 'season'}
+            onChange={e => {
+              if (e.target.value === 'season') {
+                updateSection(section.id, { dateRange: { type: 'season', year: data.gameYear || 2025 } })
+              } else {
+                updateSection(section.id, { dateRange: { type: 'custom', from: '', to: '' } })
+              }
+            }}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none mb-1"
+          >
+            <option value="season">Full Season</option>
+            <option value="custom">Custom Range</option>
+          </select>
+          {data.dateRange?.type === 'custom' && (
+            <div className="grid grid-cols-2 gap-1">
+              <input
+                type="date"
+                value={data.dateRange.from || ''}
+                onChange={e => updateSection(section.id, { dateRange: { ...data.dateRange, from: e.target.value } })}
+                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-zinc-200 outline-none"
+              />
+              <input
+                type="date"
+                value={data.dateRange.to || ''}
+                onChange={e => updateSection(section.id, { dateRange: { ...data.dateRange, to: e.target.value } })}
+                className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-zinc-200 outline-none"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {has(section, 'sortDir') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Sort</label>
+          <select
+            value={data.sortDir || 'desc'}
+            onChange={e => updateSection(section.id, { sortDir: e.target.value })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          >
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </div>
+      )}
+
+      {has(section, 'count') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Count</label>
+          <input
+            type="number"
+            min={1}
+            max={25}
+            value={data.count || 5}
+            onChange={e => updateSection(section.id, { count: parseInt(e.target.value) || 5 })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          />
+        </div>
+      )}
+
+      {has(section, 'minSample') && (
+        <div>
+          <label className="text-[9px] text-zinc-600 block mb-0.5">Min Sample</label>
+          <input
+            type="number"
+            min={1}
+            value={data.minSample || 300}
+            onChange={e => updateSection(section.id, { minSample: parseInt(e.target.value) || 300 })}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Elements Tab ────────────────────────────────────────────────────────────
+
+function ElementsTab({
+  sections,
+  template,
+  setTemplate,
+  sectionData,
+}: {
+  sections: InputSection[]
+  template: CustomTemplateRecord
+  setTemplate: (t: CustomTemplateRecord) => void
+  sectionData: TemplateDataValues['sections']
+}) {
+  function updateElementMetric(sectionId: string, elementId: string, metric: string) {
+    const newSections = (template.inputSections || []).map(s => {
+      if (s.id !== sectionId) return s
+      return s // section itself unchanged, we update element bindings
+    })
+    // Update the element's sectionBinding in the template elements
+    const newElements = template.elements.map(el => {
+      if (el.id !== elementId) return el
+      return {
+        ...el,
+        sectionBinding: el.sectionBinding
+          ? { ...el.sectionBinding, metric }
+          : { sectionId, metric },
+      }
+    })
+    setTemplate({ ...template, elements: newElements })
+  }
+
+  return (
+    <>
+      {sections.map(section => {
+        const data = sectionData[section.id] || {}
+        const effectiveType = data.globalInputType || section.globalInputType
+        const isLiveGame = effectiveType === 'live-game'
+        const metricOptions = isLiveGame ? GAME_METRICS : SCENE_METRICS
+        const sectionElements = template.elements.filter(e => section.elementIds.includes(e.id))
+
+        if (sectionElements.length === 0) return null
+
+        return (
+          <div key={section.id} className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">{section.label}</div>
+              <span className="text-[9px] text-zinc-600">({sectionElements.length})</span>
+            </div>
+            <div className="space-y-1">
+              {sectionElements.map(el => {
+                const isPlayerImage = el.type === 'player-image' && !isLiveGame
+                const binding = el.sectionBinding
+                const defaultMetric = isLiveGame ? 'away_abbrev' : 'avg_velo'
+
+                return (
+                  <div key={el.id} className="rounded bg-zinc-800/60 border border-zinc-700/50 px-2 py-1.5">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">
+                        {ELEMENT_ICONS[el.type] || '?'}
+                      </span>
+                      <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
+                    </div>
+                    {isPlayerImage ? (
+                      <div className="text-[9px] text-zinc-600 px-1">Auto: player image</div>
+                    ) : (
+                      <select
+                        value={binding?.metric || defaultMetric}
+                        onChange={e => updateElementMetric(section.id, el.id, e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-700/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none"
+                      >
+                        {metricOptions.map(m => (
+                          <option key={m.value} value={m.value}>
+                            {m.group ? `${m.group} \u2014 ` : ''}{m.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+
+      {sections.every(s => template.elements.filter(e => s.elementIds.includes(e.id)).length === 0) && (
+        <p className="text-[11px] text-zinc-600 text-center py-2">No bound elements found</p>
+      )}
+    </>
+  )
+}
+
+// ── Theme Tab ───────────────────────────────────────────────────────────────
+
+function ThemeTab({
+  themeTeam,
+  setThemeTeam,
+}: {
+  themeTeam: string
+  setThemeTeam: (v: string) => void
+}) {
+  const tc = themeTeam ? TEAM_COLORS[themeTeam] : null
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-[9px] text-zinc-600 block mb-1">Team Theme</label>
+        <select
+          value={themeTeam}
+          onChange={e => setThemeTeam(e.target.value)}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-200 outline-none"
+        >
+          {TEAM_COLOR_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Color swatches preview */}
+      {tc && (
+        <div className="space-y-1.5">
+          <div className="text-[9px] text-zinc-600">Palette</div>
+          <div className="flex gap-2">
+            <Swatch label="Primary" color={tc.primary} />
+            <Swatch label="Secondary" color={tc.secondary} />
+            <Swatch label="Accent" color={tc.accent} />
+          </div>
+          <div className="text-[9px] text-zinc-600 mt-1">
+            Applies to all elements: stat-cards, text, shapes, images, bars, tickers
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Swatch({ label, color }: { label: string; color: string }) {
+  return (
+    <div className="flex-1 text-center">
+      <div
+        className="w-full h-6 rounded border border-zinc-700"
+        style={{ backgroundColor: color }}
+      />
+      <div className="text-[8px] text-zinc-600 mt-0.5">{label}</div>
+      <div className="text-[8px] text-zinc-700 font-mono">{color}</div>
+    </div>
+  )
+}
+
+// ── Shared Compact Controls ─────────────────────────────────────────────────
+
+function PlayerTypeToggle({
+  sectionId,
+  value,
+  updateSection,
+}: {
+  sectionId: string
+  value: string
+  updateSection: (id: string, updates: Record<string, any>) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[9px] text-zinc-600 shrink-0">Type</span>
+      <div className="flex rounded overflow-hidden border border-zinc-700">
+        {(['pitcher', 'batter'] as const).map(pt => (
+          <button
+            key={pt}
+            onClick={() => updateSection(sectionId, { playerType: pt })}
+            className={`px-2 py-0.5 text-[10px] transition ${
+              value === pt
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {pt === 'pitcher' ? 'Pitcher' : 'Batter'}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DateRangeInputs({
+  sectionId,
+  data,
+  section,
+  updateSection,
+}: {
+  sectionId: string
+  data: Record<string, any>
+  section: InputSection
+  updateSection: (id: string, updates: Record<string, any>) => void
+}) {
+  const dr = data.dateRange || section.dateRange || { type: 'season' as const, year: section.gameYear || 2025 }
+  return (
+    <div>
+      <label className="text-[9px] text-zinc-600 block mb-0.5">Date Range</label>
+      <div className="flex gap-1 mb-1">
+        {(['season', 'custom'] as const).map(dt => (
+          <button
+            key={dt}
+            onClick={() => {
+              if (dt === 'season') updateSection(sectionId, { dateRange: { type: 'season', year: section.gameYear || 2025 } })
+              else updateSection(sectionId, { dateRange: { type: 'custom', from: `${section.gameYear || 2025}-03-27`, to: `${section.gameYear || 2025}-09-28` } })
+            }}
+            className={`flex-1 px-2 py-0.5 rounded text-[10px] font-medium transition border ${
+              dr.type === dt
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {dt === 'season' ? 'Season' : 'Custom'}
+          </button>
+        ))}
+      </div>
+      {dr.type === 'season' ? (
+        <select
+          value={dr.year}
+          onChange={e => updateSection(sectionId, { dateRange: { type: 'season', year: Number(e.target.value) } })}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+        >
+          {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      ) : (
+        <div className="grid grid-cols-2 gap-1">
+          <input
+            type="date"
+            value={(dr as { type: 'custom'; from: string; to: string }).from}
+            onChange={e => updateSection(sectionId, { dateRange: { ...dr as { type: 'custom'; from: string; to: string }, from: e.target.value } })}
+            className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-zinc-200 outline-none"
+          />
+          <input
+            type="date"
+            value={(dr as { type: 'custom'; from: string; to: string }).to}
+            onChange={e => updateSection(sectionId, { dateRange: { ...dr as { type: 'custom'; from: string; to: string }, to: e.target.value } })}
+            className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-zinc-200 outline-none"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PitchTypeSelect({
+  sectionId,
+  value,
+  updateSection,
+}: {
+  sectionId: string
+  value?: string
+  updateSection: (id: string, updates: Record<string, any>) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[9px] text-zinc-600 shrink-0">Pitch Type</span>
+      <select
+        value={value || ''}
+        onChange={e => updateSection(sectionId, { pitchType: e.target.value || undefined })}
+        className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+      >
+        {PITCH_TYPES.map(pt => <option key={pt.value} value={pt.value}>{pt.label}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function LiveGameInputs({
+  section,
+  data,
+  updateSection,
+  gamesBySection,
+  gamesLoading,
+  fetchGamesForDate,
+}: {
+  section: InputSection
+  data: Record<string, any>
+  updateSection: (id: string, updates: Record<string, any>) => void
+  gamesBySection: Record<string, GameInfo[]>
+  gamesLoading: string | null
+  fetchGamesForDate: (sectionId: string, date: string) => void
+}) {
+  const games = gamesBySection[section.id] || []
+  const isLoading = gamesLoading === section.id
+  const gameDate = data.gameDate || section.gameDate || ''
+  const selectedPk = data.gamePk || section.gamePk
+
+  return (
+    <>
+      <div>
+        <label className="text-[9px] text-zinc-600 block mb-0.5">Game Date</label>
+        <input
+          type="date"
+          value={gameDate}
+          onChange={e => {
+            const date = e.target.value
+            updateSection(section.id, { gameDate: date, gamePk: undefined })
+            if (date) fetchGamesForDate(section.id, date)
+          }}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none"
+        />
+      </div>
+
+      {isLoading && (
+        <div className="text-[10px] text-zinc-500 py-2 text-center">Loading games...</div>
+      )}
+
+      {!isLoading && gameDate && games.length === 0 && (
+        <div className="text-[10px] text-zinc-600 py-2 text-center">No games found</div>
+      )}
+
+      {!isLoading && games.length > 0 && (
+        <div className="space-y-1 max-h-48 overflow-y-auto">
+          {games.map(game => {
+            const selected = selectedPk === game.gamePk
+            return (
+              <button
+                key={game.gamePk}
+                onClick={() => updateSection(section.id, { gamePk: game.gamePk })}
+                className={`w-full text-left px-2 py-1.5 rounded text-[10px] transition border ${
+                  selected
+                    ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                    : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{game.away.abbrev} @ {game.home.abbrev}</span>
+                  <span className={`text-[9px] ${
+                    game.state === 'Live' ? 'text-red-400' :
+                    game.state === 'Final' ? 'text-zinc-500' : 'text-zinc-600'
+                  }`}>
+                    {game.state === 'Live'
+                      ? `${game.inningHalf === 'Top' ? '\u25b2' : '\u25bc'} ${game.inningOrdinal}`
+                      : game.detailedState}
+                  </span>
+                </div>
+                {game.state !== 'Preview' && game.away.score != null && (
+                  <div className="text-[9px] text-zinc-600 mt-0.5">
+                    {game.away.abbrev} {game.away.score} - {game.home.abbrev} {game.home.score}
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </>
   )
 }
 
