@@ -332,6 +332,8 @@ export default function AdminPage() {
                             </button>
                           ))}
                         </div>
+                      ) : (u.role === 'owner' || u.role === 'admin') ? (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-medium">All Access</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {u.tools.map(t => (
