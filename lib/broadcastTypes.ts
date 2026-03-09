@@ -26,6 +26,24 @@ export interface TransitionConfig {
   durationFrames: number
 }
 
+export interface TemplateDataValues {
+  sections: Record<string, {
+    playerId?: number
+    playerName?: string
+    playerType?: 'pitcher' | 'batter'
+    gameYear?: number
+    pitchType?: string
+    primaryStat?: string
+    secondaryStat?: string
+    tertiaryStat?: string
+    dateRange?: { type: 'season'; year: number } | { type: 'custom'; from: string; to: string }
+    sortDir?: 'asc' | 'desc'
+    count?: number
+    minSample?: number
+    title?: string
+  }>
+}
+
 export interface BroadcastAsset {
   id: string
   project_id: string
@@ -38,6 +56,8 @@ export interface BroadcastAsset {
     elements: SceneElement[]
   } | null
   storage_path: string | null
+  template_id?: string
+  template_data?: TemplateDataValues
   canvas_x: number
   canvas_y: number
   canvas_width: number
@@ -85,6 +105,7 @@ export interface BroadcastEvent {
     assetId?: string
     timestamp?: number
     elementUpdates?: Record<string, any>
+    sceneConfig?: BroadcastAsset['scene_config']
     visibleAssets?: string[]
     videoPlaying?: string[]
   }

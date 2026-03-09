@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
         asset_type: body.asset_type || 'scene',
         scene_config: body.scene_config || null,
         storage_path: body.storage_path || null,
+        template_id: body.template_id || null,
+        template_data: body.template_data || null,
         canvas_x: body.canvas_x ?? 0,
         canvas_y: body.canvas_y ?? 0,
         canvas_width: body.canvas_width ?? 1920,

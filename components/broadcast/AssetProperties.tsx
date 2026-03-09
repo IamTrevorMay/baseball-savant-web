@@ -2,6 +2,7 @@
 
 import { useBroadcast } from './BroadcastContext'
 import { getTransitions } from '@/lib/transitions'
+import TemplateDataPanel from './TemplateDataPanel'
 import Link from 'next/link'
 
 export default function AssetProperties() {
@@ -49,6 +50,9 @@ export default function AssetProperties() {
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Properties</h3>
         <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{asset.name}</p>
       </div>
+
+      {/* Template Data Panel (if this is a template asset) */}
+      {asset.template_id && <TemplateDataPanel asset={asset} />}
 
       <div className="px-4 py-3 space-y-4">
         {/* Name */}
@@ -203,8 +207,17 @@ export default function AssetProperties() {
           </div>
         </div>
 
-        {/* Edit in Scene Composer link */}
-        {asset.asset_type === 'scene' && (
+        {/* Edit links */}
+        {asset.asset_type === 'scene' && asset.template_id && (
+          <Link
+            href={`/visualize/template-builder?edit=${asset.template_id}`}
+            target="_blank"
+            className="block text-center px-3 py-2 text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition"
+          >
+            Edit Template
+          </Link>
+        )}
+        {asset.asset_type === 'scene' && !asset.template_id && (
           <Link
             href="/visualize"
             className="block text-center px-3 py-2 text-[11px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition"

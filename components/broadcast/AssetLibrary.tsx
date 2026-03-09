@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useBroadcast } from './BroadcastContext'
 import { BroadcastAsset } from '@/lib/broadcastTypes'
+import { CustomTemplateRecord } from '@/lib/sceneTypes'
 
 interface SavedScene {
   id: string
@@ -15,8 +16,11 @@ interface SavedScene {
 export default function AssetLibrary() {
   const { assets, selectedAssetId, setSelectedAssetId, addAsset, removeAsset, project } = useBroadcast()
   const [showImport, setShowImport] = useState(false)
+  const [showTemplateImport, setShowTemplateImport] = useState(false)
   const [scenes, setScenes] = useState<SavedScene[]>([])
+  const [templates, setTemplates] = useState<CustomTemplateRecord[]>([])
   const [loadingScenes, setLoadingScenes] = useState(false)
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
   const [importing, setImporting] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -29,6 +33,16 @@ export default function AssetLibrary() {
       .catch(() => setScenes([]))
       .finally(() => setLoadingScenes(false))
   }, [showImport])
+
+  useEffect(() => {
+    if (!showTemplateImport) return
+    setLoadingTemplates(true)
+    fetch('/api/custom-templates')
+      .then(r => r.json())
+      .then(d => setTemplates(d.templates || []))
+      .catch(() => setTemplates([]))
+      .finally(() => setLoadingTemplates(false))
+  }, [showTemplateImport])
 
   async function importScene(sceneId: string, sceneName: string) {
     if (!project) return
@@ -65,6 +79,42 @@ export default function AssetLibrary() {
       }
     } catch (err) {
       console.error('Failed to import scene:', err)
+    } finally {
+      setImporting(null)
+    }
+  }
+
+  async function importTemplate(template: CustomTemplateRecord) {
+    if (!project) return
+    setImporting(template.id)
+    try {
+      const assetRes = await fetch('/api/broadcast/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: project.id,
+          name: template.name,
+          asset_type: 'scene',
+          template_id: template.id,
+          template_data: { sections: {} },
+          scene_config: {
+            width: template.width || 1920,
+            height: template.height || 1080,
+            background: template.background || '#09090b',
+            elements: template.elements || [],
+          },
+          canvas_width: template.width || 1920,
+          canvas_height: template.height || 1080,
+          sort_order: assets.length,
+        }),
+      })
+      const assetData = await assetRes.json()
+      if (assetData.asset) {
+        addAsset(assetData.asset)
+        setShowTemplateImport(false)
+      }
+    } catch (err) {
+      console.error('Failed to import template:', err)
     } finally {
       setImporting(null)
     }
@@ -125,6 +175,13 @@ export default function AssetLibrary() {
     }
   }
 
+  function getAssetIcon(asset: BroadcastAsset) {
+    if (asset.template_id) return '\u26A1'
+    if (asset.asset_type === 'scene') return 'S'
+    if (asset.asset_type === 'video') return 'V'
+    return 'I'
+  }
+
   return (
     <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col h-full">
       {/* Header */}
@@ -133,18 +190,26 @@ export default function AssetLibrary() {
       </div>
 
       {/* Actions */}
-      <div className="px-3 py-2 flex gap-2 border-b border-zinc-800">
+      <div className="px-3 py-2 flex flex-col gap-1.5 border-b border-zinc-800">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/30 rounded hover:bg-red-500/20 transition"
+          >
+            Import Scene
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition"
+          >
+            Upload Media
+          </button>
+        </div>
         <button
-          onClick={() => setShowImport(true)}
-          className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/30 rounded hover:bg-red-500/20 transition"
+          onClick={() => setShowTemplateImport(true)}
+          className="w-full px-2 py-1.5 text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition"
         >
-          Import Scene
-        </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition"
-        >
-          Upload Media
+          Import Template
         </button>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
       </div>
@@ -172,7 +237,7 @@ export default function AssetLibrary() {
                   className="w-6 h-6 rounded flex items-center justify-center text-[10px] shrink-0"
                   style={{ backgroundColor: asset.hotkey_color + '20', color: asset.hotkey_color }}
                 >
-                  {asset.asset_type === 'scene' ? 'S' : asset.asset_type === 'video' ? 'V' : 'I'}
+                  {getAssetIcon(asset)}
                 </div>
 
                 <span className="text-xs text-zinc-300 truncate flex-1">{asset.name}</span>
@@ -191,7 +256,7 @@ export default function AssetLibrary() {
         )}
       </div>
 
-      {/* Import Modal */}
+      {/* Import Scene Modal */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowImport(false)}>
           <div
@@ -239,6 +304,62 @@ export default function AssetLibrary() {
                       <div className="text-xs font-medium text-white truncate">{scene.name}</div>
                       <div className="text-[10px] text-zinc-500 mt-0.5">{scene.width}x{scene.height}</div>
                       {importing === scene.id && <div className="text-[10px] text-red-400 mt-1">Importing...</div>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Template Modal */}
+      {showTemplateImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowTemplateImport(false)}>
+          <div
+            className="w-[600px] max-h-[70vh] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Import Template</h2>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Select a data-driven template for dynamic broadcast use</p>
+              </div>
+              <button onClick={() => setShowTemplateImport(false)} className="text-zinc-500 hover:text-zinc-300">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingTemplates ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-zinc-700 border-t-amber-400 rounded-full animate-spin" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500 text-sm">No templates found. Create one in Template Builder first.</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {templates.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => importTemplate(t)}
+                      disabled={importing === t.id}
+                      className="bg-zinc-800 border border-zinc-700 hover:border-amber-500/40 rounded-lg p-3 text-left transition disabled:opacity-50"
+                    >
+                      <div className="w-full h-24 bg-zinc-900 rounded mb-2 flex items-center justify-center text-3xl">
+                        {t.icon || '\u26A1'}
+                      </div>
+                      <div className="text-xs font-medium text-white truncate">{t.name}</div>
+                      <div className="text-[10px] text-zinc-500 mt-0.5">
+                        {t.width}x{t.height}
+                        {t.inputSections && t.inputSections.length > 0 && (
+                          <span className="ml-1 text-amber-500">{t.inputSections.length} input{t.inputSections.length > 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      {t.description && <div className="text-[10px] text-zinc-600 mt-0.5 truncate">{t.description}</div>}
+                      {importing === t.id && <div className="text-[10px] text-amber-400 mt-1">Importing...</div>}
                     </button>
                   ))}
                 </div>

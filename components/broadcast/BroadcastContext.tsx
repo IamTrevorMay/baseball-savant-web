@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, TemplateDataValues } from '@/lib/broadcastTypes'
 import { createClient } from '@supabase/supabase-js'
 
 interface BroadcastContextValue {

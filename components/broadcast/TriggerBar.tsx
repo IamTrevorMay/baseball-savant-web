@@ -58,6 +58,7 @@ export default function TriggerBar() {
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: isVisible ? color : '#52525b' }}
               />
+              {asset.template_id && <span className="text-amber-400 text-[9px]" title="Template asset">{'\u26A1'}</span>}
               {label}
             </button>
           )

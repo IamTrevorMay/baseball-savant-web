@@ -116,8 +116,16 @@ export function useOverlaySession(sessionId: string) {
             if (assetId) hideAsset(assetId)
           })
           .on('broadcast', { event: 'asset:update' }, (payload: any) => {
-            const { assetId, elementUpdates } = payload.payload || {}
-            if (assetId && elementUpdates) {
+            const { assetId, elementUpdates, sceneConfig } = payload.payload || {}
+            if (assetId && sceneConfig) {
+              // Full scene_config replacement (template re-apply)
+              setState(prev => ({
+                ...prev,
+                assets: prev.assets.map(a =>
+                  a.id === assetId ? { ...a, scene_config: sceneConfig } : a
+                ),
+              }))
+            } else if (assetId && elementUpdates) {
               setState(prev => ({
                 ...prev,
                 assets: prev.assets.map(a => {
