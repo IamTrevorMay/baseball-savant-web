@@ -208,6 +208,21 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
     [zoom, onSelect, canvasRef]
   )
 
+  // Start marquee from workspace area outside the canvas
+  const handleWorkspaceMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return
+      if (e.target !== e.currentTarget) return
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = (e.clientX - rect.left) / zoom
+      const y = (e.clientY - rect.top) / zoom
+      if (!e.shiftKey) onSelect(null)
+      setDrag({ type: 'marquee', startX: x, startY: y, curX: x, curY: y })
+    },
+    [zoom, onSelect, canvasRef]
+  )
+
   // Use native listener on document for mousemove/mouseup to avoid stale closure issues
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
@@ -317,6 +332,7 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, zoom, onSe
     <div
       className="w-full h-full overflow-auto flex items-center justify-center"
       style={{ background: 'radial-gradient(circle at center, #1a1a1e 0%, #09090b 100%)' }}
+      onMouseDown={handleWorkspaceMouseDown}
     >
       {/* Scene canvas */}
       <div
