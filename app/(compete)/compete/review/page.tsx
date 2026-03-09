@@ -18,6 +18,7 @@ interface CQRPitch {
   batter_name: string
   at_bat_number: number
   pitch_number: number
+  description: string
 }
 
 interface Game {
@@ -126,7 +127,7 @@ export default function CQRReviewPage() {
     const t = targets[currentIndex]
     if (!t) return
     const pitch = pitches[currentIndex]
-    const result = scorePitch(t, pitch, pitch.zone, currentIndex)
+    const result = scorePitch(t, pitch, pitch.zone, currentIndex, pitch.description)
     const newResults = [...results]
     newResults[currentIndex] = result
     setResults(newResults)
@@ -477,7 +478,7 @@ export default function CQRReviewPage() {
         Grade a pitcher&apos;s command pitch-by-pitch. Set intended targets, then receive a CQR score based on edge distance.
       </p>
       <p className="text-zinc-500 text-xs">
-        Scoring: center box = 0 &bull; edge &le;2&quot; = 100 &bull; &le;4&quot; = 75 &bull; &le;6&quot; = 50 &bull; &le;8&quot; = 25 &bull; &gt;4&quot; outside zone = 0
+        Scoring: edge &lt;3&quot; = 100 &bull; &lt;5&quot; = 75 &bull; &lt;7&quot; = 50 &bull; 7-8&quot; = 25 &bull; center box = 0 &bull; &gt;6&quot; outside zone = 0 (unless high + swung at)
       </p>
 
       {/* Saved reviews */}

@@ -34,24 +34,45 @@ export function distanceOutsideZone(plate_x: number, plate_z: number): number {
   return Math.sqrt(dx * dx + dz * dz) * 12 // convert to inches
 }
 
+const SWING_DESCRIPTIONS = new Set([
+  'swinging_strike', 'swinging_strike_blocked', 'foul', 'foul_tip',
+  'foul_bunt', 'hit_into_play', 'hit_into_play_no_out', 'hit_into_play_score',
+  'missed_bunt', 'bunt_foul_tip',
+])
+
+/** Check if pitch was swung at based on Statcast description. */
+export function wasSwungAt(description: string | undefined): boolean {
+  if (!description) return false
+  return SWING_DESCRIPTIONS.has(description)
+}
+
+/** Check if pitch is above the strike zone. */
+export function isAboveZone(plate_z: number): boolean {
+  return plate_z > ZONE_TOP
+}
+
 /**
  * Score a single pitch based on target vs actual location.
  *
  * Edge distance = max(0, centerDistance - baseballRadius)
  *
- * Tiers (evaluated in order):
- * 1. Actual in 4×4" center box → 0
- * 2. Edge distance ≤ 2" → 100
- * 3. Edge distance ≤ 4" → 75
- * 4. Edge distance ≤ 6" AND not >4" outside zone → 50
- * 5. Edge distance ≤ 8" AND not >4" outside zone → 25
- * 6. Everything else → 0
+ * Zero cases (evaluated first):
+ * - Actual in 4×4" center box → 0
+ * - >6" outside zone → 0 (UNLESS above zone AND swung at)
+ *
+ * Tiers:
+ * 1. Edge distance < 3" → 100
+ * 2. Edge distance < 5" → 75
+ * 3. Edge distance < 7" → 50
+ * 4. Edge distance < 9" (7-8") → 25
+ * 5. Everything else → 0
  */
 export function scorePitch(
   target: { x: number; z: number },
   actual: { plate_x: number; plate_z: number },
   zone: number,
-  pitchIndex: number = 0
+  pitchIndex: number = 0,
+  description?: string
 ): CQRPitchResult {
   const dx = (actual.plate_x - target.x) * 12
   const dz = (actual.plate_z - target.z) * 12
@@ -59,19 +80,23 @@ export function scorePitch(
   const edgeDistanceInches = Math.max(0, distanceInches - BASEBALL_RADIUS)
 
   const outsideDist = distanceOutsideZone(actual.plate_x, actual.plate_z)
-  const tooFarOutside = outsideDist > 4
+  const tooFarOutside = outsideDist > 6
+  // Exception: above zone + swung at bypasses the outside-zone penalty
+  const outsideExempt = isAboveZone(actual.plate_z) && wasSwungAt(description)
 
   let score: number
 
   if (isInCenterBox(actual.plate_x, actual.plate_z)) {
     score = 0
-  } else if (edgeDistanceInches <= 2) {
+  } else if (tooFarOutside && !outsideExempt) {
+    score = 0
+  } else if (edgeDistanceInches < 3) {
     score = 100
-  } else if (edgeDistanceInches <= 4) {
+  } else if (edgeDistanceInches < 5) {
     score = 75
-  } else if (edgeDistanceInches <= 6 && !tooFarOutside) {
+  } else if (edgeDistanceInches < 7) {
     score = 50
-  } else if (edgeDistanceInches <= 8 && !tooFarOutside) {
+  } else if (edgeDistanceInches < 9) {
     score = 25
   } else {
     score = 0

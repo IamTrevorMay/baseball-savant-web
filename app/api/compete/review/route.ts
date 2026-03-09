@@ -102,6 +102,7 @@ export async function GET(req: NextRequest) {
       batter_name: r.batter_name || 'Unknown',
       at_bat_number: Number(r.at_bat_number ?? 0),
       pitch_number: Number(r.pitch_number ?? 0),
+      description: r.description || '',
     }))
 
     return NextResponse.json({ pitches })
