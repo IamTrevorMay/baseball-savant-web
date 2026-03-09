@@ -89,6 +89,7 @@ export default function CQRStatsPage() {
       <div className="flex gap-4 border-b border-zinc-800 pb-2">
         <Link href="/compete/review" className="text-zinc-500 hover:text-zinc-300 pb-2">Review</Link>
         <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Stats</span>
+        <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
       </div>
 
       <h1 className="text-xl font-bold text-white">CQR Stats</h1>
