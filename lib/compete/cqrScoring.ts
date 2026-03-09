@@ -6,7 +6,26 @@ export interface CQRPitchResult {
   score: number
 }
 
-const BASEBALL_RADIUS = 1.45 // inches (2.9" diameter)
+export interface ScoringConfig {
+  baseballRadius: number    // 1.45"
+  centerBoxHalf: number     // 2" (4×4" box = ±2")
+  outsideZoneMax: number    // 6" (penalty threshold)
+  highSwingExempt: boolean  // true (above zone + swung at bypasses penalty)
+  tiers: { maxEdge: number; score: number }[]
+}
+
+export const DEFAULT_CONFIG: ScoringConfig = {
+  baseballRadius: 1.45,
+  centerBoxHalf: 2,
+  outsideZoneMax: 6,
+  highSwingExempt: true,
+  tiers: [
+    { maxEdge: 3, score: 100 },
+    { maxEdge: 5, score: 75 },
+    { maxEdge: 7, score: 50 },
+    { maxEdge: 9, score: 25 },
+  ],
+}
 
 // Strike zone boundaries in feet
 const ZONE_LEFT = -17 / 24
@@ -14,16 +33,15 @@ const ZONE_RIGHT = 17 / 24
 const ZONE_BOT = 1.5
 const ZONE_TOP = 3.5
 
-// Center box: ±2" from zone center (x=0, z=2.5ft) → 4×4" box
+// Center box reference point
 const CENTER_X = 0 // feet
 const CENTER_Z = 2.5 // feet
-const CENTER_HALF = 2 // inches
 
-/** Check if pitch lands in the 4×4" center box (zone center ±2"). */
-export function isInCenterBox(plate_x: number, plate_z: number): boolean {
+/** Check if pitch lands in the center box (zone center ± centerBoxHalf). */
+export function isInCenterBox(plate_x: number, plate_z: number, centerBoxHalf: number = DEFAULT_CONFIG.centerBoxHalf): boolean {
   const dx = Math.abs(plate_x - CENTER_X) * 12
   const dz = Math.abs(plate_z - CENTER_Z) * 12
-  return dx <= CENTER_HALF && dz <= CENTER_HALF
+  return dx <= centerBoxHalf && dz <= centerBoxHalf
 }
 
 /** Distance in inches from pitch to nearest strike zone edge. Returns 0 if inside zone. */
@@ -57,49 +75,45 @@ export function isAboveZone(plate_z: number): boolean {
  * Edge distance = max(0, centerDistance - baseballRadius)
  *
  * Zero cases (evaluated first):
- * - Actual in 4×4" center box → 0
- * - >6" outside zone → 0 (UNLESS above zone AND swung at)
+ * - Actual in center box → 0
+ * - Too far outside zone → 0 (UNLESS highSwingExempt AND above zone AND swung at)
  *
- * Tiers:
- * 1. Edge distance < 3" → 100
- * 2. Edge distance < 5" → 75
- * 3. Edge distance < 7" → 50
- * 4. Edge distance < 9" (7-8") → 25
- * 5. Everything else → 0
+ * Tiers evaluated in order of ascending maxEdge from config.
  */
 export function scorePitch(
   target: { x: number; z: number },
   actual: { plate_x: number; plate_z: number },
   zone: number,
   pitchIndex: number = 0,
-  description?: string
+  description?: string,
+  config?: ScoringConfig
 ): CQRPitchResult {
+  const cfg = config ?? DEFAULT_CONFIG
   const dx = (actual.plate_x - target.x) * 12
   const dz = (actual.plate_z - target.z) * 12
   const distanceInches = Math.sqrt(dx * dx + dz * dz)
-  const edgeDistanceInches = Math.max(0, distanceInches - BASEBALL_RADIUS)
+  const edgeDistanceInches = Math.max(0, distanceInches - cfg.baseballRadius)
 
   const outsideDist = distanceOutsideZone(actual.plate_x, actual.plate_z)
-  const tooFarOutside = outsideDist > 6
-  // Exception: above zone + swung at bypasses the outside-zone penalty
-  const outsideExempt = isAboveZone(actual.plate_z) && wasSwungAt(description)
+  const tooFarOutside = outsideDist > cfg.outsideZoneMax
+  const outsideExempt = cfg.highSwingExempt && isAboveZone(actual.plate_z) && wasSwungAt(description)
 
   let score: number
 
-  if (isInCenterBox(actual.plate_x, actual.plate_z)) {
+  if (isInCenterBox(actual.plate_x, actual.plate_z, cfg.centerBoxHalf)) {
     score = 0
   } else if (tooFarOutside && !outsideExempt) {
     score = 0
-  } else if (edgeDistanceInches < 3) {
-    score = 100
-  } else if (edgeDistanceInches < 5) {
-    score = 75
-  } else if (edgeDistanceInches < 7) {
-    score = 50
-  } else if (edgeDistanceInches < 9) {
-    score = 25
   } else {
+    // Evaluate tiers sorted by ascending maxEdge
+    const sorted = [...cfg.tiers].sort((a, b) => a.maxEdge - b.maxEdge)
     score = 0
+    for (const tier of sorted) {
+      if (edgeDistanceInches < tier.maxEdge) {
+        score = tier.score
+        break
+      }
+    }
   }
 
   return { pitchIndex, distanceInches, edgeDistanceInches, zone, score }

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import InteractiveZone from '@/components/compete/review/InteractiveZone'
-import { scorePitch, computeCQR, CQRPitchResult } from '@/lib/compete/cqrScoring'
+import { scorePitch, computeCQR, CQRPitchResult, ScoringConfig, DEFAULT_CONFIG } from '@/lib/compete/cqrScoring'
 import { getPitchColor } from '@/components/chartConfig'
 
 interface CQRPitch {
@@ -45,6 +45,10 @@ interface SavedReview {
 }
 
 export default function CQRReviewPage() {
+  // Scoring config
+  const [scoringConfig, setScoringConfig] = useState<ScoringConfig>(DEFAULT_CONFIG)
+  const [isCustomConfig, setIsCustomConfig] = useState(false)
+
   // Saved reviews
   const [savedReviews, setSavedReviews] = useState<SavedReview[]>([])
   const [expandedReview, setExpandedReview] = useState<string | null>(null)
@@ -68,6 +72,18 @@ export default function CQRReviewPage() {
   const [loadingPitches, setLoadingPitches] = useState(false)
   const [saving, setSaving] = useState(false)
   const [selectedGameMeta, setSelectedGameMeta] = useState<{ game_date: string; opponent: string } | null>(null)
+
+  // Load scoring config from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('cqr-scoring-config')
+      if (raw) {
+        const parsed = JSON.parse(raw) as ScoringConfig
+        setScoringConfig(parsed)
+        setIsCustomConfig(JSON.stringify(parsed) !== JSON.stringify(DEFAULT_CONFIG))
+      }
+    } catch { /* use defaults */ }
+  }, [])
 
   // Fetch saved reviews on mount
   useEffect(() => {
@@ -127,7 +143,7 @@ export default function CQRReviewPage() {
     const t = targets[currentIndex]
     if (!t) return
     const pitch = pitches[currentIndex]
-    const result = scorePitch(t, pitch, pitch.zone, currentIndex, pitch.description)
+    const result = scorePitch(t, pitch, pitch.zone, currentIndex, pitch.description, scoringConfig)
     const newResults = [...results]
     newResults[currentIndex] = result
     setResults(newResults)
@@ -217,6 +233,7 @@ export default function CQRReviewPage() {
         <div className="flex gap-4 border-b border-zinc-800 pb-2">
           <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Review</span>
           <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+          <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
         </div>
 
         {/* CQR Score */}
@@ -322,6 +339,7 @@ export default function CQRReviewPage() {
         <div className="flex gap-4 border-b border-zinc-800 pb-2">
           <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Review</span>
           <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+          <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
         </div>
 
         {/* Progress bar */}
@@ -478,8 +496,15 @@ export default function CQRReviewPage() {
         Grade a pitcher&apos;s command pitch-by-pitch. Set intended targets, then receive a CQR score based on edge distance.
       </p>
       <p className="text-zinc-500 text-xs">
-        Scoring: edge &lt;3&quot; = 100 &bull; &lt;5&quot; = 75 &bull; &lt;7&quot; = 50 &bull; 7-8&quot; = 25 &bull; center box = 0 &bull; &gt;6&quot; outside zone = 0 (unless high + swung at)
+        Scoring: {scoringConfig.tiers
+          .sort((a, b) => a.maxEdge - b.maxEdge)
+          .map(t => `edge <${t.maxEdge}" = ${t.score}`)
+          .join(' \u2022 ')
+        } &bull; center box = 0 &bull; &gt;{scoringConfig.outsideZoneMax}&quot; outside zone = 0{scoringConfig.highSwingExempt ? ' (unless high + swung at)' : ''}
       </p>
+      {isCustomConfig && (
+        <p className="text-amber-400 text-xs">Custom scoring active &mdash; <Link href="/compete/review/settings" className="underline hover:text-amber-300">edit settings</Link></p>
+      )}
 
       {/* Saved reviews */}
       {loadingSaved ? (
