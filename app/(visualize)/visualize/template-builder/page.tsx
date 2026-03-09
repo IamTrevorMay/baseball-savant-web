@@ -7,7 +7,7 @@ import {
   RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputSection, SectionBinding,
   createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
-import { SCENE_METRICS } from '@/lib/reportMetrics'
+import { SCENE_METRICS, MLB_TEAM_COLORS } from '@/lib/reportMetrics'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { getSampleData } from '@/lib/templateBindingSchemas'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
@@ -362,20 +362,29 @@ export default function TemplateBuilderPage() {
         if (!game) { setSectionFetchLoading(null); return }
 
         const half = game.inningHalf === 'Top' ? 'TOP' : game.inningHalf === 'Bottom' ? 'BOT' : ''
+        const awayAbbrev = game.away.abbrev || ''
+        const homeAbbrev = game.home.abbrev || ''
+        const outsNum = game.outs ?? 0
+
         const stats: Record<string, string> = {
-          away_abbrev: game.away.abbrev || '',
-          home_abbrev: game.home.abbrev || '',
+          away_abbrev: awayAbbrev,
+          home_abbrev: homeAbbrev,
           away_name: game.away.name || '',
           home_name: game.home.name || '',
-          away_score: String(game.away.score ?? 0),
-          home_score: String(game.home.score ?? 0),
+          // Themed variants (text value only — color applied separately)
+          away_abbrev_themed: awayAbbrev,
+          home_abbrev_themed: homeAbbrev,
+          matchup_themed: `${awayAbbrev} - ${homeAbbrev}`,
+          // Scores as integers
+          away_score: String(Math.round(game.away.score ?? 0)),
+          home_score: String(Math.round(game.home.score ?? 0)),
           inning_display: game.inningHalf && game.inningOrdinal ? `${game.inningHalf} ${game.inningOrdinal}` : '',
           inning_half: game.inningHalf || '',
           inning_ordinal: game.inningOrdinal || '',
-          outs: String(game.outs ?? 0),
+          outs: `${outsNum} ${outsNum === 1 ? 'out' : 'outs'}`,
           game_state: game.state || '',
           detailed_state: game.detailedState || '',
-          state_line: game.inningOrdinal ? `${half} ${game.inningOrdinal} \u00b7 ${game.outs ?? 0} OUT` : game.detailedState || '',
+          state_line: game.inningOrdinal ? `${half} ${game.inningOrdinal} \u00b7 ${outsNum} OUT` : game.detailedState || '',
           on_first: game.onFirst ? '\u25c9' : '\u25cb',
           on_second: game.onSecond ? '\u25c9' : '\u25cb',
           on_third: game.onThird ? '\u25c9' : '\u25cb',
@@ -385,11 +394,25 @@ export default function TemplateBuilderPage() {
           probable_home: game.probableHome?.name || '',
         }
 
+        // Resolve team colors for themed metrics
+        const awayColor = MLB_TEAM_COLORS[awayAbbrev] || '#ffffff'
+        const homeColor = MLB_TEAM_COLORS[homeAbbrev] || '#ffffff'
+        const themedColors: Record<string, string> = {
+          away_abbrev_themed: awayColor,
+          home_abbrev_themed: homeColor,
+          matchup_themed: awayColor,
+        }
+
         for (const el of sectionElements) {
           if (!el.sectionBinding) continue
-          const { metric, format } = el.sectionBinding
+          const { metric } = el.sectionBinding
           const val = stats[metric] ?? ''
-          applyStatToElement(el.id, el.type, metric, val, '', '', format)
+          // Skip format — game values are pre-formatted strings
+          applyStatToElement(el.id, el.type, metric, val, '', '')
+          // Apply team color for themed metrics
+          if (themedColors[metric]) {
+            updateElementProps(el.id, { color: themedColors[metric] })
+          }
         }
         setSectionFetchLoading(null)
         return
