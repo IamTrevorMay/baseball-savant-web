@@ -489,6 +489,7 @@ export default function CQRReviewPage() {
       <div className="flex gap-4 border-b border-zinc-800 pb-2">
         <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Review</span>
         <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+        <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
       </div>
 
       <h1 className="text-xl font-bold text-white">Command Quality Review</h1>
