@@ -7,6 +7,7 @@ export interface CQRPitchResult {
 }
 
 export interface ScoringConfig {
+  gradingMode: 'edge' | 'base10'
   baseballRadius: number    // 1.45"
   centerBoxHalf: number     // 2" (4×4" box = ±2")
   outsideZoneMax: number    // 6" (penalty threshold)
@@ -15,6 +16,7 @@ export interface ScoringConfig {
 }
 
 export const DEFAULT_CONFIG: ScoringConfig = {
+  gradingMode: 'edge',
   baseballRadius: 1.45,
   centerBoxHalf: 2,
   outsideZoneMax: 6,
@@ -144,4 +146,82 @@ export function getTargetZone(x: number, z: number): number {
   const row = Math.min(Math.floor((ZONE_TOP - z) / rowHeight), 2)
 
   return row * 3 + col + 1
+}
+
+/** Get horizontal third (column 0-2) for a point. */
+function getColumn(x: number): number {
+  const colWidth = (ZONE_RIGHT - ZONE_LEFT) / 3
+  const col = Math.floor((x - ZONE_LEFT) / colWidth)
+  return Math.max(0, Math.min(2, col))
+}
+
+/** Get vertical third (row 0-2) with extended edges (±extendInches past zone). */
+function getRowExtended(z: number, extendInches: number): number | null {
+  const extendFt = extendInches / 12
+  const extBot = ZONE_BOT - extendFt
+  const extTop = ZONE_TOP + extendFt
+  if (z < extBot || z > extTop) return null
+  const rowHeight = (extTop - extBot) / 3
+  const row = Math.floor((extTop - z) / rowHeight)
+  return Math.max(0, Math.min(2, row))
+}
+
+/**
+ * Score a single pitch using Base10 mode (0-10 points from 7 binary criteria).
+ *
+ * +2  Same horizontal third (column) as target
+ * +2  Same vertical third (row) as target (rows extended 2" past zone edges)
+ * +1  Within 4" of target
+ * +1  Within 8" of target
+ * +1  Not more than 6" outside the zone
+ * +1  Not in the 4×4" center box
+ * +2  |actual.plate_x| > |target.x| (farther from plate center)
+ */
+export function scorePitchBase10(
+  target: { x: number; z: number },
+  actual: { plate_x: number; plate_z: number },
+  pitchIndex: number = 0,
+  config?: ScoringConfig
+): CQRPitchResult {
+  const cfg = config ?? DEFAULT_CONFIG
+  const dx = (actual.plate_x - target.x) * 12
+  const dz = (actual.plate_z - target.z) * 12
+  const distanceInches = Math.sqrt(dx * dx + dz * dz)
+  const edgeDistanceInches = Math.max(0, distanceInches - cfg.baseballRadius)
+
+  let score = 0
+
+  // +2: Same column
+  if (getColumn(actual.plate_x) === getColumn(target.x)) score += 2
+
+  // +2: Same row (extended 2" past zone edges)
+  const actualRow = getRowExtended(actual.plate_z, 2)
+  const targetRow = getRowExtended(target.z, 2)
+  if (actualRow !== null && targetRow !== null && actualRow === targetRow) score += 2
+
+  // +1: Within 4" of target
+  if (distanceInches <= 4) score += 1
+
+  // +1: Within 8" of target
+  if (distanceInches <= 8) score += 1
+
+  // +1: Not more than 6" outside the zone
+  const outsideDist = distanceOutsideZone(actual.plate_x, actual.plate_z)
+  if (outsideDist <= cfg.outsideZoneMax) score += 1
+
+  // +1: Not in the center box
+  if (!isInCenterBox(actual.plate_x, actual.plate_z, cfg.centerBoxHalf)) score += 1
+
+  // +2: |actual.plate_x| > |target.x| (farther from plate center)
+  if (Math.abs(actual.plate_x) > Math.abs(target.x)) score += 2
+
+  return { pitchIndex, distanceInches, edgeDistanceInches, zone: 0, score }
+}
+
+/** Average of all pitch scores, ceil to nearest 0.1. */
+export function computeBase10CQR(results: CQRPitchResult[]): number {
+  if (results.length === 0) return 0
+  const sum = results.reduce((s, r) => s + r.score, 0)
+  const avg = sum / results.length
+  return Math.ceil(avg * 10) / 10
 }

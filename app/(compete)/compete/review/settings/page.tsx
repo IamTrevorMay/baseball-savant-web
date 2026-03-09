@@ -73,6 +73,38 @@ export default function CQRSettingsPage() {
         Configure scoring thresholds and zone rules. Settings are saved to your browser.
       </p>
 
+      {/* Grading Mode */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 space-y-3">
+        <h2 className="text-sm font-medium text-zinc-400">Grading Mode</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setConfig({ ...config, gradingMode: 'edge' })}
+            className={`px-4 py-2 rounded text-sm font-medium transition ${
+              config.gradingMode !== 'base10'
+                ? 'bg-amber-600 text-white'
+                : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-300'
+            }`}
+          >
+            Edge Distance
+          </button>
+          <button
+            onClick={() => setConfig({ ...config, gradingMode: 'base10' })}
+            className={`px-4 py-2 rounded text-sm font-medium transition ${
+              config.gradingMode === 'base10'
+                ? 'bg-amber-600 text-white'
+                : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-300'
+            }`}
+          >
+            Base10
+          </button>
+        </div>
+        <p className="text-xs text-zinc-500">
+          {config.gradingMode === 'base10'
+            ? 'Each pitch earns up to 10 points from 7 binary criteria. Final grade is the average, rounded up to nearest tenth.'
+            : 'Score pitches based on edge distance from target. Tiered scoring with zone rules.'}
+        </p>
+      </div>
+
       {/* Scoring Tiers */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5 space-y-4">
         <h2 className="text-sm font-medium text-zinc-400">Scoring Tiers</h2>

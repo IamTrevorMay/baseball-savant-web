@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import InteractiveZone from '@/components/compete/review/InteractiveZone'
-import { scorePitch, computeCQR, CQRPitchResult, ScoringConfig, DEFAULT_CONFIG } from '@/lib/compete/cqrScoring'
+import { scorePitch, scorePitchBase10, computeCQR, computeBase10CQR, CQRPitchResult, ScoringConfig, DEFAULT_CONFIG } from '@/lib/compete/cqrScoring'
 import { getPitchColor } from '@/components/chartConfig'
 
 interface CQRPitch {
@@ -139,11 +139,15 @@ export default function CQRReviewPage() {
     setTargets(newTargets)
   }
 
+  const isBase10 = scoringConfig.gradingMode === 'base10'
+
   const handleSubmit = () => {
     const t = targets[currentIndex]
     if (!t) return
     const pitch = pitches[currentIndex]
-    const result = scorePitch(t, pitch, pitch.zone, currentIndex, pitch.description, scoringConfig)
+    const result = isBase10
+      ? scorePitchBase10(t, pitch, currentIndex, scoringConfig)
+      : scorePitch(t, pitch, pitch.zone, currentIndex, pitch.description, scoringConfig)
     const newResults = [...results]
     newResults[currentIndex] = result
     setResults(newResults)
@@ -151,7 +155,7 @@ export default function CQRReviewPage() {
 
   const allGraded = targets.every(t => t !== null) && results.every(r => r !== null)
   const gradedResults = results.filter((r): r is CQRPitchResult => r !== null)
-  const cqrScore = computeCQR(gradedResults)
+  const cqrScore = isBase10 ? computeBase10CQR(gradedResults) : computeCQR(gradedResults)
   const currentTarget = targets[currentIndex]
   const currentResult = results[currentIndex]
   const currentPitch = pitches[currentIndex]
@@ -214,17 +218,25 @@ export default function CQRReviewPage() {
   }
 
   const scoreColor = (score: number) =>
-    score >= 75 ? 'text-emerald-400' : score >= 50 ? 'text-amber-400' : 'text-red-400'
+    isBase10
+      ? (score >= 7.5 ? 'text-emerald-400' : score >= 5 ? 'text-amber-400' : 'text-red-400')
+      : (score >= 75 ? 'text-emerald-400' : score >= 50 ? 'text-amber-400' : 'text-red-400')
 
   const scoreBg = (score: number) =>
-    score >= 75 ? 'bg-emerald-500/10 border-emerald-500/30' : score >= 50 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-red-500/10 border-red-500/30'
+    isBase10
+      ? (score >= 7.5 ? 'bg-emerald-500/10 border-emerald-500/30' : score >= 5 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-red-500/10 border-red-500/30')
+      : (score >= 75 ? 'bg-emerald-500/10 border-emerald-500/30' : score >= 50 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-red-500/10 border-red-500/30')
 
   // ── Results view (inline after finish) ──
   if (grading && finished) {
     const breakdown = buildBreakdown()
-    const tiers = [100, 75, 50, 25, 0]
-    const tierCounts: Record<number, number> = { 100: 0, 75: 0, 50: 0, 25: 0, 0: 0 }
-    for (const r of gradedResults) tierCounts[r.score] = (tierCounts[r.score] || 0) + 1
+    const tiers = isBase10 ? [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0] : [100, 75, 50, 25, 0]
+    const tierCounts: Record<number, number> = {}
+    for (const t of tiers) tierCounts[t] = 0
+    for (const r of gradedResults) {
+      const key = isBase10 ? r.score : r.score
+      tierCounts[key] = (tierCounts[key] || 0) + 1
+    }
     const maxTierCount = Math.max(...Object.values(tierCounts), 1)
 
     return (
@@ -238,8 +250,10 @@ export default function CQRReviewPage() {
 
         {/* CQR Score */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
-          <p className="text-zinc-500 text-sm mb-1">CQR Score</p>
-          <p className={`text-6xl font-bold font-mono ${scoreColor(cqrScore)}`}>{cqrScore}</p>
+          <p className="text-zinc-500 text-sm mb-1">CQR Score{isBase10 ? ' (Base10)' : ''}</p>
+          <p className={`text-6xl font-bold font-mono ${scoreColor(cqrScore)}`}>
+            {isBase10 ? `${cqrScore.toFixed(1)}/10` : cqrScore}
+          </p>
           <p className="text-zinc-500 text-sm mt-2">{pitcherName} &bull; {pitches.length} pitches graded</p>
           {saving && <p className="text-zinc-500 text-xs mt-1">Saving...</p>}
         </div>
@@ -285,7 +299,9 @@ export default function CQRReviewPage() {
                         </span>
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-400 font-mono">{d.count}</td>
-                      <td className="px-4 py-2 text-right font-mono text-white">{Math.round(d.totalScore / d.count)}</td>
+                      <td className="px-4 py-2 text-right font-mono text-white">
+                        {isBase10 ? (d.totalScore / d.count).toFixed(1) : Math.round(d.totalScore / d.count)}
+                      </td>
                       <td className="px-4 py-2 text-right text-zinc-400 font-mono">{(d.totalDist / d.count).toFixed(1)}&quot;</td>
                     </tr>
                   ))}
@@ -303,7 +319,9 @@ export default function CQRReviewPage() {
                     <div className="flex-1 h-5 bg-zinc-800 rounded overflow-hidden">
                       <div
                         className={`h-full rounded transition-all ${
-                          tier >= 75 ? 'bg-emerald-500' : tier >= 50 ? 'bg-amber-500' : tier >= 25 ? 'bg-orange-500' : 'bg-red-500'
+                          isBase10
+                            ? (tier >= 8 ? 'bg-emerald-500' : tier >= 5 ? 'bg-amber-500' : tier >= 3 ? 'bg-orange-500' : 'bg-red-500')
+                            : (tier >= 75 ? 'bg-emerald-500' : tier >= 50 ? 'bg-amber-500' : tier >= 25 ? 'bg-orange-500' : 'bg-red-500')
                         }`}
                         style={{ width: `${(tierCounts[tier] / maxTierCount) * 100}%` }}
                       />
@@ -424,7 +442,7 @@ export default function CQRReviewPage() {
                 <div className="pt-2 border-t border-zinc-800">
                   <span className="text-xs text-zinc-500">Pitch Score</span>
                   <p className={`text-2xl font-bold font-mono ${scoreColor(currentResult.score)}`}>
-                    {currentResult.score}
+                    {isBase10 ? `${currentResult.score}/10` : currentResult.score}
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">
                     {currentResult.edgeDistanceInches.toFixed(1)}&quot; edge distance
@@ -473,7 +491,9 @@ export default function CQRReviewPage() {
             {gradedCount > 0 && (
               <div className="text-center">
                 <span className="text-xs text-zinc-500">Running CQR</span>
-                <p className="text-white font-mono text-lg">{cqrScore}</p>
+                <p className="text-white font-mono text-lg">
+                  {isBase10 ? `${cqrScore.toFixed(1)}/10` : cqrScore}
+                </p>
               </div>
             )}
           </div>
@@ -494,15 +514,21 @@ export default function CQRReviewPage() {
 
       <h1 className="text-xl font-bold text-white">Command Quality Review</h1>
       <p className="text-sm text-zinc-400">
-        Grade a pitcher&apos;s command pitch-by-pitch. Set intended targets, then receive a CQR score based on edge distance.
+        Grade a pitcher&apos;s command pitch-by-pitch. Set intended targets, then receive a CQR score based on {isBase10 ? 'Base10 criteria (0-10 per pitch)' : 'edge distance'}.
       </p>
-      <p className="text-zinc-500 text-xs">
-        Scoring: {scoringConfig.tiers
-          .sort((a, b) => a.maxEdge - b.maxEdge)
-          .map(t => `edge <${t.maxEdge}" = ${t.score}`)
-          .join(' \u2022 ')
-        } &bull; center box = 0 &bull; &gt;{scoringConfig.outsideZoneMax}&quot; outside zone = 0{scoringConfig.highSwingExempt ? ' (unless high + swung at)' : ''}
-      </p>
+      {isBase10 ? (
+        <p className="text-zinc-500 text-xs">
+          Base10: +2 same column &bull; +2 same row (±2&quot;) &bull; +1 within 4&quot; &bull; +1 within 8&quot; &bull; +1 not &gt;{scoringConfig.outsideZoneMax}&quot; outside &bull; +1 not center box &bull; +2 farther from plate center
+        </p>
+      ) : (
+        <p className="text-zinc-500 text-xs">
+          Scoring: {scoringConfig.tiers
+            .sort((a, b) => a.maxEdge - b.maxEdge)
+            .map(t => `edge <${t.maxEdge}" = ${t.score}`)
+            .join(' \u2022 ')
+          } &bull; center box = 0 &bull; &gt;{scoringConfig.outsideZoneMax}&quot; outside zone = 0{scoringConfig.highSwingExempt ? ' (unless high + swung at)' : ''}
+        </p>
+      )}
       {isCustomConfig && (
         <p className="text-amber-400 text-xs">Custom scoring active &mdash; <Link href="/compete/review/settings" className="underline hover:text-amber-300">edit settings</Link></p>
       )}
