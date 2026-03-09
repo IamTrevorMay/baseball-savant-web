@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 
-const ALL_TOOLS = ['research', 'mechanics', 'models', 'compete', 'visualize'] as const
+const ALL_TOOLS = ['research', 'mechanics', 'models', 'compete', 'visualize', 'broadcast'] as const
 
 interface Invitation {
   id: string
