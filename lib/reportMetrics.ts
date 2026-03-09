@@ -67,6 +67,35 @@ export const METRICS: Record<string, string> = {
   avg_swing_length: 'ROUND(AVG(swing_length)::numeric, 2)',
 }
 
+/** Game metrics for live-game data binding */
+export const GAME_METRICS: { value: string; label: string; group: string }[] = [
+  // Teams
+  { value: 'away_abbrev', label: 'Away Team', group: 'Teams' },
+  { value: 'home_abbrev', label: 'Home Team', group: 'Teams' },
+  { value: 'away_name', label: 'Away Full Name', group: 'Teams' },
+  { value: 'home_name', label: 'Home Full Name', group: 'Teams' },
+  // Score
+  { value: 'away_score', label: 'Away Score', group: 'Score' },
+  { value: 'home_score', label: 'Home Score', group: 'Score' },
+  // Game State
+  { value: 'inning_display', label: 'Inning (e.g. Top 5th)', group: 'State' },
+  { value: 'inning_half', label: 'Inning Half', group: 'State' },
+  { value: 'inning_ordinal', label: 'Inning Ordinal', group: 'State' },
+  { value: 'outs', label: 'Outs', group: 'State' },
+  { value: 'game_state', label: 'Game State', group: 'State' },
+  { value: 'detailed_state', label: 'Detailed State', group: 'State' },
+  { value: 'state_line', label: 'State Line (e.g. BOT 7 · 2 OUT)', group: 'State' },
+  // Runners
+  { value: 'on_first', label: 'Runner on 1B', group: 'Runners' },
+  { value: 'on_second', label: 'Runner on 2B', group: 'Runners' },
+  { value: 'on_third', label: 'Runner on 3B', group: 'Runners' },
+  // Players
+  { value: 'pitcher_name', label: 'Current Pitcher', group: 'Players' },
+  { value: 'batter_name', label: 'Current Batter', group: 'Players' },
+  { value: 'probable_away', label: 'Probable Pitcher (Away)', group: 'Players' },
+  { value: 'probable_home', label: 'Probable Pitcher (Home)', group: 'Players' },
+]
+
 /** Subset of metrics available for scene data binding */
 export const SCENE_METRICS: { value: string; label: string; group?: string }[] = [
   // Stuff / Arsenal

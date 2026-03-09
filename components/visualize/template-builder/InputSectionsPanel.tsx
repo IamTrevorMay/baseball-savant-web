@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { InputSection, SectionBinding, SectionInputKey, GlobalInputType, SceneElement, MAX_INPUT_SECTIONS } from '@/lib/sceneTypes'
-import { SCENE_METRICS } from '@/lib/reportMetrics'
+import { SCENE_METRICS, GAME_METRICS } from '@/lib/reportMetrics'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 
 const PITCH_TYPES = [
@@ -565,6 +565,9 @@ export default function InputSectionsPanel({
                     {sectionElements.map(el => {
                       const isPlayerImage = el.type === 'player-image'
                       const binding = el.sectionBinding
+                      const isLiveGame = section.globalInputType === 'live-game'
+                      const metricOptions = isLiveGame ? GAME_METRICS : SCENE_METRICS
+                      const defaultMetric = isLiveGame ? 'away_abbrev' : 'avg_velo'
                       return (
                         <div key={el.id} className="rounded bg-zinc-900/50 border border-zinc-700/30 px-1.5 py-1.5">
                           <div className="flex items-center gap-1.5 mb-1">
@@ -576,19 +579,19 @@ export default function InputSectionsPanel({
                               title="Select on canvas"
                             >{'\u25ce'}</button>
                           </div>
-                          {isPlayerImage ? (
+                          {isPlayerImage && !isLiveGame ? (
                             <div className="text-[9px] text-zinc-600 px-1">Auto: player image</div>
                           ) : (
                             <select
-                              value={binding?.metric || 'avg_velo'}
+                              value={binding?.metric || defaultMetric}
                               onChange={e => {
                                 if (!binding) return
                                 onUpdateElementBinding(el.id, { ...binding, metric: e.target.value })
                               }}
                               className="w-full bg-zinc-800 border border-zinc-700/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 focus:border-emerald-600 outline-none"
                             >
-                              {SCENE_METRICS.map(m => (
-                                <option key={m.value} value={m.value}>{m.label}</option>
+                              {metricOptions.map(m => (
+                                <option key={m.value} value={m.value}>{m.group ? `${m.group} — ` : ''}{m.label}</option>
                               ))}
                             </select>
                           )}

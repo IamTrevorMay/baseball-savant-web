@@ -343,7 +343,7 @@ export default function TemplateBuilderPage() {
 
   const fetchInputSection = useCallback(async (sectionId: string) => {
     const section = inputSections.find(s => s.id === sectionId)
-    if (!section?.playerId) return
+    if (!section) return
 
     const sectionElements = scene.elements.filter(e =>
       e.sectionBinding?.sectionId === sectionId
@@ -352,6 +352,51 @@ export default function TemplateBuilderPage() {
 
     setSectionFetchLoading(sectionId)
     try {
+      // ── Live Game branch ──
+      if (section.globalInputType === 'live-game' && section.gamePk) {
+        const res = await fetch(`/api/scores?date=${section.gameDate || ''}`)
+        const data = await res.json()
+        const games = data.games || []
+        const game = games.find((g: any) => g.gamePk === section.gamePk)
+        if (!game) { setSectionFetchLoading(null); return }
+
+        const half = game.inningHalf === 'Top' ? 'TOP' : game.inningHalf === 'Bottom' ? 'BOT' : ''
+        const stats: Record<string, string> = {
+          away_abbrev: game.away.abbrev || '',
+          home_abbrev: game.home.abbrev || '',
+          away_name: game.away.name || '',
+          home_name: game.home.name || '',
+          away_score: String(game.away.score ?? 0),
+          home_score: String(game.home.score ?? 0),
+          inning_display: game.inningHalf && game.inningOrdinal ? `${game.inningHalf} ${game.inningOrdinal}` : '',
+          inning_half: game.inningHalf || '',
+          inning_ordinal: game.inningOrdinal || '',
+          outs: String(game.outs ?? 0),
+          game_state: game.state || '',
+          detailed_state: game.detailedState || '',
+          state_line: game.inningOrdinal ? `${half} ${game.inningOrdinal} \u00b7 ${game.outs ?? 0} OUT` : game.detailedState || '',
+          on_first: game.onFirst ? '\u25c9' : '\u25cb',
+          on_second: game.onSecond ? '\u25c9' : '\u25cb',
+          on_third: game.onThird ? '\u25c9' : '\u25cb',
+          pitcher_name: game.pitcher?.name || '',
+          batter_name: game.batter?.name || '',
+          probable_away: game.probableAway?.name || '',
+          probable_home: game.probableHome?.name || '',
+        }
+
+        for (const el of sectionElements) {
+          if (!el.sectionBinding) continue
+          const { metric, format } = el.sectionBinding
+          const val = stats[metric] ?? ''
+          applyStatToElement(el.id, el.type, metric, val, '', '', format)
+        }
+        setSectionFetchLoading(null)
+        return
+      }
+
+      // ── Player / standard branch ──
+      if (!section.playerId) { setSectionFetchLoading(null); return }
+
       // Collect metrics (excluding __player__)
       const metrics = new Set<string>()
       for (const el of sectionElements) {
@@ -394,6 +439,36 @@ export default function TemplateBuilderPage() {
       setSectionFetchLoading(null)
     }
   }, [inputSections, scene.elements, updateElementProps])
+
+  // ── Live game auto-refresh polling ────────────────────────────────────────
+  const liveGameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    // Clear previous interval
+    if (liveGameIntervalRef.current) {
+      clearInterval(liveGameIntervalRef.current)
+      liveGameIntervalRef.current = null
+    }
+
+    // Find live-game sections with a gamePk set
+    const liveGameSections = inputSections.filter(
+      s => s.globalInputType === 'live-game' && s.gamePk
+    )
+    if (liveGameSections.length === 0) return
+
+    liveGameIntervalRef.current = setInterval(() => {
+      for (const section of liveGameSections) {
+        fetchInputSection(section.id)
+      }
+    }, 30_000)
+
+    return () => {
+      if (liveGameIntervalRef.current) {
+        clearInterval(liveGameIntervalRef.current)
+        liveGameIntervalRef.current = null
+      }
+    }
+  }, [inputSections, fetchInputSection])
 
   const highlightSectionElements = useCallback((ids: string[]) => {
     if (ids.length === 0) return
