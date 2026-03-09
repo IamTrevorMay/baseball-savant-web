@@ -9,6 +9,87 @@ import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/ov
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
+const SNAP_THRESHOLD = 6
+const GRID_SIZE = 20
+
+// ── Snap Guides ──────────────────────────────────────────────────────────────
+
+interface SnapGuide {
+  axis: 'x' | 'y'
+  position: number
+}
+
+function computeAssetSnapGuides(
+  currentId: string,
+  newX: number, newY: number,
+  newW: number, newH: number,
+  allAssets: BroadcastAsset[],
+  canvasW: number, canvasH: number,
+): { x: number; y: number; guides: SnapGuide[] } {
+  const guides: SnapGuide[] = []
+  let snapX = newX
+  let snapY = newY
+
+  // Edges and center of the dragging asset
+  const myL = newX, myR = newX + newW, myCX = newX + newW / 2
+  const myT = newY, myB = newY + newH, myCY = newY + newH / 2
+
+  // Canvas center
+  const cx = canvasW / 2, cy = canvasH / 2
+
+  // Snap to canvas center
+  if (Math.abs(myCX - cx) < SNAP_THRESHOLD) {
+    snapX = cx - newW / 2; guides.push({ axis: 'x', position: cx })
+  }
+  if (Math.abs(myCY - cy) < SNAP_THRESHOLD) {
+    snapY = cy - newH / 2; guides.push({ axis: 'y', position: cy })
+  }
+
+  // Snap to grid
+  const gridSnapX = Math.round(newX / GRID_SIZE) * GRID_SIZE
+  const gridSnapY = Math.round(newY / GRID_SIZE) * GRID_SIZE
+  if (guides.filter(g => g.axis === 'x').length === 0 && Math.abs(newX - gridSnapX) < SNAP_THRESHOLD) {
+    snapX = gridSnapX
+  }
+  if (guides.filter(g => g.axis === 'y').length === 0 && Math.abs(newY - gridSnapY) < SNAP_THRESHOLD) {
+    snapY = gridSnapY
+  }
+
+  // Snap to other assets
+  for (const other of allAssets) {
+    if (other.id === currentId) continue
+    const oL = other.canvas_x, oR = other.canvas_x + other.canvas_width, oCX = other.canvas_x + other.canvas_width / 2
+    const oT = other.canvas_y, oB = other.canvas_y + other.canvas_height, oCY = other.canvas_y + other.canvas_height / 2
+
+    const xSnaps = [
+      { my: myL, target: oL }, { my: myR, target: oR },
+      { my: myL, target: oR }, { my: myR, target: oL },
+      { my: myCX, target: oCX },
+    ]
+    for (const s of xSnaps) {
+      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+        snapX = newX + (s.target - s.my)
+        guides.push({ axis: 'x', position: s.target })
+        break
+      }
+    }
+
+    const ySnaps = [
+      { my: myT, target: oT }, { my: myB, target: oB },
+      { my: myT, target: oB }, { my: myB, target: oT },
+      { my: myCY, target: oCY },
+    ]
+    for (const s of ySnaps) {
+      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+        snapY = newY + (s.target - s.my)
+        guides.push({ axis: 'y', position: s.target })
+        break
+      }
+    }
+  }
+
+  return { x: Math.round(snapX), y: Math.round(snapY), guides }
+}
 
 function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   const p = el.props
@@ -59,9 +140,22 @@ function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: 
 
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
+    const nativeW = asset.scene_config.width || asset.canvas_width
+    const nativeH = asset.scene_config.height || asset.canvas_height
+    const scaleX = asset.canvas_width / nativeW
+    const scaleY = asset.canvas_height / nativeH
     return (
-      <div className="w-full h-full" style={{ opacity: dimmedOpacity }}>
-        <div className="relative w-full h-full" style={{ background: asset.scene_config.background === 'transparent' ? undefined : asset.scene_config.background }}>
+      <div className="w-full h-full overflow-hidden" style={{ opacity: dimmedOpacity }}>
+        <div
+          className="relative"
+          style={{
+            width: nativeW,
+            height: nativeH,
+            transform: `scale(${scaleX}, ${scaleY})`,
+            transformOrigin: 'top left',
+            background: asset.scene_config.background === 'transparent' ? undefined : asset.scene_config.background,
+          }}
+        >
           {[...elements].sort((a, b) => a.zIndex - b.zIndex).map(el => (
             <div key={el.id} className="absolute" style={computeWrapperStyle(el)}>
               {renderElementContent(el)}
@@ -74,7 +168,7 @@ function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: 
 
   if (asset.asset_type === 'image' && asset.storage_path) {
     return (
-      <div className="w-full h-full" style={{ opacity: dimmedOpacity }}>
+      <div className="w-full h-full overflow-hidden" style={{ opacity: dimmedOpacity }}>
         <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" draggable={false} />
       </div>
     )
@@ -148,6 +242,9 @@ export default function BroadcastCanvas() {
   const { assets, visibleAssetIds, selectedAssetId, setSelectedAssetId, updateAsset, previewingAssetId } = useBroadcast()
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; assetX: number; assetY: number } | null>(null)
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
+  const assetsRef = useRef(assets)
+  assetsRef.current = assets
 
   // Compute zoom to fit canvas in container
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
@@ -182,9 +279,21 @@ export default function BroadcastCanvas() {
         if (!prev) return null
         const dx = (me.clientX - prev.startX) / zoom
         const dy = (me.clientY - prev.startY) / zoom
-        const newX = Math.round(prev.assetX + dx)
-        const newY = Math.round(prev.assetY + dy)
-        updateAsset(prev.id, { canvas_x: newX, canvas_y: newY })
+        const rawX = Math.round(prev.assetX + dx)
+        const rawY = Math.round(prev.assetY + dy)
+        const currentAsset = assetsRef.current.find(a => a.id === prev.id)
+        const w = currentAsset?.canvas_width || 100
+        const h = currentAsset?.canvas_height || 100
+
+        if (me.altKey) {
+          // Alt held — no snapping
+          updateAsset(prev.id, { canvas_x: rawX, canvas_y: rawY })
+          setSnapGuides([])
+        } else {
+          const snap = computeAssetSnapGuides(prev.id, rawX, rawY, w, h, assetsRef.current, CANVAS_W, CANVAS_H)
+          updateAsset(prev.id, { canvas_x: snap.x, canvas_y: snap.y })
+          setSnapGuides(snap.guides)
+        }
         return prev
       })
     }
@@ -192,17 +301,24 @@ export default function BroadcastCanvas() {
     function onUp(me: MouseEvent) {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      setSnapGuides([])
       // Persist final position
       setDragging(prev => {
         if (!prev) return null
         const dx = (me.clientX - prev.startX) / zoom
         const dy = (me.clientY - prev.startY) / zoom
-        const newX = Math.round(prev.assetX + dx)
-        const newY = Math.round(prev.assetY + dy)
+        const rawX = Math.round(prev.assetX + dx)
+        const rawY = Math.round(prev.assetY + dy)
+        const currentAsset = assetsRef.current.find(a => a.id === prev.id)
+        const w = currentAsset?.canvas_width || 100
+        const h = currentAsset?.canvas_height || 100
+        const snap = me.altKey
+          ? { x: rawX, y: rawY }
+          : computeAssetSnapGuides(prev.id, rawX, rawY, w, h, assetsRef.current, CANVAS_W, CANVAS_H)
         fetch('/api/broadcast/assets', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: prev.id, canvas_x: newX, canvas_y: newY }),
+          body: JSON.stringify({ id: prev.id, canvas_x: snap.x, canvas_y: snap.y }),
         }).catch(console.error)
         return null
       })
@@ -247,14 +363,29 @@ export default function BroadcastCanvas() {
         }
       }
 
+      // Snap resized edges (unless Alt held)
+      if (!me.altKey) {
+        const snap = computeAssetSnapGuides(asset.id, newX, newY, newW, newH, assetsRef.current, CANVAS_W, CANVAS_H)
+        // Apply snapped position (adjusting width/height to match)
+        const dxSnap = snap.x - newX, dySnap = snap.y - newY
+        if (handle.includes('w')) { newX = snap.x; newW -= dxSnap }
+        else if (dxSnap !== 0 && handle.includes('e')) { newW += dxSnap }
+        if (handle.includes('n')) { newY = snap.y; newH -= dySnap }
+        else if (dySnap !== 0 && handle.includes('s')) { newH += dySnap }
+        setSnapGuides(snap.guides)
+      } else {
+        setSnapGuides([])
+      }
+
       updateAsset(asset.id, { canvas_x: newX, canvas_y: newY, canvas_width: newW, canvas_height: newH })
     }
 
     function onUp() {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      setSnapGuides([])
       // Persist
-      const a = assets.find(a => a.id === asset.id)
+      const a = assetsRef.current.find(a => a.id === asset.id)
       if (a) {
         fetch('/api/broadcast/assets', {
           method: 'PUT',
@@ -292,6 +423,19 @@ export default function BroadcastCanvas() {
             backgroundSize: '80px 80px',
           }}
         />
+
+        {/* Snap guides */}
+        {snapGuides.map((guide, i) => (
+          <div
+            key={i}
+            className="absolute pointer-events-none"
+            style={
+              guide.axis === 'x'
+                ? { left: guide.position, top: 0, width: 1, height: CANVAS_H, background: '#f97316', opacity: 0.6, zIndex: 9998 }
+                : { top: guide.position, left: 0, height: 1, width: CANVAS_W, background: '#f97316', opacity: 0.6, zIndex: 9998 }
+            }
+          />
+        ))}
 
         {/* Assets sorted by layer */}
         {[...assets].sort((a, b) => a.layer - b.layer).map(asset => {

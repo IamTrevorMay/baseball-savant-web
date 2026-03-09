@@ -96,10 +96,14 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
 
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
+    const nativeW = asset.scene_config.width || asset.canvas_width
+    const nativeH = asset.scene_config.height || asset.canvas_height
+    const scaleX = asset.canvas_width / nativeW
+    const scaleY = asset.canvas_height / nativeH
     return (
       <div
         ref={wrapperRef}
-        className="absolute"
+        className="absolute overflow-hidden"
         style={{
           left: asset.canvas_x,
           top: asset.canvas_y,
@@ -110,8 +114,12 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
         }}
       >
         <div
-          className="relative w-full h-full"
+          className="relative"
           style={{
+            width: nativeW,
+            height: nativeH,
+            transform: `scale(${scaleX}, ${scaleY})`,
+            transformOrigin: 'top left',
             background: asset.scene_config.background === 'transparent' ? 'transparent' : asset.scene_config.background,
           }}
         >
