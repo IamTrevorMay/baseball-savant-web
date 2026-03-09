@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       SELECT
         p.plate_x, p.plate_z, p.pitch_name, p.pitch_type,
         p.balls, p.strikes, p.zone, p.at_bat_number, p.pitch_number,
-        p.description, pl.player_name AS batter_name
+        p.description, pl.name AS batter_name
       FROM pitches p
       LEFT JOIN players pl ON pl.id = p.batter
       WHERE p.pitcher = ${pitcherId} AND p.game_pk = ${gamePk}
