@@ -4,7 +4,7 @@
  */
 
 import { Scene, SceneElement, CustomTemplateRecord, TemplateBinding, RepeaterConfig, TemplateConfig } from './sceneTypes'
-import { formatValue, type FormatType } from './templateBindingSchemas'
+import { formatValue, getMetricFormat, type FormatType } from './templateBindingSchemas'
 import { SCENE_METRICS, GAME_METRICS } from './reportMetrics'
 
 // ── Metric label lookup for stat-card labels ────────────────────────────────
@@ -49,7 +49,8 @@ function resolveBinding(element: SceneElement, row: any): SceneElement {
 
   if (!fieldPath) return element
 
-  const format = binding?.format || sBinding?.format
+  const explicitFormat = (binding?.format || sBinding?.format) as FormatType | undefined
+  const format = getMetricFormat(fieldPath, explicitFormat)
   const targetPropOverride = binding?.targetProp || sBinding?.targetProp
 
   // Special case: __player__ binding maps to playerId

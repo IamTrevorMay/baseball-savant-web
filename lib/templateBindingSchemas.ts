@@ -131,7 +131,7 @@ export function getSampleData(schema: DataSchemaType): Record<string, any>[] {
 
 // ── Format Helpers ──────────────────────────────────────────────────────────
 
-export type FormatType = 'raw' | '1f' | 'integer' | 'percent' | '3f'
+export type FormatType = 'raw' | '1f' | '2f' | 'integer' | 'percent' | '3f'
 
 export function formatValue(value: any, format?: FormatType): string {
   if (value == null) return '—'
@@ -140,6 +140,7 @@ export function formatValue(value: any, format?: FormatType): string {
   if (isNaN(num)) return String(value)
   switch (format) {
     case '1f': return num.toFixed(1)
+    case '2f': return num.toFixed(2)
     case 'integer': return Math.round(num).toString()
     case 'percent': return `${num.toFixed(1)}%`
     case '3f': return num.toFixed(3).replace(/^0\./, '.')
@@ -150,10 +151,65 @@ export function formatValue(value: any, format?: FormatType): string {
 export const FORMAT_OPTIONS: { value: FormatType; label: string }[] = [
   { value: 'raw', label: 'Raw' },
   { value: '1f', label: '1 Decimal (96.2)' },
+  { value: '2f', label: '2 Decimal (3.45)' },
   { value: 'integer', label: 'Integer (96)' },
   { value: 'percent', label: 'Percent (96.2%)' },
   { value: '3f', label: '.3f (.312)' },
 ]
+
+// ── Auto-format: default format per metric key ──────────────────────────────
+
+export const METRIC_DEFAULT_FORMAT: Record<string, FormatType> = {
+  // Batting averages (.xxx)
+  ba: '3f', obp: '3f', slg: '3f', ops: '3f',
+  avg_xba: '3f', avg_xwoba: '3f', avg_xslg: '3f', avg_woba: '3f',
+  // ERA family (x.xx)
+  era: '2f', fip: '2f', xera: '2f',
+  whip: '2f', avg_ext: '2f', avg_swing_length: '2f',
+  // Deception scores (.xxx)
+  deception_score: '3f', unique_score: '3f', xdeception_score: '3f',
+  // Velocities & spin (x.x)
+  avg_velo: '1f', max_velo: '1f', avg_ev: '1f', max_ev: '1f',
+  avg_la: '1f', avg_hbreak_in: '1f', avg_ivb_in: '1f',
+  avg_arm_angle: '1f', avg_bat_speed: '1f', total_re24: '1f',
+  // Rates (x.x%)
+  whiff_pct: 'percent', k_pct: 'percent', bb_pct: 'percent',
+  k_minus_bb: 'percent', csw_pct: 'percent', swstr_pct: 'percent',
+  zone_pct: 'percent', chase_pct: 'percent', contact_pct: 'percent',
+  z_swing_pct: 'percent', o_contact_pct: 'percent',
+  hard_hit_pct: 'percent', barrel_pct: 'percent',
+  gb_pct: 'percent', fb_pct: 'percent', ld_pct: 'percent', pu_pct: 'percent',
+  usage_pct: 'percent', close_pct: 'percent', waste_pct: 'percent',
+  // Counting (integers)
+  pitches: 'integer', pa: 'integer', games: 'integer',
+  h: 'integer', singles: 'integer', doubles: 'integer', triples: 'integer',
+  hr_count: 'integer', bb_count: 'integer', k_count: 'integer', hbp_count: 'integer',
+  avg_spin: 'integer', avg_dist: 'integer',
+  // Triton+ (integers)
+  cmd_plus: 'integer', rpcom_plus: 'integer', brink_plus: 'integer',
+  cluster_plus: 'integer', hdev_plus: 'integer', vdev_plus: 'integer',
+  missfire_plus: 'integer', close_pct_plus: 'integer',
+  // Triton raw (x.x)
+  avg_brink: '1f', avg_cluster: '1f', avg_hdev: '1f', avg_vdev: '1f', avg_missfire: '1f',
+  // Game scores (integers)
+  away_score: 'integer', home_score: 'integer', outs: 'integer',
+  // String fields (raw)
+  player_name: 'raw', away_abbrev: 'raw', home_abbrev: 'raw',
+  away_name: 'raw', home_name: 'raw',
+  pitcher_name: 'raw', batter_name: 'raw',
+  inning_display: 'raw', state_line: 'raw', game_state: 'raw',
+  detailed_state: 'raw', inning_half: 'raw', inning_ordinal: 'raw',
+}
+
+/** Get the correct format for a metric. Uses explicit format if non-default, otherwise auto-detects. */
+export function getMetricFormat(metric: string | undefined, explicitFormat?: FormatType): FormatType {
+  // If user explicitly chose a non-default format, respect it
+  if (explicitFormat && explicitFormat !== '1f') return explicitFormat
+  // Auto-detect from metric key
+  if (metric && METRIC_DEFAULT_FORMAT[metric]) return METRIC_DEFAULT_FORMAT[metric]
+  // Fallback
+  return explicitFormat || '1f'
+}
 
 // ── Auto-detect target property for binding ─────────────────────────────────
 

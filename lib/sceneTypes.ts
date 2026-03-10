@@ -40,7 +40,7 @@ export interface Keyframe {
 export interface TemplateBinding {
   fieldPath: string          // e.g. 'player_name', 'primary_value'
   targetProp?: string        // which prop to fill (auto-detected if omitted)
-  format?: 'raw' | '1f' | 'integer' | 'percent' | '3f'
+  format?: 'raw' | '1f' | '2f' | 'integer' | 'percent' | '3f'
 }
 
 export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percentile' | 'generic'
@@ -84,7 +84,7 @@ export interface InputSection {
 export interface SectionBinding {
   sectionId: string
   metric: string           // SCENE_METRICS key, e.g. 'avg_velo'; '__player__' for player-image
-  format?: 'raw' | '1f' | 'integer' | 'percent' | '3f'
+  format?: 'raw' | '1f' | '2f' | 'integer' | 'percent' | '3f'
   targetProp?: string      // auto-detected if omitted
 }
 

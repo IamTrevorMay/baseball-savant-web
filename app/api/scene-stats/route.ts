@@ -526,20 +526,125 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ kinematics: data })
     }
 
-    // Stats mode
+    // Stats mode — supports pitches, ERA, Triton+, and Deception metrics
     const metricList = (sp.get('metrics') || 'avg_velo,whiff_pct').split(',')
-    const validMetrics = metricList.filter(m => METRICS[m])
-    if (validMetrics.length === 0) return NextResponse.json({ error: 'No valid metrics' }, { status: 400 })
+    const pitchesMetrics = metricList.filter(m => METRICS[m] && !ERA_METRIC_KEYS.has(m) && !TRITON_PLUS_METRIC_KEYS.has(m) && !DECEPTION_METRIC_KEYS.has(m))
+    const eraMetrics = metricList.filter(m => ERA_METRIC_KEYS.has(m))
+    const tritonMetrics = metricList.filter(m => TRITON_PLUS_METRIC_KEYS.has(m))
+    const deceptionMetrics = metricList.filter(m => DECEPTION_METRIC_KEYS.has(m))
 
-    const selectParts = validMetrics.map(m => `${METRICS[m]} AS ${m}`)
-    const sql = `SELECT ${selectParts.join(', ')} FROM pitches ${whereClause}`
+    const hasAny = pitchesMetrics.length + eraMetrics.length + tritonMetrics.length + deceptionMetrics.length > 0
+    if (!hasAny) return NextResponse.json({ error: 'No valid metrics' }, { status: 400 })
 
-    const { data, error } = await q(sql)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    const row = data?.[0] || {}
+    const pid = parseInt(playerId)
+    const year = parseInt(gameYear || '2025')
     const stats: Record<string, any> = {}
-    for (const m of validMetrics) stats[m] = row[m] ?? null
+
+    // Run all sources in parallel
+    const tasks: Promise<void>[] = []
+
+    // 1. Pitches-table metrics
+    if (pitchesMetrics.length > 0) {
+      tasks.push((async () => {
+        const selectParts = pitchesMetrics.map(m => `${METRICS[m]} AS ${m}`)
+        const sql2 = `SELECT ${selectParts.join(', ')} FROM pitches ${whereClause}`
+        const { data: d } = await q(sql2)
+        const row = d?.[0] || {}
+        for (const m of pitchesMetrics) stats[m] = row[m] ?? null
+      })())
+    }
+
+    // 2. ERA / FIP / xERA (computed from pitches ERA components)
+    if (eraMetrics.length > 0) {
+      tasks.push((async () => {
+        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+        const eraWhere = [...where]
+        const sql2 = `SELECT ${ERA_COMPONENTS_SQL} FROM pitches p WHERE ${eraWhere.map(w => w.replace(/^pitcher/, 'p.pitcher').replace(/^batter/, 'p.batter')).join(' AND ')}`
+        const { data: d } = await q(sql2)
+        if (d?.[0]) {
+          const row = d[0]
+          if (eraMetrics.includes('fip')) stats.fip = computeFIP(row, constants)
+          if (eraMetrics.includes('xera')) stats.xera = computeXERA(row, constants)
+          if (eraMetrics.includes('era')) {
+            // ERA from MLB Stats API for accuracy
+            try {
+              const mlbUrl = `https://statsapi.mlb.com/api/v1/people/${pid}/stats?stats=season&season=${year}&group=pitching`
+              const mlbResp = await fetch(mlbUrl, { next: { revalidate: 3600 } })
+              if (mlbResp.ok) {
+                const mlbData = await mlbResp.json()
+                const split = mlbData?.stats?.[0]?.splits?.[0]?.stat
+                stats.era = split?.era != null ? parseFloat(split.era) : computeFIP(row, constants)
+              } else {
+                stats.era = computeFIP(row, constants)
+              }
+            } catch {
+              stats.era = computeFIP(row, constants)
+            }
+          }
+        }
+      })())
+    }
+
+    // 3. Triton command metrics (from pitcher_season_command)
+    if (tritonMetrics.length > 0) {
+      tasks.push((async () => {
+        const sql2 = `SELECT pitches, ${TRITON_COLUMNS.join(', ')} FROM pitcher_season_command WHERE game_year = ${year} AND pitcher = ${pid}`
+        const { data: d } = await q(sql2)
+        if (d && d.length > 0) {
+          const tMap = pivotTritonRows((d as any[]).map(r => ({ ...r, pitcher: pid })))
+          const t = tMap.get(pid)
+          if (t) {
+            for (const m of tritonMetrics) {
+              stats[m] = t[TRITON_COL[m] || m] ?? null
+            }
+          }
+        }
+      })())
+    }
+
+    // 4. Deception metrics (from pitcher_season_deception)
+    if (deceptionMetrics.length > 0) {
+      tasks.push((async () => {
+        const sql2 = `SELECT pitch_type, pitches, deception_score, unique_score,
+          z_vaa, z_haa, z_vb, z_hb, z_ext
+          FROM pitcher_season_deception WHERE game_year = ${year} AND pitcher = ${pid}`
+        const { data: d } = await q(sql2)
+        if (d && d.length > 0) {
+          let uniqSum = 0, uniqW = 0, decSum = 0, decW = 0
+          const fbZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
+          const osZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
+          for (const row of d as any[]) {
+            const n = Number(row.pitches) || 0
+            if (row.unique_score != null) { uniqSum += Number(row.unique_score) * n; uniqW += n }
+            if (row.deception_score != null) { decSum += Number(row.deception_score) * n; decW += n }
+            const bucket = isFastball(row.pitch_type) ? fbZ : osZ
+            if (row.z_vaa != null) {
+              bucket.vaa += Number(row.z_vaa) * n; bucket.haa += Number(row.z_haa) * n
+              bucket.vb += Number(row.z_vb) * n; bucket.hb += Number(row.z_hb) * n
+              bucket.ext += (row.z_ext != null ? Number(row.z_ext) : 0) * n; bucket.w += n
+            }
+          }
+          if (deceptionMetrics.includes('unique_score')) stats.unique_score = uniqW > 0 ? Math.round((uniqSum / uniqW) * 1000) / 1000 : null
+          if (deceptionMetrics.includes('deception_score')) stats.deception_score = decW > 0 ? Math.round((decSum / decW) * 1000) / 1000 : null
+          if (deceptionMetrics.includes('xdeception_score')) {
+            if (fbZ.w > 0 && osZ.w > 0) {
+              const fb = { vaa: fbZ.vaa / fbZ.w, haa: fbZ.haa / fbZ.w, vb: fbZ.vb / fbZ.w, hb: fbZ.hb / fbZ.w, ext: fbZ.ext / fbZ.w }
+              const os = { vaa: osZ.vaa / osZ.w, haa: osZ.haa / osZ.w, vb: osZ.vb / osZ.w, hb: osZ.hb / osZ.w, ext: osZ.ext / osZ.w }
+              stats.xdeception_score = Math.round(computeXDeceptionScore(fb, os) * 1000) / 1000
+            } else { stats.xdeception_score = null }
+          }
+        }
+      })())
+    }
+
+    await Promise.all(tasks)
+
+    // Include player_name if requested
+    if (metricList.includes('player_name') && !stats.player_name) {
+      const { data: pData } = await q(`SELECT name FROM players WHERE id = ${pid} LIMIT 1`)
+      stats.player_name = pData?.[0]?.name || null
+    }
+
     return NextResponse.json({ stats })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
