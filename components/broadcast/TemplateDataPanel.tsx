@@ -208,7 +208,14 @@ export default function TemplateDataPanel({ asset }: Props) {
         || primarySection?.gameYear
         || 2025
 
-      if (latestTemplate.schemaType === 'leaderboard' || effectiveType === 'leaderboard') {
+      if (effectiveType === 'live-game') {
+        // Live game mode: fetch from live-game API
+        if (primaryData.gamePk) {
+          const res = await fetch(`/api/live-game?gamePk=${primaryData.gamePk}`)
+          const data = await res.json()
+          resolvedData = data.game ? [data.game] : []
+        }
+      } else if (effectiveType === 'leaderboard' || (!effectiveType && latestTemplate.schemaType === 'leaderboard')) {
         // Leaderboard mode: fetch from scene-stats API
         const params = new URLSearchParams({ leaderboard: 'true' })
         params.set('metric', primaryData.primaryStat || primarySection?.primaryStat || 'avg_velo')
@@ -228,13 +235,6 @@ export default function TemplateDataPanel({ asset }: Props) {
         const statsRes = await fetch(`/api/scene-stats?${params.toString()}`)
         const statsData = await statsRes.json()
         resolvedData = statsData.leaderboard || []
-      } else if (effectiveType === 'live-game') {
-        // Live game mode: fetch from live-game API
-        if (primaryData.gamePk) {
-          const res = await fetch(`/api/live-game?gamePk=${primaryData.gamePk}`)
-          const data = await res.json()
-          resolvedData = data.game ? [data.game] : []
-        }
       } else if (primaryData.playerId) {
         // Single-player modes (outing, starter-card, generic, percentile)
         // Collect ALL metrics from element sectionBindings + panel selections
