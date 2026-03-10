@@ -114,6 +114,8 @@ export const GAME_METRICS: { value: string; label: string; group: string }[] = [
 
 /** Subset of metrics available for scene data binding */
 export const SCENE_METRICS: { value: string; label: string; group?: string }[] = [
+  // Player Info
+  { value: 'player_name', label: 'Player Name', group: 'Info' },
   // Stuff / Arsenal
   { value: 'avg_velo', label: 'Avg Velocity', group: 'Stuff' },
   { value: 'max_velo', label: 'Max Velocity', group: 'Stuff' },
