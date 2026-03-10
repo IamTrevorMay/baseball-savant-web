@@ -185,5 +185,5 @@ export function useOverlaySession(sessionId: string) {
     }
   }, [sessionId, showAsset, hideAsset])
 
-  return state
+  return { ...state, hideAsset }
 }

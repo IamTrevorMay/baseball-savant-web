@@ -19,7 +19,11 @@ export interface BroadcastProject {
 
 // ── Broadcast Asset ─────────────────────────────────────────────────────────
 
-export type BroadcastAssetType = 'scene' | 'image' | 'video' | 'slideshow'
+export type BroadcastAssetType = 'scene' | 'image' | 'video' | 'slideshow' | 'advertisement'
+
+export interface AdConfig {
+  volume: number
+}
 
 export interface SlideshowSlide {
   id: string
@@ -76,6 +80,7 @@ export interface BroadcastAsset {
   template_id?: string
   template_data?: TemplateDataValues
   slideshow_config?: SlideshowConfig
+  ad_config?: AdConfig
   canvas_x: number
   canvas_y: number
   canvas_width: number

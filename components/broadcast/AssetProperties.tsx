@@ -54,6 +54,24 @@ export default function AssetProperties() {
         <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{asset.name}</p>
       </div>
 
+      {/* Ad Volume (if this is an advertisement asset) */}
+      {asset.asset_type === 'advertisement' && (
+        <div className="px-4 py-3 border-b border-zinc-800">
+          <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Volume</label>
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round((asset.ad_config?.volume ?? 1) * 100)}
+              onChange={e => handleChange('ad_config', { ...asset.ad_config, volume: parseInt(e.target.value) / 100 })}
+              className="flex-1 h-1.5 accent-emerald-400"
+            />
+            <span className="text-[10px] text-zinc-400 w-8 text-right">{Math.round((asset.ad_config?.volume ?? 1) * 100)}%</span>
+          </div>
+        </div>
+      )}
+
       {/* Slideshow Editor (if this is a slideshow asset) */}
       {asset.asset_type === 'slideshow' && <SlideshowEditor asset={asset} />}
 

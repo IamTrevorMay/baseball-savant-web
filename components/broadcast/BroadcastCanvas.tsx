@@ -221,6 +221,23 @@ function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: 
     )
   }
 
+  if (asset.asset_type === 'advertisement' && asset.storage_path) {
+    return (
+      <div className="w-full h-full relative overflow-hidden" style={{ opacity: dimmedOpacity }}>
+        <video
+          src={asset.storage_path}
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          draggable={false}
+        />
+        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-emerald-600/80 rounded text-[9px] text-white font-bold">
+          AD
+        </div>
+      </div>
+    )
+  }
+
   if (asset.asset_type === 'video' && asset.storage_path) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-zinc-800/50" style={{ opacity: dimmedOpacity }}>
@@ -399,7 +416,7 @@ export default function BroadcastCanvas() {
       if (handle.includes('n')) { newH = Math.max(40, Math.round(origH - dy)); newY = Math.round(origY + origH - newH) }
 
       // Aspect-ratio lock: always for slideshows, Shift for others
-      const forceAspectLock = asset.asset_type === 'slideshow'
+      const forceAspectLock = asset.asset_type === 'slideshow' || asset.asset_type === 'advertisement'
       if ((me.shiftKey || forceAspectLock) && (handle === 'se' || handle === 'sw' || handle === 'ne' || handle === 'nw')) {
         const ratio = origW / origH
         if (Math.abs(dx) > Math.abs(dy)) {

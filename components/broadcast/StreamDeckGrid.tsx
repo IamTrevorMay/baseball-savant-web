@@ -57,7 +57,26 @@ function computeWrapperStyle(el: SceneElement): React.CSSProperties {
 
 // ── Asset content renderer for preview canvas ────────────────────────────────
 
-function TestAssetContent({ asset, slideIndex }: { asset: BroadcastAsset; slideIndex?: number }) {
+function TestAssetContent({ asset, slideIndex, onVideoEnded }: { asset: BroadcastAsset; slideIndex?: number; onVideoEnded?: () => void }) {
+  if (asset.asset_type === 'advertisement' && asset.storage_path) {
+    const volume = asset.ad_config?.volume ?? 1
+    return (
+      <div className="w-full h-full relative overflow-hidden">
+        <video
+          src={asset.storage_path}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
+          ref={el => { if (el) el.volume = volume }}
+          onEnded={onVideoEnded}
+        />
+        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-emerald-600/80 rounded text-[9px] text-white font-bold">
+          AD
+        </div>
+      </div>
+    )
+  }
+
   if (asset.asset_type === 'slideshow') {
     const config = asset.slideshow_config
     if (!config || !config.slides.length) {
@@ -248,7 +267,9 @@ function ControlButton({
         </div>
         {/* Type badge */}
         <span className="text-[9px] text-zinc-500 mt-0.5 block">
-          {asset.asset_type}
+          {asset.asset_type === 'advertisement' ? (
+            <span className="text-emerald-400 font-bold">AD</span>
+          ) : asset.asset_type}
         </span>
       </button>
 
@@ -583,7 +604,11 @@ export default function StreamDeckGrid() {
                   phase={phase}
                   onAnimationEnd={makeAnimEndHandler(asset.id)}
                 >
-                  <TestAssetContent asset={asset} slideIndex={testSlideIndexes.get(asset.id) || 0} />
+                  <TestAssetContent
+                    asset={asset}
+                    slideIndex={testSlideIndexes.get(asset.id) || 0}
+                    onVideoEnded={asset.asset_type === 'advertisement' && getMode(asset) === 'timed' ? () => triggerExit(asset.id) : undefined}
+                  />
                 </TestAnimationWrapper>
               </div>
             )

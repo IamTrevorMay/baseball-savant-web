@@ -55,9 +55,10 @@ interface Props {
   animationPhase: 'entering' | 'exiting' | null
   fps?: number
   slideshowIndex?: number
+  onVideoEnded?: () => void
 }
 
-export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0 }: Props) {
+export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef<HTMLStyleElement | null>(null)
 
@@ -176,6 +177,34 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         }}
       >
         <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" />
+      </div>
+    )
+  }
+
+  if (asset.asset_type === 'advertisement' && asset.storage_path) {
+    const volume = asset.ad_config?.volume ?? 1
+    return (
+      <div
+        ref={wrapperRef}
+        className="absolute overflow-hidden"
+        style={{
+          left: asset.canvas_x,
+          top: asset.canvas_y,
+          width: asset.canvas_width,
+          height: asset.canvas_height,
+          zIndex: asset.layer,
+          opacity: assetOpacity,
+        }}
+      >
+        <video
+          src={asset.storage_path}
+          autoPlay
+          playsInline
+          preload="auto"
+          className="w-full h-full object-cover"
+          ref={el => { if (el) el.volume = volume }}
+          onEnded={onVideoEnded}
+        />
       </div>
     )
   }

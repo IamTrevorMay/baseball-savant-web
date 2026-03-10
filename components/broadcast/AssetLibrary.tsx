@@ -255,6 +255,40 @@ export default function AssetLibrary() {
     }
   }
 
+  const adFileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleAdUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!project || !e.target.files?.length) return
+    const file = e.target.files[0]
+    try {
+      const result = await uploadBroadcastMedia(file, project.id)
+      if (!result) return
+      const assetRes = await fetch('/api/broadcast/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: project.id,
+          name: file.name.replace(/\.[^.]+$/, ''),
+          asset_type: 'advertisement',
+          storage_path: result.url,
+          ad_config: { volume: 1 },
+          canvas_width: 1920,
+          canvas_height: 1080,
+          trigger_mode: 'toggle',
+          sort_order: assets.length,
+        }),
+      })
+      const assetData = await assetRes.json()
+      if (assetData.asset) {
+        addAsset(assetData.asset)
+        setSelectedAssetId(assetData.asset.id)
+      }
+    } catch (err) {
+      console.error('Failed to upload ad:', err)
+    }
+    if (adFileInputRef.current) adFileInputRef.current.value = ''
+  }
+
   async function createSlideshow() {
     if (!project) return
     try {
@@ -285,6 +319,7 @@ export default function AssetLibrary() {
     if (asset.template_id) return '\u26A1'
     if (asset.asset_type === 'scene') return 'S'
     if (asset.asset_type === 'video') return 'V'
+    if (asset.asset_type === 'advertisement') return 'A'
     if (asset.asset_type === 'slideshow') return 'P'
     return 'I'
   }
@@ -331,7 +366,14 @@ export default function AssetLibrary() {
             New Slideshow
           </button>
         </div>
+        <button
+          onClick={() => adFileInputRef.current?.click()}
+          className="w-full px-2 py-1.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition"
+        >
+          New Ad
+        </button>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+        <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={handleAdUpload} />
       </div>
 
       {/* Asset List */}
