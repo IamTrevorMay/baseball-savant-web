@@ -153,11 +153,40 @@ export default function TemplateDataPanel({ asset }: Props) {
     setApplying(true)
 
     try {
-      // 1. Re-fetch latest template design
+      // 1. Re-fetch latest template design, but merge local sectionBindings
       const tmplRes = await fetch(`/api/custom-templates/${asset.template_id}`)
       const tmplData = await tmplRes.json()
       const latestTemplate: CustomTemplateRecord = tmplData.template
       if (!latestTemplate) throw new Error('Template not found')
+
+      // Merge local element sectionBindings (from Elements tab edits) into the re-fetched template
+      if (template?.elements) {
+        const localBindings = new Map(template.elements.filter(e => e.sectionBinding).map(e => [e.id, e.sectionBinding]))
+        if (localBindings.size > 0) {
+          latestTemplate.elements = latestTemplate.elements.map(el => {
+            const localBinding = localBindings.get(el.id)
+            if (localBinding && !el.sectionBinding) {
+              return { ...el, sectionBinding: localBinding }
+            }
+            return el
+          })
+        }
+      }
+
+      // Auto-bind unbound elements in sections (so user doesn't need to manually set every binding)
+      const secs = latestTemplate.inputSections || []
+      if (secs.length > 0) {
+        const sectionElementIds = new Set(secs.flatMap(s => s.elementIds))
+        latestTemplate.elements = latestTemplate.elements.map(el => {
+          if (!sectionElementIds.has(el.id) || el.sectionBinding || el.templateBinding) return el
+          const sectionId = secs.find(s => s.elementIds.includes(el.id))?.id || ''
+          // Auto-assign __player__ for player-image elements
+          if (el.type === 'player-image') {
+            return { ...el, sectionBinding: { sectionId, metric: '__player__' } }
+          }
+          return el
+        })
+      }
 
       setTemplate(latestTemplate)
 
@@ -307,11 +336,21 @@ export default function TemplateDataPanel({ asset }: Props) {
     if (!template || !asset.template_id) return
     setApplying(true)
     try {
+      // Auto-set __player__ binding for player-image elements in sections
+      const sectionElementIds = new Set((template.inputSections || []).flatMap(s => s.elementIds))
+      const elementsToSave = template.elements.map(el => {
+        if (el.type === 'player-image' && sectionElementIds.has(el.id) && !el.sectionBinding) {
+          const sectionId = (template.inputSections || []).find(s => s.elementIds.includes(el.id))?.id || ''
+          return { ...el, sectionBinding: { sectionId, metric: '__player__' } }
+        }
+        return el
+      })
+
       // Save updated inputSections + element bindings back to the template
       await fetch(`/api/custom-templates/${asset.template_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schemaType: template.schemaType, inputSections: template.inputSections, elements: template.elements }),
+        body: JSON.stringify({ schemaType: template.schemaType, inputSections: template.inputSections, elements: elementsToSave }),
       })
       // Then re-apply to rebuild with updated bindings
       await handleApply()
@@ -843,6 +882,8 @@ function ElementsTab({
                 const isPlayerImage = el.type === 'player-image' && !isLiveGame
                 const binding = el.sectionBinding
                 const defaultMetric = isLiveGame ? 'away_abbrev' : 'avg_velo'
+                // Show a placeholder label for the element (use binding label or element label)
+                const elLabel = el.props?.label || el.type
 
                 return (
                   <div key={el.id} className="rounded bg-zinc-800/60 border border-zinc-700/50 px-2 py-1.5">
@@ -850,7 +891,7 @@ function ElementsTab({
                       <span className="text-[10px] text-zinc-500 w-4 text-center shrink-0">
                         {ELEMENT_ICONS[el.type] || '?'}
                       </span>
-                      <span className="text-[10px] text-zinc-400 truncate flex-1">{el.type}</span>
+                      <span className="text-[10px] text-zinc-400 truncate flex-1">{elLabel}</span>
                     </div>
                     {isPlayerImage ? (
                       <div className="text-[9px] text-zinc-600 px-1">Auto: player image</div>
@@ -860,6 +901,9 @@ function ElementsTab({
                         onChange={e => updateElementMetric(section.id, el.id, e.target.value)}
                         className="w-full bg-zinc-900 border border-zinc-700/50 rounded px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none"
                       >
+                        {!binding?.metric && (
+                          <option value="" disabled>Select metric...</option>
+                        )}
                         {metricOptions.map(m => (
                           <option key={m.value} value={m.value}>
                             {m.group ? `${m.group} \u2014 ` : ''}{m.label}

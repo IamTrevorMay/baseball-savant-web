@@ -5,12 +5,28 @@
 
 import { Scene, SceneElement, CustomTemplateRecord, TemplateBinding, RepeaterConfig, TemplateConfig } from './sceneTypes'
 import { formatValue, type FormatType } from './templateBindingSchemas'
+import { SCENE_METRICS, GAME_METRICS } from './reportMetrics'
+
+// ── Metric label lookup for stat-card labels ────────────────────────────────
+
+const METRIC_LABELS: Record<string, string> = {}
+for (const m of SCENE_METRICS) METRIC_LABELS[m.value] = m.label
+for (const m of GAME_METRICS) METRIC_LABELS[m.value] = m.label
 
 // ── Resolve a nested field path from data ───────────────────────────────────
 
 function getNestedValue(obj: any, path: string): any {
   if (!obj || !path) return undefined
   return path.split('.').reduce((o, key) => o?.[key], obj)
+}
+
+// ── Resolve player fields from a data row ───────────────────────────────────
+
+function resolvePlayerFromRow(row: any): { playerId: any; playerName: string } {
+  return {
+    playerId: row.player_id || row.pitcher_id || row.batter_id || null,
+    playerName: row.player_name || row.pitcher_name || '',
+  }
 }
 
 // ── Resolve a single element's binding against one data row ─────────────────
@@ -21,6 +37,16 @@ function resolveBinding(element: SceneElement, row: any): SceneElement {
 
   // Support both templateBinding and sectionBinding (template builder uses sectionBinding)
   const fieldPath = binding?.fieldPath || (sBinding ? sBinding.metric : null)
+
+  // Auto-bind player-image elements even if no binding is set
+  if (!fieldPath && element.type === 'player-image') {
+    const { playerId, playerName } = resolvePlayerFromRow(row)
+    const newProps = { ...element.props }
+    newProps.playerId = playerId
+    newProps.playerName = playerName
+    return { ...element, props: newProps }
+  }
+
   if (!fieldPath) return element
 
   const format = binding?.format || sBinding?.format
@@ -28,9 +54,19 @@ function resolveBinding(element: SceneElement, row: any): SceneElement {
 
   // Special case: __player__ binding maps to playerId
   if (fieldPath === '__player__') {
+    const { playerId, playerName } = resolvePlayerFromRow(row)
     const newProps = { ...element.props }
-    newProps.playerId = row.player_id || row.pitcher_id || row.batter_id || null
-    newProps.playerName = row.player_name || row.pitcher_name || ''
+    newProps.playerId = playerId
+    newProps.playerName = playerName
+    return { ...element, props: newProps }
+  }
+
+  // For player-image elements, only use __player__ logic — never set a stat value as playerId
+  if (element.type === 'player-image') {
+    const { playerId, playerName } = resolvePlayerFromRow(row)
+    const newProps = { ...element.props }
+    newProps.playerId = playerId
+    newProps.playerName = playerName
     return { ...element, props: newProps }
   }
 
@@ -47,6 +83,19 @@ function resolveBinding(element: SceneElement, row: any): SceneElement {
     newProps[targetProp] = formatted
   }
 
+  // For stat-cards, also update the label from the metric name
+  if (element.type === 'stat-card' && !targetPropOverride) {
+    const label = METRIC_LABELS[fieldPath]
+    if (label) newProps.label = label
+  }
+
+  // For comparison-bars, also update the label
+  if (element.type === 'comparison-bar' && !targetPropOverride) {
+    const playerName = row.player_name || row.pitcher_name || ''
+    const label = METRIC_LABELS[fieldPath] || fieldPath.replace(/_/g, ' ')
+    newProps.label = playerName ? `${playerName} - ${label}` : label
+  }
+
   return { ...element, props: newProps }
 }
 
@@ -55,7 +104,6 @@ function autoDetectTarget(element: SceneElement): string {
     case 'text': return 'text'
     case 'stat-card': return 'value'
     case 'comparison-bar': return 'value'
-    case 'player-image': return 'playerId'
     default: return 'text'
   }
 }
