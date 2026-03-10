@@ -160,14 +160,16 @@ function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisib
           draggable={false}
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
-          <div className="text-zinc-500 text-sm flex flex-col items-center gap-1">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <span>{slide.name}</span>
-          </div>
-        </div>
+        <video
+          key={slide.id}
+          src={slide.storage_path}
+          muted
+          loop
+          autoPlay
+          playsInline
+          className="w-full h-full"
+          style={{ objectFit: fit }}
+        />
       )}
       {/* Slide counter badge */}
       <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-zinc-300 font-mono">
