@@ -20,6 +20,8 @@ import DataSchemaSelector from '@/components/visualize/template-builder/DataSche
 import TemplateBindingSection from '@/components/visualize/template-builder/TemplateBindingSection'
 import RepeaterPanel from '@/components/visualize/template-builder/RepeaterPanel'
 import InputSectionsPanel from '@/components/visualize/template-builder/InputSectionsPanel'
+import ThemePickerPanel from '@/components/visualize/scene-composer/ThemePickerPanel'
+import { THEME_PRESETS, applyThemeToScene, ensureThemeFontsLoaded } from '@/lib/themePresets'
 
 function defaultScene(): Scene {
   return {
@@ -63,6 +65,10 @@ export default function TemplateBuilderPage() {
   const [saveId, setSaveId] = useState<string | null>(editId)
   const [loaded, setLoaded] = useState(false)
   const [previewing, setPreviewing] = useState(false)
+
+  // Theme state
+  const [activeThemeId, setActiveThemeId] = useState('')
+  const [leftTab, setLeftTab] = useState<'elements' | 'themes'>('elements')
 
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -113,6 +119,15 @@ export default function TemplateBuilderPage() {
   // ── Element Management ────────────────────────────────────────────────────
 
   const selectedElement = scene.elements.find(e => e.id === selectedId) || null
+
+  function handleApplyTheme(themeId: string) {
+    setActiveThemeId(themeId)
+    if (!themeId) return
+    const theme = THEME_PRESETS.find(t => t.id === themeId)
+    if (!theme) return
+    ensureThemeFontsLoaded(theme)
+    setScene(prev => applyThemeToScene(prev, theme))
+  }
 
   const addElement = useCallback(
     (type: ElementType) => {
@@ -947,10 +962,30 @@ export default function TemplateBuilderPage() {
 
       {/* Main workspace */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Element Library (elements + presets tabs only) */}
+        {/* Left: Element Library + Themes */}
         {!previewing && (
-          <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-            <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadSceneTemplate} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
+          <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 flex flex-col">
+            <div className="flex border-b border-zinc-800 shrink-0">
+              {(['elements', 'themes'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setLeftTab(tab)}
+                  className={`flex-1 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider transition ${
+                    leftTab === tab
+                      ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
+                      : 'text-zinc-600 hover:text-zinc-400'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {leftTab === 'elements'
+                ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadSceneTemplate} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
+                : <ThemePickerPanel selectedThemeId={activeThemeId} onApply={handleApplyTheme} />
+              }
+            </div>
           </div>
         )}
 

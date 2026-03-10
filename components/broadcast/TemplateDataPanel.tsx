@@ -6,6 +6,7 @@ import { BroadcastAsset, TemplateDataValues } from '@/lib/broadcastTypes'
 import { InputSection, CustomTemplateRecord, SectionInputKey, GlobalInputType, SceneElement, SectionBinding } from '@/lib/sceneTypes'
 import { SCENE_METRICS, GAME_METRICS } from '@/lib/reportMetrics'
 import { TEAM_COLORS, TEAM_COLOR_OPTIONS, TeamPalette } from '@/lib/teamColors'
+import { THEME_PRESETS, THEME_PRESET_OPTIONS, applyThemeAndTeamColor } from '@/lib/themePresets'
 import { createCustomRebuild } from '@/lib/customTemplateRebuild'
 import { DATA_DRIVEN_TEMPLATES } from '@/lib/sceneTemplates'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
@@ -60,6 +61,7 @@ export default function TemplateDataPanel({ asset }: Props) {
     asset.template_data?.sections || {}
   )
   const [themeTeam, setThemeTeam] = useState(asset.template_data?.themeTeam || '')
+  const [themePresetId, setThemePresetId] = useState(asset.template_data?.themePresetId || '')
 
   // Live game state
   const [gamesBySection, setGamesBySection] = useState<Record<string, GameInfo[]>>({})
@@ -80,6 +82,7 @@ export default function TemplateDataPanel({ asset }: Props) {
   useEffect(() => {
     setSectionData(asset.template_data?.sections || {})
     setThemeTeam(asset.template_data?.themeTeam || '')
+    setThemePresetId(asset.template_data?.themePresetId || '')
   }, [asset.id])
 
   // Fetch games for live-game sections on mount
@@ -117,35 +120,6 @@ export default function TemplateDataPanel({ asset }: Props) {
     } finally {
       setGamesLoading(null)
     }
-  }
-
-  function applyThemeToElements(elements: SceneElement[], tc: TeamPalette): SceneElement[] {
-    return elements.map(el => {
-      const newProps = { ...el.props }
-      switch (el.type) {
-        case 'stat-card':
-          newProps.color = tc.primary
-          break
-        case 'text':
-          newProps.color = tc.primary
-          break
-        case 'shape':
-          newProps.fill = tc.secondary
-          newProps.stroke = tc.primary
-          break
-        case 'player-image':
-          newProps.borderColor = tc.primary
-          break
-        case 'comparison-bar':
-          newProps.color = tc.primary
-          break
-        case 'ticker':
-          newProps.color = tc.accent
-          newProps.bgColor = tc.primary
-          break
-      }
-      return { ...el, props: newProps }
-    })
   }
 
   async function handleApply() {
@@ -294,21 +268,21 @@ export default function TemplateDataPanel({ asset }: Props) {
         ? builtinTemplate.rebuild(config, resolvedData || [])
         : createCustomRebuild(latestTemplate)(config, resolvedData || [])
 
-      // 4. Build new scene_config — apply theme if set
-      let elements = resolvedScene.elements
-      if (themeTeam && TEAM_COLORS[themeTeam]) {
-        elements = applyThemeToElements(elements, TEAM_COLORS[themeTeam])
-      }
+      // 4. Build new scene_config — apply theme preset + team colors
+      const preset = themePresetId ? THEME_PRESETS.find(t => t.id === themePresetId) ?? null : null
+      const teamPalette = themeTeam ? TEAM_COLORS[themeTeam] ?? null : null
+      const elements = applyThemeAndTeamColor(resolvedScene.elements, preset, teamPalette)
+      const sceneBackground = preset ? preset.background : resolvedScene.background
 
       const newSceneConfig = {
         width: resolvedScene.width,
         height: resolvedScene.height,
-        background: resolvedScene.background,
+        background: sceneBackground,
         elements,
       }
 
       // 5. Update local state + persist
-      const templateDataPayload: TemplateDataValues = { sections: sectionData, themeTeam: themeTeam || undefined }
+      const templateDataPayload: TemplateDataValues = { sections: sectionData, themeTeam: themeTeam || undefined, themePresetId: themePresetId || undefined }
       updateAsset(asset.id, { scene_config: newSceneConfig, template_data: templateDataPayload })
 
       await fetch('/api/broadcast/assets', {
@@ -438,6 +412,8 @@ export default function TemplateDataPanel({ asset }: Props) {
           <ThemeTab
             themeTeam={themeTeam}
             setThemeTeam={setThemeTeam}
+            themePresetId={themePresetId}
+            setThemePresetId={setThemePresetId}
           />
         )}
 
@@ -931,14 +907,53 @@ function ElementsTab({
 function ThemeTab({
   themeTeam,
   setThemeTeam,
+  themePresetId,
+  setThemePresetId,
 }: {
   themeTeam: string
   setThemeTeam: (v: string) => void
+  themePresetId: string
+  setThemePresetId: (v: string) => void
 }) {
   const tc = themeTeam ? TEAM_COLORS[themeTeam] : null
+  const preset = themePresetId ? THEME_PRESETS.find(t => t.id === themePresetId) : null
 
   return (
     <div className="space-y-3">
+      {/* Style Theme */}
+      <div>
+        <label className="text-[9px] text-zinc-600 block mb-1">Style Theme</label>
+        <select
+          value={themePresetId}
+          onChange={e => setThemePresetId(e.target.value)}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-200 outline-none"
+        >
+          {THEME_PRESET_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Preset swatches preview */}
+      {preset && (
+        <div className="space-y-1.5">
+          <div className="text-[9px] text-zinc-600">Theme Palette</div>
+          <div className="flex gap-2">
+            <Swatch label="Primary" color={preset.primary} />
+            <Swatch label="Secondary" color={preset.secondary} />
+            <Swatch label="Accent" color={preset.accent} />
+          </div>
+          <div className="flex gap-2 mt-1">
+            <Swatch label="Background" color={preset.background} />
+            <Swatch label="Text" color={preset.textColor} />
+          </div>
+          <div className="text-[9px] text-zinc-600 mt-1">
+            {preset.headingFont} / {preset.bodyFont} &middot; {preset.statCard.variant}
+          </div>
+        </div>
+      )}
+
+      {/* Team Theme */}
       <div>
         <label className="text-[9px] text-zinc-600 block mb-1">Team Theme</label>
         <select
@@ -952,17 +967,17 @@ function ThemeTab({
         </select>
       </div>
 
-      {/* Color swatches preview */}
+      {/* Team color swatches preview */}
       {tc && (
         <div className="space-y-1.5">
-          <div className="text-[9px] text-zinc-600">Palette</div>
+          <div className="text-[9px] text-zinc-600">Team Palette</div>
           <div className="flex gap-2">
             <Swatch label="Primary" color={tc.primary} />
             <Swatch label="Secondary" color={tc.secondary} />
             <Swatch label="Accent" color={tc.accent} />
           </div>
           <div className="text-[9px] text-zinc-600 mt-1">
-            Applies to all elements: stat-cards, text, shapes, images, bars, tickers
+            Overrides accent colors on top of style theme
           </div>
         </div>
       )}

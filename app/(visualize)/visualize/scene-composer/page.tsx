@@ -17,6 +17,8 @@ import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfi
 import PercentileConfigPanel from '@/components/visualize/scene-composer/PercentileConfigPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
+import ThemePickerPanel from '@/components/visualize/scene-composer/ThemePickerPanel'
+import { THEME_PRESETS, applyThemeToScene, ensureThemeFontsLoaded } from '@/lib/themePresets'
 import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
 
 const STORAGE_KEY = 'triton-scene-composer'
@@ -47,6 +49,10 @@ export default function SceneComposerPage() {
   const [inputSections, setInputSections] = useState<InputSection[]>([])
   const [sectionFetchLoading, setSectionFetchLoading] = useState<string | null>(null)
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
+
+  // Theme state
+  const [activeThemeId, setActiveThemeId] = useState('')
+  const [leftTab, setLeftTab] = useState<'elements' | 'themes'>('elements')
 
   // Timeline state
   const [showTimeline, setShowTimeline] = useState(false)
@@ -120,6 +126,15 @@ export default function SceneComposerPage() {
       elements: prev.elements.map(e => (e.id === id ? { ...e, props: { ...e.props, ...propUpdates } } : e)),
     }))
   }, [])
+
+  function handleApplyTheme(themeId: string) {
+    setActiveThemeId(themeId)
+    if (!themeId) return
+    const theme = THEME_PRESETS.find(t => t.id === themeId)
+    if (!theme) return
+    ensureThemeFontsLoaded(theme)
+    setScene(prev => applyThemeToScene(prev, theme))
+  }
 
   const addElement = useCallback(
     (type: ElementType) => {
@@ -1346,9 +1361,29 @@ export default function SceneComposerPage() {
 
       {/* Main workspace */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Element Library */}
-        <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
-          <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} onLoadCustomTemplate={loadCustomTemplate} />
+        {/* Left: Element Library + Themes */}
+        <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 flex flex-col">
+          <div className="flex border-b border-zinc-800 shrink-0">
+            {(['elements', 'themes'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setLeftTab(tab)}
+                className={`flex-1 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider transition ${
+                  leftTab === tab
+                    ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
+                    : 'text-zinc-600 hover:text-zinc-400'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {leftTab === 'elements'
+              ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} onLoadCustomTemplate={loadCustomTemplate} />
+              : <ThemePickerPanel selectedThemeId={activeThemeId} onApply={handleApplyTheme} />
+            }
+          </div>
         </div>
 
         {/* Center: Canvas */}

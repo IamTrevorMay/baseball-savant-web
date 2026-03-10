@@ -64,6 +64,7 @@ export interface TemplateDataValues {
     gamePk?: number
   }>
   themeTeam?: string
+  themePresetId?: string
 }
 
 export interface BroadcastAsset {
