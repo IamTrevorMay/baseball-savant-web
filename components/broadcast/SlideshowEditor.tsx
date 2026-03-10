@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { BroadcastAsset, SlideshowSlide, SlideshowConfig } from '@/lib/broadcastTypes'
 import { useBroadcast } from './BroadcastContext'
+import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 
 interface Props {
   asset: BroadcastAsset
@@ -34,21 +35,13 @@ export default function SlideshowEditor({ asset }: Props) {
 
     for (const file of Array.from(e.target.files)) {
       try {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('project_id', asset.project_id)
-
-        const res = await fetch('/api/broadcast/upload', {
-          method: 'POST',
-          body: formData,
-        })
-        const data = await res.json()
-        if (!data.url) continue
+        const result = await uploadBroadcastMedia(file, asset.project_id)
+        if (!result) continue
 
         const isVideo = file.type.startsWith('video/')
         const slide: SlideshowSlide = {
           id: crypto.randomUUID(),
-          storage_path: data.url,
+          storage_path: result.url,
           name: file.name.replace(/\.[^.]+$/, ''),
           type: isVideo ? 'video' : 'image',
         }

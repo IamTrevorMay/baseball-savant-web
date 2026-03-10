@@ -6,6 +6,7 @@ import { BroadcastAsset } from '@/lib/broadcastTypes'
 import { CustomTemplateRecord } from '@/lib/sceneTypes'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import { getSampleData } from '@/lib/templateBindingSchemas'
+import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 
 interface SavedScene {
   id: string
@@ -216,16 +217,8 @@ export default function AssetLibrary() {
     const assetType = isVideo ? 'video' : 'image'
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('project_id', project.id)
-
-      const res = await fetch('/api/broadcast/upload', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (!data.url) return
+      const result = await uploadBroadcastMedia(file, project.id)
+      if (!result) return
 
       const assetRes = await fetch('/api/broadcast/assets', {
         method: 'POST',
@@ -234,7 +227,7 @@ export default function AssetLibrary() {
           project_id: project.id,
           name: file.name.replace(/\.[^.]+$/, ''),
           asset_type: assetType,
-          storage_path: data.url,
+          storage_path: result.url,
           canvas_width: isVideo ? 1920 : 400,
           canvas_height: isVideo ? 1080 : 300,
           sort_order: assets.length,
