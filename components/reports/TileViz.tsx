@@ -1,10 +1,14 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Plot from '../PlotWrapper'
 import { COLORS, getPitchColor } from '../chartConfig'
 import {
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
+import { supabase } from '@/lib/supabase'
+import { enrichData } from '@/lib/enrichData'
+import { applyFiltersToData, type ActiveFilter } from '../FilterEngine'
+import type { OverlayPlayerConfig } from './ReportTile'
 
 // Shared zone shapes for strike zone
 const ZONE_SHAPES = [
@@ -482,6 +486,266 @@ export function TileTable({ data, mode = 'arsenal', columns, groupBy }: { data: 
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ── HEATMAP OVERLAY ──────────────────────────────────────────────────────────
+const METRIC_OPTIONS: [MetricKey, string][] = [
+  ['frequency','Frequency'],['ba','BA'],['slg','SLG'],['woba','wOBA'],
+  ['xba','xBA'],['xwoba','xwOBA'],['xslg','xSLG'],['ev','Exit Velo'],
+  ['la','Launch Angle'],['whiff_pct','Whiff%'],['chase_pct','Chase%'],['swing_pct','Swing%'],
+]
+
+interface OverlayProps {
+  player1Config?: OverlayPlayerConfig
+  player2Config?: OverlayPlayerConfig
+  tileFilters: ActiveFilter[]
+  optionsCache: Record<string, string[]>
+  onConfigChange: (p1?: OverlayPlayerConfig, p2?: OverlayPlayerConfig) => void
+}
+
+export function TileHeatmapOverlay({ player1Config, player2Config, tileFilters, optionsCache, onConfigChange }: OverlayProps) {
+  // Setup state
+  const [editing, setEditing] = useState(!player1Config || !player2Config)
+  const [role1, setRole1] = useState<'hitter'|'pitcher'>(player1Config?.role || 'pitcher')
+  const [role2, setRole2] = useState<'hitter'|'pitcher'>(player2Config?.role || 'hitter')
+  const [search1, setSearch1] = useState('')
+  const [search2, setSearch2] = useState('')
+  const [results1, setResults1] = useState<any[]>([])
+  const [results2, setResults2] = useState<any[]>([])
+  const [player1, setPlayer1] = useState<{id:number;name:string}|null>(player1Config ? {id:player1Config.playerId,name:player1Config.playerName} : null)
+  const [player2, setPlayer2] = useState<{id:number;name:string}|null>(player2Config ? {id:player2Config.playerId,name:player2Config.playerName} : null)
+  const [metric1, setMetric1] = useState<MetricKey>(player1Config?.metric || 'frequency')
+  const [metric2, setMetric2] = useState<MetricKey>(player2Config?.metric || 'frequency')
+
+  // Result state
+  const [overlayZ, setOverlayZ] = useState<(number|null)[][]|null>(null)
+  const [loading, setLoading] = useState(false)
+  const [zMin, setZMin] = useState(0)
+  const [zMax, setZMax] = useState(1)
+
+  // Constants matching existing heatmap
+  const nb = 16, xR: [number,number] = [-1.76,1.76], yR: [number,number] = [0.24,4.06]
+  const xS = (xR[1]-xR[0])/nb, yS = (yR[1]-yR[0])/nb
+
+  async function searchPlayer(q: string, role: 'hitter'|'pitcher', setResults: (r:any[])=>void) {
+    if (q.trim().length < 2) { setResults([]); return }
+    const ptype = role === 'hitter' ? 'hitter' : 'pitcher'
+    try {
+      const { data } = await supabase.rpc('search_all_players', { search_term: q.trim(), player_type: ptype, result_limit: 6 })
+      setResults(data || [])
+    } catch { setResults([]) }
+  }
+
+  function buildGrid(data: any[], metric: MetricKey): (number|null)[][] {
+    const f = data.filter(d => d.plate_x != null && d.plate_z != null)
+    const bins: any[][][] = Array.from({length:nb},()=>Array.from({length:nb},()=>[]))
+    f.forEach(d => {
+      const xi = Math.min(Math.max(Math.floor((d.plate_x-xR[0])/xS),0),nb-1)
+      const yi = Math.min(Math.max(Math.floor((d.plate_z-yR[0])/yS),0),nb-1)
+      bins[yi][xi].push(d)
+    })
+    const z = bins.map(row => row.map(cell => calcMetric(cell, metric)))
+    // Neighbor interpolation (2 passes)
+    for (let pass=0;pass<2;pass++) {
+      for (let r=0;r<nb;r++) {
+        for (let c=0;c<nb;c++) {
+          if (z[r][c] === null) {
+            const neighbors: number[] = []
+            for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+              if (dr===0&&dc===0) continue
+              const nr=r+dr, nc=c+dc
+              if (nr>=0&&nr<nb&&nc>=0&&nc<nb&&z[nr][nc]!==null) neighbors.push(z[nr][nc]!)
+            }
+            if (neighbors.length>=2) z[r][c] = neighbors.reduce((a,b)=>a+b,0)/neighbors.length
+          }
+        }
+      }
+    }
+    return z
+  }
+
+  function normalize(z: (number|null)[][]): (number|null)[][] {
+    const vals = z.flat().filter((v): v is number => v !== null)
+    if (!vals.length) return z
+    const min = Math.min(...vals), max = Math.max(...vals)
+    if (max === min) return z.map(row => row.map(v => v !== null ? 0.5 : null))
+    return z.map(row => row.map(v => v !== null ? (v - min) / (max - min) : null))
+  }
+
+  async function handleApply() {
+    if (!player1 || !player2) return
+    setLoading(true)
+    try {
+      const col1 = role1 === 'hitter' ? 'batter' : 'pitcher'
+      const col2 = role2 === 'hitter' ? 'batter' : 'pitcher'
+      const [res1, res2] = await Promise.all([
+        fetch(`/api/player-data?id=${player1.id}&col=${col1}`),
+        fetch(`/api/player-data?id=${player2.id}&col=${col2}`),
+      ])
+      const [json1, json2] = await Promise.all([res1.json(), res2.json()])
+      let rows1 = json1.rows || [], rows2 = json2.rows || []
+      enrichData(rows1)
+      enrichData(rows2)
+      // Apply tile-level filters
+      if (tileFilters.length > 0) {
+        rows1 = applyFiltersToData(rows1, tileFilters)
+        rows2 = applyFiltersToData(rows2, tileFilters)
+      }
+      const grid1 = buildGrid(rows1, metric1)
+      const grid2 = buildGrid(rows2, metric2)
+      const norm1 = normalize(grid1)
+      const norm2 = normalize(grid2)
+      // Element-wise multiply
+      const overlap = norm1.map((row, r) => row.map((v1, c) => {
+        const v2 = norm2[r][c]
+        if (v1 === null || v2 === null) return null
+        return v1 * v2
+      }))
+      const oVals = overlap.flat().filter((v): v is number => v !== null)
+      setZMin(oVals.length ? Math.min(...oVals) : 0)
+      setZMax(oVals.length ? Math.max(...oVals) : 1)
+      setOverlayZ(overlap)
+      // Persist config
+      onConfigChange(
+        { role: role1, playerId: player1.id, playerName: player1.name, metric: metric1 },
+        { role: role2, playerId: player2.id, playerName: player2.name, metric: metric2 },
+      )
+      setEditing(false)
+    } catch (e) { console.error('Overlay compute failed:', e) }
+    setLoading(false)
+  }
+
+  // Auto-compute on mount if configs exist and no overlay yet
+  useEffect(() => {
+    if (player1Config && player2Config && !overlayZ && !loading) {
+      setPlayer1({id:player1Config.playerId,name:player1Config.playerName})
+      setPlayer2({id:player2Config.playerId,name:player2Config.playerName})
+      setRole1(player1Config.role)
+      setRole2(player2Config.role)
+      setMetric1(player1Config.metric)
+      setMetric2(player2Config.metric)
+      handleApply()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (editing) {
+    return (
+      <div className="flex flex-col h-full p-2 gap-2 overflow-auto">
+        <div className="grid grid-cols-2 gap-2 flex-1">
+          {/* Player 1 column */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] text-zinc-500 font-medium">Player 1</p>
+            <div className="flex gap-1">
+              {(['pitcher','hitter'] as const).map(r => (
+                <button key={r} onClick={() => { setRole1(r); setPlayer1(null); setSearch1(''); setResults1([]) }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] transition ${role1===r?'bg-emerald-600 text-white':'bg-zinc-800 text-zinc-500'}`}>{r}</button>
+              ))}
+            </div>
+            <div className="relative">
+              <input type="text" value={search1} onChange={e => { setSearch1(e.target.value); searchPlayer(e.target.value, role1, setResults1) }}
+                placeholder={player1 ? player1.name : `Search ${role1}...`}
+                className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-white placeholder-zinc-500 focus:border-emerald-600 focus:outline-none" />
+              {results1.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-0.5 bg-zinc-800 border border-zinc-700 rounded shadow-xl z-50 max-h-32 overflow-y-auto">
+                  {results1.map((p:any) => (
+                    <button key={p.player_id} onClick={() => { setPlayer1({id:p.player_id,name:p.player_name}); setSearch1(''); setResults1([]) }}
+                      className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition border-b border-zinc-700/50 last:border-0">
+                      {p.player_name} <span className="text-zinc-600">{p.player_position}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {player1 && <p className="text-[9px] text-emerald-400 truncate">{player1.name}</p>}
+            <select value={metric1} onChange={e => setMetric1(e.target.value as MetricKey)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+              {METRIC_OPTIONS.map(([m,l]) => <option key={m} value={m}>{l}</option>)}
+            </select>
+          </div>
+          {/* Player 2 column */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] text-zinc-500 font-medium">Player 2</p>
+            <div className="flex gap-1">
+              {(['pitcher','hitter'] as const).map(r => (
+                <button key={r} onClick={() => { setRole2(r); setPlayer2(null); setSearch2(''); setResults2([]) }}
+                  className={`px-1.5 py-0.5 rounded text-[9px] transition ${role2===r?'bg-emerald-600 text-white':'bg-zinc-800 text-zinc-500'}`}>{r}</button>
+              ))}
+            </div>
+            <div className="relative">
+              <input type="text" value={search2} onChange={e => { setSearch2(e.target.value); searchPlayer(e.target.value, role2, setResults2) }}
+                placeholder={player2 ? player2.name : `Search ${role2}...`}
+                className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-white placeholder-zinc-500 focus:border-emerald-600 focus:outline-none" />
+              {results2.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-0.5 bg-zinc-800 border border-zinc-700 rounded shadow-xl z-50 max-h-32 overflow-y-auto">
+                  {results2.map((p:any) => (
+                    <button key={p.player_id} onClick={() => { setPlayer2({id:p.player_id,name:p.player_name}); setSearch2(''); setResults2([]) }}
+                      className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition border-b border-zinc-700/50 last:border-0">
+                      {p.player_name} <span className="text-zinc-600">{p.player_position}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {player2 && <p className="text-[9px] text-emerald-400 truncate">{player2.name}</p>}
+            <select value={metric2} onChange={e => setMetric2(e.target.value as MetricKey)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] text-white focus:outline-none">
+              {METRIC_OPTIONS.map(([m,l]) => <option key={m} value={m}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+        <button onClick={handleApply} disabled={!player1 || !player2 || loading}
+          className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium rounded transition disabled:opacity-40 disabled:cursor-not-allowed">
+          {loading ? 'Loading...' : 'Apply'}
+        </button>
+      </div>
+    )
+  }
+
+  // Result mode
+  if (!overlayZ) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No overlay data</div>
+
+  const xArr = Array.from({length:nb},(_,i)=>xR[0]+(i+.5)*xS)
+  const yArr = Array.from({length:nb},(_,i)=>yR[0]+(i+.5)*yS)
+  const p1Label = player1Config ? `${player1Config.playerName} (${METRIC_LABELS[player1Config.metric]})` : ''
+  const p2Label = player2Config ? `${player2Config.playerName} (${METRIC_LABELS[player2Config.metric]})` : ''
+
+  return (
+    <div className="relative w-full h-full">
+      <Plot
+        data={[{
+          x: xArr, y: yArr, z: overlayZ,
+          type: 'heatmap', colorscale: SPECTRUM, showscale: false,
+          zsmooth: 'best', connectgaps: true, hoverongaps: false,
+          hovertemplate: `Overlap: %{z:.3f}<extra></extra>`,
+        }]}
+        layout={{
+          paper_bgcolor: 'transparent', plot_bgcolor: COLORS.bg,
+          font: { color: COLORS.text, size: 9 },
+          margin: { t: 5, r: 5, b: 5, l: 5 },
+          xaxis: { range: xR, showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
+          yaxis: { range: yR, showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
+          shapes: ZONE_SHAPES,
+          autosize: true,
+        }}
+        style={{ width: '100%', height: '100%' }}
+      />
+      {/* Edit button */}
+      <button onClick={() => setEditing(true)}
+        className="absolute top-1 right-1 px-1.5 py-0.5 bg-zinc-800/80 border border-zinc-700 rounded text-[9px] text-zinc-400 hover:text-white transition z-10">
+        Edit
+      </button>
+      {/* Legend / labels */}
+      <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
+        <span className="text-[8px] text-zinc-400 font-mono">{zMin.toFixed(2)}</span>
+        <div className="w-12 h-1.5 rounded-full" style={{background:"linear-gradient(to right, #1a3d7c, #2166ac, #4ba8c4, #c8e64a, #f0e830, #e06010, #9e0000, #7a0000)"}} />
+        <span className="text-[8px] text-zinc-400 font-mono">{zMax.toFixed(2)}</span>
+      </div>
+      <div className="absolute bottom-1 right-1 bg-zinc-900/80 rounded px-1 py-0.5 max-w-[60%]">
+        <p className="text-[7px] text-zinc-500 truncate">{p1Label}</p>
+        <p className="text-[7px] text-zinc-500 truncate">{p2Label}</p>
+      </div>
     </div>
   )
 }
