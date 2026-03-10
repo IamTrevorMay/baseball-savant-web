@@ -12,6 +12,8 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "@vercel/analytics": "^1.6.1",
@@ -23,13 +25,15 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-plotly.js": "^2.6.0",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.183.1",
     "babel-plugin-react-compiler": "1.0.0",
     "csv-parse": "^6.1.0",
     "eslint": "^9",

@@ -137,6 +137,34 @@ export default function VisualizePage() {
           </div>
         </button>
 
+        {/* Pitch Lab card */}
+        <button
+          onClick={() => router.push('/visualize/pitch-lab')}
+          className="
+            group text-left bg-zinc-900 border border-zinc-800 rounded-xl p-5
+            hover:border-orange-600/50 hover:bg-zinc-800/60 transition
+            flex flex-col gap-2
+          "
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-sm font-semibold text-zinc-100 group-hover:text-orange-300 transition leading-snug">
+              Pitch Lab
+            </span>
+            <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide bg-orange-500/15 text-orange-400 border border-orange-500/20">
+              3D
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">3D pitch delivery and ball flight with arm model, annotations, and MP4 export.</p>
+          <div className="mt-auto pt-1 flex items-center gap-1.5">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-500">
+              Three.js
+            </span>
+            <span className="ml-auto text-[10px] text-zinc-600 group-hover:text-orange-500/60 transition">
+              Open &rarr;
+            </span>
+          </div>
+        </button>
+
         {/* No-data-required templates */}
         {TEMPLATE_REGISTRY.filter(e => e.requiresData === false).map(entry => (
           <TemplateCard
