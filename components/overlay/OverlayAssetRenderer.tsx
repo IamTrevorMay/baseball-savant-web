@@ -54,9 +54,10 @@ interface Props {
   asset: BroadcastAsset
   animationPhase: 'entering' | 'exiting' | null
   fps?: number
+  slideshowIndex?: number
 }
 
-export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }: Props) {
+export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef<HTMLStyleElement | null>(null)
 
@@ -93,6 +94,33 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30 }
   }, [animationPhase, asset, fps])
 
   const assetOpacity = asset.opacity ?? 1
+
+  if (asset.asset_type === 'slideshow') {
+    const config = asset.slideshow_config
+    if (!config || !config.slides.length) return null
+    const slide = config.slides[slideshowIndex] || config.slides[0]
+    const fit = config.fit || 'contain'
+    return (
+      <div
+        ref={wrapperRef}
+        className="absolute overflow-hidden"
+        style={{
+          left: asset.canvas_x,
+          top: asset.canvas_y,
+          width: asset.canvas_width,
+          height: asset.canvas_height,
+          zIndex: asset.layer,
+          opacity: assetOpacity,
+        }}
+      >
+        {slide.type === 'image' ? (
+          <img src={slide.storage_path} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} />
+        ) : (
+          <video src={slide.storage_path} autoPlay preload="auto" className="w-full h-full" style={{ objectFit: fit }} />
+        )}
+      </div>
+    )
+  }
 
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []

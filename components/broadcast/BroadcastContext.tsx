@@ -12,6 +12,7 @@ interface BroadcastContextValue {
   selectedAssetId: string | null
   previewingAssetId: string | null
   loading: boolean
+  slideshowSlideIndexes: Map<string, number>
 
   setProject: (p: BroadcastProject) => void
   setAssets: (a: BroadcastAsset[]) => void
@@ -24,6 +25,10 @@ interface BroadcastContextValue {
   goLive: () => Promise<string | null>
   endSession: () => Promise<void>
   sendEvent: (event: string, payload: any) => void
+  slideshowGoto: (assetId: string, index: number) => void
+  slideshowNext: (assetId: string) => void
+  slideshowPrev: (assetId: string) => void
+  getSlideshowIndex: (assetId: string) => number
 }
 
 const BroadcastCtx = createContext<BroadcastContextValue | null>(null)
@@ -42,6 +47,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [previewingAssetId, setPreviewingAssetId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [slideshowSlideIndexes, setSlideshowSlideIndexes] = useState<Map<string, number>>(new Map())
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
 
@@ -198,6 +204,33 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [session, assets, toggleAssetVisibility])
 
+  const getSlideshowIndex = useCallback((assetId: string): number => {
+    return slideshowSlideIndexes.get(assetId) || 0
+  }, [slideshowSlideIndexes])
+
+  const slideshowGoto = useCallback((assetId: string, index: number) => {
+    setSlideshowSlideIndexes(prev => new Map(prev).set(assetId, index))
+    sendEvent('slideshow:goto', { assetId, slideIndex: index })
+  }, [sendEvent])
+
+  const slideshowNext = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    const slideCount = asset?.slideshow_config?.slides?.length || 0
+    if (slideCount === 0) return
+    const current = slideshowSlideIndexes.get(assetId) || 0
+    const next = (current + 1) % slideCount
+    slideshowGoto(assetId, next)
+  }, [assets, slideshowSlideIndexes, slideshowGoto])
+
+  const slideshowPrev = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    const slideCount = asset?.slideshow_config?.slides?.length || 0
+    if (slideCount === 0) return
+    const current = slideshowSlideIndexes.get(assetId) || 0
+    const prev = (current - 1 + slideCount) % slideCount
+    slideshowGoto(assetId, prev)
+  }, [assets, slideshowSlideIndexes, slideshowGoto])
+
   const goLive = useCallback(async () => {
     if (!project) return null
     try {
@@ -254,8 +287,10 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   return (
     <BroadcastCtx.Provider value={{
       project, assets, session, visibleAssetIds, selectedAssetId, previewingAssetId, loading,
+      slideshowSlideIndexes,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
+      slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
     }}>
       {children}
     </BroadcastCtx.Provider>

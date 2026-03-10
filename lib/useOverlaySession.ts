@@ -9,6 +9,7 @@ interface OverlayState {
   assets: BroadcastAsset[]
   visibleAssetIds: Set<string>
   animatingAssets: Map<string, 'entering' | 'exiting'>
+  slideshowIndexes: Map<string, number>
   connected: boolean
   error: string | null
 }
@@ -19,6 +20,7 @@ export function useOverlaySession(sessionId: string) {
     assets: [],
     visibleAssetIds: new Set(),
     animatingAssets: new Map(),
+    slideshowIndexes: new Map(),
     connected: false,
     error: null,
   })
@@ -143,6 +145,17 @@ export function useOverlaySession(sessionId: string) {
                   }
                 }),
               }))
+            }
+          })
+          .on('broadcast', { event: 'slideshow:goto' }, (payload: any) => {
+            const { assetId, slideIndex } = payload.payload || {}
+            if (assetId != null && slideIndex != null) {
+              setState(prev => {
+                const next = { ...prev }
+                next.slideshowIndexes = new Map(prev.slideshowIndexes)
+                next.slideshowIndexes.set(assetId, slideIndex)
+                return next
+              })
             }
           })
           .on('broadcast', { event: 'session:sync' }, (payload: any) => {

@@ -19,7 +19,19 @@ export interface BroadcastProject {
 
 // ── Broadcast Asset ─────────────────────────────────────────────────────────
 
-export type BroadcastAssetType = 'scene' | 'image' | 'video'
+export type BroadcastAssetType = 'scene' | 'image' | 'video' | 'slideshow'
+
+export interface SlideshowSlide {
+  id: string
+  storage_path: string
+  name: string
+  type: 'image' | 'video'
+}
+
+export interface SlideshowConfig {
+  slides: SlideshowSlide[]
+  fit: 'cover' | 'contain'
+}
 
 export interface TransitionConfig {
   presetId: string
@@ -63,6 +75,7 @@ export interface BroadcastAsset {
   storage_path: string | null
   template_id?: string
   template_data?: TemplateDataValues
+  slideshow_config?: SlideshowConfig
   canvas_x: number
   canvas_y: number
   canvas_width: number
@@ -106,6 +119,7 @@ export type BroadcastEventType =
   | 'asset:update'
   | 'video:play'
   | 'video:stop'
+  | 'slideshow:goto'
   | 'session:sync'
 
 export interface BroadcastEvent {

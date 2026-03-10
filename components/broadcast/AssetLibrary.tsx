@@ -262,10 +262,37 @@ export default function AssetLibrary() {
     }
   }
 
+  async function createSlideshow() {
+    if (!project) return
+    try {
+      const assetRes = await fetch('/api/broadcast/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: project.id,
+          name: 'New Slideshow',
+          asset_type: 'slideshow',
+          slideshow_config: { slides: [], fit: 'contain' },
+          canvas_width: 1920,
+          canvas_height: 1080,
+          sort_order: assets.length,
+        }),
+      })
+      const assetData = await assetRes.json()
+      if (assetData.asset) {
+        addAsset(assetData.asset)
+        setSelectedAssetId(assetData.asset.id)
+      }
+    } catch (err) {
+      console.error('Failed to create slideshow:', err)
+    }
+  }
+
   function getAssetIcon(asset: BroadcastAsset) {
     if (asset.template_id) return '\u26A1'
     if (asset.asset_type === 'scene') return 'S'
     if (asset.asset_type === 'video') return 'V'
+    if (asset.asset_type === 'slideshow') return 'P'
     return 'I'
   }
 
@@ -297,12 +324,20 @@ export default function AssetLibrary() {
             Upload Media
           </button>
         </div>
-        <button
-          onClick={() => setShowTemplateImport(true)}
-          className="w-full px-2 py-1.5 text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition"
-        >
-          Import Template
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowTemplateImport(true)}
+            className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition"
+          >
+            Import Template
+          </button>
+          <button
+            onClick={createSlideshow}
+            className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-500/20 transition"
+          >
+            New Slideshow
+          </button>
+        </div>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
       </div>
 

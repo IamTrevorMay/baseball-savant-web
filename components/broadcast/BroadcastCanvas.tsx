@@ -134,9 +134,56 @@ function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   return style
 }
 
+function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: boolean }) {
+  const { getSlideshowIndex } = useBroadcast()
+  const config = asset.slideshow_config
+  if (!config || !config.slides.length) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-zinc-800/50" style={{ opacity: isVisible ? 1 : 0.3 }}>
+        <span className="text-zinc-500 text-xs">Empty Slideshow</span>
+      </div>
+    )
+  }
+  const index = getSlideshowIndex(asset.id)
+  const slide = config.slides[index] || config.slides[0]
+  const fit = config.fit || 'contain'
+  const dimmedOpacity = isVisible ? (asset.opacity ?? 1) : (asset.opacity ?? 1) * 0.3
+
+  return (
+    <div className="w-full h-full relative overflow-hidden" style={{ opacity: dimmedOpacity }}>
+      {slide.type === 'image' ? (
+        <img
+          src={slide.storage_path}
+          alt={slide.name}
+          className="w-full h-full"
+          style={{ objectFit: fit }}
+          draggable={false}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
+          <div className="text-zinc-500 text-sm flex flex-col items-center gap-1">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            <span>{slide.name}</span>
+          </div>
+        </div>
+      )}
+      {/* Slide counter badge */}
+      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-zinc-300 font-mono">
+        {index + 1}/{config.slides.length}
+      </div>
+    </div>
+  )
+}
+
 function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: boolean }) {
   const assetOpacity = asset.opacity ?? 1
   const dimmedOpacity = isVisible ? assetOpacity : assetOpacity * 0.3
+
+  if (asset.asset_type === 'slideshow') {
+    return <SlideshowPreview asset={asset} isVisible={isVisible} />
+  }
 
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
@@ -351,8 +398,9 @@ export default function BroadcastCanvas() {
       if (handle.includes('s')) newH = Math.max(40, Math.round(origH + dy))
       if (handle.includes('n')) { newH = Math.max(40, Math.round(origH - dy)); newY = Math.round(origY + origH - newH) }
 
-      // Hold Shift for aspect-ratio lock
-      if (me.shiftKey && (handle === 'se' || handle === 'sw' || handle === 'ne' || handle === 'nw')) {
+      // Aspect-ratio lock: always for slideshows, Shift for others
+      const forceAspectLock = asset.asset_type === 'slideshow'
+      if ((me.shiftKey || forceAspectLock) && (handle === 'se' || handle === 'sw' || handle === 'ne' || handle === 'nw')) {
         const ratio = origW / origH
         if (Math.abs(dx) > Math.abs(dy)) {
           newH = Math.round(newW / ratio)

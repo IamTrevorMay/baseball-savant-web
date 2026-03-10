@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useBroadcast } from './BroadcastContext'
 import { getTransitions } from '@/lib/transitions'
 import TemplateDataPanel from './TemplateDataPanel'
+import SlideshowEditor from './SlideshowEditor'
 import Link from 'next/link'
 
 export default function AssetProperties() {
@@ -52,6 +53,9 @@ export default function AssetProperties() {
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Properties</h3>
         <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{asset.name}</p>
       </div>
+
+      {/* Slideshow Editor (if this is a slideshow asset) */}
+      {asset.asset_type === 'slideshow' && <SlideshowEditor asset={asset} />}
 
       {/* Template Data Panel (if this is a template asset) */}
       {asset.template_id && <TemplateDataPanel asset={asset} />}

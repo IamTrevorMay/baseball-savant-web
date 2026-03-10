@@ -57,7 +57,40 @@ function computeWrapperStyle(el: SceneElement): React.CSSProperties {
 
 // ── Asset content renderer for preview canvas ────────────────────────────────
 
-function TestAssetContent({ asset }: { asset: BroadcastAsset }) {
+function TestAssetContent({ asset, slideIndex }: { asset: BroadcastAsset; slideIndex?: number }) {
+  if (asset.asset_type === 'slideshow') {
+    const config = asset.slideshow_config
+    if (!config || !config.slides.length) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
+          <span className="text-zinc-500 text-xs">Empty Slideshow</span>
+        </div>
+      )
+    }
+    const idx = slideIndex || 0
+    const slide = config.slides[idx] || config.slides[0]
+    const fit = config.fit || 'contain'
+    return (
+      <div className="w-full h-full relative overflow-hidden">
+        {slide.type === 'image' ? (
+          <img src={slide.storage_path} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} draggable={false} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
+            <div className="text-zinc-500 text-sm flex flex-col items-center gap-1">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              <span>{slide.name}</span>
+            </div>
+          </div>
+        )}
+        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-zinc-300 font-mono">
+          {idx + 1}/{config.slides.length}
+        </div>
+      </div>
+    )
+  }
+
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
     const nativeW = asset.scene_config.width || asset.canvas_width
@@ -258,6 +291,43 @@ function ControlButton({
   )
 }
 
+// ── Slideshow Controls for Test Mode ────────────────────────────────────────
+
+function SlideshowControls({
+  asset,
+  slideIndex,
+  onPrev,
+  onNext,
+}: {
+  asset: BroadcastAsset
+  slideIndex: number
+  onPrev: () => void
+  onNext: () => void
+}) {
+  const slideCount = asset.slideshow_config?.slides?.length || 0
+  if (slideCount === 0) return null
+
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      <button
+        onClick={e => { e.stopPropagation(); onPrev() }}
+        className="px-1.5 py-0.5 text-[9px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 rounded hover:bg-zinc-700 hover:text-zinc-200 transition"
+      >
+        Prev
+      </button>
+      <span className="text-[9px] text-zinc-500 font-mono px-1">
+        {slideIndex + 1}/{slideCount}
+      </span>
+      <button
+        onClick={e => { e.stopPropagation(); onNext() }}
+        className="px-1.5 py-0.5 text-[9px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 rounded hover:bg-zinc-700 hover:text-zinc-200 transition"
+      >
+        Next
+      </button>
+    </div>
+  )
+}
+
 // ── StreamDeckGrid (Test Mode) ───────────────────────────────────────────────
 
 export default function StreamDeckGrid() {
@@ -268,6 +338,7 @@ export default function StreamDeckGrid() {
   const [testAnimating, setTestAnimating] = useState<Map<string, 'entering' | 'exiting'>>(new Map())
   const [testModes, setTestModes] = useState<Map<string, 'toggle' | 'timed'>>(new Map())
   const [testDurations, setTestDurations] = useState<Map<string, number>>(new Map())
+  const [testSlideIndexes, setTestSlideIndexes] = useState<Map<string, number>>(new Map())
   const timerRefs = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   // Preview canvas scaling
@@ -384,6 +455,28 @@ export default function StreamDeckGrid() {
     setTestDurations(prev => new Map(prev).set(id, duration))
   }, [])
 
+  // ── Slideshow navigation ──────────────────────────────────────────────────
+
+  const handleSlideshowNext = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    const slideCount = asset?.slideshow_config?.slides?.length || 0
+    if (slideCount === 0) return
+    setTestSlideIndexes(prev => {
+      const current = prev.get(assetId) || 0
+      return new Map(prev).set(assetId, (current + 1) % slideCount)
+    })
+  }, [assets])
+
+  const handleSlideshowPrev = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    const slideCount = asset?.slideshow_config?.slides?.length || 0
+    if (slideCount === 0) return
+    setTestSlideIndexes(prev => {
+      const current = prev.get(assetId) || 0
+      return new Map(prev).set(assetId, (current - 1 + slideCount) % slideCount)
+    })
+  }, [assets])
+
   // ── Reset All ──────────────────────────────────────────────────────────────
 
   const handleResetAll = useCallback(() => {
@@ -392,6 +485,7 @@ export default function StreamDeckGrid() {
     timerRefs.current.clear()
     setTestVisibleIds(new Set())
     setTestAnimating(new Map())
+    setTestSlideIndexes(new Map())
   }, [])
 
   // Animation end handler per asset (for the wrapper callback)
@@ -424,16 +518,25 @@ export default function StreamDeckGrid() {
             <div className="text-xs text-zinc-500 text-center py-8">No assets in project</div>
           )}
           {assets.map(asset => (
-            <ControlButton
-              key={asset.id}
-              asset={asset}
-              isActive={testVisibleIds.has(asset.id)}
-              mode={getMode(asset)}
-              duration={getDuration(asset)}
-              onTrigger={handleTestTrigger}
-              onModeChange={handleModeChange}
-              onDurationChange={handleDurationChange}
-            />
+            <div key={asset.id}>
+              <ControlButton
+                asset={asset}
+                isActive={testVisibleIds.has(asset.id)}
+                mode={getMode(asset)}
+                duration={getDuration(asset)}
+                onTrigger={handleTestTrigger}
+                onModeChange={handleModeChange}
+                onDurationChange={handleDurationChange}
+              />
+              {asset.asset_type === 'slideshow' && (
+                <SlideshowControls
+                  asset={asset}
+                  slideIndex={testSlideIndexes.get(asset.id) || 0}
+                  onPrev={() => handleSlideshowPrev(asset.id)}
+                  onNext={() => handleSlideshowNext(asset.id)}
+                />
+              )}
+            </div>
           ))}
         </div>
 
@@ -480,7 +583,7 @@ export default function StreamDeckGrid() {
                   phase={phase}
                   onAnimationEnd={makeAnimEndHandler(asset.id)}
                 >
-                  <TestAssetContent asset={asset} />
+                  <TestAssetContent asset={asset} slideIndex={testSlideIndexes.get(asset.id) || 0} />
                 </TestAnimationWrapper>
               </div>
             )
