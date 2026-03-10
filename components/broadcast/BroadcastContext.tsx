@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession, TemplateDataValues } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings } from '@/lib/broadcastTypes'
 import { createClient } from '@supabase/supabase-js'
 
 interface BroadcastContextValue {
@@ -29,6 +29,7 @@ interface BroadcastContextValue {
   slideshowNext: (assetId: string) => void
   slideshowPrev: (assetId: string) => void
   getSlideshowIndex: (assetId: string) => number
+  updateProjectSettings: (updates: Partial<BroadcastProjectSettings>) => void
 }
 
 const BroadcastCtx = createContext<BroadcastContextValue | null>(null)
@@ -231,6 +232,17 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     slideshowGoto(assetId, prev)
   }, [assets, slideshowSlideIndexes, slideshowGoto])
 
+  const updateProjectSettings = useCallback((updates: Partial<BroadcastProjectSettings>) => {
+    if (!project) return
+    const newSettings = { ...project.settings, ...updates }
+    setProject({ ...project, settings: newSettings })
+    fetch(`/api/broadcast/projects/${project.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: newSettings }),
+    }).catch(console.error)
+  }, [project])
+
   const goLive = useCallback(async () => {
     if (!project) return null
     try {
@@ -291,6 +303,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
+      updateProjectSettings,
     }}>
       {children}
     </BroadcastCtx.Provider>

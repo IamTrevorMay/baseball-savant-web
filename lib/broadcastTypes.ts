@@ -5,6 +5,7 @@ import { SceneElement } from './sceneTypes'
 export interface BroadcastProjectSettings {
   fps: number
   defaultTransitionDuration: number // frames
+  referenceImage?: string
 }
 
 export interface BroadcastProject {
