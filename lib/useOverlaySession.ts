@@ -185,5 +185,15 @@ export function useOverlaySession(sessionId: string) {
     }
   }, [sessionId, showAsset, hideAsset])
 
-  return { ...state, hideAsset }
+  const notifyAdEnded = useCallback((assetId: string) => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'ad:ended',
+        payload: { assetId, timestamp: Date.now() },
+      })
+    }
+  }, [])
+
+  return { ...state, hideAsset, notifyAdEnded }
 }

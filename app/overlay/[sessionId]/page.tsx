@@ -5,7 +5,7 @@ import { useOverlaySession } from '@/lib/useOverlaySession'
 import OverlayAssetRenderer from '@/components/overlay/OverlayAssetRenderer'
 
 function OverlayInner({ sessionId }: { sessionId: string }) {
-  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset } = useOverlaySession(sessionId)
+  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset, notifyAdEnded } = useOverlaySession(sessionId)
 
   if (error) {
     return (
@@ -49,7 +49,7 @@ function OverlayInner({ sessionId }: { sessionId: string }) {
             animationPhase={animatingAssets.get(asset.id) || null}
             fps={session.project_id ? 30 : 30}
             slideshowIndex={slideshowIndexes.get(asset.id) || 0}
-            onVideoEnded={asset.asset_type === 'advertisement' ? () => hideAsset(asset.id) : undefined}
+            onVideoEnded={asset.asset_type === 'advertisement' ? () => { hideAsset(asset.id); notifyAdEnded(asset.id) } : undefined}
           />
         ))}
 

@@ -259,12 +259,29 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       if (data.session) {
         setSession(data.session)
 
-        // Subscribe to channel
+        // Subscribe to channel and listen for overlay events
+        const sessionId = data.session.id
         const channel = supabaseRef.current.channel(channelName)
-        channel.subscribe()
+        channel
+          .on('broadcast', { event: 'ad:ended' }, (payload: any) => {
+            const assetId = payload.payload?.assetId
+            if (assetId) {
+              setVisibleAssetIds(prev => {
+                const next = new Set(prev)
+                next.delete(assetId)
+                fetch('/api/broadcast/sessions', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: sessionId, active_state: { visibleAssets: Array.from(next) } }),
+                }).catch(console.error)
+                return next
+              })
+            }
+          })
+          .subscribe()
         channelRef.current = channel
 
-        return data.session.id
+        return sessionId
       }
       return null
     } catch (err) {
