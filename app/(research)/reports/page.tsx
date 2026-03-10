@@ -25,8 +25,11 @@ function defaultTiles(): TileConfig[] {
   ]
 }
 
+type BuilderMode = 'versus' | 'default'
+
 function ReportsPageInner() {
   // Core state — no wizard, always in builder mode
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('versus')
   const [scope, setScope] = useState<Scope>('player')
   const [subjectType, setSubjectType] = useState<SubjectType>('hitting')
 
@@ -558,6 +561,19 @@ function ReportsPageInner() {
 
           {/* Row 1: Toggles + Subject */}
           <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+            {/* Versus / Default mode toggle */}
+            <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+              <button onClick={() => setBuilderMode('versus')}
+                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${builderMode === 'versus' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                Versus
+              </button>
+              <button onClick={() => setBuilderMode('default')}
+                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${builderMode === 'default' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                Default
+              </button>
+            </div>
+
+            {builderMode === 'versus' && <>
             {/* Pitchers / Hitters toggle */}
             <div className="flex rounded-lg overflow-hidden border border-zinc-700">
               <button onClick={() => handleSubjectTypeChange('pitching')}
@@ -630,6 +646,7 @@ function ReportsPageInner() {
 
             {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
             <span className="text-[11px] text-zinc-600 ml-auto md:ml-0">{displayedPitchCount.toLocaleString()} pitches</span>
+            </>}
           </div>
 
           {/* Row 2: Templates, Modifier, Grid, Actions */}
@@ -647,6 +664,7 @@ function ReportsPageInner() {
               {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
 
+            {builderMode === 'versus' && <>
             <div className="w-px h-5 bg-zinc-800 hidden md:block" />
 
             {/* Modifier dropdown */}
@@ -724,6 +742,7 @@ function ReportsPageInner() {
                 {reportMode === 'vs_similar_stuff' ? 'vs. Stuff' : overlayTemplates.find(t => t.id === activeOverlayId)?.name || 'Modifier'}
               </span>
             )}
+            </>}
 
             {/* Grid columns */}
             <div className="flex items-center gap-1.5 ml-auto">
@@ -838,7 +857,7 @@ function ReportsPageInner() {
       )}
 
       {/* ── Empty State / Tile Grid ───────────────────────────────────── */}
-      {!hasSubject && !loading ? (
+      {!hasSubject && !loading && builderMode !== 'default' ? (
         <div className="flex flex-col items-center justify-center py-20 md:py-32 text-center px-6">
           <div className="text-4xl mb-4 opacity-30">&#9776;</div>
           <h2 className="text-lg font-semibold text-zinc-500 mb-2">Reports Builder</h2>

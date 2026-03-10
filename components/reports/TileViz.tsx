@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import Plot from '../PlotWrapper'
 import { COLORS, getPitchColor } from '../chartConfig'
 import {
@@ -482,6 +482,294 @@ export function TileTable({ data, mode = 'arsenal', columns, groupBy }: { data: 
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ── HEATMAP OVERLAY ──────────────────────────────────────────────────────────
+import { enrichData } from '@/lib/enrichData'
+import { applyFiltersToData, type ActiveFilter } from '../FilterEngine'
+import { supabase } from '@/lib/supabase'
+import type { OverlayPlayerConfig } from './ReportTile'
+
+interface OverlayProps {
+  player1Config?: OverlayPlayerConfig
+  player2Config?: OverlayPlayerConfig
+  tileFilters: ActiveFilter[]
+  optionsCache: Record<string, string[]>
+  onConfigChange: (p1: OverlayPlayerConfig, p2: OverlayPlayerConfig) => void
+}
+
+export function TileHeatmapOverlay({ player1Config, player2Config, tileFilters, optionsCache, onConfigChange }: OverlayProps) {
+  const [editing, setEditing] = useState(!player1Config || !player2Config)
+  const [role1, setRole1] = useState<'pitcher'|'hitter'>(player1Config?.role || 'pitcher')
+  const [role2, setRole2] = useState<'pitcher'|'hitter'>(player2Config?.role || 'pitcher')
+  const [player1, setPlayer1] = useState<{id:number;name:string}|null>(player1Config ? {id:player1Config.id,name:player1Config.name} : null)
+  const [player2, setPlayer2] = useState<{id:number;name:string}|null>(player2Config ? {id:player2Config.id,name:player2Config.name} : null)
+  const [search1, setSearch1] = useState('')
+  const [search2, setSearch2] = useState('')
+  const [results1, setResults1] = useState<any[]>([])
+  const [results2, setResults2] = useState<any[]>([])
+  const [metric1, setMetric1] = useState<MetricKey>(player1Config?.metric || 'frequency')
+  const [metric2, setMetric2] = useState<MetricKey>(player2Config?.metric || 'frequency')
+  const [loading, setLoading] = useState(false)
+  const [overlayZ, setOverlayZ] = useState<number[][]|null>(null)
+  const [label1, setLabel1] = useState('')
+  const [label2, setLabel2] = useState('')
+
+  // Refs for outside-click dismissal
+  const search1Ref = useRef<HTMLDivElement>(null)
+  const search2Ref = useRef<HTMLDivElement>(null)
+  const [showDrop1, setShowDrop1] = useState(false)
+  const [showDrop2, setShowDrop2] = useState(false)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (search1Ref.current && !search1Ref.current.contains(e.target as Node)) setShowDrop1(false)
+      if (search2Ref.current && !search2Ref.current.contains(e.target as Node)) setShowDrop2(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const searchPlayer = useCallback(async (q: string, role: 'pitcher'|'hitter', setResults: (r: any[]) => void, setShow: (s: boolean) => void) => {
+    if (q.trim().length < 2) { setResults([]); setShow(false); return }
+    try {
+      const { data, error } = await supabase.rpc('search_all_players', { search_term: q.trim(), player_type: role, result_limit: 8 })
+      if (!error && data) { setResults(data); setShow(true) }
+      else setResults([])
+    } catch { setResults([]) }
+  }, [])
+
+  async function handleApply() {
+    if (!player1 || !player2) return
+    setLoading(true)
+    try {
+      const col1 = role1 === 'hitter' ? 'batter' : 'pitcher'
+      const col2 = role2 === 'hitter' ? 'batter' : 'pitcher'
+      const [res1, res2] = await Promise.all([
+        fetch(`/api/player-data?id=${player1.id}&col=${col1}`).then(r => r.json()),
+        fetch(`/api/player-data?id=${player2.id}&col=${col2}`).then(r => r.json()),
+      ])
+      let rows1 = res1.rows || []
+      let rows2 = res2.rows || []
+      enrichData(rows1)
+      enrichData(rows2)
+      if (tileFilters.length > 0) {
+        rows1 = applyFiltersToData(rows1, tileFilters)
+        rows2 = applyFiltersToData(rows2, tileFilters)
+      }
+
+      const nb = 16, xR: [number,number] = [-1.76, 1.76], yR: [number,number] = [0.24, 4.06]
+      const xS = (xR[1] - xR[0]) / nb, yS = (yR[1] - yR[0]) / nb
+
+      function buildGrid(rows: any[], metric: MetricKey): (number|null)[][] {
+        const f = rows.filter(d => d.plate_x != null && d.plate_z != null)
+        const bins: any[][][] = Array.from({length: nb}, () => Array.from({length: nb}, () => []))
+        f.forEach(d => {
+          const xi = Math.min(Math.max(Math.floor((d.plate_x - xR[0]) / xS), 0), nb - 1)
+          const yi = Math.min(Math.max(Math.floor((d.plate_z - yR[0]) / yS), 0), nb - 1)
+          bins[yi][xi].push(d)
+        })
+        const z = bins.map(row => row.map(cell => calcMetric(cell, metric)))
+        // 2-pass neighbor interpolation
+        for (let pass = 0; pass < 2; pass++) {
+          for (let r = 0; r < nb; r++) {
+            for (let c = 0; c < nb; c++) {
+              if (z[r][c] === null) {
+                const neighbors: number[] = []
+                for (let dr = -1; dr <= 1; dr++) {
+                  for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue
+                    const nr = r + dr, nc = c + dc
+                    if (nr >= 0 && nr < nb && nc >= 0 && nc < nb && z[nr][nc] !== null)
+                      neighbors.push(z[nr][nc]!)
+                  }
+                }
+                if (neighbors.length >= 2)
+                  z[r][c] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length
+              }
+            }
+          }
+        }
+        return z
+      }
+
+      const z1 = buildGrid(rows1, metric1)
+      const z2 = buildGrid(rows2, metric2)
+
+      // Normalize each to [0,1]
+      function normalize(z: (number|null)[][]): number[][] {
+        const flat = z.flat().filter((v): v is number => v !== null)
+        if (!flat.length) return z.map(row => row.map(() => 0))
+        const min = Math.min(...flat), max = Math.max(...flat)
+        const range = max - min || 1
+        return z.map(row => row.map(v => v === null ? 0 : (v - min) / range))
+      }
+
+      const n1 = normalize(z1)
+      const n2 = normalize(z2)
+
+      // Element-wise multiply
+      const overlap = n1.map((row, r) => row.map((v, c) => v * n2[r][c]))
+      setOverlayZ(overlap)
+      setLabel1(player1.name)
+      setLabel2(player2.name)
+      setEditing(false)
+
+      onConfigChange(
+        { id: player1.id, name: player1.name, role: role1, metric: metric1 },
+        { id: player2.id, name: player2.name, role: role2, metric: metric2 },
+      )
+    } catch (e) { console.error('Overlay fetch failed:', e) }
+    setLoading(false)
+  }
+
+  const metricOptions: [MetricKey, string][] = [
+    ['frequency','Frequency'],['ba','BA'],['slg','SLG'],['woba','wOBA'],
+    ['xba','xBA'],['xwoba','xwOBA'],['ev','Exit Velo'],['whiff_pct','Whiff%'],
+    ['chase_pct','Chase%'],['swing_pct','Swing%'],
+  ]
+
+  if (editing) {
+    return (
+      <div className="flex-1 flex flex-col gap-2 p-2 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-2">
+          {/* Player 1 */}
+          <div className="space-y-1.5">
+            <div className="text-[10px] text-zinc-500 font-medium">Player 1</div>
+            <div className="flex rounded overflow-hidden border border-zinc-700">
+              {(['pitcher','hitter'] as const).map(r => (
+                <button key={r} onClick={() => { if (role1 !== r) { setRole1(r); setPlayer1(null); setSearch1(''); setResults1([]) } }}
+                  className={`flex-1 px-2 py-1 text-[10px] font-medium transition ${role1 === r ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div ref={search1Ref} className="relative">
+              {player1 ? (
+                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-900/30 border border-emerald-700/50 rounded text-[10px] text-emerald-300">
+                  <span className="truncate flex-1">{player1.name}</span>
+                  <button onClick={() => { setPlayer1(null); setSearch1('') }} className="text-emerald-500 hover:text-emerald-300">&times;</button>
+                </div>
+              ) : (
+                <input type="text" value={search1}
+                  onChange={e => { setSearch1(e.target.value); searchPlayer(e.target.value, role1, setResults1, setShowDrop1) }}
+                  onFocus={() => { if (results1.length > 0) setShowDrop1(true) }}
+                  placeholder={`Search ${role1}...`}
+                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
+              )}
+              {showDrop1 && results1.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded shadow-xl z-50 max-h-40 overflow-y-auto">
+                  {results1.map((p: any) => (
+                    <button key={p.player_id} onClick={() => { setPlayer1({id: p.player_id, name: p.player_name}); setSearch1(''); setResults1([]); setShowDrop1(false) }}
+                      className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition border-b border-zinc-700/50 last:border-0">
+                      <span className="font-medium">{p.player_name}</span>
+                      <span className="text-zinc-500 ml-1">{p.player_position}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <select value={metric1} onChange={e => setMetric1(e.target.value as MetricKey)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[10px] text-white focus:outline-none">
+              {metricOptions.map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+            </select>
+          </div>
+
+          {/* Player 2 */}
+          <div className="space-y-1.5">
+            <div className="text-[10px] text-zinc-500 font-medium">Player 2</div>
+            <div className="flex rounded overflow-hidden border border-zinc-700">
+              {(['pitcher','hitter'] as const).map(r => (
+                <button key={r} onClick={() => { if (role2 !== r) { setRole2(r); setPlayer2(null); setSearch2(''); setResults2([]) } }}
+                  className={`flex-1 px-2 py-1 text-[10px] font-medium transition ${role2 === r ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div ref={search2Ref} className="relative">
+              {player2 ? (
+                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-900/30 border border-emerald-700/50 rounded text-[10px] text-emerald-300">
+                  <span className="truncate flex-1">{player2.name}</span>
+                  <button onClick={() => { setPlayer2(null); setSearch2('') }} className="text-emerald-500 hover:text-emerald-300">&times;</button>
+                </div>
+              ) : (
+                <input type="text" value={search2}
+                  onChange={e => { setSearch2(e.target.value); searchPlayer(e.target.value, role2, setResults2, setShowDrop2) }}
+                  onFocus={() => { if (results2.length > 0) setShowDrop2(true) }}
+                  placeholder={`Search ${role2}...`}
+                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
+              )}
+              {showDrop2 && results2.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded shadow-xl z-50 max-h-40 overflow-y-auto">
+                  {results2.map((p: any) => (
+                    <button key={p.player_id} onClick={() => { setPlayer2({id: p.player_id, name: p.player_name}); setSearch2(''); setResults2([]); setShowDrop2(false) }}
+                      className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition border-b border-zinc-700/50 last:border-0">
+                      <span className="font-medium">{p.player_name}</span>
+                      <span className="text-zinc-500 ml-1">{p.player_position}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <select value={metric2} onChange={e => setMetric2(e.target.value as MetricKey)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-[10px] text-white focus:outline-none">
+              {metricOptions.map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <button onClick={handleApply} disabled={!player1 || !player2 || loading}
+          className="mt-1 w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium rounded transition disabled:opacity-30 disabled:cursor-not-allowed">
+          {loading ? 'Loading...' : 'Apply'}
+        </button>
+      </div>
+    )
+  }
+
+  // Result mode
+  if (!overlayZ) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No overlay data</div>
+
+  const nb = 16, xR = [-1.76, 1.76], yR = [0.24, 4.06]
+  const xS = (xR[1] - xR[0]) / nb, yS = (yR[1] - yR[0]) / nb
+  const xArr = Array.from({length: nb}, (_, i) => xR[0] + (i + 0.5) * xS)
+  const yArr = Array.from({length: nb}, (_, i) => yR[0] + (i + 0.5) * yS)
+
+  return (
+    <div className="relative w-full h-full">
+      <Plot
+        data={[{
+          x: xArr, y: yArr, z: overlayZ,
+          type: 'heatmap', colorscale: SPECTRUM, showscale: false,
+          zsmooth: 'best', connectgaps: true, hoverongaps: false,
+          hovertemplate: 'Overlap: %{z:.3f}<extra></extra>',
+        }]}
+        layout={{
+          paper_bgcolor: 'transparent', plot_bgcolor: COLORS.bg,
+          font: { color: COLORS.text, size: 9 },
+          margin: { t: 5, r: 5, b: 5, l: 5 },
+          xaxis: { range: xR, showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
+          yaxis: { range: yR, showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
+          shapes: ZONE_SHAPES,
+          autosize: true,
+        }}
+        style={{ width: '100%', height: '100%' }}
+      />
+      <button onClick={() => setEditing(true)}
+        className="absolute top-1 right-1 px-1.5 py-0.5 bg-zinc-800/80 border border-zinc-700 rounded text-[9px] text-zinc-400 hover:text-white transition">
+        Edit
+      </button>
+      <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1.5 py-0.5">
+        <span className="text-[8px] text-emerald-400 font-medium truncate max-w-[60px]">{label1}</span>
+        <span className="text-[8px] text-zinc-600">&times;</span>
+        <span className="text-[8px] text-emerald-400 font-medium truncate max-w-[60px]">{label2}</span>
+      </div>
+      <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
+        <span className="text-[8px] text-zinc-500">0</span>
+        <div className="w-10 h-1.5 rounded-full" style={{background:"linear-gradient(to right, #1a3d7c, #2166ac, #4ba8c4, #c8e64a, #f0e830, #e06010, #9e0000, #7a0000)"}} />
+        <span className="text-[8px] text-zinc-500">1</span>
+      </div>
     </div>
   )
 }

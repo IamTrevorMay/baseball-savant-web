@@ -1,11 +1,18 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, CUSTOM_COL_CATALOG, GROUP_BY_OPTIONS, getFullColCatalog, type CustomColDef } from './TileViz'
+import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, TileHeatmapOverlay, CUSTOM_COL_CATALOG, GROUP_BY_OPTIONS, getFullColCatalog, type CustomColDef } from './TileViz'
 import type { MetricKey, ScatterMode, BarMetric, TableMode } from './TileViz'
 import { applyFiltersToData, FILTER_CATALOG, type ActiveFilter, type FilterDef } from '../FilterEngine'
 import { PITCH_CODE_NAMES } from '../chartConfig'
 
-export type VizType = 'heatmap'|'scatter'|'bar'|'strike_zone'|'table'|'empty'
+export type VizType = 'heatmap'|'scatter'|'bar'|'strike_zone'|'table'|'heatmap_overlay'|'empty'
+
+export interface OverlayPlayerConfig {
+  id: number
+  name: string
+  role: 'pitcher' | 'hitter'
+  metric: MetricKey
+}
 
 export interface TileConfig {
   id: string
@@ -19,6 +26,8 @@ export interface TileConfig {
   title?: string
   subtitle?: string
   filters: ActiveFilter[]
+  overlayPlayer1?: OverlayPlayerConfig
+  overlayPlayer2?: OverlayPlayerConfig
 }
 
 export function defaultTile(id: string): TileConfig {
@@ -78,6 +87,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
             ['bar', 'Bar Chart'],
             ['strike_zone', 'Strike Zone'],
             ['table', 'Data Table'],
+            ['heatmap_overlay', 'Overlay'],
           ].map(([k, l]) => (
             <button key={k} onClick={() => setViz(k as VizType)}
               className="px-3 py-2.5 md:py-2 bg-zinc-800 border border-zinc-700 rounded text-xs md:text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
@@ -129,7 +139,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
         <div className="px-2 py-1.5 border-b border-zinc-800 bg-zinc-800/20 space-y-1.5 flex-shrink-0">
           <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
             <span className="text-[10px] text-zinc-500">Viz:</span>
-            {['heatmap','scatter','bar','strike_zone','table'].map(v => (
+            {['heatmap','scatter','bar','strike_zone','table','heatmap_overlay'].map(v => (
               <button key={v} onClick={() => setViz(v as VizType)}
                 className={`px-2 py-1 md:px-1.5 md:py-0.5 rounded text-[11px] md:text-[10px] transition ${config.viz === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
                 {v.replace('_', ' ')}
@@ -309,6 +319,15 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
         {config.viz === 'bar' && <TileBar data={filtered} metric={config.barMetric || 'usage'} />}
         {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} stand={dominantStand} />}
         {config.viz === 'table' && <TileTable data={filtered} mode={config.tableMode || 'arsenal'} columns={config.tableColumns} groupBy={config.tableGroupBy} />}
+        {config.viz === 'heatmap_overlay' && (
+          <TileHeatmapOverlay
+            player1Config={config.overlayPlayer1}
+            player2Config={config.overlayPlayer2}
+            tileFilters={config.filters}
+            optionsCache={optionsCache}
+            onConfigChange={(p1, p2) => onUpdate({ ...config, overlayPlayer1: p1, overlayPlayer2: p2 })}
+          />
+        )}
       </div>
     </div>
   )
