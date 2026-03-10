@@ -50,6 +50,7 @@ interface Props {
   onRemoveSection: (id: string) => void
   onFetchSection: (id: string) => void
   onSelectElements: (ids: string[]) => void
+  onAddElementsToSection: (sectionId: string, elementIds: string[]) => void
   onUpdateElementBinding: (elementId: string, binding: SectionBinding | undefined) => void
   onHoverElement?: (id: string | null) => void
   fetchLoading: string | null
@@ -57,7 +58,7 @@ interface Props {
 
 export default function InputSectionsPanel({
   sections, selectedIds, elements, onAddSection, onUpdateSection,
-  onRemoveSection, onFetchSection, onSelectElements, onUpdateElementBinding, onHoverElement, fetchLoading,
+  onRemoveSection, onFetchSection, onSelectElements, onAddElementsToSection, onUpdateElementBinding, onHoverElement, fetchLoading,
 }: Props) {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -609,7 +610,7 @@ export default function InputSectionsPanel({
               </div>
             )}
 
-            {/* Edit + Fetch buttons */}
+            {/* Edit + Add Selection + Fetch buttons */}
             <div className="flex gap-1.5">
               <button
                 onClick={() => onSelectElements(section.elementIds)}
@@ -617,6 +618,17 @@ export default function InputSectionsPanel({
               >
                 Edit Elements
               </button>
+              {selectedIds.size > 0 && Array.from(selectedIds).some(id => !section.elementIds.includes(id)) && (
+                <button
+                  onClick={() => {
+                    const newIds = Array.from(selectedIds).filter(id => !section.elementIds.includes(id))
+                    if (newIds.length > 0) onAddElementsToSection(section.id, newIds)
+                  }}
+                  className="flex-1 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-400 hover:bg-amber-500/20 transition"
+                >
+                  + Add Selection ({Array.from(selectedIds).filter(id => !section.elementIds.includes(id)).length})
+                </button>
+              )}
               <button
                 onClick={() => onFetchSection(section.id)}
                 disabled={

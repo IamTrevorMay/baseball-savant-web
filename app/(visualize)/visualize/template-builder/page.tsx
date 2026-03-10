@@ -331,6 +331,22 @@ export default function TemplateBuilderPage() {
     setInputSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
   }, [])
 
+  const addElementsToSection = useCallback((sectionId: string, elementIds: string[]) => {
+    setInputSections(prev => prev.map(s =>
+      s.id === sectionId ? { ...s, elementIds: [...s.elementIds, ...elementIds] } : s
+    ))
+    setScene(prev => ({
+      ...prev,
+      elements: prev.elements.map(e => {
+        if (!elementIds.includes(e.id)) return e
+        const binding: SectionBinding = e.type === 'player-image'
+          ? { sectionId, metric: '__player__' }
+          : { sectionId, metric: 'avg_velo', format: '1f' }
+        return { ...e, sectionBinding: binding }
+      }),
+    }))
+  }, [])
+
   const removeInputSection = useCallback((id: string) => {
     setInputSections(prev => prev.filter(s => s.id !== id))
     // Clear sectionBinding from elements that belong to this section
@@ -992,6 +1008,7 @@ export default function TemplateBuilderPage() {
                   onRemoveSection={removeInputSection}
                   onFetchSection={fetchInputSection}
                   onSelectElements={highlightSectionElements}
+                  onAddElementsToSection={addElementsToSection}
                   onUpdateElementBinding={(elId, binding) => updateSectionBinding(elId, binding)}
                   onHoverElement={(id) => setHighlightedIds(id ? new Set([id]) : new Set())}
                   fetchLoading={sectionFetchLoading}
