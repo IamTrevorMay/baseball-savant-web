@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     title: 'Triton Apex',
   },
   icons: {
-    icon: '/api/favicon',
+    icon: '/favicon.ico',
     apple: '/icons/apple-touch-icon.png',
   },
 }
