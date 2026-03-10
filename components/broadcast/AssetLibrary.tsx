@@ -16,7 +16,7 @@ interface SavedScene {
 }
 
 export default function AssetLibrary() {
-  const { assets, selectedAssetId, setSelectedAssetId, addAsset, removeAsset, updateAsset, project } = useBroadcast()
+  const { assets, selectedAssetId, setSelectedAssetId, addAsset, removeAsset, updateAsset, project, visibleAssetIds, toggleAssetVisibility, session } = useBroadcast()
   const [showImport, setShowImport] = useState(false)
   const [showTemplateImport, setShowTemplateImport] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -401,6 +401,29 @@ export default function AssetLibrary() {
                     {asset.name}
                   </span>
                 )}
+
+                {/* Visibility toggle */}
+                <button
+                  onClick={e => { e.stopPropagation(); toggleAssetVisibility(asset.id) }}
+                  className={`shrink-0 transition ${
+                    visibleAssetIds.has(asset.id)
+                      ? 'opacity-100 text-emerald-400'
+                      : 'opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300'
+                  }`}
+                  title={visibleAssetIds.has(asset.id) ? 'Hide' : 'Show'}
+                >
+                  {visibleAssetIds.has(asset.id) ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
+                      <path d="M1 1l22 22" />
+                    </svg>
+                  )}
+                </button>
 
                 <button
                   onClick={e => { e.stopPropagation(); handleDelete(asset.id) }}
