@@ -13,6 +13,18 @@ interface RosterPlayer { id: number; name: string; position: string }
 
 const TEAMS = ['AZ','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SF','SEA','STL','TB','TEX','TOR','WSH']
 
+const STATIC_OPTIONS: Record<string, string[]> = {
+  game_year: ['2025','2024','2023','2022','2021','2020','2019','2018','2017','2016','2015'],
+  pitch_name: ['4-Seam Fastball','Sinker','Cutter','Changeup','Slider','Sweeper','Curveball','Knuckle Curve','Split-Finger','Slurve','Knuckeball','Eephus','Slow Curve'],
+  pitch_type: ['FF','SI','FC','CH','SL','ST','CU','KC','FS','SV','KN','EP','CS'],
+  stand: ['L','R'], p_throws: ['L','R'],
+  balls: ['0','1','2','3'], strikes: ['0','1','2'],
+  outs_when_up: ['0','1','2'], inning: Array.from({ length: 18 }, (_, i) => String(i + 1)),
+  bb_type: ['ground_ball','fly_ball','line_drive','popup'],
+  home_team: TEAMS, away_team: TEAMS, vs_team: TEAMS,
+  zone: Array.from({ length: 14 }, (_, i) => String(i + 1)),
+}
+
 type Scope = 'team' | 'player'
 type SubjectType = 'hitting' | 'pitching'
 
@@ -56,7 +68,7 @@ function ReportsPageInner() {
   const [tiles, setTiles] = useState<TileConfig[]>(defaultTiles())
   const [rawData, setRawData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
+  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>(STATIC_OPTIONS)
   const [columns, setColumns] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 1 : 4)
   const [exporting, setExporting] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -249,6 +261,7 @@ function ReportsPageInner() {
   function buildOptions(rows: any[]) {
     const bo = (col: string) => [...new Set(rows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
     setOptionsCache({
+      ...STATIC_OPTIONS,
       game_year: bo('game_year').sort().reverse(), pitch_name: bo('pitch_name'), pitch_type: bo('pitch_type'),
       stand: bo('stand'), p_throws: bo('p_throws'), balls: ['0', '1', '2', '3'], strikes: ['0', '1', '2'],
       outs_when_up: ['0', '1', '2'], inning: Array.from({ length: 18 }, (_, i) => String(i + 1)),
@@ -778,7 +791,7 @@ function ReportsPageInner() {
       </div>
 
       {/* Global Filters */}
-      {hasSubject && <FilterEngine activeFilters={globalFilters} onFiltersChange={setGlobalFilters} optionsCache={optionsCache} />}
+      {(hasSubject || builderMode === 'default') && <FilterEngine activeFilters={globalFilters} onFiltersChange={setGlobalFilters} optionsCache={optionsCache} />}
 
       {/* Save Template Modal */}
       {showSaveModal && (
