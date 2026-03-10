@@ -52,7 +52,7 @@ function BroadcastManagerInner() {
               : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
-          Stream Deck
+          Test Mode
         </button>
       </div>
 
