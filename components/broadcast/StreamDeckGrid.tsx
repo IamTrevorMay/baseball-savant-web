@@ -78,8 +78,6 @@ function TestAssetContent({ asset, slideIndex }: { asset: BroadcastAsset; slideI
           <video
             key={slide.id}
             src={slide.storage_path}
-            muted
-            loop
             autoPlay
             playsInline
             className="w-full h-full"

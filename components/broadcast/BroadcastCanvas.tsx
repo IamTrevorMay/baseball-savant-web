@@ -163,8 +163,6 @@ function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisib
         <video
           key={slide.id}
           src={slide.storage_path}
-          muted
-          loop
           autoPlay
           playsInline
           className="w-full h-full"
