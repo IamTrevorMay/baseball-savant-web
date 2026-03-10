@@ -127,10 +127,33 @@ export default function AssetLibrary() {
     if (!project) return
     setImporting(template.id)
     try {
+      // Detect if this is a live-game template
+      const isLiveGame = template.inputType === 'live-game'
+
       // Build the scene with sample data to get elements
       const config = { templateId: template.id, ...template.defaultConfig }
-      const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
+      const sampleData = isLiveGame ? [] : getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
       const builtScene = template.rebuild(config, sampleData)
+
+      // Build input sections based on template type
+      const inputSections = isLiveGame
+        ? [{
+            id: 'main',
+            label: 'Main',
+            elementIds: builtScene.elements.filter(e => e.sectionBinding).map(e => e.id),
+            enabledInputs: ['playerType', 'season'] as any[],
+            globalInputType: 'live-game' as const,
+            playerType: template.defaultConfig.playerType || 'pitcher',
+            gameYear: template.defaultConfig.dateRange?.type === 'season' ? template.defaultConfig.dateRange.year : 2025,
+          }]
+        : [{
+            id: 'main',
+            label: 'Main',
+            elementIds: [],
+            enabledInputs: ['playerType', 'season', 'primaryStat', 'secondaryStat', 'tertiaryStat', 'sortDir', 'count', 'minSample', 'pitchType', 'title'],
+            playerType: template.defaultConfig.playerType || 'pitcher',
+            gameYear: template.defaultConfig.dateRange?.type === 'season' ? template.defaultConfig.dateRange.year : 2025,
+          }]
 
       // Auto-save as a custom template so we get a DB ID for linking
       const saveRes = await fetch('/api/custom-templates', {
@@ -145,15 +168,8 @@ export default function AssetLibrary() {
           height: template.height,
           background: builtScene.background,
           elements: builtScene.elements,
-          schemaType: 'leaderboard',
-          inputSections: [{
-            id: 'main',
-            label: 'Main',
-            elementIds: [],
-            enabledInputs: ['playerType', 'season', 'primaryStat', 'secondaryStat', 'tertiaryStat', 'sortDir', 'count', 'minSample', 'pitchType', 'title'],
-            playerType: template.defaultConfig.playerType || 'pitcher',
-            gameYear: template.defaultConfig.dateRange?.type === 'season' ? template.defaultConfig.dateRange.year : 2025,
-          }],
+          schemaType: isLiveGame ? 'generic' : 'leaderboard',
+          inputSections,
           base_template_id: template.id,
         }),
       })

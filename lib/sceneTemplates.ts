@@ -986,20 +986,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
 
   // ── BROADCAST TEMPLATES ───────────────────────────────────────────────────
 
-  {
-    id: 'score-bug', name: 'Score Bug', category: 'broadcast',
-    description: 'Live game score overlay', icon: '\u25a3',
-    width: 400, height: 120,
-    build: () => scene('Score Bug', 400, 120, 'transparent', [
-      el('shape', 0, 0, 400, 120, { shape: 'rect', fill: 'rgba(9,9,11,0.9)', stroke: '#27272a', strokeWidth: 1, borderRadius: 8 }),
-      el('text', 15, 10, 180, 30, { text: 'NYY', fontSize: 22, fontWeight: 700, color: '#ffffff', textAlign: 'left' }),
-      el('text', 300, 10, 80, 30, { text: '5', fontSize: 24, fontWeight: 800, color: '#ffffff', textAlign: 'right' }),
-      el('shape', 15, 48, 370, 1, { shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
-      el('text', 15, 55, 180, 30, { text: 'BOS', fontSize: 22, fontWeight: 700, color: '#a1a1aa', textAlign: 'left' }),
-      el('text', 300, 55, 80, 30, { text: '3', fontSize: 24, fontWeight: 800, color: '#a1a1aa', textAlign: 'right' }),
-      el('text', 15, 92, 370, 20, { text: 'BOT 7 \u2022 2 OUT', fontSize: 12, fontWeight: 500, color: '#52525b', textAlign: 'center' }),
-    ]),
-  },
+  // Score Bug — moved to DATA_DRIVEN_TEMPLATES for live game data binding
   {
     id: 'fullscreen-stat', name: 'Full-Screen Stat', category: 'broadcast',
     description: 'Single dramatic number', icon: '#',
@@ -1012,21 +999,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       el('text', 100, 830, 1720, 40, { text: 'Player Name — June 15 vs. Team', fontSize: 22, fontWeight: 400, color: '#52525b', textAlign: 'center' }),
     ]),
   },
-  {
-    id: 'side-panel', name: 'Side Panel', category: 'broadcast',
-    description: 'Vertical sidebar for PiP', icon: '\u258c',
-    width: 400, height: 1080,
-    build: () => scene('Side Panel', 400, 1080, 'transparent', [
-      el('shape', 0, 0, 400, 1080, { shape: 'rect', fill: 'rgba(9,9,11,0.92)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
-      el('shape', 0, 0, 4, 1080, { shape: 'rect', fill: '#06b6d4', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
-      el('player-image', 80, 40, 240, 300, { playerId: null, playerName: '', borderColor: '#06b6d4', showLabel: true }),
-      el('stat-card', 30, 380, 340, 110, { label: 'ERA', value: '2.89', sublabel: '', color: '#06b6d4', fontSize: 40, variant: 'glass' }),
-      el('stat-card', 30, 510, 340, 110, { label: 'K', value: '218', sublabel: '', color: '#a855f7', fontSize: 40, variant: 'glass' }),
-      el('stat-card', 30, 640, 340, 110, { label: 'WHIP', value: '0.98', sublabel: '', color: '#22c55e', fontSize: 40, variant: 'glass' }),
-      el('stat-card', 30, 770, 340, 110, { label: 'AVG VELO', value: '96.8', sublabel: '', color: '#ef4444', fontSize: 40, variant: 'glass' }),
-      el('text', 30, 920, 340, 30, { text: 'Tonight: 7 IP, 11 K', fontSize: 16, fontWeight: 500, color: '#71717a', textAlign: 'center' }),
-    ]),
-  },
+  // Side Panel — moved to DATA_DRIVEN_TEMPLATES for live game data binding
   {
     id: 'pitching-change', name: 'Pitching Change', category: 'broadcast',
     description: 'Incoming pitcher overlay', icon: '\u21bb',
@@ -1278,6 +1251,7 @@ export interface DataDrivenTemplate {
   icon: string
   width: number
   height: number
+  inputType?: 'live-game' | 'player' | 'leaderboard'
   defaultConfig: Omit<TemplateConfig, 'templateId'>
   rebuild: (config: TemplateConfig, rows: any) => Scene
 }
@@ -2068,6 +2042,116 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         duration: 5,
         fps: 30,
         templateConfig: config,
+      }
+    },
+  },
+
+  // ── Score Bug (Live Game) ─────────────────────────────────────────────────
+  {
+    id: 'score-bug',
+    name: 'Score Bug',
+    category: 'broadcast',
+    description: 'Live game score overlay',
+    icon: '\u25a3',
+    width: 400,
+    height: 120,
+    inputType: 'live-game',
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'away_score',
+      dateRange: { type: 'season', year: 2025 },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const game = Array.isArray(data) ? data[0] : data
+      const away = game?.away_abbrev || 'AWAY'
+      const home = game?.home_abbrev || 'HOME'
+      const awayScore = game?.away_score != null ? String(game.away_score) : '--'
+      const homeScore = game?.home_score != null ? String(game.home_score) : '--'
+      const stateLine = game?.state_line || ''
+
+      const elements: SceneElement[] = [
+        el('shape', 0, 0, 400, 120, { shape: 'rect', fill: 'rgba(9,9,11,0.9)', stroke: '#27272a', strokeWidth: 1, borderRadius: 8 }),
+        { ...el('text', 15, 10, 180, 30, { text: away, fontSize: 22, fontWeight: 700, color: '#ffffff', textAlign: 'left' }),
+          sectionBinding: { sectionId: 'main', metric: 'away_abbrev' } },
+        { ...el('text', 300, 10, 80, 30, { text: awayScore, fontSize: 24, fontWeight: 800, color: '#ffffff', textAlign: 'right' }),
+          sectionBinding: { sectionId: 'main', metric: 'away_score', format: 'integer' } },
+        el('shape', 15, 48, 370, 1, { shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
+        { ...el('text', 15, 55, 180, 30, { text: home, fontSize: 22, fontWeight: 700, color: '#a1a1aa', textAlign: 'left' }),
+          sectionBinding: { sectionId: 'main', metric: 'home_abbrev' } },
+        { ...el('text', 300, 55, 80, 30, { text: homeScore, fontSize: 24, fontWeight: 800, color: '#a1a1aa', textAlign: 'right' }),
+          sectionBinding: { sectionId: 'main', metric: 'home_score', format: 'integer' } },
+        { ...el('text', 15, 92, 370, 20, { text: stateLine, fontSize: 12, fontWeight: 500, color: '#52525b', textAlign: 'center' }),
+          sectionBinding: { sectionId: 'main', metric: 'state_line' } },
+      ]
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: 'Score Bug',
+        width: 400,
+        height: 120,
+        background: 'transparent',
+        elements,
+        duration: 5,
+        fps: 30,
+      }
+    },
+  },
+
+  // ── Side Panel (Live Game / Player) ───────────────────────────────────────
+  {
+    id: 'side-panel',
+    name: 'Side Panel',
+    category: 'broadcast',
+    description: 'Vertical sidebar for PiP',
+    icon: '\u258c',
+    width: 400,
+    height: 1080,
+    inputType: 'live-game',
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const game = Array.isArray(data) ? data[0] : data
+      const pitcherName = game?.pitcher_name || game?.player_name || ''
+      const pitcherId = game?.pitcher_id || game?.player_id || null
+      const stateLine = game?.state_line || ''
+
+      // For stat values: prefer stats from scene-stats API, fall back to game data
+      const era = game?.p_era != null ? String(game.p_era) : game?.era != null ? String(game.era) : '--'
+      const k = game?.strikeout != null ? String(game.strikeout) : game?.k != null ? String(game.k) : '--'
+      const whip = game?.whip != null ? String(game.whip) : '--'
+      const velo = game?.avg_velo != null ? String(game.avg_velo) : '--'
+
+      const elements: SceneElement[] = [
+        el('shape', 0, 0, 400, 1080, { shape: 'rect', fill: 'rgba(9,9,11,0.92)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
+        el('shape', 0, 0, 4, 1080, { shape: 'rect', fill: '#06b6d4', stroke: 'transparent', strokeWidth: 0, borderRadius: 0 }),
+        { ...el('player-image', 80, 40, 240, 300, { playerId: pitcherId, playerName: pitcherName, borderColor: '#06b6d4', showLabel: true }),
+          sectionBinding: { sectionId: 'main', metric: '__player__' } },
+        { ...el('stat-card', 30, 380, 340, 110, { label: 'ERA', value: era, sublabel: '', color: '#06b6d4', fontSize: 40, variant: 'glass' }),
+          sectionBinding: { sectionId: 'main', metric: 'p_era', format: '1f' } },
+        { ...el('stat-card', 30, 510, 340, 110, { label: 'K', value: k, sublabel: '', color: '#a855f7', fontSize: 40, variant: 'glass' }),
+          sectionBinding: { sectionId: 'main', metric: 'strikeout', format: 'integer' } },
+        { ...el('stat-card', 30, 640, 340, 110, { label: 'WHIP', value: whip, sublabel: '', color: '#22c55e', fontSize: 40, variant: 'glass' }),
+          sectionBinding: { sectionId: 'main', metric: 'whip', format: '1f' } },
+        { ...el('stat-card', 30, 770, 340, 110, { label: 'AVG VELO', value: velo, sublabel: '', color: '#ef4444', fontSize: 40, variant: 'glass' }),
+          sectionBinding: { sectionId: 'main', metric: 'avg_velo', format: '1f' } },
+        { ...el('text', 30, 920, 340, 30, { text: stateLine, fontSize: 16, fontWeight: 500, color: '#71717a', textAlign: 'center' }),
+          sectionBinding: { sectionId: 'main', metric: 'state_line' } },
+      ]
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: 'Side Panel',
+        width: 400,
+        height: 1080,
+        background: 'transparent',
+        elements,
+        duration: 5,
+        fps: 30,
       }
     },
   },
