@@ -99,7 +99,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     channelRef.current.send({
       type: 'broadcast',
       event,
-      payload: { ...payload, timestamp: Date.now() },
+      payload: { ...payload, source: 'manager', timestamp: Date.now() },
     })
   }, [])
 
@@ -276,6 +276,32 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
                 }).catch(console.error)
                 return next
               })
+            }
+          })
+          .on('broadcast', { event: 'asset:show' }, (payload: any) => {
+            if (payload.payload?.source === 'trigger-api') {
+              const assetId = payload.payload.assetId
+              if (assetId) setVisibleAssetIds(prev => new Set(prev).add(assetId))
+            }
+          })
+          .on('broadcast', { event: 'asset:hide' }, (payload: any) => {
+            if (payload.payload?.source === 'trigger-api') {
+              const assetId = payload.payload.assetId
+              if (assetId) {
+                setVisibleAssetIds(prev => {
+                  const next = new Set(prev)
+                  next.delete(assetId)
+                  return next
+                })
+              }
+            }
+          })
+          .on('broadcast', { event: 'slideshow:goto' }, (payload: any) => {
+            if (payload.payload?.source === 'trigger-api') {
+              const { assetId, slideIndex } = payload.payload
+              if (assetId !== undefined && slideIndex !== undefined) {
+                setSlideshowSlideIndexes(prev => new Map(prev).set(assetId, slideIndex))
+              }
             }
           })
           .subscribe()

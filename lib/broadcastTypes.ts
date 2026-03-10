@@ -104,6 +104,7 @@ export interface BroadcastAsset {
 
 export interface ActiveState {
   visibleAssets: string[] // asset IDs currently shown
+  slideshowIndexes?: Record<string, number> // assetId → current slide index
 }
 
 export interface BroadcastSession {
