@@ -137,6 +137,7 @@ export interface WhoopSleepRow {
   light_duration_ms: number | null
   awake_duration_ms: number | null
   sleep_efficiency: number | null
+  sleep_consistency: number | null
   respiratory_rate: number | null
   raw_data: unknown
   created_at: string
@@ -183,8 +184,9 @@ export function readinessStateFromScore(score: number | null): 'green' | 'yellow
 // Weights reflect controllability: highest = most controllable
 const READINESS_METRICS: { key: string; weight: number; extract: (cycle: WhoopCycleRow | null, sleep: WhoopSleepRow | null) => number | null }[] = [
   { key: 'time_in_bed', weight: 2.0, extract: (_, s) => s?.total_duration_ms ?? null },
-  { key: 'time_asleep', weight: 1.75, extract: (_, s) => (s?.total_duration_ms != null && s?.awake_duration_ms != null) ? s.total_duration_ms - s.awake_duration_ms : null },
-  { key: 'sleep_efficiency', weight: 1.5, extract: (_, s) => s?.sleep_efficiency ?? null },
+  { key: 'sleep_consistency', weight: 1.75, extract: (_, s) => s?.sleep_consistency ?? null },
+  { key: 'time_asleep', weight: 1.5, extract: (_, s) => (s?.total_duration_ms != null && s?.awake_duration_ms != null) ? s.total_duration_ms - s.awake_duration_ms : null },
+  { key: 'sleep_efficiency', weight: 1.25, extract: (_, s) => s?.sleep_efficiency ?? null },
   { key: 'deep_sleep', weight: 1.0, extract: (_, s) => s?.sws_duration_ms ?? null },
   { key: 'rem_sleep', weight: 0.75, extract: (_, s) => s?.rem_duration_ms ?? null },
   { key: 'light_sleep', weight: 0.5, extract: (_, s) => s?.light_duration_ms ?? null },

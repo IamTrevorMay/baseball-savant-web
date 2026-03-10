@@ -285,6 +285,7 @@ export async function syncWhoopData(athleteId: string, days = 365) {
       light_duration_ms: s.score?.stage_summary.total_light_sleep_time_milli ?? null,
       awake_duration_ms: s.score?.stage_summary.total_awake_time_milli ?? null,
       sleep_efficiency: s.score?.sleep_efficiency_percentage ?? null,
+      sleep_consistency: s.score?.sleep_consistency_percentage ?? null,
       respiratory_rate: s.score?.respiratory_rate ?? null,
       raw_data: s,
     }))
