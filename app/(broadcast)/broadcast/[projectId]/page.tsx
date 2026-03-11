@@ -11,8 +11,9 @@ import LivePreview from '@/components/broadcast/LivePreview'
 import LiveControlGrid from '@/components/broadcast/LiveControlGrid'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
+import SceneManager from '@/components/broadcast/SceneManager'
 
-type ViewMode = 'canvas' | 'streamdeck'
+type ViewMode = 'canvas' | 'streamdeck' | 'scenes'
 
 function BroadcastManagerInner() {
   const { loading, project, session, updateProjectSettings } = useBroadcast()
@@ -72,26 +73,19 @@ function BroadcastManagerInner() {
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       {/* View toggle header */}
       <div className="h-8 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 gap-1">
-        <button
-          onClick={() => setViewMode('canvas')}
-          className={`px-2.5 py-0.5 text-[11px] font-medium rounded transition ${
-            viewMode === 'canvas'
-              ? 'bg-zinc-700 text-zinc-100'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          Canvas
-        </button>
-        <button
-          onClick={() => setViewMode('streamdeck')}
-          className={`px-2.5 py-0.5 text-[11px] font-medium rounded transition ${
-            viewMode === 'streamdeck'
-              ? 'bg-zinc-700 text-zinc-100'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          Test Mode
-        </button>
+        {(['canvas', 'scenes', 'streamdeck'] as const).map(mode => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`px-2.5 py-0.5 text-[11px] font-medium rounded transition ${
+              viewMode === mode
+                ? 'bg-zinc-700 text-zinc-100'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {mode === 'canvas' ? 'Canvas' : mode === 'scenes' ? 'Scenes' : 'Test Mode'}
+          </button>
+        ))}
 
         <div className="w-px h-4 bg-zinc-700 mx-1" />
         <button
@@ -191,6 +185,8 @@ function BroadcastManagerInner() {
               <AssetProperties />
             </>
           )
+        ) : viewMode === 'scenes' ? (
+          <SceneManager />
         ) : (
           <StreamDeckGrid />
         )}

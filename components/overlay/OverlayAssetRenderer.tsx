@@ -50,15 +50,25 @@ function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   return style
 }
 
+interface AssetOverrides {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  layer?: number
+  opacity?: number
+}
+
 interface Props {
   asset: BroadcastAsset
   animationPhase: 'entering' | 'exiting' | null
   fps?: number
   slideshowIndex?: number
   onVideoEnded?: () => void
+  overrides?: AssetOverrides
 }
 
-export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded }: Props) {
+export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded, overrides }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef<HTMLStyleElement | null>(null)
 
@@ -94,7 +104,13 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
     }
   }, [animationPhase, asset, fps])
 
-  const assetOpacity = asset.opacity ?? 1
+  // Apply scene overrides
+  const effectiveX = overrides?.x ?? asset.canvas_x
+  const effectiveY = overrides?.y ?? asset.canvas_y
+  const effectiveW = overrides?.width ?? asset.canvas_width
+  const effectiveH = overrides?.height ?? asset.canvas_height
+  const effectiveLayer = overrides?.layer ?? asset.layer
+  const assetOpacity = overrides?.opacity ?? asset.opacity ?? 1
 
   if (asset.asset_type === 'slideshow') {
     const config = asset.slideshow_config
@@ -106,11 +122,11 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         ref={wrapperRef}
         className="absolute overflow-hidden"
         style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          zIndex: asset.layer,
+          left: effectiveX,
+          top: effectiveY,
+          width: effectiveW,
+          height: effectiveH,
+          zIndex: effectiveLayer,
           opacity: assetOpacity,
         }}
       >
@@ -125,20 +141,20 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
 
   if (asset.asset_type === 'scene' && asset.scene_config) {
     const elements = asset.scene_config.elements || []
-    const nativeW = asset.scene_config.width || asset.canvas_width
-    const nativeH = asset.scene_config.height || asset.canvas_height
-    const scaleX = asset.canvas_width / nativeW
-    const scaleY = asset.canvas_height / nativeH
+    const nativeW = asset.scene_config.width || effectiveW
+    const nativeH = asset.scene_config.height || effectiveH
+    const scaleX = effectiveW / nativeW
+    const scaleY = effectiveH / nativeH
     return (
       <div
         ref={wrapperRef}
         className="absolute overflow-hidden"
         style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          zIndex: asset.layer,
+          left: effectiveX,
+          top: effectiveY,
+          width: effectiveW,
+          height: effectiveH,
+          zIndex: effectiveLayer,
           opacity: assetOpacity,
         }}
       >
@@ -168,11 +184,11 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         ref={wrapperRef}
         className="absolute"
         style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          zIndex: asset.layer,
+          left: effectiveX,
+          top: effectiveY,
+          width: effectiveW,
+          height: effectiveH,
+          zIndex: effectiveLayer,
           opacity: assetOpacity,
         }}
       >
@@ -188,11 +204,11 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         ref={wrapperRef}
         className="absolute overflow-hidden"
         style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          zIndex: asset.layer,
+          left: effectiveX,
+          top: effectiveY,
+          width: effectiveW,
+          height: effectiveH,
+          zIndex: effectiveLayer,
           opacity: assetOpacity,
         }}
       >
@@ -215,11 +231,11 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         ref={wrapperRef}
         className="absolute"
         style={{
-          left: asset.canvas_x,
-          top: asset.canvas_y,
-          width: asset.canvas_width,
-          height: asset.canvas_height,
-          zIndex: asset.layer,
+          left: effectiveX,
+          top: effectiveY,
+          width: effectiveW,
+          height: effectiveH,
+          zIndex: effectiveLayer,
           opacity: assetOpacity,
         }}
       >

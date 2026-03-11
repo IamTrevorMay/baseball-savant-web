@@ -4,7 +4,11 @@ import { useState } from 'react'
 import { useBroadcast } from './BroadcastContext'
 
 export default function TriggerBar() {
-  const { assets, visibleAssetIds, session, toggleAssetVisibility, goLive, endSession, slideshowPrev, slideshowNext, getSlideshowIndex } = useBroadcast()
+  const {
+    assets, visibleAssetIds, session, toggleAssetVisibility, goLive, endSession,
+    slideshowPrev, slideshowNext, getSlideshowIndex,
+    scenes, activeSceneId, switchingScene, switchScene,
+  } = useBroadcast()
   const [goingLive, setGoingLive] = useState(false)
   const [overlayUrl, setOverlayUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -33,6 +37,49 @@ export default function TriggerBar() {
 
   return (
     <div className="h-14 bg-zinc-900 border-t border-zinc-800 flex items-center px-4 gap-3">
+      {/* Scene switcher buttons */}
+      {scenes.length > 0 && (
+        <div className="flex items-center gap-1.5 pr-3 border-r border-zinc-700">
+          {scenes.map(scene => {
+            const isActive = activeSceneId === scene.id
+            const color = scene.hotkey_color || '#10b981'
+            return (
+              <button
+                key={scene.id}
+                onClick={() => switchScene(scene.id)}
+                disabled={!session || switchingScene || isActive}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition border ${
+                  isActive
+                    ? 'border-transparent text-white'
+                    : 'border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                } ${!session || switchingScene ? 'opacity-40 cursor-not-allowed' : isActive ? '' : 'cursor-pointer'}`}
+                style={{
+                  backgroundColor: isActive ? color + '30' : 'transparent',
+                  borderColor: isActive ? color : undefined,
+                }}
+              >
+                {/* Layers icon */}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                  <polyline points="2 17 12 22 22 17" />
+                  <polyline points="2 12 12 17 22 12" />
+                </svg>
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: isActive ? color : '#52525b' }}
+                />
+                {scene.name}
+                {scene.hotkey_key && (
+                  <span className="ml-0.5 px-1 py-0 text-[9px] font-mono bg-zinc-700 text-zinc-300 rounded">
+                    {scene.hotkey_key.toUpperCase()}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Asset trigger pills */}
       <div className="flex-1 flex items-center gap-2 overflow-x-auto">
         {assets.map(asset => {

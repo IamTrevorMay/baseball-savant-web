@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastScene, BroadcastSceneAsset, TemplateDataValues } from '@/lib/broadcastTypes'
 import { createClient } from '@supabase/supabase-js'
 
 interface BroadcastContextValue {
@@ -13,6 +13,12 @@ interface BroadcastContextValue {
   previewingAssetId: string | null
   loading: boolean
   slideshowSlideIndexes: Map<string, number>
+
+  // Scene state
+  scenes: BroadcastScene[]
+  sceneAssets: Map<string, BroadcastSceneAsset[]>
+  activeSceneId: string | null
+  switchingScene: boolean
 
   setProject: (p: BroadcastProject) => void
   setAssets: (a: BroadcastAsset[]) => void
@@ -30,6 +36,17 @@ interface BroadcastContextValue {
   slideshowPrev: (assetId: string) => void
   getSlideshowIndex: (assetId: string) => number
   updateProjectSettings: (updates: Partial<BroadcastProjectSettings>) => void
+
+  // Scene methods
+  setScenes: (s: BroadcastScene[]) => void
+  addScene: (s: BroadcastScene) => void
+  updateScene: (id: string, updates: Partial<BroadcastScene>) => void
+  removeScene: (id: string) => void
+  switchScene: (toSceneId: string) => void
+  addSceneAsset: (sa: BroadcastSceneAsset) => void
+  updateSceneAsset: (id: string, updates: Partial<BroadcastSceneAsset>) => void
+  removeSceneAsset: (id: string) => void
+  reloadSceneAssets: () => Promise<void>
 }
 
 const BroadcastCtx = createContext<BroadcastContextValue | null>(null)
@@ -52,6 +69,12 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
 
+  // Scene state
+  const [scenes, setScenes] = useState<BroadcastScene[]>([])
+  const [sceneAssets, setSceneAssets] = useState<Map<string, BroadcastSceneAsset[]>>(new Map())
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
+  const [switchingScene, setSwitchingScene] = useState(false)
+
   // Initialize supabase client for Realtime
   useEffect(() => {
     supabaseRef.current = createClient(
@@ -60,18 +83,34 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     )
   }, [])
 
-  // Fetch project and assets
+  // Fetch project, assets, and scenes
   useEffect(() => {
     async function load() {
       try {
-        const [projRes, assetsRes] = await Promise.all([
+        const [projRes, assetsRes, scenesRes, sceneAssetsRes] = await Promise.all([
           fetch(`/api/broadcast/projects/${projectId}`),
           fetch(`/api/broadcast/assets?project_id=${projectId}`),
+          fetch(`/api/broadcast/scenes?project_id=${projectId}`),
+          fetch(`/api/broadcast/scene-assets?project_id=${projectId}`),
         ])
         const projData = await projRes.json()
         const assetsData = await assetsRes.json()
+        const scenesData = await scenesRes.json()
+        const sceneAssetsData = await sceneAssetsRes.json()
+
         if (projData.project) setProject(projData.project)
         if (assetsData.assets) setAssets(assetsData.assets)
+        if (scenesData.scenes) setScenes(scenesData.scenes)
+
+        if (sceneAssetsData.sceneAssets) {
+          const map = new Map<string, BroadcastSceneAsset[]>()
+          for (const sa of sceneAssetsData.sceneAssets) {
+            const list = map.get(sa.scene_id) || []
+            list.push(sa)
+            map.set(sa.scene_id, list)
+          }
+          setSceneAssets(map)
+        }
       } catch (err) {
         console.error('Failed to load broadcast project:', err)
       } finally {
@@ -79,6 +118,24 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     }
     load()
+  }, [projectId])
+
+  const reloadSceneAssets = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/broadcast/scene-assets?project_id=${projectId}`)
+      const data = await res.json()
+      if (data.sceneAssets) {
+        const map = new Map<string, BroadcastSceneAsset[]>()
+        for (const sa of data.sceneAssets) {
+          const list = map.get(sa.scene_id) || []
+          list.push(sa)
+          map.set(sa.scene_id, list)
+        }
+        setSceneAssets(map)
+      }
+    } catch (err) {
+      console.error('Failed to reload scene assets:', err)
+    }
   }, [projectId])
 
   const addAsset = useCallback((asset: BroadcastAsset) => {
@@ -105,37 +162,37 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
 
   const flashTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
+  const persistActiveState = useCallback((visibleIds: Set<string>, sceneId: string | null) => {
+    if (!session) return
+    fetch(`/api/broadcast/sessions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: session.id,
+        active_state: { visibleAssets: Array.from(visibleIds), activeSceneId: sceneId },
+      }),
+    }).catch(console.error)
+  }, [session])
+
   const showAsset = useCallback((assetId: string) => {
     setVisibleAssetIds(prev => {
       const next = new Set(prev)
       next.add(assetId)
       sendEvent('asset:show', { assetId })
-      if (session) {
-        fetch(`/api/broadcast/sessions`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: session.id, active_state: { visibleAssets: Array.from(next) } }),
-        }).catch(console.error)
-      }
+      persistActiveState(next, activeSceneId)
       return next
     })
-  }, [session, sendEvent])
+  }, [sendEvent, persistActiveState, activeSceneId])
 
   const hideAsset = useCallback((assetId: string) => {
     setVisibleAssetIds(prev => {
       const next = new Set(prev)
       next.delete(assetId)
       sendEvent('asset:hide', { assetId })
-      if (session) {
-        fetch(`/api/broadcast/sessions`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: session.id, active_state: { visibleAssets: Array.from(next) } }),
-        }).catch(console.error)
-      }
+      persistActiveState(next, activeSceneId)
       return next
     })
-  }, [session, sendEvent])
+  }, [sendEvent, persistActiveState, activeSceneId])
 
   const toggleAssetVisibility = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
@@ -150,7 +207,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         if (isVisible) hideAsset(assetId)
         break
       case 'flash': {
-        // Clear any existing flash timer
         const existing = flashTimersRef.current.get(assetId)
         if (existing) clearTimeout(existing)
         showAsset(assetId)
@@ -169,7 +225,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   }, [assets, visibleAssetIds, showAsset, hideAsset])
 
   const previewAsset = useCallback((id: string) => {
-    if (previewingAssetId) return // already previewing
+    if (previewingAssetId) return
     setPreviewingAssetId(id)
     const asset = assets.find(a => a.id === id)
     const enterFrames = asset?.enter_transition?.durationFrames || 15
@@ -179,7 +235,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     const exitMs = (exitFrames / fps) * 1000
     const holdMs = 1000
 
-    // enter → hold → exit → clear
     setTimeout(() => {
       setPreviewingAssetId(`${id}:exit`)
       setTimeout(() => {
@@ -188,13 +243,157 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     }, enterMs + holdMs)
   }, [previewingAssetId, assets, project])
 
-  // Keyboard hotkey listener
+  // Scene CRUD
+  const addScene = useCallback((scene: BroadcastScene) => {
+    setScenes(prev => [...prev, scene])
+  }, [])
+
+  const updateScene = useCallback((id: string, updates: Partial<BroadcastScene>) => {
+    setScenes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+  }, [])
+
+  const removeScene = useCallback((id: string) => {
+    setScenes(prev => prev.filter(s => s.id !== id))
+    setSceneAssets(prev => {
+      const next = new Map(prev)
+      next.delete(id)
+      return next
+    })
+    if (activeSceneId === id) setActiveSceneId(null)
+  }, [activeSceneId])
+
+  // Scene-asset CRUD
+  const addSceneAsset = useCallback((sa: BroadcastSceneAsset) => {
+    setSceneAssets(prev => {
+      const next = new Map(prev)
+      const list = [...(next.get(sa.scene_id) || []), sa]
+      next.set(sa.scene_id, list)
+      return next
+    })
+  }, [])
+
+  const updateSceneAsset = useCallback((id: string, updates: Partial<BroadcastSceneAsset>) => {
+    setSceneAssets(prev => {
+      const next = new Map<string, BroadcastSceneAsset[]>()
+      for (const [sceneId, list] of prev) {
+        next.set(sceneId, list.map(sa => sa.id === id ? { ...sa, ...updates } : sa))
+      }
+      return next
+    })
+  }, [])
+
+  const removeSceneAsset = useCallback((id: string) => {
+    setSceneAssets(prev => {
+      const next = new Map<string, BroadcastSceneAsset[]>()
+      for (const [sceneId, list] of prev) {
+        next.set(sceneId, list.filter(sa => sa.id !== id))
+      }
+      return next
+    })
+  }, [])
+
+  // Switch scene — the core logic
+  const switchScene = useCallback((toSceneId: string) => {
+    if (switchingScene || !session) return
+    if (toSceneId === activeSceneId) return
+
+    const targetScene = scenes.find(s => s.id === toSceneId)
+    if (!targetScene) return
+
+    setSwitchingScene(true)
+
+    // Compute which assets to hide (old scene) and show (new scene)
+    const oldSceneAssetList = activeSceneId ? sceneAssets.get(activeSceneId) || [] : []
+    const newSceneAssetList = sceneAssets.get(toSceneId) || []
+
+    const assetsToHide = oldSceneAssetList
+      .filter(sa => sa.is_visible)
+      .map(sa => sa.asset_id)
+    const assetsToShow = newSceneAssetList
+      .filter(sa => sa.is_visible)
+      .map(sa => sa.asset_id)
+
+    // Build overrides map
+    const overrides: Record<string, any> = {}
+    for (const sa of newSceneAssetList) {
+      if (sa.override_x != null || sa.override_y != null || sa.override_width != null ||
+          sa.override_height != null || sa.override_layer != null || sa.override_opacity != null) {
+        overrides[sa.asset_id] = {
+          ...(sa.override_x != null && { x: sa.override_x }),
+          ...(sa.override_y != null && { y: sa.override_y }),
+          ...(sa.override_width != null && { width: sa.override_width }),
+          ...(sa.override_height != null && { height: sa.override_height }),
+          ...(sa.override_layer != null && { layer: sa.override_layer }),
+          ...(sa.override_opacity != null && { opacity: sa.override_opacity }),
+        }
+      }
+    }
+
+    const stingerUrl = targetScene.stinger_enabled
+      ? (targetScene.stinger_video_url || targetScene.stinger_storage_path)
+      : null
+
+    // Send scene:switch event
+    sendEvent('scene:switch', {
+      sceneId: toSceneId,
+      assetsToHide,
+      assetsToShow,
+      overrides,
+      stingerUrl: stingerUrl || undefined,
+      stingerCutPoint: stingerUrl ? targetScene.stinger_cut_point : undefined,
+    })
+
+    // Perform the local swap
+    const performSwap = () => {
+      setVisibleAssetIds(prev => {
+        const next = new Set(prev)
+        for (const id of assetsToHide) next.delete(id)
+        for (const id of assetsToShow) next.add(id)
+        return next
+      })
+      setActiveSceneId(toSceneId)
+      setSwitchingScene(false)
+
+      // Persist
+      const newVisible = new Set<string>()
+      for (const id of assetsToShow) newVisible.add(id)
+      // Keep non-scene assets that were already visible
+      setVisibleAssetIds(prev => {
+        const merged = new Set(prev)
+        for (const id of assetsToHide) merged.delete(id)
+        for (const id of assetsToShow) merged.add(id)
+        persistActiveState(merged, toSceneId)
+        return merged
+      })
+    }
+
+    if (stingerUrl) {
+      // Wait for cut point duration before performing swap
+      const cutDelay = (targetScene.stinger_cut_point || 0.5) * 2000 // Assume ~2s stinger
+      setTimeout(performSwap, cutDelay)
+    } else {
+      // Immediate swap
+      performSwap()
+    }
+  }, [switchingScene, session, activeSceneId, scenes, sceneAssets, sendEvent, persistActiveState])
+
+  // Keyboard hotkey listener — assets + scenes
   useEffect(() => {
     if (!session) return
     function handleKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       const key = e.key.toLowerCase()
+
+      // Check scene hotkeys first
+      const scene = scenes.find(s => s.hotkey_key === key)
+      if (scene) {
+        e.preventDefault()
+        switchScene(scene.id)
+        return
+      }
+
+      // Then asset hotkeys
       const asset = assets.find(a => a.hotkey_key === key)
       if (asset) {
         e.preventDefault()
@@ -203,7 +402,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [session, assets, toggleAssetVisibility])
+  }, [session, assets, scenes, toggleAssetVisibility, switchScene])
 
   const getSlideshowIndex = useCallback((assetId: string): number => {
     return slideshowSlideIndexes.get(assetId) || 0
@@ -334,6 +533,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
       setSession(null)
       setVisibleAssetIds(new Set())
+      setActiveSceneId(null)
     } catch (err) {
       console.error('Failed to end session:', err)
     }
@@ -343,10 +543,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     <BroadcastCtx.Provider value={{
       project, assets, session, visibleAssetIds, selectedAssetId, previewingAssetId, loading,
       slideshowSlideIndexes,
+      scenes, sceneAssets, activeSceneId, switchingScene,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
+      setScenes, addScene, updateScene, removeScene, switchScene,
+      addSceneAsset, updateSceneAsset, removeSceneAsset, reloadSceneAssets,
     }}>
       {children}
     </BroadcastCtx.Provider>

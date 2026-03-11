@@ -111,6 +111,110 @@ export const TRANSITIONS: TransitionPreset[] = [
       { frame: start + dur, props: { x: el.x, y: el.y, opacity: 1, rotation: 0 }, easing: 'ease-out' as EasingFunction },
     ],
   },
+  {
+    id: 'blur-in',
+    name: 'Blur In',
+    category: 'enter',
+    icon: '\u25ce',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, opacity: 0 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+    ],
+  },
+  {
+    id: 'zoom-rotate-in',
+    name: 'Zoom Rotate In',
+    category: 'enter',
+    icon: '\u27f3',
+    generate: (el, start, dur) => {
+      const shrink = 0.3
+      const dw = el.width * (1 - shrink) / 2
+      const dh = el.height * (1 - shrink) / 2
+      return [
+        { frame: start, props: { x: el.x + dw, y: el.y + dh, width: el.width * shrink, height: el.height * shrink, opacity: 0, rotation: -180 }, easing: 'ease-out' as EasingFunction },
+        { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1, rotation: 0 }, easing: 'ease-out' as EasingFunction },
+      ]
+    },
+  },
+  {
+    id: 'flip-in',
+    name: 'Flip In',
+    category: 'enter',
+    icon: '\u2194',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, opacity: 0 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+    ],
+  },
+  {
+    id: 'elastic-in',
+    name: 'Elastic In',
+    category: 'enter',
+    icon: '\u2263',
+    generate: (el, start, dur) => {
+      const shrink = 0.3
+      const overshoot = 1.08
+      const dw1 = el.width * (1 - shrink) / 2
+      const dh1 = el.height * (1 - shrink) / 2
+      const dw2 = el.width * (1 - overshoot) / 2
+      const dh2 = el.height * (1 - overshoot) / 2
+      return [
+        { frame: start, props: { x: el.x + dw1, y: el.y + dh1, width: el.width * shrink, height: el.height * shrink, opacity: 0 }, easing: 'ease-out' as EasingFunction },
+        { frame: start + Math.floor(dur * 0.6), props: { x: el.x + dw2, y: el.y + dh2, width: el.width * overshoot, height: el.height * overshoot, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+        { frame: start + Math.floor(dur * 0.8), props: { x: el.x + el.width * 0.02, y: el.y + el.height * 0.02, width: el.width * 0.96, height: el.height * 0.96, opacity: 1 }, easing: 'ease-in-out' as EasingFunction },
+        { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'ease-in-out' as EasingFunction },
+      ]
+    },
+  },
+  {
+    id: 'swing-in',
+    name: 'Swing In',
+    category: 'enter',
+    icon: '\u21a9',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, opacity: 0, rotation: -30 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + Math.floor(dur * 0.6), props: { x: el.x, y: el.y, opacity: 1, rotation: 10 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + Math.floor(dur * 0.8), props: { x: el.x, y: el.y, opacity: 1, rotation: -5 }, easing: 'ease-in-out' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, opacity: 1, rotation: 0 }, easing: 'ease-in-out' as EasingFunction },
+    ],
+  },
+  {
+    id: 'typewriter-reveal',
+    name: 'Typewriter Reveal',
+    category: 'enter',
+    icon: '\u2328',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, width: 0, height: el.height, opacity: 1 }, easing: 'linear' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'linear' as EasingFunction },
+    ],
+  },
+  {
+    id: 'glitch-in',
+    name: 'Glitch In',
+    category: 'enter',
+    icon: '\u26a1',
+    generate: (el, start, dur) => {
+      const step = Math.max(2, Math.floor(dur / 6))
+      return [
+        { frame: start, props: { x: el.x + 20, y: el.y, opacity: 0 }, easing: 'linear' as EasingFunction },
+        { frame: start + step, props: { x: el.x - 15, y: el.y + 5, opacity: 0.5 }, easing: 'linear' as EasingFunction },
+        { frame: start + step * 2, props: { x: el.x + 10, y: el.y - 3, opacity: 0.3 }, easing: 'linear' as EasingFunction },
+        { frame: start + step * 3, props: { x: el.x - 5, y: el.y + 2, opacity: 0.8 }, easing: 'linear' as EasingFunction },
+        { frame: start + step * 4, props: { x: el.x + 3, y: el.y, opacity: 0.6 }, easing: 'linear' as EasingFunction },
+        { frame: start + dur, props: { x: el.x, y: el.y, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+      ]
+    },
+  },
+  {
+    id: 'curtain-open',
+    name: 'Curtain Open',
+    category: 'enter',
+    icon: '\u2630',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x + el.width / 2, y: el.y, width: 0, height: el.height, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'ease-out' as EasingFunction },
+    ],
+  },
 
   // Exits
   {
@@ -157,6 +261,66 @@ export const TRANSITIONS: TransitionPreset[] = [
         { frame: start + dur, props: { x: el.x + dw, y: el.y + dh, width: el.width * shrink, height: el.height * shrink, opacity: 0 }, easing: 'ease-in' as EasingFunction },
       ]
     },
+  },
+  {
+    id: 'blur-out',
+    name: 'Blur Out',
+    category: 'exit',
+    icon: '\u25ce',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, opacity: 1 }, easing: 'ease-in' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, opacity: 0 }, easing: 'ease-in' as EasingFunction },
+    ],
+  },
+  {
+    id: 'zoom-rotate-out',
+    name: 'Zoom Rotate Out',
+    category: 'exit',
+    icon: '\u27f3',
+    generate: (el, start, dur) => {
+      const shrink = 0.3
+      const dw = el.width * (1 - shrink) / 2
+      const dh = el.height * (1 - shrink) / 2
+      return [
+        { frame: start, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1, rotation: 0 }, easing: 'ease-in' as EasingFunction },
+        { frame: start + dur, props: { x: el.x + dw, y: el.y + dh, width: el.width * shrink, height: el.height * shrink, opacity: 0, rotation: 180 }, easing: 'ease-in' as EasingFunction },
+      ]
+    },
+  },
+  {
+    id: 'flip-out',
+    name: 'Flip Out',
+    category: 'exit',
+    icon: '\u2194',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, opacity: 1 }, easing: 'ease-in' as EasingFunction },
+      { frame: start + dur, props: { x: el.x, y: el.y, opacity: 0 }, easing: 'ease-in' as EasingFunction },
+    ],
+  },
+  {
+    id: 'shrink-spin-out',
+    name: 'Shrink Spin Out',
+    category: 'exit',
+    icon: '\u21ba',
+    generate: (el, start, dur) => {
+      const shrink = 0.1
+      const dw = el.width * (1 - shrink) / 2
+      const dh = el.height * (1 - shrink) / 2
+      return [
+        { frame: start, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1, rotation: 0 }, easing: 'ease-in' as EasingFunction },
+        { frame: start + dur, props: { x: el.x + dw, y: el.y + dh, width: el.width * shrink, height: el.height * shrink, opacity: 0, rotation: 360 }, easing: 'ease-in' as EasingFunction },
+      ]
+    },
+  },
+  {
+    id: 'curtain-close',
+    name: 'Curtain Close',
+    category: 'exit',
+    icon: '\u2630',
+    generate: (el, start, dur) => [
+      { frame: start, props: { x: el.x, y: el.y, width: el.width, height: el.height, opacity: 1 }, easing: 'ease-in' as EasingFunction },
+      { frame: start + dur, props: { x: el.x + el.width / 2, y: el.y, width: 0, height: el.height, opacity: 1 }, easing: 'ease-in' as EasingFunction },
+    ],
   },
 
   // Broadcast-specific

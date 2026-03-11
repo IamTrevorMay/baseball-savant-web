@@ -101,11 +101,43 @@ export interface BroadcastAsset {
   updated_at: string
 }
 
+// ── Broadcast Scene ─────────────────────────────────────────────────────────
+
+export interface BroadcastScene {
+  id: string
+  project_id: string
+  name: string
+  sort_order: number
+  stinger_video_url: string | null
+  stinger_storage_path: string | null
+  stinger_enabled: boolean
+  stinger_cut_point: number
+  transition_override: TransitionConfig | null
+  hotkey_key: string | null
+  hotkey_color: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BroadcastSceneAsset {
+  id: string
+  scene_id: string
+  asset_id: string
+  override_x: number | null
+  override_y: number | null
+  override_width: number | null
+  override_height: number | null
+  override_layer: number | null
+  override_opacity: number | null
+  is_visible: boolean
+}
+
 // ── Broadcast Session ───────────────────────────────────────────────────────
 
 export interface ActiveState {
   visibleAssets: string[] // asset IDs currently shown
   slideshowIndexes?: Record<string, number> // assetId → current slide index
+  activeSceneId?: string | null
 }
 
 export interface BroadcastSession {
@@ -129,6 +161,7 @@ export type BroadcastEventType =
   | 'video:stop'
   | 'slideshow:goto'
   | 'session:sync'
+  | 'scene:switch'
 
 export interface BroadcastEvent {
   event: BroadcastEventType
@@ -139,5 +172,11 @@ export interface BroadcastEvent {
     sceneConfig?: BroadcastAsset['scene_config']
     visibleAssets?: string[]
     videoPlaying?: string[]
+    sceneId?: string
+    stingerUrl?: string
+    stingerCutPoint?: number
+    assetsToHide?: string[]
+    assetsToShow?: string[]
+    overrides?: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
   }
 }
