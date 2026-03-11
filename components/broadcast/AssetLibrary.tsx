@@ -49,6 +49,10 @@ export default function AssetLibrary() {
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null)
   const [segmentNameInput, setSegmentNameInput] = useState('')
 
+  // Drag-and-drop state
+  const [dragAssetId, setDragAssetId] = useState<string | null>(null)
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null) // segmentId or '__loose__'
+
   // Go Live state
   const [goingLive, setGoingLive] = useState(false)
   const [overlayUrl, setOverlayUrl] = useState<string | null>(null)
@@ -559,6 +563,110 @@ export default function AssetLibrary() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ── Drag-and-drop handlers ───────────────────────────────────────────────
+
+  function handleDragStart(e: React.DragEvent, assetId: string) {
+    setDragAssetId(assetId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', assetId)
+  }
+
+  function handleDragEnd() {
+    setDragAssetId(null)
+    setDragOverTarget(null)
+  }
+
+  function handleDragOverSegment(e: React.DragEvent, segmentId: string) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverTarget !== segmentId) setDragOverTarget(segmentId)
+  }
+
+  function handleDragOverLoose(e: React.DragEvent) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverTarget !== '__loose__') setDragOverTarget('__loose__')
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    // Only clear if leaving the actual target (not entering a child)
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOverTarget(null)
+    }
+  }
+
+  async function handleDropOnSegment(e: React.DragEvent, targetSegmentId: string) {
+    e.preventDefault()
+    setDragOverTarget(null)
+    const assetId = e.dataTransfer.getData('text/plain') || dragAssetId
+    if (!assetId) return
+    setDragAssetId(null)
+
+    const currentSegmentId = assetToSegment.get(assetId)
+
+    // Already in this segment — no-op
+    if (currentSegmentId === targetSegmentId) return
+
+    // If currently in another segment, remove from old
+    if (currentSegmentId) {
+      const oldSaList = segmentAssets.get(currentSegmentId) || []
+      const existingSa = oldSaList.find(sa => sa.asset_id === assetId)
+      if (existingSa) {
+        try {
+          await fetch('/api/broadcast/scene-assets', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: existingSa.id }),
+          })
+          removeSegmentAsset(existingSa.id)
+        } catch (err) {
+          console.error('Failed to remove from old segment:', err)
+          return
+        }
+      }
+    }
+
+    // Add to new segment
+    try {
+      const res = await fetch('/api/broadcast/scene-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_id: targetSegmentId, asset_id: assetId }),
+      })
+      const data = await res.json()
+      if (data.sceneAsset) addSegmentAsset(data.sceneAsset)
+    } catch (err) {
+      console.error('Failed to add to segment:', err)
+    }
+  }
+
+  async function handleDropOnLoose(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOverTarget(null)
+    const assetId = e.dataTransfer.getData('text/plain') || dragAssetId
+    if (!assetId) return
+    setDragAssetId(null)
+
+    const currentSegmentId = assetToSegment.get(assetId)
+    if (!currentSegmentId) return // already loose
+
+    // Remove from segment
+    const saList = segmentAssets.get(currentSegmentId) || []
+    const existingSa = saList.find(sa => sa.asset_id === assetId)
+    if (existingSa) {
+      try {
+        await fetch('/api/broadcast/scene-assets', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: existingSa.id }),
+        })
+        removeSegmentAsset(existingSa.id)
+      } catch (err) {
+        console.error('Failed to remove from segment:', err)
+      }
+    }
+  }
+
   // ── Asset row renderer ────────────────────────────────────────────────────
 
   function renderAssetRow(asset: BroadcastAsset, indent: boolean = false) {
@@ -567,19 +675,25 @@ export default function AssetLibrary() {
     const isVisible = visibleAssetIds.has(asset.id)
     const isSlideshow = asset.asset_type === 'slideshow'
     const slideCount = asset.slideshow_config?.slides?.length || 0
+    const isDragging = dragAssetId === asset.id
 
     return (
       <div
         key={asset.id}
-        className={`group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer transition ${
+        draggable
+        onDragStart={e => handleDragStart(e, asset.id)}
+        onDragEnd={handleDragEnd}
+        className={`group flex items-center gap-1.5 px-3 py-1.5 cursor-grab active:cursor-grabbing transition ${
           indent ? 'pl-7' : ''
         } ${
-          isSelected
+          isDragging
+            ? 'opacity-40'
+            : isSelected
             ? 'bg-red-500/10 border-l-2 border-red-400'
             : isMultiSelected
             ? 'bg-blue-500/10 border-l-2 border-blue-400'
             : 'hover:bg-zinc-800/50 border-l-2 border-transparent'
-        }`}
+        } ${!isDragging && !isSelected && !isMultiSelected ? 'border-l-2 border-transparent' : ''}`}
         onClick={e => handleAssetClick(asset.id, e)}
       >
         <div
@@ -700,13 +814,21 @@ export default function AssetLibrary() {
     const segAssetIds = new Set(saList.map(sa => sa.asset_id))
     const segAssets = assets.filter(a => segAssetIds.has(a.id))
     const color = segment.hotkey_color || '#10b981'
+    const isDragOver = dragOverTarget === segment.id && dragAssetId != null
 
     return (
-      <div key={segment.id}>
+      <div
+        key={segment.id}
+        onDragOver={e => handleDragOverSegment(e, segment.id)}
+        onDragLeave={handleDragLeave}
+        onDrop={e => handleDropOnSegment(e, segment.id)}
+      >
         {/* Segment header */}
         <div
           className={`group flex items-center gap-1.5 px-3 py-1.5 cursor-pointer transition ${
-            isHeaderSelected
+            isDragOver
+              ? 'bg-emerald-500/15 border-l-2 border-emerald-400 ring-1 ring-inset ring-emerald-500/30'
+              : isHeaderSelected
               ? 'bg-emerald-500/10 border-l-2 border-emerald-400'
               : 'hover:bg-zinc-800/50 border-l-2 border-transparent'
           }`}
@@ -873,8 +995,22 @@ export default function AssetLibrary() {
           </div>
         ) : (
           <div className="py-0.5">
-            {/* Loose assets (not in any segment) */}
-            {looseAssets.map(asset => renderAssetRow(asset))}
+            {/* Loose assets drop zone */}
+            <div
+              onDragOver={handleDragOverLoose}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDropOnLoose}
+              className={`min-h-[4px] transition-all ${
+                dragOverTarget === '__loose__' && dragAssetId
+                  ? 'bg-blue-500/10 ring-1 ring-inset ring-blue-500/30 min-h-[24px] flex items-center justify-center'
+                  : ''
+              }`}
+            >
+              {dragOverTarget === '__loose__' && dragAssetId && (
+                <span className="text-[9px] text-blue-400">Drop here to ungroup</span>
+              )}
+              {looseAssets.map(asset => renderAssetRow(asset))}
+            </div>
 
             {/* Segment folders */}
             {sortedSegments.map(segment => renderSegmentFolder(segment))}
