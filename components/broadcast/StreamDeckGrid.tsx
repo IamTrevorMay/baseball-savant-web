@@ -2,10 +2,38 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useBroadcast } from './BroadcastContext'
-import { BroadcastAsset } from '@/lib/broadcastTypes'
+import { BroadcastAsset, SlideshowTransitionType } from '@/lib/broadcastTypes'
 import { SceneElement } from '@/lib/sceneTypes'
 import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
+
+function generateSlideshowTransitionCSS(type: SlideshowTransitionType, durationMs: number) {
+  const id = `ss-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  const oldName = `${id}-old`
+  const newName = `${id}-new`
+  let keyframes = ''
+  switch (type) {
+    case 'crossfade':
+      keyframes = `@keyframes ${oldName} { from { opacity: 1; } to { opacity: 0; } } @keyframes ${newName} { from { opacity: 0; } to { opacity: 1; } }`; break
+    case 'slide-left':
+      keyframes = `@keyframes ${oldName} { from { transform: translateX(0); } to { transform: translateX(-100%); } } @keyframes ${newName} { from { transform: translateX(100%); } to { transform: translateX(0); } }`; break
+    case 'slide-right':
+      keyframes = `@keyframes ${oldName} { from { transform: translateX(0); } to { transform: translateX(100%); } } @keyframes ${newName} { from { transform: translateX(-100%); } to { transform: translateX(0); } }`; break
+    case 'slide-up':
+      keyframes = `@keyframes ${oldName} { from { transform: translateY(0); } to { transform: translateY(-100%); } } @keyframes ${newName} { from { transform: translateY(100%); } to { transform: translateY(0); } }`; break
+    case 'slide-down':
+      keyframes = `@keyframes ${oldName} { from { transform: translateY(0); } to { transform: translateY(100%); } } @keyframes ${newName} { from { transform: translateY(-100%); } to { transform: translateY(0); } }`; break
+    case 'zoom':
+      keyframes = `@keyframes ${oldName} { from { transform: scale(1); opacity: 1; } to { transform: scale(0.7); opacity: 0; } } @keyframes ${newName} { from { transform: scale(1.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }`; break
+    case 'flip':
+      keyframes = `@keyframes ${oldName} { from { transform: perspective(800px) rotateY(0); opacity: 1; } to { transform: perspective(800px) rotateY(90deg); opacity: 0; } } @keyframes ${newName} { from { transform: perspective(800px) rotateY(-90deg); opacity: 0; } to { transform: perspective(800px) rotateY(0); opacity: 1; } }`; break
+    case 'wipe':
+      keyframes = `@keyframes ${oldName} { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 0 0 100%); } } @keyframes ${newName} { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }`; break
+    default: return null
+  }
+  const easing = 'cubic-bezier(0.25, 0.1, 0.25, 1)'
+  return { oldAnimation: `${oldName} ${durationMs}ms ${easing} forwards`, newAnimation: `${newName} ${durationMs}ms ${easing} forwards`, keyframes }
+}
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
@@ -78,36 +106,7 @@ function TestAssetContent({ asset, slideIndex, onVideoEnded }: { asset: Broadcas
   }
 
   if (asset.asset_type === 'slideshow') {
-    const config = asset.slideshow_config
-    if (!config || !config.slides.length) {
-      return (
-        <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
-          <span className="text-zinc-500 text-xs">Empty Slideshow</span>
-        </div>
-      )
-    }
-    const idx = slideIndex || 0
-    const slide = config.slides[idx] || config.slides[0]
-    const fit = config.fit || 'contain'
-    return (
-      <div className="w-full h-full relative overflow-hidden">
-        {slide.type === 'image' ? (
-          <img src={slide.storage_path} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} draggable={false} />
-        ) : (
-          <video
-            key={slide.id}
-            src={slide.storage_path}
-            autoPlay
-            playsInline
-            className="w-full h-full"
-            style={{ objectFit: fit }}
-          />
-        )}
-        <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-zinc-300 font-mono">
-          {idx + 1}/{config.slides.length}
-        </div>
-      </div>
-    )
+    return <TestSlideshowContent asset={asset} slideIndex={slideIndex || 0} />
   }
 
   if (asset.asset_type === 'scene' && asset.scene_config) {
@@ -160,6 +159,77 @@ function TestAssetContent({ asset, slideIndex, onVideoEnded }: { asset: Broadcas
   }
 
   return null
+}
+
+// ── Slideshow with transition support ─────────────────────────────────────
+
+function TestSlideshowContent({ asset, slideIndex }: { asset: BroadcastAsset; slideIndex: number }) {
+  const config = asset.slideshow_config
+  const prevIdxRef = useRef(slideIndex)
+  const [transitioning, setTransitioning] = useState(false)
+  const [prevSlideIdx, setPrevSlideIdx] = useState(0)
+  const [oldAnim, setOldAnim] = useState('')
+  const [newAnim, setNewAnim] = useState('')
+  const transStyleRef = useRef<HTMLStyleElement | null>(null)
+
+  useEffect(() => {
+    if (slideIndex === prevIdxRef.current) return
+    if (!config || config.slides.length < 2) {
+      prevIdxRef.current = slideIndex
+      return
+    }
+    const slide = config.slides[slideIndex]
+    const transType = slide?.transition || config.transition || 'none'
+    if (transType === 'none') {
+      prevIdxRef.current = slideIndex
+      return
+    }
+    const duration = config.transitionDuration || 500
+    const result = generateSlideshowTransitionCSS(transType, duration)
+    if (!result) { prevIdxRef.current = slideIndex; return }
+
+    setPrevSlideIdx(prevIdxRef.current)
+    prevIdxRef.current = slideIndex
+    if (transStyleRef.current) removeKeyframes(transStyleRef.current)
+    transStyleRef.current = injectKeyframes(result.keyframes)
+    setOldAnim(result.oldAnimation)
+    setNewAnim(result.newAnimation)
+    setTransitioning(true)
+    const timer = setTimeout(() => {
+      setTransitioning(false)
+      if (transStyleRef.current) { removeKeyframes(transStyleRef.current); transStyleRef.current = null }
+    }, duration)
+    return () => { clearTimeout(timer); if (transStyleRef.current) { removeKeyframes(transStyleRef.current); transStyleRef.current = null } }
+  }, [slideIndex, config])
+
+  if (!config || !config.slides.length) {
+    return <div className="w-full h-full flex items-center justify-center bg-zinc-800/50"><span className="text-zinc-500 text-xs">Empty Slideshow</span></div>
+  }
+
+  const currentSlide = config.slides[slideIndex] || config.slides[0]
+  const prevSlide = config.slides[prevSlideIdx]
+  const fit = config.fit || 'contain'
+
+  function renderSlide(slide: typeof currentSlide) {
+    if (slide.type === 'image') {
+      return <img src={slide.storage_path} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} draggable={false} />
+    }
+    return <video key={slide.id} src={slide.storage_path} autoPlay playsInline className="w-full h-full" style={{ objectFit: fit }} />
+  }
+
+  return (
+    <div className="w-full h-full relative overflow-hidden">
+      {transitioning && prevSlide && (
+        <div className="absolute inset-0" style={{ animation: oldAnim }}>{renderSlide(prevSlide)}</div>
+      )}
+      <div className={transitioning ? 'absolute inset-0' : 'w-full h-full'} style={transitioning ? { animation: newAnim } : undefined}>
+        {renderSlide(currentSlide)}
+      </div>
+      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-zinc-300 font-mono">
+        {slideIndex + 1}/{config.slides.length}
+      </div>
+    </div>
+  )
 }
 
 // ── Animation wrapper for test preview ───────────────────────────────────────

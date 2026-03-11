@@ -108,14 +108,45 @@ export async function generateStreamDeckProfile(opts: ProfileOptions): Promise<B
   const totalButtons = dims.cols * dims.rows
   const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order)
 
+  // Pre-build button entries — slideshow assets get extra prev/next buttons
+  type ButtonEntry = { type: 'asset' | 'slideshow-prev' | 'slideshow-next'; asset: BroadcastAsset }
+  const buttonEntries: ButtonEntry[] = []
+  for (const asset of sorted) {
+    buttonEntries.push({ type: 'asset', asset })
+    if (asset.asset_type === 'slideshow' && (asset.slideshow_config?.slides?.length || 0) > 1) {
+      buttonEntries.push({ type: 'slideshow-prev', asset })
+      buttonEntries.push({ type: 'slideshow-next', asset })
+    }
+  }
+
   // Build button actions array
   const actions: any[] = []
 
   for (let i = 0; i < totalButtons; i++) {
-    const asset = sorted[i]
-    if (!asset) {
+    const entry = buttonEntries[i]
+    if (!entry) {
       // Empty slot
       actions.push({ Name: '', States: [{ Title: '', Image: '' }] })
+      continue
+    }
+
+    const { type, asset } = entry
+
+    if (type === 'slideshow-prev' || type === 'slideshow-next') {
+      const isNext = type === 'slideshow-next'
+      const navLabel = isNext ? `${asset.name} >` : `< ${asset.name}`
+      const navColor = asset.hotkey_color || '#3f3f46'
+      const image = await generateButtonImage(navLabel, navColor)
+      const action: any = {
+        Name: navLabel,
+        States: [{ Title: navLabel, Image: image }],
+      }
+      if (sessionId && baseUrl) {
+        const url = `${baseUrl}/api/broadcast/trigger?sid=${sessionId}&aid=${asset.id}&action=${isNext ? 'slideshow_next' : 'slideshow_prev'}`
+        action.UUID = 'com.elgato.streamdeck.system.website'
+        action.Settings = { openInBrowser: true, url }
+      }
+      actions.push(action)
       continue
     }
 

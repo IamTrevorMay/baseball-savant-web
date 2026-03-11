@@ -26,16 +26,33 @@ export interface AdConfig {
   volume: number
 }
 
+export const SLIDESHOW_TRANSITIONS = [
+  { id: 'none', name: 'None (Cut)' },
+  { id: 'crossfade', name: 'Crossfade' },
+  { id: 'slide-left', name: 'Slide Left' },
+  { id: 'slide-right', name: 'Slide Right' },
+  { id: 'slide-up', name: 'Slide Up' },
+  { id: 'slide-down', name: 'Slide Down' },
+  { id: 'zoom', name: 'Zoom' },
+  { id: 'flip', name: 'Flip' },
+  { id: 'wipe', name: 'Wipe' },
+] as const
+
+export type SlideshowTransitionType = typeof SLIDESHOW_TRANSITIONS[number]['id']
+
 export interface SlideshowSlide {
   id: string
   storage_path: string
   name: string
   type: 'image' | 'video'
+  transition?: SlideshowTransitionType
 }
 
 export interface SlideshowConfig {
   slides: SlideshowSlide[]
   fit: 'cover' | 'contain'
+  transition?: SlideshowTransitionType
+  transitionDuration?: number
 }
 
 export interface TransitionConfig {

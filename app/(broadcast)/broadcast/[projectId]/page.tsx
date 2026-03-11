@@ -8,7 +8,7 @@ import AssetProperties from '@/components/broadcast/AssetProperties'
 import TriggerBar from '@/components/broadcast/TriggerBar'
 import StreamDeckGrid from '@/components/broadcast/StreamDeckGrid'
 import LivePreview from '@/components/broadcast/LivePreview'
-import LiveControlGrid from '@/components/broadcast/LiveControlGrid'
+import LiveControlGrid, { SlideshowControlStrip } from '@/components/broadcast/LiveControlGrid'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
 
@@ -179,7 +179,12 @@ function BroadcastManagerInner() {
             </>
           ) : (
             <>
-              <AssetLibrary />
+              <div className="w-64 shrink-0 flex flex-col border-r border-zinc-800">
+                <div className="flex-1 overflow-hidden">
+                  <AssetLibrary />
+                </div>
+                <SlideshowControlStrip />
+              </div>
               <BroadcastCanvas {...canvasProps} />
               <AssetProperties />
             </>

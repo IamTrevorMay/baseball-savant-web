@@ -64,3 +64,42 @@ export default function LiveControlGrid() {
     </div>
   )
 }
+
+/** Compact slideshow-only controls for non-live canvas view */
+export function SlideshowControlStrip() {
+  const { assets, slideshowPrev, slideshowNext, getSlideshowIndex } = useBroadcast()
+
+  const slideshows = assets.filter(a => a.asset_type === 'slideshow' && (a.slideshow_config?.slides?.length || 0) > 1)
+  if (slideshows.length === 0) return null
+
+  return (
+    <div className="shrink-0 border-t border-zinc-800 bg-zinc-900 px-2 py-1.5">
+      <div className="text-[9px] text-zinc-500 uppercase tracking-wider font-medium mb-1">Slideshows</div>
+      <div className="space-y-1">
+        {slideshows.map(asset => {
+          const slideCount = asset.slideshow_config?.slides?.length || 0
+          return (
+            <div key={asset.id} className="flex items-center gap-1.5">
+              <span className="text-[10px] text-zinc-400 truncate flex-1">{asset.name}</span>
+              <button
+                onClick={() => slideshowPrev(asset.id)}
+                className="w-6 h-6 flex items-center justify-center rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs transition"
+              >
+                &lt;
+              </button>
+              <span className="text-[9px] text-zinc-500 font-mono w-7 text-center">
+                {getSlideshowIndex(asset.id) + 1}/{slideCount}
+              </span>
+              <button
+                onClick={() => slideshowNext(asset.id)}
+                className="w-6 h-6 flex items-center justify-center rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs transition"
+              >
+                &gt;
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
