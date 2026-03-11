@@ -114,32 +114,47 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
               }}
             >
               {Array.from({ length: totalButtons }).map((_, i) => {
-                const asset = sorted[i]
-                if (!asset) {
+                // Assets first, then universal prev/next buttons
+                if (i < sorted.length) {
+                  const asset = sorted[i]
+                  const label = asset.hotkey_label || asset.name
+                  const color = asset.hotkey_color || '#3f3f46'
                   return (
                     <div
-                      key={i}
-                      className="aspect-square rounded-lg bg-zinc-800/50 border border-zinc-800"
-                    />
+                      key={asset.id}
+                      className="aspect-square rounded-lg border border-white/10 flex flex-col items-center justify-center p-1 relative"
+                      style={{ backgroundColor: color }}
+                    >
+                      <span className="text-[10px] font-bold text-white text-center leading-tight truncate w-full px-0.5">
+                        {label.length > 10 ? label.slice(0, 9) + '\u2026' : label}
+                      </span>
+                      {asset.hotkey_key && (
+                        <span className="absolute bottom-0.5 right-1 text-[8px] text-white/60 font-mono">
+                          {asset.hotkey_key.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
                   )
                 }
-                const label = asset.hotkey_label || asset.name
-                const color = asset.hotkey_color || '#3f3f46'
+                if (i === sorted.length) {
+                  return (
+                    <div key="ss-prev" className="aspect-square rounded-lg border border-white/10 flex items-center justify-center p-1" style={{ backgroundColor: '#3f3f46' }}>
+                      <span className="text-[10px] font-bold text-white text-center leading-tight">&lt; Prev Slide</span>
+                    </div>
+                  )
+                }
+                if (i === sorted.length + 1) {
+                  return (
+                    <div key="ss-next" className="aspect-square rounded-lg border border-white/10 flex items-center justify-center p-1" style={{ backgroundColor: '#3f3f46' }}>
+                      <span className="text-[10px] font-bold text-white text-center leading-tight">Next Slide &gt;</span>
+                    </div>
+                  )
+                }
                 return (
                   <div
-                    key={asset.id}
-                    className="aspect-square rounded-lg border border-white/10 flex flex-col items-center justify-center p-1 relative"
-                    style={{ backgroundColor: color }}
-                  >
-                    <span className="text-[10px] font-bold text-white text-center leading-tight truncate w-full px-0.5">
-                      {label.length > 10 ? label.slice(0, 9) + '\u2026' : label}
-                    </span>
-                    {asset.hotkey_key && (
-                      <span className="absolute bottom-0.5 right-1 text-[8px] text-white/60 font-mono">
-                        {asset.hotkey_key.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
+                    key={i}
+                    className="aspect-square rounded-lg bg-zinc-800/50 border border-zinc-800"
+                  />
                 )
               })}
             </div>

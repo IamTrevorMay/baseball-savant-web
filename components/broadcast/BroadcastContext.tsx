@@ -9,6 +9,7 @@ interface BroadcastContextValue {
   assets: BroadcastAsset[]
   session: BroadcastSession | null
   visibleAssetIds: Set<string>
+  animatingAssets: Map<string, 'entering' | 'exiting'>
   selectedAssetId: string | null
   previewingAssetId: string | null
   loading: boolean
@@ -68,6 +69,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [previewingAssetId, setPreviewingAssetId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [slideshowSlideIndexes, setSlideshowSlideIndexes] = useState<Map<string, number>>(new Map())
+  const [animatingAssets, setAnimatingAssets] = useState<Map<string, 'entering' | 'exiting'>>(new Map())
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
 
@@ -178,24 +180,71 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   }, [session])
 
   const showAsset = useCallback((assetId: string) => {
+    const asset = assets.find(a => a.id === assetId)
+    const stingerUrl = asset?.stinger_enabled ? asset.stinger_video_url : null
+    const fps = project?.settings?.fps || 30
+
     setVisibleAssetIds(prev => {
       const next = new Set(prev)
       next.add(assetId)
-      sendEvent('asset:show', { assetId })
+      sendEvent('asset:show', {
+        assetId,
+        ...(stingerUrl ? {
+          assetStingerUrl: stingerUrl,
+          assetStingerCutPoint: asset!.stinger_cut_point ?? 0.5,
+          stingerEnterTransition: asset!.enter_transition,
+        } : {}),
+      })
       persistActiveState(next, activeSegmentId)
       return next
     })
-  }, [sendEvent, persistActiveState, activeSegmentId])
+
+    // Track entering animation for studio preview
+    if (asset?.enter_transition) {
+      setAnimatingAssets(prev => new Map(prev).set(assetId, 'entering'))
+      const enterMs = (asset.enter_transition.durationFrames / fps) * 1000
+      setTimeout(() => {
+        setAnimatingAssets(prev => {
+          const next = new Map(prev)
+          if (next.get(assetId) === 'entering') next.delete(assetId)
+          return next
+        })
+      }, enterMs + 50)
+    }
+  }, [assets, project, sendEvent, persistActiveState, activeSegmentId])
 
   const hideAsset = useCallback((assetId: string) => {
-    setVisibleAssetIds(prev => {
-      const next = new Set(prev)
-      next.delete(assetId)
-      sendEvent('asset:hide', { assetId })
-      persistActiveState(next, activeSegmentId)
-      return next
-    })
-  }, [sendEvent, persistActiveState, activeSegmentId])
+    const asset = assets.find(a => a.id === assetId)
+    const fps = project?.settings?.fps || 30
+
+    sendEvent('asset:hide', { assetId })
+
+    if (asset?.exit_transition) {
+      // Start exit animation, then remove
+      setAnimatingAssets(prev => new Map(prev).set(assetId, 'exiting'))
+      const exitMs = (asset.exit_transition.durationFrames / fps) * 1000
+      setTimeout(() => {
+        setVisibleAssetIds(prev => {
+          const next = new Set(prev)
+          next.delete(assetId)
+          persistActiveState(next, activeSegmentId)
+          return next
+        })
+        setAnimatingAssets(prev => {
+          const next = new Map(prev)
+          next.delete(assetId)
+          return next
+        })
+      }, exitMs + 50)
+    } else {
+      setVisibleAssetIds(prev => {
+        const next = new Set(prev)
+        next.delete(assetId)
+        persistActiveState(next, activeSegmentId)
+        return next
+      })
+    }
+  }, [assets, project, sendEvent, persistActiveState, activeSegmentId])
 
   const toggleAssetVisibility = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
@@ -542,7 +591,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
 
   return (
     <BroadcastCtx.Provider value={{
-      project, assets, session, visibleAssetIds, selectedAssetId, previewingAssetId, loading,
+      project, assets, session, visibleAssetIds, animatingAssets, selectedAssetId, previewingAssetId, loading,
       slideshowSlideIndexes,
       segments, segmentAssets, activeSegmentId, switchingSegment, selectedSegmentId,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,

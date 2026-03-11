@@ -150,8 +150,26 @@ export function useOverlaySession(sessionId: string) {
 
         channel
           .on('broadcast', { event: 'asset:show' }, (payload: any) => {
-            const assetId = payload.payload?.assetId
-            if (assetId) showAsset(assetId)
+            const { assetId, assetStingerUrl, assetStingerCutPoint, stingerEnterTransition } = payload.payload || {}
+            if (!assetId) return
+
+            if (assetStingerUrl) {
+              // Play stinger, show asset at cut point
+              const swapCallback = () => { showAsset(assetId) }
+              setState(prev => ({
+                ...prev,
+                stinger: {
+                  playing: true,
+                  videoUrl: assetStingerUrl,
+                  cutPoint: assetStingerCutPoint ?? 0.5,
+                  swapCallback,
+                  enterTransition: stingerEnterTransition || null,
+                  exitTransition: null,
+                },
+              }))
+            } else {
+              showAsset(assetId)
+            }
           })
           .on('broadcast', { event: 'asset:hide' }, (payload: any) => {
             const assetId = payload.payload?.assetId

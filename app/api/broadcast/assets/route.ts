@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
         hotkey_key: body.hotkey_key || null,
         hotkey_label: body.hotkey_label || '',
         hotkey_color: body.hotkey_color || '#06b6d4',
+        stinger_enabled: body.stinger_enabled ?? false,
+        stinger_video_url: body.stinger_video_url || null,
+        stinger_cut_point: body.stinger_cut_point ?? 0.5,
         sort_order: body.sort_order ?? 0,
       })
       .select('*')

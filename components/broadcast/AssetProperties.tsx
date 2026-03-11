@@ -293,6 +293,7 @@ function SegmentProperties() {
 function AssetPropertiesPanel() {
   const { assets, selectedAssetId, updateAsset, previewAsset, previewingAssetId } = useBroadcast()
   const [recordingHotkey, setRecordingHotkey] = useState(false)
+  const assetStingerFileRef = useRef<HTMLInputElement>(null)
   const asset = assets.find(a => a.id === selectedAssetId)
 
   if (!asset) {
@@ -429,6 +430,83 @@ function AssetPropertiesPanel() {
             </div>
           )}
         </div>
+
+        {/* Stinger Config — scene and ad types only */}
+        {(asset.asset_type === 'scene' || asset.asset_type === 'advertisement') && (
+          <div>
+            <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Stinger</label>
+            <div className="mt-1 space-y-2 bg-zinc-800/50 border border-zinc-700 rounded-lg p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!asset.stinger_enabled}
+                  onChange={e => handleChange('stinger_enabled', e.target.checked)}
+                  className="accent-emerald-500"
+                />
+                <span className="text-xs text-zinc-300">Enable stinger</span>
+              </label>
+
+              {asset.stinger_enabled && (
+                <>
+                  <div>
+                    <label className="text-[9px] text-zinc-600 block mb-1">Video Source</label>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => assetStingerFileRef.current?.click()}
+                        className="flex-1 px-2 py-1.5 text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition"
+                      >
+                        {asset.stinger_video_url ? 'Replace Video' : 'Choose Video'}
+                      </button>
+                      {asset.stinger_video_url && (
+                        <button
+                          onClick={() => handleChange('stinger_video_url', null)}
+                          className="px-2 py-1.5 text-[10px] font-medium bg-zinc-800 text-red-400 border border-zinc-700 rounded hover:bg-red-900/30 transition"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {asset.stinger_video_url && (
+                      <p className="text-[8px] text-zinc-500 mt-1 truncate" title={asset.stinger_video_url}>
+                        {asset.stinger_video_url.split('/').pop()}
+                      </p>
+                    )}
+                    <input
+                      ref={assetStingerFileRef}
+                      type="file"
+                      accept="video/mp4,video/quicktime,video/webm"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        handleChange('stinger_video_url', URL.createObjectURL(file))
+                        if (assetStingerFileRef.current) assetStingerFileRef.current.value = ''
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] text-zinc-600 block mb-1">
+                      Cut Point: {Math.round((asset.stinger_cut_point ?? 0.5) * 100)}%
+                    </label>
+                    <input
+                      type="range" min={0} max={100}
+                      value={Math.round((asset.stinger_cut_point ?? 0.5) * 100)}
+                      onChange={e => handleChange('stinger_cut_point', Number(e.target.value) / 100)}
+                      className="w-full accent-emerald-500"
+                    />
+                  </div>
+
+                  {asset.enter_transition && (
+                    <p className="text-[9px] text-amber-500/70 leading-tight">
+                      The stinger follows the enter transition animation, then the asset appears at the cut point.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Exit Transition */}
         <div>

@@ -1,14 +1,66 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useRef, useEffect } from 'react'
 import { useBroadcast } from './BroadcastContext'
+import { BroadcastAsset } from '@/lib/broadcastTypes'
 import AssetPreview from './AssetPreview'
+import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
 
+function AnimatedAssetWrapper({
+  asset,
+  phase,
+  fps,
+  children,
+}: {
+  asset: BroadcastAsset
+  phase: 'entering' | 'exiting' | null
+  fps: number
+  children: React.ReactNode
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const styleRef = useRef<HTMLStyleElement | null>(null)
+
+  useEffect(() => {
+    if (!phase || !wrapperRef.current) return
+
+    const transition = phase === 'entering' ? asset.enter_transition : asset.exit_transition
+    const result = generateCSSAnimation(
+      transition,
+      phase === 'entering' ? 'enter' : 'exit',
+      asset.canvas_width,
+      asset.canvas_height,
+      asset.canvas_x,
+      asset.canvas_y,
+      fps,
+    )
+
+    if (result) {
+      if (styleRef.current) removeKeyframes(styleRef.current)
+      styleRef.current = injectKeyframes(result.keyframes)
+      wrapperRef.current.style.animation = result.animation
+      wrapperRef.current.style.willChange = 'transform, opacity'
+    }
+
+    return () => {
+      if (styleRef.current) {
+        removeKeyframes(styleRef.current)
+        styleRef.current = null
+      }
+      if (wrapperRef.current) {
+        wrapperRef.current.style.animation = ''
+        wrapperRef.current.style.willChange = ''
+      }
+    }
+  }, [phase, asset, fps])
+
+  return <div ref={wrapperRef} className="w-full h-full">{children}</div>
+}
+
 export default function LivePreview() {
-  const { assets, visibleAssetIds, setSelectedAssetId } = useBroadcast()
+  const { assets, visibleAssetIds, animatingAssets, setSelectedAssetId, project } = useBroadcast()
 
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
   const zoom = containerSize.w > 0
@@ -25,7 +77,15 @@ export default function LivePreview() {
     return () => obs.disconnect()
   }, [])
 
-  const visibleAssets = assets.filter(a => visibleAssetIds.has(a.id))
+  const fps = project?.settings?.fps || 30
+
+  // Render visible assets + assets still in exit animation
+  const renderedIds = new Set([...visibleAssetIds])
+  for (const [id, phase] of animatingAssets) {
+    if (phase === 'exiting') renderedIds.add(id)
+  }
+
+  const renderedAssets = assets.filter(a => renderedIds.has(a.id))
 
   return (
     <div ref={measRef} className="flex-1 overflow-hidden flex items-center justify-center bg-zinc-950 relative">
@@ -45,22 +105,27 @@ export default function LivePreview() {
         }}
         onClick={() => setSelectedAssetId(null)}
       >
-        {[...visibleAssets].sort((a, b) => a.layer - b.layer).map(asset => (
-          <div
-            key={asset.id}
-            className="absolute cursor-pointer"
-            style={{
-              left: asset.canvas_x,
-              top: asset.canvas_y,
-              width: asset.canvas_width,
-              height: asset.canvas_height,
-              zIndex: asset.layer,
-            }}
-            onClick={e => { e.stopPropagation(); setSelectedAssetId(asset.id) }}
-          >
-            <AssetPreview asset={asset} isVisible={true} />
-          </div>
-        ))}
+        {[...renderedAssets].sort((a, b) => a.layer - b.layer).map(asset => {
+          const phase = animatingAssets.get(asset.id) || null
+          return (
+            <div
+              key={asset.id}
+              className="absolute cursor-pointer"
+              style={{
+                left: asset.canvas_x,
+                top: asset.canvas_y,
+                width: asset.canvas_width,
+                height: asset.canvas_height,
+                zIndex: asset.layer,
+              }}
+              onClick={e => { e.stopPropagation(); setSelectedAssetId(asset.id) }}
+            >
+              <AnimatedAssetWrapper asset={asset} phase={phase} fps={fps}>
+                <AssetPreview asset={asset} isVisible={true} />
+              </AnimatedAssetWrapper>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

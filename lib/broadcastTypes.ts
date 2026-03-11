@@ -113,6 +113,9 @@ export interface BroadcastAsset {
   hotkey_key: string | null
   hotkey_label: string
   hotkey_color: string
+  stinger_enabled?: boolean
+  stinger_video_url?: string | null
+  stinger_cut_point?: number
   sort_order: number
   created_at: string
   updated_at: string
@@ -196,6 +199,9 @@ export interface BroadcastEvent {
     stingerCutPoint?: number
     stingerEnterTransition?: TransitionConfig | null
     stingerExitTransition?: TransitionConfig | null
+    // Per-asset stinger (for scenes/ads)
+    assetStingerUrl?: string
+    assetStingerCutPoint?: number
     assetsToHide?: string[]
     assetsToShow?: string[]
     overrides?: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
