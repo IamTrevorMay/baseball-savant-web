@@ -498,12 +498,11 @@ export default function AssetLibrary() {
 
   const adFileInputRef = useRef<HTMLInputElement>(null)
 
-  async function handleAdUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleAdSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (!project || !e.target.files?.length) return
     const file = e.target.files[0]
+    const blobUrl = URL.createObjectURL(file)
     try {
-      const result = await uploadBroadcastMedia(file, project.id)
-      if (!result) return
       const assetRes = await fetch('/api/broadcast/assets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -511,7 +510,7 @@ export default function AssetLibrary() {
           project_id: project.id,
           name: file.name.replace(/\.[^.]+$/, ''),
           asset_type: 'advertisement',
-          storage_path: result.url,
+          storage_path: blobUrl,
           ad_config: { volume: 1 },
           canvas_width: 1920,
           canvas_height: 1080,
@@ -521,11 +520,12 @@ export default function AssetLibrary() {
       })
       const assetData = await assetRes.json()
       if (assetData.asset) {
-        addAsset(assetData.asset)
+        // Override storage_path with blob URL for this session
+        addAsset({ ...assetData.asset, storage_path: blobUrl })
         setSelectedAssetId(assetData.asset.id)
       }
     } catch (err) {
-      console.error('Failed to upload ad:', err)
+      console.error('Failed to create ad:', err)
     }
     if (adFileInputRef.current) adFileInputRef.current.value = ''
   }
@@ -996,7 +996,7 @@ export default function AssetLibrary() {
           </button>
         </div>
         <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
-        <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={handleAdUpload} />
+        <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleAdSelect} />
       </div>
 
       {/* Multi-select action bar */}
