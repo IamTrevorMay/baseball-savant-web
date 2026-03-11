@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { BroadcastSession } from '@/lib/broadcastTypes'
 
-const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev'] as const
+const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev'] as const
 type TriggerAction = typeof VALID_ACTIONS[number]
 
 export async function GET(req: NextRequest) {
@@ -11,11 +11,15 @@ export async function GET(req: NextRequest) {
     const aid = req.nextUrl.searchParams.get('aid')
     const action = req.nextUrl.searchParams.get('action') as TriggerAction | null
 
-    if (!sid || !aid || !action) {
-      return NextResponse.json({ error: 'sid, aid, and action are required' }, { status: 400 })
+    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev']
+    if (!sid || !action) {
+      return NextResponse.json({ error: 'sid and action are required' }, { status: 400 })
     }
     if (!VALID_ACTIONS.includes(action)) {
       return NextResponse.json({ error: `Invalid action. Must be one of: ${VALID_ACTIONS.join(', ')}` }, { status: 400 })
+    }
+    if (!aid && !aidOptionalActions.includes(action)) {
+      return NextResponse.json({ error: 'aid is required for this action' }, { status: 400 })
     }
 
     // Fetch session — session ID acts as capability token (no auth required)
@@ -43,12 +47,48 @@ export async function GET(req: NextRequest) {
     let resultVisible: boolean | undefined
     let resultIndex: number | undefined
 
-    if (action === 'slideshow_next' || action === 'slideshow_prev') {
+    if (action === 'slideshow_visible_next' || action === 'slideshow_visible_prev') {
+      // Find the first visible slideshow asset with 2+ slides
+      const visibleIds = Array.from(visibleAssets)
+      let targetId: string | null = null
+      let slideCount = 0
+
+      if (visibleIds.length > 0) {
+        const { data: visibleAssetRows } = await supabaseAdmin
+          .from('broadcast_assets')
+          .select('id, asset_type, slideshow_config')
+          .in('id', visibleIds)
+
+        if (visibleAssetRows) {
+          for (const row of visibleAssetRows) {
+            if (row.asset_type === 'slideshow' && (row.slideshow_config?.slides?.length || 0) >= 2) {
+              targetId = row.id
+              slideCount = row.slideshow_config.slides.length
+              break
+            }
+          }
+        }
+      }
+
+      if (!targetId) {
+        return NextResponse.json({ error: 'No visible slideshow found' }, { status: 400 })
+      }
+
+      const current = slideshowIndexes[targetId] || 0
+      const next = action === 'slideshow_visible_next'
+        ? (current + 1) % slideCount
+        : (current - 1 + slideCount) % slideCount
+
+      slideshowIndexes[targetId] = next
+      resultIndex = next
+      eventName = 'slideshow:goto'
+      eventPayload = { assetId: targetId, slideIndex: next, source: 'trigger-api' }
+    } else if (action === 'slideshow_next' || action === 'slideshow_prev') {
       // Need slide count from asset
       const { data: asset } = await supabaseAdmin
         .from('broadcast_assets')
         .select('slideshow_config')
-        .eq('id', aid)
+        .eq('id', aid!)
         .single()
 
       const slideCount = asset?.slideshow_config?.slides?.length || 0
@@ -56,25 +96,25 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Asset has no slides' }, { status: 400 })
       }
 
-      const current = slideshowIndexes[aid] || 0
+      const current = slideshowIndexes[aid!] || 0
       const next = action === 'slideshow_next'
         ? (current + 1) % slideCount
         : (current - 1 + slideCount) % slideCount
 
-      slideshowIndexes[aid] = next
+      slideshowIndexes[aid!] = next
       resultIndex = next
       eventName = 'slideshow:goto'
-      eventPayload = { assetId: aid, slideIndex: next, source: 'trigger-api' }
+      eventPayload = { assetId: aid!, slideIndex: next, source: 'trigger-api' }
     } else {
-      // toggle / show / hide
-      const isVisible = visibleAssets.has(aid)
+      // toggle / show / hide — aid is guaranteed non-null by validation above
+      const isVisible = visibleAssets.has(aid!)
 
       if (action === 'show' || (action === 'toggle' && !isVisible)) {
-        visibleAssets.add(aid)
+        visibleAssets.add(aid!)
         resultVisible = true
         eventName = 'asset:show'
       } else if (action === 'hide' || (action === 'toggle' && isVisible)) {
-        visibleAssets.delete(aid)
+        visibleAssets.delete(aid!)
         resultVisible = false
         eventName = 'asset:hide'
       } else {
@@ -82,7 +122,7 @@ export async function GET(req: NextRequest) {
         resultVisible = false
       }
 
-      eventPayload = { assetId: aid, source: 'trigger-api' }
+      eventPayload = { assetId: aid!, source: 'trigger-api' }
     }
 
     // Update active_state in DB

@@ -1,8 +1,11 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { SceneElement } from '@/lib/sceneTypes'
 import { BroadcastAsset } from '@/lib/broadcastTypes'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
+import { injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
+import { generateSlideshowTransitionCSS } from '@/lib/slideshowTransitions'
 import { useBroadcast } from './BroadcastContext'
 import { toMediaUrl } from '@/lib/localMedia'
 
@@ -52,6 +55,64 @@ export function computeWrapperStyle(el: SceneElement): React.CSSProperties {
 export function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: boolean }) {
   const { getSlideshowIndex } = useBroadcast()
   const config = asset.slideshow_config
+  const index = getSlideshowIndex(asset.id)
+
+  const prevIdxRef = useRef(index)
+  const [transitioning, setTransitioning] = useState(false)
+  const [prevSlideIdx, setPrevSlideIdx] = useState(0)
+  const [oldAnim, setOldAnim] = useState('')
+  const [newAnim, setNewAnim] = useState('')
+  const transStyleRef = useRef<HTMLStyleElement | null>(null)
+
+  useEffect(() => {
+    if (index === prevIdxRef.current) return
+    if (!config || config.slides.length < 2) {
+      prevIdxRef.current = index
+      return
+    }
+
+    const currentSlide = config.slides[index]
+    const transType = currentSlide?.transition || config.transition || 'none'
+
+    if (transType === 'none') {
+      prevIdxRef.current = index
+      return
+    }
+
+    const duration = config.transitionDuration || 500
+    const result = generateSlideshowTransitionCSS(transType, duration)
+
+    if (!result) {
+      prevIdxRef.current = index
+      return
+    }
+
+    setPrevSlideIdx(prevIdxRef.current)
+    prevIdxRef.current = index
+
+    if (transStyleRef.current) removeKeyframes(transStyleRef.current)
+    transStyleRef.current = injectKeyframes(result.keyframes)
+    setOldAnim(result.oldAnimation)
+    setNewAnim(result.newAnimation)
+    setTransitioning(true)
+
+    const timer = setTimeout(() => {
+      setTransitioning(false)
+      if (transStyleRef.current) {
+        removeKeyframes(transStyleRef.current)
+        transStyleRef.current = null
+      }
+    }, duration)
+
+    return () => {
+      clearTimeout(timer)
+      if (transStyleRef.current) {
+        removeKeyframes(transStyleRef.current)
+        transStyleRef.current = null
+      }
+    }
+  }, [index, config])
+
   if (!config || !config.slides.length) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-zinc-800/50" style={{ opacity: isVisible ? 1 : 0.3 }}>
@@ -59,31 +120,29 @@ export function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; 
       </div>
     )
   }
-  const index = getSlideshowIndex(asset.id)
-  const slide = config.slides[index] || config.slides[0]
+
+  const currentSlide = config.slides[index] || config.slides[0]
+  const prevSlide = config.slides[prevSlideIdx]
   const fit = config.fit || 'contain'
   const dimmedOpacity = isVisible ? (asset.opacity ?? 1) : (asset.opacity ?? 1) * 0.3
 
+  function renderSlide(slide: typeof currentSlide) {
+    if (slide.type === 'image') {
+      return <img src={toMediaUrl(slide.storage_path)} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} draggable={false} />
+    }
+    return <video key={slide.id} src={toMediaUrl(slide.storage_path)} autoPlay playsInline className="w-full h-full" style={{ objectFit: fit }} />
+  }
+
   return (
     <div className="w-full h-full relative overflow-hidden" style={{ opacity: dimmedOpacity }}>
-      {slide.type === 'image' ? (
-        <img
-          src={toMediaUrl(slide.storage_path)}
-          alt={slide.name}
-          className="w-full h-full"
-          style={{ objectFit: fit }}
-          draggable={false}
-        />
-      ) : (
-        <video
-          key={slide.id}
-          src={toMediaUrl(slide.storage_path)}
-          autoPlay
-          playsInline
-          className="w-full h-full"
-          style={{ objectFit: fit }}
-        />
+      {transitioning && prevSlide && (
+        <div className="absolute inset-0" style={{ animation: oldAnim }}>
+          {renderSlide(prevSlide)}
+        </div>
       )}
+      <div className={transitioning ? 'absolute inset-0' : 'w-full h-full'} style={transitioning ? { animation: newAnim } : undefined}>
+        {renderSlide(currentSlide)}
+      </div>
       {/* Slide counter badge */}
       <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 rounded text-[9px] text-zinc-300 font-mono">
         {index + 1}/{config.slides.length}
