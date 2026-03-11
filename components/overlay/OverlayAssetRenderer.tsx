@@ -52,6 +52,20 @@ function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   return style
 }
 
+/** Force-play a video element (handles autoplay policy in OBS/CEF) */
+function useAutoPlay(ref: React.RefObject<HTMLVideoElement | null>, volume?: number) {
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (volume !== undefined) el.volume = volume
+    // Start muted for autoplay policy, then unmute if volume > 0
+    el.muted = true
+    el.play().then(() => {
+      if (volume !== undefined && volume > 0) el.muted = false
+    }).catch(() => {})
+  }, [ref, volume])
+}
+
 interface AssetOverrides {
   x?: number
   y?: number
@@ -73,6 +87,8 @@ interface Props {
 export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded, overrides }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef<HTMLStyleElement | null>(null)
+  const adVideoRef = useRef<HTMLVideoElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
     if (!animationPhase) return
@@ -113,6 +129,10 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
   const effectiveH = overrides?.height ?? asset.canvas_height
   const effectiveLayer = overrides?.layer ?? asset.layer
   const assetOpacity = overrides?.opacity ?? asset.opacity ?? 1
+
+  const adVolume = asset.ad_config?.volume ?? 1
+  useAutoPlay(adVideoRef, adVolume)
+  useAutoPlay(videoRef)
 
   if (asset.asset_type === 'slideshow') {
     return (
@@ -189,7 +209,6 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
   }
 
   if (asset.asset_type === 'advertisement' && asset.storage_path) {
-    const volume = asset.ad_config?.volume ?? 1
     return (
       <div
         ref={wrapperRef}
@@ -204,12 +223,13 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         }}
       >
         <video
+          ref={adVideoRef}
           src={toMediaUrl(asset.storage_path)}
           autoPlay
+          muted
           playsInline
           preload="auto"
           className="w-full h-full object-cover"
-          ref={el => { if (el) el.volume = volume }}
           onEnded={onVideoEnded}
         />
       </div>
@@ -231,8 +251,11 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         }}
       >
         <video
+          ref={videoRef}
           src={toMediaUrl(asset.storage_path)}
           autoPlay
+          muted
+          playsInline
           preload="auto"
           className="w-full h-full object-contain"
         />
@@ -328,13 +351,6 @@ function SlideshowRenderer({
   const prevSlide = config.slides[prevSlideIdx]
   const fit = config.fit || 'contain'
 
-  function renderSlide(slide: typeof currentSlide) {
-    if (slide.type === 'image') {
-      return <img src={toMediaUrl(slide.storage_path)} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} />
-    }
-    return <video key={slide.id} src={toMediaUrl(slide.storage_path)} autoPlay preload="auto" className="w-full h-full" style={{ objectFit: fit }} />
-  }
-
   return (
     <div
       ref={wrapperRef}
@@ -348,14 +364,45 @@ function SlideshowRenderer({
         opacity: assetOpacity,
       }}
     >
+      {/* Current slide — always rendered, sits behind during transition */}
+      <div className="absolute inset-0" style={{ zIndex: 1, ...(transitioning ? { animation: newAnim } : {}) }}>
+        <SlideContent slide={currentSlide} fit={fit} />
+      </div>
+      {/* Previous slide — only during transition, on top so it animates out */}
       {transitioning && prevSlide && (
-        <div className="absolute inset-0" style={{ animation: oldAnim }}>
-          {renderSlide(prevSlide)}
+        <div className="absolute inset-0" style={{ animation: oldAnim, zIndex: 2 }}>
+          <SlideContent slide={prevSlide} fit={fit} />
         </div>
       )}
-      <div className="absolute inset-0" style={transitioning ? { animation: newAnim } : undefined}>
-        {renderSlide(currentSlide)}
-      </div>
     </div>
+  )
+}
+
+/** Individual slide with autoplay for video slides */
+function SlideContent({ slide, fit }: { slide: { id: string; type: string; storage_path: string; name: string }; fit: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el) return
+    el.muted = true
+    el.play().catch(() => {})
+  }, [slide.id])
+
+  if (slide.type === 'image') {
+    return <img src={toMediaUrl(slide.storage_path)} alt={slide.name} className="w-full h-full" style={{ objectFit: fit as any }} />
+  }
+  return (
+    <video
+      ref={videoRef}
+      key={slide.id}
+      src={toMediaUrl(slide.storage_path)}
+      autoPlay
+      muted
+      playsInline
+      preload="auto"
+      className="w-full h-full"
+      style={{ objectFit: fit as any }}
+    />
   )
 }
