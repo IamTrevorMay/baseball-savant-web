@@ -20,6 +20,12 @@ const KEY_TO_KEYCODE: Record<string, number> = {
   'f7': 118, 'f8': 119, 'f9': 120, 'f10': 121, 'f11': 122, 'f12': 123,
 }
 
+export type ButtonEntry =
+  | { type: 'asset'; asset: BroadcastAsset }
+  | { type: 'slideshow-prev' }
+  | { type: 'slideshow-next' }
+  | { type: 'empty' }
+
 export { DEVICE_DIMS }
 export type { DeviceModel }
 
@@ -97,40 +103,46 @@ interface ProfileOptions {
   deviceModel: DeviceModel
   sessionId?: string
   baseUrl?: string
+  buttonLayout?: ButtonEntry[]
 }
 
 export async function generateStreamDeckProfile(opts: ProfileOptions): Promise<Blob> {
   const JSZip = (await import('jszip')).default
   const zip = new JSZip()
 
-  const { assets, projectName, deviceModel, sessionId, baseUrl } = opts
+  const { assets, projectName, deviceModel, sessionId, baseUrl, buttonLayout } = opts
   const dims = DEVICE_DIMS[deviceModel]
   const totalButtons = dims.cols * dims.rows
-  const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order)
 
-  // Pre-build button entries — assets first, then universal slideshow nav at the end
-  type ButtonEntry = { type: 'asset'; asset: BroadcastAsset } | { type: 'slideshow-prev-universal' } | { type: 'slideshow-next-universal' }
-  const buttonEntries: ButtonEntry[] = []
-  for (const asset of sorted) {
-    buttonEntries.push({ type: 'asset', asset })
+  // Use provided layout or fall back to sorted assets + nav buttons
+  let buttonEntries: ButtonEntry[]
+  if (buttonLayout) {
+    buttonEntries = buttonLayout.slice(0, totalButtons)
+    while (buttonEntries.length < totalButtons) buttonEntries.push({ type: 'empty' })
+  } else {
+    const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order)
+    buttonEntries = []
+    for (const asset of sorted) {
+      buttonEntries.push({ type: 'asset', asset })
+    }
+    buttonEntries.push({ type: 'slideshow-prev' })
+    buttonEntries.push({ type: 'slideshow-next' })
+    while (buttonEntries.length < totalButtons) buttonEntries.push({ type: 'empty' })
   }
-  // Always append universal prev/next slide buttons
-  buttonEntries.push({ type: 'slideshow-prev-universal' })
-  buttonEntries.push({ type: 'slideshow-next-universal' })
 
   // Build button actions array
   const actions: any[] = []
 
   for (let i = 0; i < totalButtons; i++) {
     const entry = buttonEntries[i]
-    if (!entry) {
+    if (!entry || entry.type === 'empty') {
       // Empty slot
       actions.push({ Name: '', States: [{ Title: '', Image: '' }] })
       continue
     }
 
-    if (entry.type === 'slideshow-prev-universal' || entry.type === 'slideshow-next-universal') {
-      const isNext = entry.type === 'slideshow-next-universal'
+    if (entry.type === 'slideshow-prev' || entry.type === 'slideshow-next') {
+      const isNext = entry.type === 'slideshow-next'
       const navLabel = isNext ? 'Next Slide >' : '< Prev Slide'
       const navColor = '#3f3f46'
       const image = await generateButtonImage(navLabel, navColor)

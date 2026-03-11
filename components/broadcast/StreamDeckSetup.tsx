@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useBroadcast } from './BroadcastContext'
-import { generateStreamDeckProfile, DEVICE_DIMS, type DeviceModel } from '@/lib/streamDeckProfile'
+import { generateStreamDeckProfile, DEVICE_DIMS, type DeviceModel, type ButtonEntry } from '@/lib/streamDeckProfile'
 
 const DEVICE_OPTIONS: { value: DeviceModel; label: string }[] = [
   { value: 'sd', label: 'Stream Deck (5×3)' },
@@ -12,7 +12,7 @@ const DEVICE_OPTIONS: { value: DeviceModel; label: string }[] = [
 ]
 
 export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
-  const { project, assets, session } = useBroadcast()
+  const { project, assets, session, updateAsset } = useBroadcast()
   const [deviceModel, setDeviceModel] = useState<DeviceModel>('sd')
   const [downloading, setDownloading] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
@@ -22,6 +22,74 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
   const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order)
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
+  // --- Drag-and-drop state ---
+  const [buttonOrder, setButtonOrder] = useState<ButtonEntry[]>([])
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
+  // Build button order from assets whenever assets or device changes
+  useEffect(() => {
+    const entries: ButtonEntry[] = []
+    const s = [...assets].sort((a, b) => a.sort_order - b.sort_order)
+    for (const asset of s) {
+      entries.push({ type: 'asset', asset })
+    }
+    entries.push({ type: 'slideshow-prev' })
+    entries.push({ type: 'slideshow-next' })
+    while (entries.length < totalButtons) entries.push({ type: 'empty' })
+    setButtonOrder(entries.slice(0, totalButtons))
+  }, [assets, totalButtons])
+
+  // --- Drag handlers ---
+  function handleDragStart(e: React.DragEvent, idx: number) {
+    setDragIdx(idx)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(idx))
+  }
+
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setHoverIdx(idx)
+  }
+
+  function handleDragLeave() {
+    setHoverIdx(null)
+  }
+
+  function handleDrop(e: React.DragEvent, dropIdx: number) {
+    e.preventDefault()
+    const fromIdx = dragIdx
+    setDragIdx(null)
+    setHoverIdx(null)
+    if (fromIdx === null || fromIdx === dropIdx) return
+
+    setButtonOrder(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(dropIdx, 0, moved)
+
+      // Persist sort_order for asset buttons
+      let order = 0
+      for (const entry of next) {
+        if (entry.type === 'asset') {
+          if (entry.asset.sort_order !== order) {
+            updateAsset(entry.asset.id, { sort_order: order })
+          }
+          order++
+        }
+      }
+
+      return next
+    })
+  }
+
+  function handleDragEnd() {
+    setDragIdx(null)
+    setHoverIdx(null)
+  }
+
+  // --- Download with custom layout ---
   const handleDownload = useCallback(async () => {
     if (!project) return
     setDownloading(true)
@@ -32,6 +100,7 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
         deviceModel,
         sessionId: session?.id,
         baseUrl,
+        buttonLayout: buttonOrder,
       })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -44,7 +113,7 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
     } finally {
       setDownloading(false)
     }
-  }, [project, assets, deviceModel, session, baseUrl])
+  }, [project, assets, deviceModel, session, baseUrl, buttonOrder])
 
   function getTriggerUrl(assetId: string, action: string) {
     return `${baseUrl}/api/broadcast/trigger?sid=${session?.id}&aid=${assetId}&action=${action}`
@@ -68,6 +137,89 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
     navigator.clipboard.writeText(lines.join('\n'))
     setCopiedUrl('all')
     setTimeout(() => setCopiedUrl(null), 1500)
+  }
+
+  // --- Render a single grid cell ---
+  function renderCell(entry: ButtonEntry, idx: number) {
+    const isDragging = dragIdx === idx
+    const isHover = hoverIdx === idx && dragIdx !== null && dragIdx !== idx
+    const isEmpty = entry.type === 'empty'
+
+    const dragProps = isEmpty ? {} : {
+      draggable: true,
+      onDragStart: (e: React.DragEvent<HTMLDivElement>) => handleDragStart(e, idx),
+    }
+
+    const dropProps = {
+      onDragOver: (e: React.DragEvent<HTMLDivElement>) => handleDragOver(e, idx),
+      onDragLeave: handleDragLeave,
+      onDrop: (e: React.DragEvent<HTMLDivElement>) => handleDrop(e, idx),
+      onDragEnd: handleDragEnd,
+    }
+
+    const hoverRing = isHover ? 'ring-2 ring-emerald-500' : ''
+    const dragOpacity = isDragging ? 'opacity-40' : ''
+
+    if (entry.type === 'asset') {
+      const { asset } = entry
+      const label = asset.hotkey_label || asset.name
+      const color = asset.hotkey_color || '#3f3f46'
+      return (
+        <div
+          key={`btn-${idx}`}
+          className={`aspect-square rounded-lg border border-white/10 flex flex-col items-center justify-center p-1 relative cursor-grab active:cursor-grabbing select-none ${hoverRing} ${dragOpacity}`}
+          style={{ backgroundColor: color }}
+          {...dragProps}
+          {...dropProps}
+        >
+          <span className="text-[10px] font-bold text-white text-center leading-tight truncate w-full px-0.5">
+            {label.length > 10 ? label.slice(0, 9) + '\u2026' : label}
+          </span>
+          {asset.hotkey_key && (
+            <span className="absolute bottom-0.5 right-1 text-[8px] text-white/60 font-mono">
+              {asset.hotkey_key.toUpperCase()}
+            </span>
+          )}
+        </div>
+      )
+    }
+
+    if (entry.type === 'slideshow-prev') {
+      return (
+        <div
+          key={`btn-${idx}`}
+          className={`aspect-square rounded-lg border border-white/10 flex items-center justify-center p-1 cursor-grab active:cursor-grabbing select-none ${hoverRing} ${dragOpacity}`}
+          style={{ backgroundColor: '#3f3f46' }}
+          {...dragProps}
+          {...dropProps}
+        >
+          <span className="text-[10px] font-bold text-white text-center leading-tight">&lt; Prev Slide</span>
+        </div>
+      )
+    }
+
+    if (entry.type === 'slideshow-next') {
+      return (
+        <div
+          key={`btn-${idx}`}
+          className={`aspect-square rounded-lg border border-white/10 flex items-center justify-center p-1 cursor-grab active:cursor-grabbing select-none ${hoverRing} ${dragOpacity}`}
+          style={{ backgroundColor: '#3f3f46' }}
+          {...dragProps}
+          {...dropProps}
+        >
+          <span className="text-[10px] font-bold text-white text-center leading-tight">Next Slide &gt;</span>
+        </div>
+      )
+    }
+
+    // Empty slot — drop target only
+    return (
+      <div
+        key={`btn-${idx}`}
+        className={`aspect-square rounded-lg bg-zinc-800/50 border border-zinc-800 ${hoverRing}`}
+        {...dropProps}
+      />
+    )
   }
 
   return (
@@ -103,9 +255,12 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          {/* Grid preview */}
+          {/* Grid preview with drag-and-drop */}
           <div>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">Button Layout</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">
+              Button Layout
+              <span className="ml-2 normal-case tracking-normal text-zinc-600">Drag to rearrange</span>
+            </p>
             <div
               className="grid gap-1.5"
               style={{
@@ -113,50 +268,7 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
                 gridTemplateRows: `repeat(${dims.rows}, 1fr)`,
               }}
             >
-              {Array.from({ length: totalButtons }).map((_, i) => {
-                // Assets first, then universal prev/next buttons
-                if (i < sorted.length) {
-                  const asset = sorted[i]
-                  const label = asset.hotkey_label || asset.name
-                  const color = asset.hotkey_color || '#3f3f46'
-                  return (
-                    <div
-                      key={asset.id}
-                      className="aspect-square rounded-lg border border-white/10 flex flex-col items-center justify-center p-1 relative"
-                      style={{ backgroundColor: color }}
-                    >
-                      <span className="text-[10px] font-bold text-white text-center leading-tight truncate w-full px-0.5">
-                        {label.length > 10 ? label.slice(0, 9) + '\u2026' : label}
-                      </span>
-                      {asset.hotkey_key && (
-                        <span className="absolute bottom-0.5 right-1 text-[8px] text-white/60 font-mono">
-                          {asset.hotkey_key.toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                  )
-                }
-                if (i === sorted.length) {
-                  return (
-                    <div key="ss-prev" className="aspect-square rounded-lg border border-white/10 flex items-center justify-center p-1" style={{ backgroundColor: '#3f3f46' }}>
-                      <span className="text-[10px] font-bold text-white text-center leading-tight">&lt; Prev Slide</span>
-                    </div>
-                  )
-                }
-                if (i === sorted.length + 1) {
-                  return (
-                    <div key="ss-next" className="aspect-square rounded-lg border border-white/10 flex items-center justify-center p-1" style={{ backgroundColor: '#3f3f46' }}>
-                      <span className="text-[10px] font-bold text-white text-center leading-tight">Next Slide &gt;</span>
-                    </div>
-                  )
-                }
-                return (
-                  <div
-                    key={i}
-                    className="aspect-square rounded-lg bg-zinc-800/50 border border-zinc-800"
-                  />
-                )
-              })}
+              {buttonOrder.map((entry, i) => renderCell(entry, i))}
             </div>
           </div>
 
