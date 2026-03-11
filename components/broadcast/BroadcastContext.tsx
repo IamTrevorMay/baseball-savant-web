@@ -216,19 +216,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
 
     if (stingerUrl) {
-      // Stinger mode: show stinger first, delay adding asset to visible
-      // LivePreview will render the stinger and call handleStingerCutPoint to reveal asset
+      // Stinger mode: DON'T add asset to visible yet.
+      // Stinger plays fully, then when it ends and slides left,
+      // handleStingerCutPoint adds the asset to visibleAssetIds.
       setLiveStinger({
         assetId,
         videoUrl: stingerUrl,
         enterTransition: asset!.enter_transition,
-      })
-      // Persist immediately (overlay needs to know)
-      setVisibleAssetIds(prev => {
-        const next = new Set(prev)
-        next.add(assetId)
-        persistActiveState(next, activeSegmentId)
-        return next
       })
     } else {
       // No stinger — show immediately with enter animation
@@ -520,11 +514,17 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     slideshowGoto(assetId, prev)
   }, [assets, slideshowSlideIndexes, slideshowGoto])
 
-  // Stinger cut point: stinger is sliding away, asset is now revealed underneath
+  // Stinger ended: stinger is sliding away, NOW add the asset to visible
   const handleStingerCutPoint = useCallback(() => {
-    // Asset is already in visibleAssetIds — this is just a signal that the stinger
-    // has reached its cut point and the asset content is being revealed
-  }, [])
+    const stinger = liveStinger
+    if (!stinger) return
+    setVisibleAssetIds(prev => {
+      const next = new Set(prev)
+      next.add(stinger.assetId)
+      persistActiveState(next, activeSegmentId)
+      return next
+    })
+  }, [liveStinger, persistActiveState, activeSegmentId])
 
   // Stinger complete: stinger has finished its exit animation, remove it
   const handleStingerComplete = useCallback(() => {
