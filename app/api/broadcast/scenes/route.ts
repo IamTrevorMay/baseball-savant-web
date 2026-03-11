@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
         stinger_enabled: body.stinger_enabled ?? false,
         stinger_cut_point: body.stinger_cut_point ?? 0.5,
         transition_override: body.transition_override || null,
+        enter_transition: body.enter_transition || null,
+        exit_transition: body.exit_transition || null,
         hotkey_key: body.hotkey_key || null,
         hotkey_color: body.hotkey_color || '#10b981',
       })

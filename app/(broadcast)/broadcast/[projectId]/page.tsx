@@ -11,9 +11,8 @@ import LivePreview from '@/components/broadcast/LivePreview'
 import LiveControlGrid from '@/components/broadcast/LiveControlGrid'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
-import SceneManager from '@/components/broadcast/SceneManager'
 
-type ViewMode = 'canvas' | 'streamdeck' | 'scenes'
+type ViewMode = 'canvas' | 'streamdeck'
 
 function BroadcastManagerInner() {
   const { loading, project, session, updateProjectSettings } = useBroadcast()
@@ -73,7 +72,7 @@ function BroadcastManagerInner() {
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       {/* View toggle header */}
       <div className="h-8 bg-zinc-900 border-b border-zinc-800 flex items-center px-4 gap-1">
-        {(['canvas', 'scenes', 'streamdeck'] as const).map(mode => (
+        {(['canvas', 'streamdeck'] as const).map(mode => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
@@ -83,7 +82,7 @@ function BroadcastManagerInner() {
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            {mode === 'canvas' ? 'Canvas' : mode === 'scenes' ? 'Scenes' : 'Test Mode'}
+            {mode === 'canvas' ? 'Canvas' : 'Test Mode'}
           </button>
         ))}
 
@@ -185,8 +184,6 @@ function BroadcastManagerInner() {
               <AssetProperties />
             </>
           )
-        ) : viewMode === 'scenes' ? (
-          <SceneManager />
         ) : (
           <StreamDeckGrid />
         )}

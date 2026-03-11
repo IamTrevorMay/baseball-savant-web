@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastScene, BroadcastSceneAsset, TemplateDataValues } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues } from '@/lib/broadcastTypes'
 import { createClient } from '@supabase/supabase-js'
 
 interface BroadcastContextValue {
@@ -14,11 +14,12 @@ interface BroadcastContextValue {
   loading: boolean
   slideshowSlideIndexes: Map<string, number>
 
-  // Scene state
-  scenes: BroadcastScene[]
-  sceneAssets: Map<string, BroadcastSceneAsset[]>
-  activeSceneId: string | null
-  switchingScene: boolean
+  // Segment state
+  segments: BroadcastSegment[]
+  segmentAssets: Map<string, BroadcastSegmentAsset[]>
+  activeSegmentId: string | null
+  switchingSegment: boolean
+  selectedSegmentId: string | null
 
   setProject: (p: BroadcastProject) => void
   setAssets: (a: BroadcastAsset[]) => void
@@ -37,16 +38,17 @@ interface BroadcastContextValue {
   getSlideshowIndex: (assetId: string) => number
   updateProjectSettings: (updates: Partial<BroadcastProjectSettings>) => void
 
-  // Scene methods
-  setScenes: (s: BroadcastScene[]) => void
-  addScene: (s: BroadcastScene) => void
-  updateScene: (id: string, updates: Partial<BroadcastScene>) => void
-  removeScene: (id: string) => void
-  switchScene: (toSceneId: string) => void
-  addSceneAsset: (sa: BroadcastSceneAsset) => void
-  updateSceneAsset: (id: string, updates: Partial<BroadcastSceneAsset>) => void
-  removeSceneAsset: (id: string) => void
-  reloadSceneAssets: () => Promise<void>
+  // Segment methods
+  setSegments: (s: BroadcastSegment[]) => void
+  setSelectedSegmentId: (id: string | null) => void
+  addSegment: (s: BroadcastSegment) => void
+  updateSegment: (id: string, updates: Partial<BroadcastSegment>) => void
+  removeSegment: (id: string) => void
+  switchSegment: (toSegmentId: string) => void
+  addSegmentAsset: (sa: BroadcastSegmentAsset) => void
+  updateSegmentAsset: (id: string, updates: Partial<BroadcastSegmentAsset>) => void
+  removeSegmentAsset: (id: string) => void
+  reloadSegmentAssets: () => Promise<void>
 }
 
 const BroadcastCtx = createContext<BroadcastContextValue | null>(null)
@@ -69,11 +71,12 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
 
-  // Scene state
-  const [scenes, setScenes] = useState<BroadcastScene[]>([])
-  const [sceneAssets, setSceneAssets] = useState<Map<string, BroadcastSceneAsset[]>>(new Map())
-  const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
-  const [switchingScene, setSwitchingScene] = useState(false)
+  // Segment state
+  const [segments, setSegments] = useState<BroadcastSegment[]>([])
+  const [segmentAssets, setSegmentAssets] = useState<Map<string, BroadcastSegmentAsset[]>>(new Map())
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
+  const [switchingSegment, setSwitchingSegment] = useState(false)
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null)
 
   // Initialize supabase client for Realtime
   useEffect(() => {
@@ -83,11 +86,11 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     )
   }, [])
 
-  // Fetch project, assets, and scenes
+  // Fetch project, assets, and segments
   useEffect(() => {
     async function load() {
       try {
-        const [projRes, assetsRes, scenesRes, sceneAssetsRes] = await Promise.all([
+        const [projRes, assetsRes, segmentsRes, segmentAssetsRes] = await Promise.all([
           fetch(`/api/broadcast/projects/${projectId}`),
           fetch(`/api/broadcast/assets?project_id=${projectId}`),
           fetch(`/api/broadcast/scenes?project_id=${projectId}`),
@@ -95,21 +98,21 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         ])
         const projData = await projRes.json()
         const assetsData = await assetsRes.json()
-        const scenesData = await scenesRes.json()
-        const sceneAssetsData = await sceneAssetsRes.json()
+        const segmentsData = await segmentsRes.json()
+        const segmentAssetsData = await segmentAssetsRes.json()
 
         if (projData.project) setProject(projData.project)
         if (assetsData.assets) setAssets(assetsData.assets)
-        if (scenesData.scenes) setScenes(scenesData.scenes)
+        if (segmentsData.scenes) setSegments(segmentsData.scenes)
 
-        if (sceneAssetsData.sceneAssets) {
-          const map = new Map<string, BroadcastSceneAsset[]>()
-          for (const sa of sceneAssetsData.sceneAssets) {
+        if (segmentAssetsData.sceneAssets) {
+          const map = new Map<string, BroadcastSegmentAsset[]>()
+          for (const sa of segmentAssetsData.sceneAssets) {
             const list = map.get(sa.scene_id) || []
             list.push(sa)
             map.set(sa.scene_id, list)
           }
-          setSceneAssets(map)
+          setSegmentAssets(map)
         }
       } catch (err) {
         console.error('Failed to load broadcast project:', err)
@@ -120,21 +123,21 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     load()
   }, [projectId])
 
-  const reloadSceneAssets = useCallback(async () => {
+  const reloadSegmentAssets = useCallback(async () => {
     try {
       const res = await fetch(`/api/broadcast/scene-assets?project_id=${projectId}`)
       const data = await res.json()
       if (data.sceneAssets) {
-        const map = new Map<string, BroadcastSceneAsset[]>()
+        const map = new Map<string, BroadcastSegmentAsset[]>()
         for (const sa of data.sceneAssets) {
           const list = map.get(sa.scene_id) || []
           list.push(sa)
           map.set(sa.scene_id, list)
         }
-        setSceneAssets(map)
+        setSegmentAssets(map)
       }
     } catch (err) {
-      console.error('Failed to reload scene assets:', err)
+      console.error('Failed to reload segment assets:', err)
     }
   }, [projectId])
 
@@ -162,14 +165,14 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
 
   const flashTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
-  const persistActiveState = useCallback((visibleIds: Set<string>, sceneId: string | null) => {
+  const persistActiveState = useCallback((visibleIds: Set<string>, segmentId: string | null) => {
     if (!session) return
     fetch(`/api/broadcast/sessions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: session.id,
-        active_state: { visibleAssets: Array.from(visibleIds), activeSceneId: sceneId },
+        active_state: { visibleAssets: Array.from(visibleIds), activeSegmentId: segmentId },
       }),
     }).catch(console.error)
   }, [session])
@@ -179,20 +182,20 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       const next = new Set(prev)
       next.add(assetId)
       sendEvent('asset:show', { assetId })
-      persistActiveState(next, activeSceneId)
+      persistActiveState(next, activeSegmentId)
       return next
     })
-  }, [sendEvent, persistActiveState, activeSceneId])
+  }, [sendEvent, persistActiveState, activeSegmentId])
 
   const hideAsset = useCallback((assetId: string) => {
     setVisibleAssetIds(prev => {
       const next = new Set(prev)
       next.delete(assetId)
       sendEvent('asset:hide', { assetId })
-      persistActiveState(next, activeSceneId)
+      persistActiveState(next, activeSegmentId)
       return next
     })
-  }, [sendEvent, persistActiveState, activeSceneId])
+  }, [sendEvent, persistActiveState, activeSegmentId])
 
   const toggleAssetVisibility = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
@@ -243,28 +246,29 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     }, enterMs + holdMs)
   }, [previewingAssetId, assets, project])
 
-  // Scene CRUD
-  const addScene = useCallback((scene: BroadcastScene) => {
-    setScenes(prev => [...prev, scene])
+  // Segment CRUD
+  const addSegment = useCallback((segment: BroadcastSegment) => {
+    setSegments(prev => [...prev, segment])
   }, [])
 
-  const updateScene = useCallback((id: string, updates: Partial<BroadcastScene>) => {
-    setScenes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+  const updateSegment = useCallback((id: string, updates: Partial<BroadcastSegment>) => {
+    setSegments(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
   }, [])
 
-  const removeScene = useCallback((id: string) => {
-    setScenes(prev => prev.filter(s => s.id !== id))
-    setSceneAssets(prev => {
+  const removeSegment = useCallback((id: string) => {
+    setSegments(prev => prev.filter(s => s.id !== id))
+    setSegmentAssets(prev => {
       const next = new Map(prev)
       next.delete(id)
       return next
     })
-    if (activeSceneId === id) setActiveSceneId(null)
-  }, [activeSceneId])
+    if (activeSegmentId === id) setActiveSegmentId(null)
+    if (selectedSegmentId === id) setSelectedSegmentId(null)
+  }, [activeSegmentId, selectedSegmentId])
 
-  // Scene-asset CRUD
-  const addSceneAsset = useCallback((sa: BroadcastSceneAsset) => {
-    setSceneAssets(prev => {
+  // Segment-asset CRUD
+  const addSegmentAsset = useCallback((sa: BroadcastSegmentAsset) => {
+    setSegmentAssets(prev => {
       const next = new Map(prev)
       const list = [...(next.get(sa.scene_id) || []), sa]
       next.set(sa.scene_id, list)
@@ -272,50 +276,50 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
   }, [])
 
-  const updateSceneAsset = useCallback((id: string, updates: Partial<BroadcastSceneAsset>) => {
-    setSceneAssets(prev => {
-      const next = new Map<string, BroadcastSceneAsset[]>()
-      for (const [sceneId, list] of prev) {
-        next.set(sceneId, list.map(sa => sa.id === id ? { ...sa, ...updates } : sa))
+  const updateSegmentAsset = useCallback((id: string, updates: Partial<BroadcastSegmentAsset>) => {
+    setSegmentAssets(prev => {
+      const next = new Map<string, BroadcastSegmentAsset[]>()
+      for (const [segmentId, list] of prev) {
+        next.set(segmentId, list.map(sa => sa.id === id ? { ...sa, ...updates } : sa))
       }
       return next
     })
   }, [])
 
-  const removeSceneAsset = useCallback((id: string) => {
-    setSceneAssets(prev => {
-      const next = new Map<string, BroadcastSceneAsset[]>()
-      for (const [sceneId, list] of prev) {
-        next.set(sceneId, list.filter(sa => sa.id !== id))
+  const removeSegmentAsset = useCallback((id: string) => {
+    setSegmentAssets(prev => {
+      const next = new Map<string, BroadcastSegmentAsset[]>()
+      for (const [segmentId, list] of prev) {
+        next.set(segmentId, list.filter(sa => sa.id !== id))
       }
       return next
     })
   }, [])
 
-  // Switch scene — the core logic
-  const switchScene = useCallback((toSceneId: string) => {
-    if (switchingScene || !session) return
-    if (toSceneId === activeSceneId) return
+  // Switch segment — the core logic
+  const switchSegment = useCallback((toSegmentId: string) => {
+    if (switchingSegment || !session) return
+    if (toSegmentId === activeSegmentId) return
 
-    const targetScene = scenes.find(s => s.id === toSceneId)
-    if (!targetScene) return
+    const targetSegment = segments.find(s => s.id === toSegmentId)
+    if (!targetSegment) return
 
-    setSwitchingScene(true)
+    setSwitchingSegment(true)
 
-    // Compute which assets to hide (old scene) and show (new scene)
-    const oldSceneAssetList = activeSceneId ? sceneAssets.get(activeSceneId) || [] : []
-    const newSceneAssetList = sceneAssets.get(toSceneId) || []
+    // Compute which assets to hide (old segment) and show (new segment)
+    const oldSegmentAssetList = activeSegmentId ? segmentAssets.get(activeSegmentId) || [] : []
+    const newSegmentAssetList = segmentAssets.get(toSegmentId) || []
 
-    const assetsToHide = oldSceneAssetList
+    const assetsToHide = oldSegmentAssetList
       .filter(sa => sa.is_visible)
       .map(sa => sa.asset_id)
-    const assetsToShow = newSceneAssetList
+    const assetsToShow = newSegmentAssetList
       .filter(sa => sa.is_visible)
       .map(sa => sa.asset_id)
 
     // Build overrides map
     const overrides: Record<string, any> = {}
-    for (const sa of newSceneAssetList) {
+    for (const sa of newSegmentAssetList) {
       if (sa.override_x != null || sa.override_y != null || sa.override_width != null ||
           sa.override_height != null || sa.override_layer != null || sa.override_opacity != null) {
         overrides[sa.asset_id] = {
@@ -329,18 +333,20 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     }
 
-    const stingerUrl = targetScene.stinger_enabled
-      ? (targetScene.stinger_video_url || targetScene.stinger_storage_path)
+    const stingerUrl = targetSegment.stinger_enabled
+      ? (targetSegment.stinger_video_url || targetSegment.stinger_storage_path)
       : null
 
-    // Send scene:switch event
-    sendEvent('scene:switch', {
-      sceneId: toSceneId,
+    // Send segment:switch event
+    sendEvent('segment:switch', {
+      segmentId: toSegmentId,
       assetsToHide,
       assetsToShow,
       overrides,
       stingerUrl: stingerUrl || undefined,
-      stingerCutPoint: stingerUrl ? targetScene.stinger_cut_point : undefined,
+      stingerCutPoint: stingerUrl ? targetSegment.stinger_cut_point : undefined,
+      stingerEnterTransition: stingerUrl ? (targetSegment.enter_transition || targetSegment.transition_override) : undefined,
+      stingerExitTransition: stingerUrl ? targetSegment.exit_transition : undefined,
     })
 
     // Perform the local swap
@@ -351,33 +357,29 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         for (const id of assetsToShow) next.add(id)
         return next
       })
-      setActiveSceneId(toSceneId)
-      setSwitchingScene(false)
+      setActiveSegmentId(toSegmentId)
+      setSwitchingSegment(false)
 
       // Persist
-      const newVisible = new Set<string>()
-      for (const id of assetsToShow) newVisible.add(id)
-      // Keep non-scene assets that were already visible
       setVisibleAssetIds(prev => {
         const merged = new Set(prev)
         for (const id of assetsToHide) merged.delete(id)
         for (const id of assetsToShow) merged.add(id)
-        persistActiveState(merged, toSceneId)
+        persistActiveState(merged, toSegmentId)
         return merged
       })
     }
 
     if (stingerUrl) {
       // Wait for cut point duration before performing swap
-      const cutDelay = (targetScene.stinger_cut_point || 0.5) * 2000 // Assume ~2s stinger
+      const cutDelay = (targetSegment.stinger_cut_point || 0.5) * 2000
       setTimeout(performSwap, cutDelay)
     } else {
-      // Immediate swap
       performSwap()
     }
-  }, [switchingScene, session, activeSceneId, scenes, sceneAssets, sendEvent, persistActiveState])
+  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState])
 
-  // Keyboard hotkey listener — assets + scenes
+  // Keyboard hotkey listener — assets + segments
   useEffect(() => {
     if (!session) return
     function handleKeyDown(e: KeyboardEvent) {
@@ -385,11 +387,11 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       const key = e.key.toLowerCase()
 
-      // Check scene hotkeys first
-      const scene = scenes.find(s => s.hotkey_key === key)
-      if (scene) {
+      // Check segment hotkeys first
+      const segment = segments.find(s => s.hotkey_key === key)
+      if (segment) {
         e.preventDefault()
-        switchScene(scene.id)
+        switchSegment(segment.id)
         return
       }
 
@@ -402,7 +404,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [session, assets, scenes, toggleAssetVisibility, switchScene])
+  }, [session, assets, segments, toggleAssetVisibility, switchSegment])
 
   const getSlideshowIndex = useCallback((assetId: string): number => {
     return slideshowSlideIndexes.get(assetId) || 0
@@ -458,7 +460,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       if (data.session) {
         setSession(data.session)
 
-        // Subscribe to channel and listen for overlay events
         const sessionId = data.session.id
         const channel = supabaseRef.current.channel(channelName)
         channel
@@ -533,7 +534,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
       setSession(null)
       setVisibleAssetIds(new Set())
-      setActiveSceneId(null)
+      setActiveSegmentId(null)
     } catch (err) {
       console.error('Failed to end session:', err)
     }
@@ -543,13 +544,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     <BroadcastCtx.Provider value={{
       project, assets, session, visibleAssetIds, selectedAssetId, previewingAssetId, loading,
       slideshowSlideIndexes,
-      scenes, sceneAssets, activeSceneId, switchingScene,
+      segments, segmentAssets, activeSegmentId, switchingSegment, selectedSegmentId,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
-      setScenes, addScene, updateScene, removeScene, switchScene,
-      addSceneAsset, updateSceneAsset, removeSceneAsset, reloadSceneAssets,
+      setSegments, setSelectedSegmentId, addSegment, updateSegment, removeSegment, switchSegment,
+      addSegmentAsset, updateSegmentAsset, removeSegmentAsset, reloadSegmentAssets,
     }}>
       {children}
     </BroadcastCtx.Provider>

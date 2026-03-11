@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient, RealtimeChannel } from '@supabase/supabase-js'
-import { BroadcastAsset, BroadcastSession, BroadcastEvent } from './broadcastTypes'
+import { BroadcastAsset, BroadcastSession, BroadcastEvent, TransitionConfig } from './broadcastTypes'
 
 export interface StingerState {
   playing: boolean
   videoUrl: string
   cutPoint: number
   swapCallback: () => void
+  enterTransition?: TransitionConfig | null
+  exitTransition?: TransitionConfig | null
 }
 
 interface OverlayState {
@@ -19,8 +21,8 @@ interface OverlayState {
   slideshowIndexes: Map<string, number>
   connected: boolean
   error: string | null
-  activeSceneId: string | null
-  sceneOverrides: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
+  activeSegmentId: string | null
+  segmentOverrides: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
   stinger: StingerState | null
 }
 
@@ -33,8 +35,8 @@ export function useOverlaySession(sessionId: string) {
     slideshowIndexes: new Map(),
     connected: false,
     error: null,
-    activeSceneId: null,
-    sceneOverrides: {},
+    activeSegmentId: null,
+    segmentOverrides: {},
     stinger: null,
   })
 
@@ -83,24 +85,22 @@ export function useOverlaySession(sessionId: string) {
     }, 2000)
   }, [])
 
-  // Perform scene swap — hide old assets, show new with overrides
-  const performSceneSwap = useCallback((
+  // Perform segment swap — hide old assets, show new with overrides
+  const performSegmentSwap = useCallback((
     assetsToHide: string[],
     assetsToShow: string[],
     overrides: Record<string, any>,
-    sceneId: string,
+    segmentId: string,
   ) => {
-    // Hide old scene assets
     for (const id of assetsToHide) {
       hideAsset(id)
     }
 
-    // Small delay to let exit animations start, then show new ones
     setTimeout(() => {
       setState(prev => ({
         ...prev,
-        sceneOverrides: overrides || {},
-        activeSceneId: sceneId,
+        segmentOverrides: overrides || {},
+        activeSegmentId: segmentId,
       }))
 
       for (const id of assetsToShow) {
@@ -117,7 +117,6 @@ export function useOverlaySession(sessionId: string) {
   useEffect(() => {
     async function init() {
       try {
-        // Fetch session
         const sessionRes = await fetch(`/api/broadcast/sessions?id=${sessionId}`)
         const sessionData = await sessionRes.json()
         if (!sessionData.session) {
@@ -127,24 +126,21 @@ export function useOverlaySession(sessionId: string) {
 
         const session = sessionData.session as BroadcastSession
 
-        // Fetch assets
         const assetsRes = await fetch(`/api/broadcast/assets?project_id=${session.project_id}`)
         const assetsData = await assetsRes.json()
         const assets = (assetsData.assets || []) as BroadcastAsset[]
 
-        // Restore active state (no animations for reconnection)
         const activeVisible = new Set<string>(session.active_state?.visibleAssets || [])
-        const restoredSceneId = session.active_state?.activeSceneId || null
+        const restoredSegmentId = session.active_state?.activeSegmentId || null
 
         setState(prev => ({
           ...prev,
           session,
           assets,
           visibleAssetIds: activeVisible,
-          activeSceneId: restoredSceneId,
+          activeSegmentId: restoredSegmentId,
         }))
 
-        // Connect to Realtime channel
         supabaseRef.current = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -201,13 +197,16 @@ export function useOverlaySession(sessionId: string) {
               })
             }
           })
-          .on('broadcast', { event: 'scene:switch' }, (payload: any) => {
-            const { sceneId, assetsToHide = [], assetsToShow = [], overrides = {}, stingerUrl, stingerCutPoint } = payload.payload || {}
+          .on('broadcast', { event: 'segment:switch' }, (payload: any) => {
+            const {
+              segmentId, assetsToHide = [], assetsToShow = [], overrides = {},
+              stingerUrl, stingerCutPoint,
+              stingerEnterTransition, stingerExitTransition,
+            } = payload.payload || {}
 
             if (stingerUrl) {
-              // Play stinger, swap at cut point
               const swapCallback = () => {
-                performSceneSwap(assetsToHide, assetsToShow, overrides, sceneId)
+                performSegmentSwap(assetsToHide, assetsToShow, overrides, segmentId)
               }
               setState(prev => ({
                 ...prev,
@@ -216,11 +215,12 @@ export function useOverlaySession(sessionId: string) {
                   videoUrl: stingerUrl,
                   cutPoint: stingerCutPoint ?? 0.5,
                   swapCallback,
+                  enterTransition: stingerEnterTransition || null,
+                  exitTransition: stingerExitTransition || null,
                 },
               }))
             } else {
-              // Immediate swap
-              performSceneSwap(assetsToHide, assetsToShow, overrides, sceneId)
+              performSegmentSwap(assetsToHide, assetsToShow, overrides, segmentId)
             }
           })
           .on('broadcast', { event: 'session:sync' }, (payload: any) => {
@@ -248,7 +248,7 @@ export function useOverlaySession(sessionId: string) {
         supabaseRef.current.removeChannel(channelRef.current)
       }
     }
-  }, [sessionId, showAsset, hideAsset, performSceneSwap])
+  }, [sessionId, showAsset, hideAsset, performSegmentSwap])
 
   const notifyAdEnded = useCallback((assetId: string) => {
     if (channelRef.current) {
