@@ -6,74 +6,51 @@ import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/ov
 
 interface StingerPlayerProps {
   videoUrl: string
-  cutPoint: number // 0-1, fraction of duration
-  onCutPoint: () => void
-  onComplete: () => void
+  onStingerEnded: () => void   // fires when stinger video ends (asset should appear)
+  onComplete: () => void       // fires after exit animation finishes (remove stinger)
   enterTransition?: TransitionConfig | null
-  exitTransition?: TransitionConfig | null
 }
 
-export default function StingerPlayer({ videoUrl, cutPoint, onCutPoint, onComplete, enterTransition, exitTransition }: StingerPlayerProps) {
+export default function StingerPlayer({ videoUrl, onStingerEnded, onComplete, enterTransition }: StingerPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const cutFiredRef = useRef(false)
   const [loaded, setLoaded] = useState(false)
-  const [exiting, setExiting] = useState(false)
   const enterStyleRef = useRef<HTMLStyleElement | null>(null)
   const exitStyleRef = useRef<HTMLStyleElement | null>(null)
 
-  const handleTimeUpdate = useCallback(() => {
-    const video = videoRef.current
-    if (!video || cutFiredRef.current) return
-
-    const progress = video.currentTime / (video.duration || 1)
-    if (progress >= cutPoint) {
-      cutFiredRef.current = true
-      onCutPoint()
-    }
-  }, [cutPoint, onCutPoint])
-
+  // When stinger video ends: reveal asset, slide stinger left, then fire onComplete
   const handleEnded = useCallback(() => {
-    if (exitTransition && wrapperRef.current) {
-      // Apply exit animation, then fire onComplete
-      setExiting(true)
-      const result = generateCSSAnimation(
-        exitTransition,
-        'exit',
-        1920, 1080, 0, 0, 30,
-      )
+    // Tell parent the stinger finished — asset should now be revealed
+    onStingerEnded()
+
+    // Slide the stinger out to the left
+    if (wrapperRef.current) {
+      const slideLeft: TransitionConfig = { presetId: 'slide-out-left', durationFrames: 15 }
+      const result = generateCSSAnimation(slideLeft, 'exit', 1920, 1080, 0, 0, 30)
       if (result) {
-        if (exitStyleRef.current) removeKeyframes(exitStyleRef.current)
+        if (enterStyleRef.current) { removeKeyframes(enterStyleRef.current); enterStyleRef.current = null }
         exitStyleRef.current = injectKeyframes(result.keyframes)
         wrapperRef.current.style.animation = result.animation
-
         const match = result.animation.match(/(\d+)ms/)
         const durationMs = match ? parseInt(match[1]) : 500
-        setTimeout(() => {
-          onComplete()
-        }, durationMs)
+        setTimeout(onComplete, durationMs)
       } else {
         onComplete()
       }
     } else {
       onComplete()
     }
-  }, [exitTransition, onComplete])
+  }, [onStingerEnded, onComplete])
 
-  // Apply enter animation on mount
+  // Apply enter animation on mount, start playback
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
 
-    cutFiredRef.current = false
     video.play().catch(console.error)
 
     if (enterTransition && wrapperRef.current) {
-      const result = generateCSSAnimation(
-        enterTransition,
-        'enter',
-        1920, 1080, 0, 0, 30,
-      )
+      const result = generateCSSAnimation(enterTransition, 'enter', 1920, 1080, 0, 0, 30)
       if (result) {
         enterStyleRef.current = injectKeyframes(result.keyframes)
         wrapperRef.current.style.animation = result.animation
@@ -100,7 +77,6 @@ export default function StingerPlayer({ videoUrl, cutPoint, onCutPoint, onComple
         ref={videoRef}
         src={videoUrl}
         onLoadedData={() => setLoaded(true)}
-        onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
         autoPlay
         muted

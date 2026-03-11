@@ -7,10 +7,8 @@ import { BroadcastAsset, BroadcastSession, BroadcastEvent, TransitionConfig } fr
 export interface StingerState {
   playing: boolean
   videoUrl: string
-  cutPoint: number
   swapCallback: () => void
   enterTransition?: TransitionConfig | null
-  exitTransition?: TransitionConfig | null
 }
 
 interface OverlayState {
@@ -150,21 +148,19 @@ export function useOverlaySession(sessionId: string) {
 
         channel
           .on('broadcast', { event: 'asset:show' }, (payload: any) => {
-            const { assetId, assetStingerUrl, assetStingerCutPoint, stingerEnterTransition } = payload.payload || {}
+            const { assetId, assetStingerUrl, stingerEnterTransition } = payload.payload || {}
             if (!assetId) return
 
             if (assetStingerUrl) {
-              // Play stinger, show asset at cut point
+              // Play stinger fully, then show asset when stinger ends
               const swapCallback = () => { showAsset(assetId) }
               setState(prev => ({
                 ...prev,
                 stinger: {
                   playing: true,
                   videoUrl: assetStingerUrl,
-                  cutPoint: assetStingerCutPoint ?? 0.5,
                   swapCallback,
                   enterTransition: stingerEnterTransition || null,
-                  exitTransition: null,
                 },
               }))
             } else {
@@ -218,8 +214,7 @@ export function useOverlaySession(sessionId: string) {
           .on('broadcast', { event: 'segment:switch' }, (payload: any) => {
             const {
               segmentId, assetsToHide = [], assetsToShow = [], overrides = {},
-              stingerUrl, stingerCutPoint,
-              stingerEnterTransition, stingerExitTransition,
+              stingerUrl, stingerEnterTransition,
             } = payload.payload || {}
 
             if (stingerUrl) {
@@ -231,10 +226,8 @@ export function useOverlaySession(sessionId: string) {
                 stinger: {
                   playing: true,
                   videoUrl: stingerUrl,
-                  cutPoint: stingerCutPoint ?? 0.5,
                   swapCallback,
                   enterTransition: stingerEnterTransition || null,
-                  exitTransition: stingerExitTransition || null,
                 },
               }))
             } else {

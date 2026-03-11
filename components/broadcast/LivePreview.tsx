@@ -111,22 +111,19 @@ function LiveAdVideo({
 
 function LiveStingerOverlay({
   videoUrl,
-  cutPoint,
   enterTransition,
-  onCutPoint,
+  onStingerEnded,
   onComplete,
   fps,
 }: {
   videoUrl: string
-  cutPoint: number
   enterTransition: import('@/lib/broadcastTypes').TransitionConfig | null
-  onCutPoint: () => void
+  onStingerEnded: () => void
   onComplete: () => void
   fps: number
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const cutFiredRef = useRef(false)
   const enterStyleRef = useRef<HTMLStyleElement | null>(null)
   const exitStyleRef = useRef<HTMLStyleElement | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -135,7 +132,6 @@ function LiveStingerOverlay({
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    cutFiredRef.current = false
     video.play().catch(console.error)
 
     if (enterTransition && wrapperRef.current) {
@@ -152,35 +148,28 @@ function LiveStingerOverlay({
     }
   }, [videoUrl, enterTransition, fps])
 
-  // At cut point: fire callback and start slide-left exit on stinger
-  const handleTimeUpdate = useCallback(() => {
-    const video = videoRef.current
-    if (!video || cutFiredRef.current) return
-    const progress = video.currentTime / (video.duration || 1)
-    if (progress >= cutPoint) {
-      cutFiredRef.current = true
-      onCutPoint()
+  // When stinger video ends: reveal asset, slide stinger left, then fire onComplete
+  const handleEnded = useCallback(() => {
+    onStingerEnded()
 
-      // Slide the stinger left to reveal the asset underneath
-      if (wrapperRef.current) {
-        // Default slide-left exit for stinger → ad reveal
-        const slideLeftTransition = { presetId: 'slide-out-left', durationFrames: Math.round(fps * 0.5) }
-        const result = generateCSSAnimation(slideLeftTransition, 'exit', 1920, 1080, 0, 0, fps)
-        if (result) {
-          if (enterStyleRef.current) { removeKeyframes(enterStyleRef.current); enterStyleRef.current = null }
-          exitStyleRef.current = injectKeyframes(result.keyframes)
-          wrapperRef.current.style.animation = result.animation
-          const match = result.animation.match(/(\d+)ms/)
-          const durationMs = match ? parseInt(match[1]) : 500
-          setTimeout(onComplete, durationMs)
-        } else {
-          onComplete()
-        }
+    // Slide the stinger left to reveal the asset underneath
+    if (wrapperRef.current) {
+      const slideLeft = { presetId: 'slide-out-left', durationFrames: Math.round(fps * 0.5) }
+      const result = generateCSSAnimation(slideLeft, 'exit', 1920, 1080, 0, 0, fps)
+      if (result) {
+        if (enterStyleRef.current) { removeKeyframes(enterStyleRef.current); enterStyleRef.current = null }
+        exitStyleRef.current = injectKeyframes(result.keyframes)
+        wrapperRef.current.style.animation = result.animation
+        const match = result.animation.match(/(\d+)ms/)
+        const durationMs = match ? parseInt(match[1]) : 500
+        setTimeout(onComplete, durationMs)
       } else {
         onComplete()
       }
+    } else {
+      onComplete()
     }
-  }, [cutPoint, onCutPoint, onComplete, fps])
+  }, [onStingerEnded, onComplete, fps])
 
   return (
     <div
@@ -191,7 +180,7 @@ function LiveStingerOverlay({
         ref={videoRef}
         src={toMediaUrl(videoUrl)}
         onLoadedData={() => setLoaded(true)}
-        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
         autoPlay
         muted
         playsInline
@@ -318,9 +307,8 @@ export default function LivePreview() {
         {liveStinger && (
           <LiveStingerOverlay
             videoUrl={liveStinger.videoUrl}
-            cutPoint={liveStinger.cutPoint}
             enterTransition={liveStinger.enterTransition}
-            onCutPoint={handleStingerCutPoint}
+            onStingerEnded={handleStingerCutPoint}
             onComplete={handleStingerComplete}
             fps={fps}
           />

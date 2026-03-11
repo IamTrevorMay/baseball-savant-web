@@ -59,11 +59,9 @@ function OverlayInner({ sessionId }: { sessionId: string }) {
       {stinger?.playing && (
         <StingerPlayer
           videoUrl={stinger.videoUrl}
-          cutPoint={stinger.cutPoint}
-          onCutPoint={stinger.swapCallback}
+          onStingerEnded={stinger.swapCallback}
           onComplete={clearStinger}
           enterTransition={stinger.enterTransition}
-          exitTransition={stinger.exitTransition}
         />
       )}
 

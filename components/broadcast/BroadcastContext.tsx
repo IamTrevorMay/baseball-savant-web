@@ -7,7 +7,6 @@ import { createClient } from '@supabase/supabase-js'
 export interface LiveStinger {
   assetId: string
   videoUrl: string
-  cutPoint: number
   enterTransition: TransitionConfig | null
 }
 
@@ -212,7 +211,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       assetId,
       ...(stingerUrl ? {
         assetStingerUrl: stingerUrl,
-        assetStingerCutPoint: asset!.stinger_cut_point ?? 0.5,
         stingerEnterTransition: asset!.enter_transition,
       } : {}),
     })
@@ -223,7 +221,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       setLiveStinger({
         assetId,
         videoUrl: stingerUrl,
-        cutPoint: asset!.stinger_cut_point ?? 0.5,
         enterTransition: asset!.enter_transition,
       })
       // Persist immediately (overlay needs to know)
@@ -437,9 +434,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       assetsToShow,
       overrides,
       stingerUrl: stingerUrl || undefined,
-      stingerCutPoint: stingerUrl ? targetSegment.stinger_cut_point : undefined,
       stingerEnterTransition: stingerUrl ? (targetSegment.enter_transition || targetSegment.transition_override) : undefined,
-      stingerExitTransition: stingerUrl ? targetSegment.exit_transition : undefined,
     })
 
     // Perform the local swap
@@ -464,9 +459,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     }
 
     if (stingerUrl) {
-      // Wait for cut point duration before performing swap
-      const cutDelay = (targetSegment.stinger_cut_point || 0.5) * 2000
-      setTimeout(performSwap, cutDelay)
+      // Stinger plays fully then slides left — swap immediately (stinger covers the transition visually)
+      performSwap()
     } else {
       performSwap()
     }

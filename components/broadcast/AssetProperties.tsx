@@ -178,23 +178,9 @@ function SegmentProperties() {
                   <input ref={stingerFileRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleStingerSelect} />
                 </div>
 
-                <div>
-                  <label className="text-[9px] text-zinc-600 block mb-1">
-                    Cut Point: {Math.round((segment.stinger_cut_point || 0.5) * 100)}%
-                  </label>
-                  <input
-                    type="range" min={0} max={100}
-                    value={Math.round((segment.stinger_cut_point || 0.5) * 100)}
-                    onChange={e => handleChange('stinger_cut_point', Number(e.target.value) / 100)}
-                    className="w-full accent-emerald-500"
-                  />
-                </div>
-
-                {(segment.enter_transition || segment.transition_override) && (
-                  <p className="text-[9px] text-amber-500/70 leading-tight">
-                    Transition + stinger: the stinger enters with the transition animation, swaps at cut point, then auto-exits.
-                  </p>
-                )}
+                <p className="text-[9px] text-zinc-500 leading-tight">
+                  Stinger plays with enter transition, then slides left to reveal the segment.
+                </p>
               </>
             )}
           </div>
@@ -485,23 +471,9 @@ function AssetPropertiesPanel() {
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[9px] text-zinc-600 block mb-1">
-                      Cut Point: {Math.round((asset.stinger_cut_point ?? 0.5) * 100)}%
-                    </label>
-                    <input
-                      type="range" min={0} max={100}
-                      value={Math.round((asset.stinger_cut_point ?? 0.5) * 100)}
-                      onChange={e => handleChange('stinger_cut_point', Number(e.target.value) / 100)}
-                      className="w-full accent-emerald-500"
-                    />
-                  </div>
-
-                  {asset.enter_transition && (
-                    <p className="text-[9px] text-amber-500/70 leading-tight">
-                      The stinger follows the enter transition animation, then the asset appears at the cut point.
-                    </p>
-                  )}
+                  <p className="text-[9px] text-zinc-500 leading-tight">
+                    Stinger plays with enter transition, then slides left to reveal the asset.
+                  </p>
                 </>
               )}
             </div>
