@@ -110,7 +110,7 @@ export default function SlideshowEditor({ asset }: Props) {
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/jpeg,image/png,image/avif,video/mp4,video/quicktime"
+          accept="image/jpeg,image/png,image/avif,image/webp,video/mp4,video/quicktime"
           className="hidden"
           onChange={handleUpload}
         />

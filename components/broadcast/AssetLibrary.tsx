@@ -78,6 +78,27 @@ export default function AssetLibrary() {
       .finally(() => setLoadingTemplates(false))
   }, [showTemplateImport])
 
+  // Delete key handler for selected assets/segments
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      if (selectedSegmentId) {
+        const segment = segments.find(s => s.id === selectedSegmentId)
+        if (segment && confirm(`Delete segment "${segment.name}"?`)) {
+          handleDeleteSegment(selectedSegmentId)
+          setSelectedSegmentId(null)
+        }
+      } else if (selectedAssetId) {
+        handleDelete(selectedAssetId)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedSegmentId, selectedAssetId, segments])
+
   // Compute which assets belong to which segment
   const assetToSegment = new Map<string, string>() // assetId → segmentId
   for (const [segmentId, saList] of segmentAssets) {
@@ -429,31 +450,34 @@ export default function AssetLibrary() {
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     if (!project || !e.target.files?.length) return
-    const file = e.target.files[0]
-    const isVideo = file.type.startsWith('video/')
-    const assetType = isVideo ? 'video' : 'image'
+    const files = Array.from(e.target.files)
 
-    try {
-      const result = await uploadBroadcastMedia(file, project.id)
-      if (!result) return
+    for (const file of files) {
+      const isVideo = file.type.startsWith('video/')
+      const assetType = isVideo ? 'video' : 'image'
 
-      const assetRes = await fetch('/api/broadcast/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: project.id,
-          name: file.name.replace(/\.[^.]+$/, ''),
-          asset_type: assetType,
-          storage_path: result.url,
-          canvas_width: isVideo ? 1920 : 400,
-          canvas_height: isVideo ? 1080 : 300,
-          sort_order: assets.length,
-        }),
-      })
-      const assetData = await assetRes.json()
-      if (assetData.asset) addAsset(assetData.asset)
-    } catch (err) {
-      console.error('Failed to upload:', err)
+      try {
+        const result = await uploadBroadcastMedia(file, project.id)
+        if (!result) continue
+
+        const assetRes = await fetch('/api/broadcast/assets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: project.id,
+            name: file.name.replace(/\.[^.]+$/, ''),
+            asset_type: assetType,
+            storage_path: result.url,
+            canvas_width: isVideo ? 1920 : 400,
+            canvas_height: isVideo ? 1080 : 300,
+            sort_order: assets.length,
+          }),
+        })
+        const assetData = await assetRes.json()
+        if (assetData.asset) addAsset(assetData.asset)
+      } catch (err) {
+        console.error('Failed to upload:', err)
+      }
     }
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -971,7 +995,7 @@ export default function AssetLibrary() {
             Ad
           </button>
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+        <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
         <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={handleAdUpload} />
       </div>
 
