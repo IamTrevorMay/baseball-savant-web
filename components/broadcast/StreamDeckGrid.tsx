@@ -651,7 +651,7 @@ export default function StreamDeckGrid() {
                   <TestAssetContent
                     asset={asset}
                     slideIndex={testSlideIndexes.get(asset.id) || 0}
-                    onVideoEnded={asset.asset_type === 'advertisement' && getMode(asset) === 'timed' ? () => triggerExit(asset.id) : undefined}
+                    onVideoEnded={asset.asset_type === 'advertisement' ? () => triggerExit(asset.id) : undefined}
                   />
                 </TestAnimationWrapper>
               </div>

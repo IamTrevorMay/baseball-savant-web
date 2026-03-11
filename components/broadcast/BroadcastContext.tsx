@@ -1,8 +1,20 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig } from '@/lib/broadcastTypes'
 import { createClient } from '@supabase/supabase-js'
+
+export interface LiveStinger {
+  assetId: string
+  videoUrl: string
+  cutPoint: number
+  enterTransition: TransitionConfig | null
+}
+
+export interface VideoTimeInfo {
+  remaining: number
+  duration: number
+}
 
 interface BroadcastContextValue {
   project: BroadcastProject | null
@@ -14,6 +26,10 @@ interface BroadcastContextValue {
   previewingAssetId: string | null
   loading: boolean
   slideshowSlideIndexes: Map<string, number>
+
+  // Live stinger + video time
+  liveStinger: LiveStinger | null
+  videoTimeRemaining: Map<string, VideoTimeInfo>
 
   // Segment state
   segments: BroadcastSegment[]
@@ -38,6 +54,11 @@ interface BroadcastContextValue {
   slideshowPrev: (assetId: string) => void
   getSlideshowIndex: (assetId: string) => number
   updateProjectSettings: (updates: Partial<BroadcastProjectSettings>) => void
+  handleStingerCutPoint: () => void
+  handleStingerComplete: () => void
+  handleAdEnded: (assetId: string) => void
+  setVideoTimeInfo: (assetId: string, remaining: number, duration: number) => void
+  clearVideoTimeInfo: (assetId: string) => void
 
   // Segment methods
   setSegments: (s: BroadcastSegment[]) => void
@@ -70,6 +91,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [loading, setLoading] = useState(true)
   const [slideshowSlideIndexes, setSlideshowSlideIndexes] = useState<Map<string, number>>(new Map())
   const [animatingAssets, setAnimatingAssets] = useState<Map<string, 'entering' | 'exiting'>>(new Map())
+  const [liveStinger, setLiveStinger] = useState<LiveStinger | null>(null)
+  const [videoTimeRemaining, setVideoTimeRemaining] = useState<Map<string, VideoTimeInfo>>(new Map())
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
 
@@ -184,32 +207,53 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     const stingerUrl = asset?.stinger_enabled ? asset.stinger_video_url : null
     const fps = project?.settings?.fps || 30
 
-    setVisibleAssetIds(prev => {
-      const next = new Set(prev)
-      next.add(assetId)
-      sendEvent('asset:show', {
-        assetId,
-        ...(stingerUrl ? {
-          assetStingerUrl: stingerUrl,
-          assetStingerCutPoint: asset!.stinger_cut_point ?? 0.5,
-          stingerEnterTransition: asset!.enter_transition,
-        } : {}),
-      })
-      persistActiveState(next, activeSegmentId)
-      return next
+    // Always send event to overlay (it manages its own stinger independently)
+    sendEvent('asset:show', {
+      assetId,
+      ...(stingerUrl ? {
+        assetStingerUrl: stingerUrl,
+        assetStingerCutPoint: asset!.stinger_cut_point ?? 0.5,
+        stingerEnterTransition: asset!.enter_transition,
+      } : {}),
     })
 
-    // Track entering animation for studio preview
-    if (asset?.enter_transition) {
-      setAnimatingAssets(prev => new Map(prev).set(assetId, 'entering'))
-      const enterMs = (asset.enter_transition.durationFrames / fps) * 1000
-      setTimeout(() => {
-        setAnimatingAssets(prev => {
-          const next = new Map(prev)
-          if (next.get(assetId) === 'entering') next.delete(assetId)
-          return next
-        })
-      }, enterMs + 50)
+    if (stingerUrl) {
+      // Stinger mode: show stinger first, delay adding asset to visible
+      // LivePreview will render the stinger and call handleStingerCutPoint to reveal asset
+      setLiveStinger({
+        assetId,
+        videoUrl: stingerUrl,
+        cutPoint: asset!.stinger_cut_point ?? 0.5,
+        enterTransition: asset!.enter_transition,
+      })
+      // Persist immediately (overlay needs to know)
+      setVisibleAssetIds(prev => {
+        const next = new Set(prev)
+        next.add(assetId)
+        persistActiveState(next, activeSegmentId)
+        return next
+      })
+    } else {
+      // No stinger — show immediately with enter animation
+      setVisibleAssetIds(prev => {
+        const next = new Set(prev)
+        next.add(assetId)
+        persistActiveState(next, activeSegmentId)
+        return next
+      })
+
+      // Track entering animation for studio preview
+      if (asset?.enter_transition) {
+        setAnimatingAssets(prev => new Map(prev).set(assetId, 'entering'))
+        const enterMs = (asset.enter_transition.durationFrames / fps) * 1000
+        setTimeout(() => {
+          setAnimatingAssets(prev => {
+            const next = new Map(prev)
+            if (next.get(assetId) === 'entering') next.delete(assetId)
+            return next
+          })
+        }, enterMs + 50)
+      }
     }
   }, [assets, project, sendEvent, persistActiveState, activeSegmentId])
 
@@ -482,6 +526,43 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     slideshowGoto(assetId, prev)
   }, [assets, slideshowSlideIndexes, slideshowGoto])
 
+  // Stinger cut point: stinger is sliding away, asset is now revealed underneath
+  const handleStingerCutPoint = useCallback(() => {
+    // Asset is already in visibleAssetIds — this is just a signal that the stinger
+    // has reached its cut point and the asset content is being revealed
+  }, [])
+
+  // Stinger complete: stinger has finished its exit animation, remove it
+  const handleStingerComplete = useCallback(() => {
+    setLiveStinger(null)
+  }, [])
+
+  // Ad video ended — trigger exit transition
+  const handleAdEnded = useCallback((assetId: string) => {
+    setVideoTimeRemaining(prev => {
+      const next = new Map(prev)
+      next.delete(assetId)
+      return next
+    })
+    hideAsset(assetId)
+  }, [hideAsset])
+
+  const setVideoTimeInfo = useCallback((assetId: string, remaining: number, duration: number) => {
+    setVideoTimeRemaining(prev => {
+      const next = new Map(prev)
+      next.set(assetId, { remaining, duration })
+      return next
+    })
+  }, [])
+
+  const clearVideoTimeInfo = useCallback((assetId: string) => {
+    setVideoTimeRemaining(prev => {
+      const next = new Map(prev)
+      next.delete(assetId)
+      return next
+    })
+  }, [])
+
   const updateProjectSettings = useCallback((updates: Partial<BroadcastProjectSettings>) => {
     if (!project) return
     const newSettings = { ...project.settings, ...updates }
@@ -515,16 +596,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
           .on('broadcast', { event: 'ad:ended' }, (payload: any) => {
             const assetId = payload.payload?.assetId
             if (assetId) {
-              setVisibleAssetIds(prev => {
-                const next = new Set(prev)
-                next.delete(assetId)
-                fetch('/api/broadcast/sessions', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ id: sessionId, active_state: { visibleAssets: Array.from(next) } }),
-                }).catch(console.error)
-                return next
-              })
+              // Trigger proper exit transition (hideAsset handles animation + removal)
+              hideAsset(assetId)
             }
           })
           .on('broadcast', { event: 'asset:show' }, (payload: any) => {
@@ -592,12 +665,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   return (
     <BroadcastCtx.Provider value={{
       project, assets, session, visibleAssetIds, animatingAssets, selectedAssetId, previewingAssetId, loading,
-      slideshowSlideIndexes,
+      slideshowSlideIndexes, liveStinger, videoTimeRemaining,
       segments, segmentAssets, activeSegmentId, switchingSegment, selectedSegmentId,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
+      handleStingerCutPoint, handleStingerComplete, handleAdEnded, setVideoTimeInfo, clearVideoTimeInfo,
       setSegments, setSelectedSegmentId, addSegment, updateSegment, removeSegment, switchSegment,
       addSegmentAsset, updateSegmentAsset, removeSegmentAsset, reloadSegmentAssets,
     }}>

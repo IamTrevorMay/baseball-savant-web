@@ -2,11 +2,25 @@
 
 import { useBroadcast } from './BroadcastContext'
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
 export default function LiveControlGrid() {
-  const { assets, visibleAssetIds, toggleAssetVisibility, slideshowPrev, slideshowNext, getSlideshowIndex } = useBroadcast()
+  const {
+    assets, visibleAssetIds, toggleAssetVisibility,
+    slideshowPrev, slideshowNext, getSlideshowIndex,
+    videoTimeRemaining,
+  } = useBroadcast()
 
   const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order)
   const activeCount = assets.filter(a => visibleAssetIds.has(a.id)).length
+
+  // Collect all active video countdowns
+  const activeTimers = Array.from(videoTimeRemaining.entries())
+    .filter(([id]) => visibleAssetIds.has(id))
 
   return (
     <div className="h-64 shrink-0 border-t border-zinc-800 bg-zinc-900 flex flex-col">
@@ -20,6 +34,7 @@ export default function LiveControlGrid() {
           const isOn = visibleAssetIds.has(asset.id)
           const isSlideshow = asset.asset_type === 'slideshow'
           const slideCount = asset.slideshow_config?.slides?.length || 0
+          const timeInfo = videoTimeRemaining.get(asset.id)
 
           return (
             <div key={asset.id} className="flex items-center gap-1.5">
@@ -33,7 +48,13 @@ export default function LiveControlGrid() {
               >
                 <div className={`w-2 h-2 rounded-full shrink-0 ${isOn ? 'bg-red-500' : 'bg-zinc-600'}`} />
                 <span className="truncate">{asset.name}</span>
-                {asset.hotkey_key && (
+                {/* Video time remaining badge */}
+                {isOn && timeInfo && timeInfo.remaining > 0 && (
+                  <span className="ml-auto text-[9px] font-mono text-amber-400 tabular-nums shrink-0">
+                    {formatTime(timeInfo.remaining)}
+                  </span>
+                )}
+                {asset.hotkey_key && !timeInfo && (
                   <span className="ml-auto text-[9px] text-zinc-600 font-mono uppercase">{asset.hotkey_key}</span>
                 )}
               </button>
@@ -61,6 +82,31 @@ export default function LiveControlGrid() {
           )
         })}
       </div>
+
+      {/* Video time remaining bar at bottom */}
+      {activeTimers.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-zinc-800 space-y-0.5">
+          {activeTimers.map(([assetId, info]) => {
+            const asset = assets.find(a => a.id === assetId)
+            if (!asset) return null
+            const pct = info.duration > 0 ? ((info.duration - info.remaining) / info.duration) * 100 : 0
+            return (
+              <div key={assetId} className="flex items-center gap-2">
+                <span className="text-[9px] text-zinc-500 truncate w-20 shrink-0">{asset.name}</span>
+                <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 rounded-full transition-[width] duration-300"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-mono text-amber-400 tabular-nums w-10 text-right shrink-0">
+                  {formatTime(info.remaining)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
