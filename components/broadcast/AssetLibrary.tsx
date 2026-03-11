@@ -530,37 +530,6 @@ export default function AssetLibrary() {
     if (adFileInputRef.current) adFileInputRef.current.value = ''
   }
 
-  async function handleAdFromPath() {
-    if (!project) return
-    const localPath = prompt('Enter local file path for the ad video:\ne.g. /Users/.../ad.mp4')
-    if (!localPath?.trim()) return
-    const name = localPath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'Ad'
-    try {
-      const assetRes = await fetch('/api/broadcast/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: project.id,
-          name,
-          asset_type: 'advertisement',
-          storage_path: localPath.trim(),
-          ad_config: { volume: 1 },
-          canvas_width: 1920,
-          canvas_height: 1080,
-          trigger_mode: 'toggle',
-          sort_order: assets.length,
-        }),
-      })
-      const assetData = await assetRes.json()
-      if (assetData.asset) {
-        addAsset(assetData.asset)
-        setSelectedAssetId(assetData.asset.id)
-      }
-    } catch (err) {
-      console.error('Failed to create ad from path:', err)
-    }
-  }
-
   async function createSlideshow() {
     if (!project) return
     try {
@@ -1022,11 +991,8 @@ export default function AssetLibrary() {
           <button onClick={createSlideshow} className="flex-1 px-2 py-1 text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-500/20 transition">
             Slideshow
           </button>
-          <button onClick={handleAdFromPath} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition">
+          <button onClick={() => adFileInputRef.current?.click()} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition">
             Ad
-          </button>
-          <button onClick={() => adFileInputRef.current?.click()} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-300/60 border border-emerald-500/20 rounded hover:bg-emerald-500/20 transition" title="Upload ad video">
-            Upload Ad
           </button>
         </div>
         <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />

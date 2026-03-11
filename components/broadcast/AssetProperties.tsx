@@ -7,15 +7,18 @@ import { BroadcastSegment, BroadcastSegmentAsset, TransitionConfig } from '@/lib
 import TemplateDataPanel from './TemplateDataPanel'
 import SlideshowEditor from './SlideshowEditor'
 import Link from 'next/link'
+import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 
 // ── Segment Properties Panel ────────────────────────────────────────────────
 
 function SegmentProperties() {
   const {
     segments, selectedSegmentId, updateSegment, segmentAssets, assets,
-    updateSegmentAsset,
+    updateSegmentAsset, project,
   } = useBroadcast()
   const [recordingHotkey, setRecordingHotkey] = useState(false)
+  const [uploadingStinger, setUploadingStinger] = useState(false)
+  const stingerFileRef = useRef<HTMLInputElement>(null)
   const segment = segments.find(s => s.id === selectedSegmentId)
 
   if (!segment) return null
@@ -43,6 +46,23 @@ function SegmentProperties() {
     const existing = (segment as any)?.[field] as TransitionConfig | null
     if (!existing) return
     handleChange(field, { ...existing, durationFrames: frames })
+  }
+
+  async function handleStingerUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !project || !segment) return
+    setUploadingStinger(true)
+    try {
+      const result = await uploadBroadcastMedia(file, project.id)
+      if (result) {
+        handleChange('stinger_video_url', result.url)
+      }
+    } catch (err) {
+      console.error('Failed to upload stinger:', err)
+    } finally {
+      setUploadingStinger(false)
+      if (stingerFileRef.current) stingerFileRef.current.value = ''
+    }
   }
 
   function handleUpdateOverride(saId: string, field: string, value: number | null) {
@@ -145,14 +165,29 @@ function SegmentProperties() {
               <>
                 <div>
                   <label className="text-[9px] text-zinc-600 block mb-1">Video Source</label>
-                  <input
-                    type="text"
-                    value={segment.stinger_video_url || ''}
-                    onChange={e => handleChange('stinger_video_url', e.target.value || null)}
-                    placeholder="/Users/.../stinger.mp4 or https://..."
-                    className="w-full text-xs bg-zinc-800 text-zinc-300 border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-500"
-                  />
-                  <p className="text-[8px] text-zinc-600 mt-0.5">Local file path or remote URL</p>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => stingerFileRef.current?.click()}
+                      disabled={uploadingStinger}
+                      className="flex-1 px-2 py-1.5 text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition disabled:opacity-50"
+                    >
+                      {uploadingStinger ? 'Uploading...' : segment.stinger_video_url ? 'Replace Video' : 'Choose Video'}
+                    </button>
+                    {segment.stinger_video_url && (
+                      <button
+                        onClick={() => handleChange('stinger_video_url', null)}
+                        className="px-2 py-1.5 text-[10px] font-medium bg-zinc-800 text-red-400 border border-zinc-700 rounded hover:bg-red-900/30 transition"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {segment.stinger_video_url && (
+                    <p className="text-[8px] text-zinc-500 mt-1 truncate" title={segment.stinger_video_url}>
+                      {segment.stinger_video_url.split('/').pop()}
+                    </p>
+                  )}
+                  <input ref={stingerFileRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleStingerUpload} />
                 </div>
 
                 <div>
