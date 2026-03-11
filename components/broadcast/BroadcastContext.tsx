@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
 import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues } from '@/lib/broadcastTypes'
+import { toMediaUrl } from '@/lib/localMedia'
 import { createClient } from '@supabase/supabase-js'
 
 interface BroadcastContextValue {
@@ -333,9 +334,10 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     }
 
-    const stingerUrl = targetSegment.stinger_enabled
+    const rawStingerUrl = targetSegment.stinger_enabled
       ? (targetSegment.stinger_video_url || targetSegment.stinger_storage_path)
       : null
+    const stingerUrl = rawStingerUrl ? toMediaUrl(rawStingerUrl) : null
 
     // Send segment:switch event
     sendEvent('segment:switch', {

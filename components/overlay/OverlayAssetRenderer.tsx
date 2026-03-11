@@ -5,6 +5,7 @@ import { BroadcastAsset, SlideshowTransitionType } from '@/lib/broadcastTypes'
 import { SceneElement } from '@/lib/sceneTypes'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
 import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
+import { toMediaUrl } from '@/lib/localMedia'
 
 // ── Slideshow transition CSS generator ─────────────────────────────────────
 
@@ -242,7 +243,7 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
           opacity: assetOpacity,
         }}
       >
-        <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" />
+        <img src={toMediaUrl(asset.storage_path)} alt={asset.name} className="w-full h-full object-contain" />
       </div>
     )
   }
@@ -263,7 +264,7 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         }}
       >
         <video
-          src={asset.storage_path}
+          src={toMediaUrl(asset.storage_path)}
           autoPlay
           playsInline
           preload="auto"
@@ -290,7 +291,7 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
         }}
       >
         <video
-          src={asset.storage_path}
+          src={toMediaUrl(asset.storage_path)}
           autoPlay
           preload="auto"
           className="w-full h-full object-contain"
@@ -389,9 +390,9 @@ function SlideshowRenderer({
 
   function renderSlide(slide: typeof currentSlide) {
     if (slide.type === 'image') {
-      return <img src={slide.storage_path} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} />
+      return <img src={toMediaUrl(slide.storage_path)} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} />
     }
-    return <video key={slide.id} src={slide.storage_path} autoPlay preload="auto" className="w-full h-full" style={{ objectFit: fit }} />
+    return <video key={slide.id} src={toMediaUrl(slide.storage_path)} autoPlay preload="auto" className="w-full h-full" style={{ objectFit: fit }} />
   }
 
   return (

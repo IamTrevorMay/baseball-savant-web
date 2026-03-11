@@ -6,6 +6,7 @@ import { BroadcastAsset, SlideshowTransitionType } from '@/lib/broadcastTypes'
 import { SceneElement } from '@/lib/sceneTypes'
 import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
+import { toMediaUrl } from '@/lib/localMedia'
 
 function generateSlideshowTransitionCSS(type: SlideshowTransitionType, durationMs: number) {
   const id = `ss-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -91,7 +92,7 @@ function TestAssetContent({ asset, slideIndex, onVideoEnded }: { asset: Broadcas
     return (
       <div className="w-full h-full relative overflow-hidden">
         <video
-          src={asset.storage_path}
+          src={toMediaUrl(asset.storage_path)}
           autoPlay
           playsInline
           className="w-full h-full object-cover"
@@ -140,7 +141,7 @@ function TestAssetContent({ asset, slideIndex, onVideoEnded }: { asset: Broadcas
   if (asset.asset_type === 'image' && asset.storage_path) {
     return (
       <div className="w-full h-full overflow-hidden">
-        <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" draggable={false} />
+        <img src={toMediaUrl(asset.storage_path)} alt={asset.name} className="w-full h-full object-contain" draggable={false} />
       </div>
     )
   }
@@ -212,9 +213,9 @@ function TestSlideshowContent({ asset, slideIndex }: { asset: BroadcastAsset; sl
 
   function renderSlide(slide: typeof currentSlide) {
     if (slide.type === 'image') {
-      return <img src={slide.storage_path} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} draggable={false} />
+      return <img src={toMediaUrl(slide.storage_path)} alt={slide.name} className="w-full h-full" style={{ objectFit: fit }} draggable={false} />
     }
-    return <video key={slide.id} src={slide.storage_path} autoPlay playsInline className="w-full h-full" style={{ objectFit: fit }} />
+    return <video key={slide.id} src={toMediaUrl(slide.storage_path)} autoPlay playsInline className="w-full h-full" style={{ objectFit: fit }} />
   }
 
   return (

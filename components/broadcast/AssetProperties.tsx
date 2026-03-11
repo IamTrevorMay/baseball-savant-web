@@ -144,14 +144,15 @@ function SegmentProperties() {
             {segment.stinger_enabled && (
               <>
                 <div>
-                  <label className="text-[9px] text-zinc-600 block mb-1">Video URL</label>
+                  <label className="text-[9px] text-zinc-600 block mb-1">Video Source</label>
                   <input
                     type="text"
                     value={segment.stinger_video_url || ''}
                     onChange={e => handleChange('stinger_video_url', e.target.value || null)}
-                    placeholder="https://... or upload"
+                    placeholder="/Users/.../stinger.mp4 or https://..."
                     className="w-full text-xs bg-zinc-800 text-zinc-300 border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-500"
                   />
+                  <p className="text-[8px] text-zinc-600 mt-0.5">Local file path or remote URL</p>
                 </div>
 
                 <div>

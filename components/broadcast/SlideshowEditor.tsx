@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { BroadcastAsset, SlideshowSlide, SlideshowConfig, SLIDESHOW_TRANSITIONS, SlideshowTransitionType } from '@/lib/broadcastTypes'
 import { useBroadcast } from './BroadcastContext'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
+import { toMediaUrl } from '@/lib/localMedia'
 
 interface Props {
   asset: BroadcastAsset
@@ -248,7 +249,7 @@ export default function SlideshowEditor({ asset }: Props) {
                   {/* Thumbnail */}
                   {slide.type === 'image' ? (
                     <img
-                      src={slide.storage_path}
+                      src={toMediaUrl(slide.storage_path)}
                       alt={slide.name}
                       className="w-10 h-7 object-cover rounded shrink-0 bg-zinc-900"
                     />

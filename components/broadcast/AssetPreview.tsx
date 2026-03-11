@@ -4,6 +4,7 @@ import { SceneElement } from '@/lib/sceneTypes'
 import { BroadcastAsset } from '@/lib/broadcastTypes'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
 import { useBroadcast } from './BroadcastContext'
+import { toMediaUrl } from '@/lib/localMedia'
 
 export function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   const p = el.props
@@ -67,7 +68,7 @@ export function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; 
     <div className="w-full h-full relative overflow-hidden" style={{ opacity: dimmedOpacity }}>
       {slide.type === 'image' ? (
         <img
-          src={slide.storage_path}
+          src={toMediaUrl(slide.storage_path)}
           alt={slide.name}
           className="w-full h-full"
           style={{ objectFit: fit }}
@@ -76,7 +77,7 @@ export function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; 
       ) : (
         <video
           key={slide.id}
-          src={slide.storage_path}
+          src={toMediaUrl(slide.storage_path)}
           autoPlay
           playsInline
           className="w-full h-full"
@@ -130,7 +131,7 @@ export default function AssetPreview({ asset, isVisible }: { asset: BroadcastAss
   if (asset.asset_type === 'image' && asset.storage_path) {
     return (
       <div className="w-full h-full overflow-hidden" style={{ opacity: dimmedOpacity }}>
-        <img src={asset.storage_path} alt={asset.name} className="w-full h-full object-contain" draggable={false} />
+        <img src={toMediaUrl(asset.storage_path)} alt={asset.name} className="w-full h-full object-contain" draggable={false} />
       </div>
     )
   }
@@ -139,7 +140,7 @@ export default function AssetPreview({ asset, isVisible }: { asset: BroadcastAss
     return (
       <div className="w-full h-full relative overflow-hidden" style={{ opacity: dimmedOpacity }}>
         <video
-          src={asset.storage_path}
+          src={toMediaUrl(asset.storage_path)}
           muted
           playsInline
           className="w-full h-full object-cover"
