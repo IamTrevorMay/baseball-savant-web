@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { createClient } from './supabase/client'
 
 const TUS_THRESHOLD = 50 * 1024 * 1024 // 50MB
 
@@ -83,6 +83,7 @@ async function uploadViaTUS(
 ): Promise<{ url: string; path: string } | null> {
   try {
     // Get user's access token for TUS auth
+    const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     if (!session?.access_token) {
       console.error('No auth session for TUS upload')
