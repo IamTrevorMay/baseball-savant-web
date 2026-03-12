@@ -131,9 +131,10 @@ interface Props {
   slideshowIndex?: number
   onVideoEnded?: () => void
   overrides?: AssetOverrides
+  obsActive?: boolean
 }
 
-export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded, overrides }: Props) {
+export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded, overrides, obsActive }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef<HTMLStyleElement | null>(null)
 
@@ -248,6 +249,25 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
       >
         <img src={toMediaUrl(asset.storage_path)} alt={asset.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
       </div>
+    )
+  }
+
+  // When OBS is handling video/ad natively, render transparent placeholder to preserve z-index layering
+  if (obsActive && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
+    return (
+      <div
+        ref={wrapperRef}
+        className="absolute"
+        style={{
+          left: effectiveX,
+          top: effectiveY,
+          width: effectiveW,
+          height: effectiveH,
+          zIndex: effectiveLayer,
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
+      />
     )
   }
 

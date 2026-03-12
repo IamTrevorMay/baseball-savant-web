@@ -22,6 +22,7 @@ interface OverlayState {
   activeSegmentId: string | null
   segmentOverrides: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
   stinger: StingerState | null
+  obsActive: boolean
 }
 
 export function useOverlaySession(sessionId: string) {
@@ -36,6 +37,7 @@ export function useOverlaySession(sessionId: string) {
     activeSegmentId: null,
     segmentOverrides: {},
     stinger: null,
+    obsActive: false,
   })
 
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -241,6 +243,10 @@ export function useOverlaySession(sessionId: string) {
               visibleAssetIds: new Set(visibleAssets),
               animatingAssets: new Map(),
             }))
+          })
+          .on('broadcast', { event: 'obs:status' }, (payload: any) => {
+            const connected = payload.payload?.connected ?? false
+            setState(prev => ({ ...prev, obsActive: connected }))
           })
           .subscribe((status: string) => {
             setState(prev => ({ ...prev, connected: status === 'SUBSCRIBED' }))

@@ -6,7 +6,7 @@ import OverlayAssetRenderer from '@/components/overlay/OverlayAssetRenderer'
 import StingerPlayer from '@/components/overlay/StingerPlayer'
 
 function OverlayInner({ sessionId }: { sessionId: string }) {
-  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset, notifyAdEnded, stinger, segmentOverrides, clearStinger } = useOverlaySession(sessionId)
+  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset, notifyAdEnded, stinger, segmentOverrides, clearStinger, obsActive } = useOverlaySession(sessionId)
 
   if (error) {
     return (
@@ -52,6 +52,7 @@ function OverlayInner({ sessionId }: { sessionId: string }) {
             slideshowIndex={slideshowIndexes.get(asset.id) || 0}
             onVideoEnded={asset.asset_type === 'advertisement' ? () => { hideAsset(asset.id); notifyAdEnded(asset.id) } : undefined}
             overrides={segmentOverrides[asset.id]}
+            obsActive={obsActive}
           />
         ))}
 

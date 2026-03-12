@@ -1,11 +1,22 @@
 import { SceneElement } from './sceneTypes'
 
+// ── OBS WebSocket ──────────────────────────────────────────────────────────
+
+export interface OBSConnectionConfig {
+  host: string    // default '127.0.0.1'
+  port: number    // default 4455
+  password: string
+}
+
 // ── Broadcast Project ───────────────────────────────────────────────────────
 
 export interface BroadcastProjectSettings {
   fps: number
   defaultTransitionDuration: number // frames
   referenceImage?: string
+  obsConfig?: OBSConnectionConfig
+  obsMediaDir?: string        // local folder where video/ad files live
+  obsSceneName?: string       // OBS scene to use (default: current)
 }
 
 export interface BroadcastProject {
@@ -24,6 +35,7 @@ export type BroadcastAssetType = 'scene' | 'image' | 'video' | 'slideshow' | 'ad
 
 export interface AdConfig {
   volume: number
+  source_filename?: string  // original filename for OBS native playback
 }
 
 export const SLIDESHOW_TRANSITIONS = [
@@ -100,6 +112,7 @@ export interface BroadcastAsset {
   template_data?: TemplateDataValues
   slideshow_config?: SlideshowConfig
   ad_config?: AdConfig
+  source_filename?: string  // original filename for OBS native playback (video assets)
   canvas_x: number
   canvas_y: number
   canvas_width: number
@@ -184,6 +197,7 @@ export type BroadcastEventType =
   | 'slideshow:goto'
   | 'session:sync'
   | 'segment:switch'
+  | 'obs:status'
 
 export interface BroadcastEvent {
   event: BroadcastEventType

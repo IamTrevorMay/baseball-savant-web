@@ -1,8 +1,9 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig, OBSConnectionConfig } from '@/lib/broadcastTypes'
 import { createClient } from '@supabase/supabase-js'
+import { useOBSWebSocket, OBSState } from '@/lib/useOBSWebSocket'
 
 export interface LiveStinger {
   assetId: string
@@ -59,6 +60,13 @@ interface BroadcastContextValue {
   setVideoTimeInfo: (assetId: string, remaining: number, duration: number) => void
   clearVideoTimeInfo: (assetId: string) => void
 
+  // OBS WebSocket
+  obsState: OBSState
+  obsConnect: (config: OBSConnectionConfig) => Promise<void>
+  obsDisconnect: () => Promise<void>
+  obsSetupScene: () => Promise<void>
+  isOBSConnected: boolean
+
   // Segment methods
   setSegments: (s: BroadcastSegment[]) => void
   setSelectedSegmentId: (id: string | null) => void
@@ -101,6 +109,80 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
   const [switchingSegment, setSwitchingSegment] = useState(false)
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null)
+
+  // ── OBS WebSocket integration ──────────────────────────────────────────
+  const obs = useOBSWebSocket({
+    onMediaEnded: (sourceName: string) => {
+      // Extract assetId from 'triton-media-{assetId}'
+      const assetId = sourceName.replace('triton-media-', '')
+      const asset = assets.find(a => a.id === assetId)
+      if (asset?.asset_type === 'advertisement') {
+        handleAdEndedRef.current(assetId)
+      }
+    },
+    onDisconnected: () => {
+      // Send obs:status to overlay so it resumes rendering videos
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'obs:status',
+          payload: { connected: false, source: 'manager', timestamp: Date.now() },
+        })
+      }
+    },
+  })
+
+  // Ref for handleAdEnded to avoid circular dependency
+  const handleAdEndedRef = useRef<(assetId: string) => void>(() => {})
+
+  // Helper: resolve local file path for OBS playback
+  const resolveOBSFilePath = useCallback((asset: BroadcastAsset): string | null => {
+    const dir = project?.settings?.obsMediaDir
+    if (!dir) return null
+    const filename = asset.ad_config?.source_filename || asset.source_filename
+    if (!filename) return null
+    return `${dir.replace(/\/$/, '')}/${filename}`
+  }, [project])
+
+  // OBS connect/disconnect wrappers
+  const obsConnect = useCallback(async (config: OBSConnectionConfig) => {
+    await obs.connect(config)
+  }, [obs])
+
+  const obsDisconnect = useCallback(async () => {
+    await obs.disconnect()
+  }, [obs])
+
+  const obsSetupScene = useCallback(async () => {
+    if (!session) return
+    const overlayUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/overlay/${session.id}`
+    await obs.setupTritonScene(overlayUrl)
+  }, [obs, session])
+
+  // Video time polling for OBS media sources
+  useEffect(() => {
+    if (!obs.isConnected || !session) return
+
+    const interval = setInterval(async () => {
+      const visibleVideoAds = assets.filter(
+        a => visibleAssetIds.has(a.id) && (a.asset_type === 'video' || a.asset_type === 'advertisement')
+      )
+      for (const asset of visibleVideoAds) {
+        const filePath = resolveOBSFilePath(asset)
+        if (!filePath) continue
+        const time = await obs.getMediaTime(`triton-media-${asset.id}`)
+        if (time && time.duration > 0) {
+          setVideoTimeRemaining(prev => {
+            const next = new Map(prev)
+            next.set(asset.id, { remaining: time.duration - time.currentTime, duration: time.duration })
+            return next
+          })
+        }
+      }
+    }, 500)
+
+    return () => clearInterval(interval)
+  }, [obs.isConnected, session, assets, visibleAssetIds, resolveOBSFilePath, obs])
 
   // Initialize supabase client for Realtime
   useEffect(() => {
@@ -215,6 +297,25 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       } : {}),
     })
 
+    // OBS native playback for video/ad when connected and file path is available
+    if (obs.isConnected && asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
+      const filePath = resolveOBSFilePath(asset)
+      if (filePath) {
+        const sourceName = `triton-media-${asset.id}`
+        obs.createMediaSource(sourceName, filePath, {
+          x: asset.canvas_x,
+          y: asset.canvas_y,
+          width: asset.canvas_width,
+          height: asset.canvas_height,
+        }).then(() => {
+          obs.showMediaSource(sourceName)
+          if (asset.asset_type === 'advertisement' && asset.ad_config?.volume !== undefined) {
+            obs.setMediaVolume(sourceName, asset.ad_config.volume)
+          }
+        })
+      }
+    }
+
     if (stingerUrl) {
       // Stinger mode: DON'T add asset to visible yet.
       // Stinger plays fully, then when it ends and slides left,
@@ -246,13 +347,19 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         }, enterMs + 50)
       }
     }
-  }, [assets, project, sendEvent, persistActiveState, activeSegmentId])
+  }, [assets, project, sendEvent, persistActiveState, activeSegmentId, obs, resolveOBSFilePath])
 
   const hideAsset = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
     const fps = project?.settings?.fps || 30
 
     sendEvent('asset:hide', { assetId })
+
+    // Clean up OBS media source for video/ad
+    if (obs.isConnected && asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
+      const sourceName = `triton-media-${assetId}`
+      obs.hideMediaSource(sourceName).then(() => obs.removeMediaSource(sourceName))
+    }
 
     if (asset?.exit_transition) {
       // Start exit animation, then remove
@@ -279,7 +386,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         return next
       })
     }
-  }, [assets, project, sendEvent, persistActiveState, activeSegmentId])
+  }, [assets, project, sendEvent, persistActiveState, activeSegmentId, obs])
 
   const toggleAssetVisibility = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
@@ -431,6 +538,39 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       stingerEnterTransition: stingerUrl ? (targetSegment.enter_transition || targetSegment.transition_override) : undefined,
     })
 
+    // OBS: clean up old video/ad sources, create new ones
+    if (obs.isConnected) {
+      for (const id of assetsToHide) {
+        const asset = assets.find(a => a.id === id)
+        if (asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
+          const sourceName = `triton-media-${id}`
+          obs.hideMediaSource(sourceName).then(() => obs.removeMediaSource(sourceName))
+        }
+      }
+      for (const id of assetsToShow) {
+        const asset = assets.find(a => a.id === id)
+        if (asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
+          const filePath = resolveOBSFilePath(asset)
+          if (filePath) {
+            const sourceName = `triton-media-${id}`
+            // Use overrides if available
+            const ov = overrides[id]
+            obs.createMediaSource(sourceName, filePath, {
+              x: ov?.x ?? asset.canvas_x,
+              y: ov?.y ?? asset.canvas_y,
+              width: ov?.width ?? asset.canvas_width,
+              height: ov?.height ?? asset.canvas_height,
+            }).then(() => {
+              obs.showMediaSource(sourceName)
+              if (asset.asset_type === 'advertisement' && asset.ad_config?.volume !== undefined) {
+                obs.setMediaVolume(sourceName, asset.ad_config.volume)
+              }
+            })
+          }
+        }
+      }
+    }
+
     // Perform the local swap
     const performSwap = () => {
       setVisibleAssetIds(prev => {
@@ -458,7 +598,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     } else {
       performSwap()
     }
-  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState])
+  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState, assets, obs, resolveOBSFilePath])
 
   // Keyboard hotkey listener — assets + segments
   useEffect(() => {
@@ -540,6 +680,9 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
     hideAsset(assetId)
   }, [hideAsset])
+
+  // Keep ref in sync for OBS callback
+  handleAdEndedRef.current = handleAdEnded
 
   const setVideoTimeInfo = useCallback((assetId: string, remaining: number, duration: number) => {
     setVideoTimeRemaining(prev => {
@@ -623,6 +766,17 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
           .subscribe()
         channelRef.current = channel
 
+        // Notify overlay about OBS connection status
+        if (obs.isConnected) {
+          setTimeout(() => {
+            channel.send({
+              type: 'broadcast',
+              event: 'obs:status',
+              payload: { connected: true, source: 'manager', timestamp: Date.now() },
+            })
+          }, 1000) // Small delay to let overlay subscribe first
+        }
+
         return sessionId
       }
       return null
@@ -630,7 +784,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       console.error('Failed to go live:', err)
       return null
     }
-  }, [project])
+  }, [project, obs.isConnected])
 
   const endSession = useCallback(async () => {
     if (!session) return
@@ -666,6 +820,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
       handleStingerCutPoint, handleStingerComplete, handleAdEnded, setVideoTimeInfo, clearVideoTimeInfo,
+      obsState: obs.state, obsConnect, obsDisconnect, obsSetupScene, isOBSConnected: obs.isConnected,
       setSegments, setSelectedSegmentId, addSegment, updateSegment, removeSegment, switchSegment,
       addSegmentAsset, updateSegmentAsset, removeSegmentAsset, reloadSegmentAssets,
     }}>

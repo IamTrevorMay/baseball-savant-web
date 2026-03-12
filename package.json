@@ -21,6 +21,7 @@
     "jspdf": "^4.2.0",
     "jszip": "^3.10.1",
     "next": "16.1.6",
+    "obs-websocket-js": "^5.0.7",
     "plotly.js": "^3.4.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

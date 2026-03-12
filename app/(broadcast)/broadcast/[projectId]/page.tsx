@@ -11,16 +11,18 @@ import LivePreview from '@/components/broadcast/LivePreview'
 import LiveControlGrid, { SlideshowControlStrip } from '@/components/broadcast/LiveControlGrid'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
+import OBSSettings from '@/components/broadcast/OBSSettings'
 
 type ViewMode = 'canvas' | 'streamdeck'
 
 function BroadcastManagerInner() {
-  const { loading, project, session, updateProjectSettings } = useBroadcast()
+  const { loading, project, session, updateProjectSettings, isOBSConnected } = useBroadcast()
   const [viewMode, setViewMode] = useState<ViewMode>('canvas')
   const [showRefImage, setShowRefImage] = useState(true)
   const [refImageOpacity, setRefImageOpacity] = useState(50)
   const [uploading, setUploading] = useState(false)
   const [showStreamDeckSetup, setShowStreamDeckSetup] = useState(false)
+  const [showOBSSetup, setShowOBSSetup] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   if (loading) {
@@ -92,6 +94,15 @@ function BroadcastManagerInner() {
           className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition"
         >
           Stream Deck
+        </button>
+        <button
+          onClick={() => setShowOBSSetup(true)}
+          className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
+        >
+          OBS
+          {isOBSConnected && (
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          )}
         </button>
 
         {/* Right side: reference image controls */}
@@ -195,6 +206,7 @@ function BroadcastManagerInner() {
       </div>
       <TriggerBar />
       {showStreamDeckSetup && <StreamDeckSetup onClose={() => setShowStreamDeckSetup(false)} />}
+      {showOBSSetup && <OBSSettings onClose={() => setShowOBSSetup(false)} />}
     </div>
   )
 }
