@@ -42,7 +42,8 @@ export default function OBSSettings({ onClose }: { onClose: () => void }) {
   }
 
   function handleSaveMediaDir() {
-    updateProjectSettings({ obsMediaDir: mediaDir.trim() })
+    // Don't trim trailing spaces — folder names can have them
+    updateProjectSettings({ obsMediaDir: mediaDir.trimStart() })
   }
 
   async function handleSetupScene() {
