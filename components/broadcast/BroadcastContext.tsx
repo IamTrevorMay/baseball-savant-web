@@ -308,7 +308,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
           width: asset.canvas_width,
           height: asset.canvas_height,
         }).then(() => {
-          obs.showMediaSource(sourceName)
           if (asset.asset_type === 'advertisement' && asset.ad_config?.volume !== undefined) {
             obs.setMediaVolume(sourceName, asset.ad_config.volume)
           }
@@ -561,7 +560,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
               width: ov?.width ?? asset.canvas_width,
               height: ov?.height ?? asset.canvas_height,
             }).then(() => {
-              obs.showMediaSource(sourceName)
               if (asset.asset_type === 'advertisement' && asset.ad_config?.volume !== undefined) {
                 obs.setMediaVolume(sourceName, asset.ad_config.volume)
               }
