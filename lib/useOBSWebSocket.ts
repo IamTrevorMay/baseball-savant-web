@@ -325,6 +325,32 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     }
   }, [])
 
+  // Remove ALL triton-media-* inputs from OBS
+  const cleanupAllTritonSources = useCallback(async () => {
+    const obs = obsRef.current
+    if (!obs) return 0
+
+    try {
+      const { inputs } = await obs.call('GetInputList')
+      const tritonInputs = inputs.filter((i: any) =>
+        typeof i.inputName === 'string' && i.inputName.startsWith('triton-media-')
+      )
+      console.log(`[OBS] Cleaning up ${tritonInputs.length} stale triton sources`)
+      for (const input of tritonInputs) {
+        try {
+          await obs.call('RemoveInput', { inputName: input.inputName as string })
+          console.log(`[OBS] Removed: ${input.inputName}`)
+        } catch (err: any) {
+          console.warn(`[OBS] Could not remove ${input.inputName}: ${err?.message}`)
+        }
+      }
+      return tritonInputs.length
+    } catch (err: any) {
+      console.error('[OBS] Cleanup failed:', err?.message)
+      return 0
+    }
+  }, [])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -346,6 +372,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     setMediaVolume,
     getMediaTime,
     setupTritonScene,
+    cleanupAllTritonSources,
     isConnected: state.status === 'connected',
   }
 }

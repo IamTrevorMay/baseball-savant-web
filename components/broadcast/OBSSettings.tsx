@@ -6,7 +6,7 @@ import { useBroadcast } from './BroadcastContext'
 export default function OBSSettings({ onClose }: { onClose: () => void }) {
   const {
     project, session, assets, updateProjectSettings,
-    obsState, obsConnect, obsDisconnect, obsSetupScene, isOBSConnected,
+    obsState, obsConnect, obsDisconnect, obsSetupScene, obsCleanup, isOBSConnected,
   } = useBroadcast()
 
   const savedConfig = project?.settings?.obsConfig
@@ -15,6 +15,7 @@ export default function OBSSettings({ onClose }: { onClose: () => void }) {
   const [password, setPassword] = useState(savedConfig?.password || '')
   const [mediaDir, setMediaDir] = useState(project?.settings?.obsMediaDir || '')
   const [connecting, setConnecting] = useState(false)
+  const [cleanedUp, setCleanedUp] = useState<number | null>(null)
 
   const overlayUrl = session
     ? `${typeof window !== 'undefined' ? window.location.origin : ''}/overlay/${session.id}`
@@ -188,6 +189,22 @@ export default function OBSSettings({ onClose }: { onClose: () => void }) {
               <h3 className="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Scene Setup</h3>
               <div className="text-[10px] text-zinc-500">
                 Current scene: <span className="text-zinc-300 font-medium">{obsState.currentScene || 'None'}</span>
+              </div>
+
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={async () => {
+                    const count = await obsCleanup()
+                    setCleanedUp(count)
+                    setTimeout(() => setCleanedUp(null), 3000)
+                  }}
+                  className="px-4 py-1.5 text-[11px] font-medium bg-red-600/60 hover:bg-red-600 text-white rounded transition"
+                >
+                  Clean Up Stale Sources
+                </button>
+                {cleanedUp !== null && (
+                  <span className="text-[10px] text-zinc-400">Removed {cleanedUp} sources</span>
+                )}
               </div>
 
               {overlayUrl ? (

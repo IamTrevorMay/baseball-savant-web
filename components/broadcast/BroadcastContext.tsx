@@ -65,6 +65,7 @@ interface BroadcastContextValue {
   obsConnect: (config: OBSConnectionConfig) => Promise<void>
   obsDisconnect: () => Promise<void>
   obsSetupScene: () => Promise<void>
+  obsCleanup: () => Promise<number>
   isOBSConnected: boolean
 
   // Segment methods
@@ -158,6 +159,10 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     const overlayUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/overlay/${session.id}`
     await obs.setupTritonScene(overlayUrl)
   }, [obs, session])
+
+  const obsCleanup = useCallback(async () => {
+    return await obs.cleanupAllTritonSources()
+  }, [obs])
 
   // Video time polling for OBS media sources
   useEffect(() => {
@@ -819,7 +824,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
       handleStingerCutPoint, handleStingerComplete, handleAdEnded, setVideoTimeInfo, clearVideoTimeInfo,
-      obsState: obs.state, obsConnect, obsDisconnect, obsSetupScene, isOBSConnected: obs.isConnected,
+      obsState: obs.state, obsConnect, obsDisconnect, obsSetupScene, obsCleanup, isOBSConnected: obs.isConnected,
       setSegments, setSelectedSegmentId, addSegment, updateSegment, removeSegment, switchSegment,
       addSegmentAsset, updateSegmentAsset, removeSegmentAsset, reloadSegmentAssets,
     }}>
