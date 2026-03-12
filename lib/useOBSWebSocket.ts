@@ -127,35 +127,68 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     try {
       console.log(`[OBS] Creating media source "${sourceName}" in scene "${sceneName}" → ${filePath}`)
 
-      // Remove any stale source with the same name first
+      let sceneItemId: number | null = null
+
+      // Try to remove any stale source first
       try {
         await obs.call('RemoveInput', { inputName: sourceName })
         console.log(`[OBS] Removed stale source "${sourceName}"`)
-      } catch {
-        // Doesn't exist yet — that's fine
+        // Small delay for OBS to process the removal
+        await new Promise(r => setTimeout(r, 100))
+      } catch (removeErr: any) {
+        console.log(`[OBS] RemoveInput skipped: ${removeErr?.message}`)
       }
 
-      // Create the input
-      const result = await obs.call('CreateInput', {
-        sceneName,
-        inputName: sourceName,
-        inputKind: 'ffmpeg_source',
-        inputSettings: {
-          local_file: filePath,
-          looping: false,
-          restart_on_activate: true,
-          hw_decode: true,
-        },
-        sceneItemEnabled: true,
-      })
+      // Try to create the input
+      try {
+        const result = await obs.call('CreateInput', {
+          sceneName,
+          inputName: sourceName,
+          inputKind: 'ffmpeg_source',
+          inputSettings: {
+            local_file: filePath,
+            looping: false,
+            restart_on_activate: true,
+            hw_decode: true,
+          },
+          sceneItemEnabled: true,
+        })
+        sceneItemId = result.sceneItemId
+        console.log(`[OBS] Created source "${sourceName}", sceneItemId=${sceneItemId}`)
+      } catch (createErr: any) {
+        if (createErr?.message?.includes('already exists')) {
+          console.log(`[OBS] Source already exists, updating settings and re-adding to scene`)
+          // Update the existing source's file
+          await obs.call('SetInputSettings', {
+            inputName: sourceName,
+            inputSettings: {
+              local_file: filePath,
+              looping: false,
+              restart_on_activate: true,
+              hw_decode: true,
+            },
+            overlay: false,
+          })
+          // Check if it's already in the current scene
+          try {
+            const existing = await obs.call('GetSceneItemId', { sceneName, sourceName })
+            sceneItemId = existing.sceneItemId
+            await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true })
+          } catch {
+            // Not in this scene — we need to restart the media to pick up new settings
+            // Trigger restart by toggling the source
+            console.log(`[OBS] Source not in scene "${sceneName}", cannot add existing input to scene`)
+          }
+        } else {
+          throw createErr
+        }
+      }
 
-      console.log(`[OBS] Created source "${sourceName}", sceneItemId=${result.sceneItemId}`)
-
-      // Set transform (position + bounds)
-      if (result.sceneItemId != null) {
+      // Set transform
+      if (sceneItemId != null) {
         await obs.call('SetSceneItemTransform', {
           sceneName,
-          sceneItemId: result.sceneItemId,
+          sceneItemId,
           sceneItemTransform: {
             positionX: transform.x,
             positionY: transform.y,
