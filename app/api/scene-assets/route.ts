@@ -8,13 +8,18 @@ const supabase = createClient(
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('scene_assets')
       .select('*')
       .eq('user_id', DEFAULT_USER_ID)
       .order('created_at', { ascending: false })
+
+    const type = req.nextUrl.searchParams.get('type')
+    if (type) query = query.eq('type', type)
+
+    const { data, error } = await query
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ assets: data })
@@ -36,11 +41,36 @@ export async function POST(req: NextRequest) {
         type,
         config,
       })
-      .select('id')
+      .select('*')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ id: data.id })
+    return NextResponse.json(data)
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { id, name, config } = body
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+    const updates: Record<string, any> = {}
+    if (name !== undefined) updates.name = name
+    if (config !== undefined) updates.config = config
+
+    const { data, error } = await supabase
+      .from('scene_assets')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', DEFAULT_USER_ID)
+      .select('*')
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

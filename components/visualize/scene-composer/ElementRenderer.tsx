@@ -140,7 +140,8 @@ function TextRenderer({ props: p }: { props: Record<string, any> }) {
           color: p.color,
           textAlign: p.textAlign,
           width: '100%',
-          lineHeight: 1.2,
+          lineHeight: p.lineHeight || 1.2,
+          letterSpacing: p.letterSpacing ? `${p.letterSpacing}px` : undefined,
           ...textStyle,
         }}
       >
@@ -151,11 +152,13 @@ function TextRenderer({ props: p }: { props: Record<string, any> }) {
 }
 
 function ShapeRenderer({ props: p }: { props: Record<string, any> }) {
+  const bg = p.gradient ? p.gradient : p.fill
+  const isGradient = p.gradient && p.gradient.length > 0
   return (
     <div
       className="w-full h-full"
       style={{
-        backgroundColor: p.fill,
+        ...(isGradient ? { background: bg } : { backgroundColor: bg }),
         border: p.strokeWidth > 0 ? `${p.strokeWidth}px solid ${p.stroke}` : undefined,
         borderRadius: p.shape === 'circle' ? '50%' : p.borderRadius,
       }}

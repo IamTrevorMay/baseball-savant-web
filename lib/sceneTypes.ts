@@ -244,6 +244,7 @@ const TEXT_STYLE = {
   fontFamily: '', textTransform: 'none',
   textShadowBlur: 0, textShadowColor: '#06b6d4',
   textShadowOffsetX: 0, textShadowOffsetY: 0,
+  letterSpacing: 0, lineHeight: 1.2,
 }
 
 const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string, any> }> = {
@@ -257,7 +258,7 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   },
   'shape': {
     w: 200, h: 200,
-    props: { ...UNIVERSAL_STYLE, shape: 'rect', fill: '#18181b', stroke: '#06b6d4', strokeWidth: 1, borderRadius: 12 },
+    props: { ...UNIVERSAL_STYLE, shape: 'rect', fill: '#18181b', stroke: '#06b6d4', strokeWidth: 1, borderRadius: 12, gradient: '' },
   },
   'player-image': {
     w: 180, h: 220,

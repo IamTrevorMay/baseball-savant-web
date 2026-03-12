@@ -227,9 +227,61 @@ function drawText(ctx: CanvasRenderingContext2D, el: SceneElement) {
   }
 
   const text = applyTextTransform(p.text, p.textTransform)
-  ctx.fillText(text, tx, y + h / 2)
+  const letterSpacing = p.letterSpacing || 0
+  if (letterSpacing > 0) {
+    // Draw char-by-char for letter spacing
+    const chars = text.split('')
+    let cx = tx
+    if (p.textAlign === 'center' || p.textAlign === 'right') {
+      let totalW = 0
+      for (const ch of chars) totalW += ctx.measureText(ch).width + letterSpacing
+      totalW -= letterSpacing
+      if (p.textAlign === 'center') cx -= totalW / 2
+      else cx -= totalW
+    }
+    ctx.textAlign = 'left'
+    for (const ch of chars) {
+      ctx.fillText(ch, cx, y + h / 2)
+      cx += ctx.measureText(ch).width + letterSpacing
+    }
+  } else {
+    ctx.fillText(text, tx, y + h / 2)
+  }
   resetShadow(ctx)
   ctx.restore()
+}
+
+function parseGradient(ctx: CanvasRenderingContext2D, gradient: string, x: number, y: number, w: number, h: number): CanvasGradient | null {
+  // Parse linear-gradient(Xdeg, color1 pos1%, color2 pos2%, ...)
+  const linearMatch = gradient.match(/^linear-gradient\(\s*(\d+)deg\s*,\s*(.+)\)$/)
+  if (linearMatch) {
+    const angle = parseFloat(linearMatch[1]) * Math.PI / 180
+    const cx = x + w / 2, cy = y + h / 2
+    const len = Math.max(w, h) / 2
+    const dx = Math.sin(angle) * len, dy = -Math.cos(angle) * len
+    const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy)
+    const stops = linearMatch[2].split(/,\s*(?=#|rgb|hsl)/)
+    for (const stop of stops) {
+      const parts = stop.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)%$/)
+      if (parts) grad.addColorStop(parseFloat(parts[2]) / 100, parts[1].trim())
+    }
+    return grad
+  }
+  // Parse radial-gradient(circle at X% Y%, color1 pos1%, ...)
+  const radialMatch = gradient.match(/^radial-gradient\(\s*circle\s+at\s+(\d+)%\s+(\d+)%\s*,\s*(.+)\)$/)
+  if (radialMatch) {
+    const cx = x + w * parseFloat(radialMatch[1]) / 100
+    const cy = y + h * parseFloat(radialMatch[2]) / 100
+    const r = Math.max(w, h) / 2
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
+    const stops = radialMatch[3].split(/,\s*(?=#|rgb|hsl)/)
+    for (const stop of stops) {
+      const parts = stop.trim().match(/^(.+?)\s+(\d+(?:\.\d+)?)%$/)
+      if (parts) grad.addColorStop(parseFloat(parts[2]) / 100, parts[1].trim())
+    }
+    return grad
+  }
+  return null
 }
 
 function drawShape(ctx: CanvasRenderingContext2D, el: SceneElement) {
@@ -245,7 +297,13 @@ function drawShape(ctx: CanvasRenderingContext2D, el: SceneElement) {
     roundRect(ctx, x, y, w, h, p.borderRadius || 0)
   }
 
-  if (p.fill && p.fill !== 'transparent') {
+  if (p.gradient) {
+    const grad = parseGradient(ctx, p.gradient, x, y, w, h)
+    if (grad) {
+      ctx.fillStyle = grad
+      ctx.fill()
+    }
+  } else if (p.fill && p.fill !== 'transparent') {
     ctx.fillStyle = p.fill
     ctx.fill()
   }

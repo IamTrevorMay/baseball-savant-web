@@ -70,6 +70,34 @@ export default function SceneComposerPage() {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) setScene(JSON.parse(saved))
     } catch {}
+    // Check for pushed design from Asset Designer
+    try {
+      const pushed = localStorage.getItem('triton-push-design')
+      if (pushed) {
+        const data = JSON.parse(pushed)
+        localStorage.removeItem('triton-push-design')
+        if (data.mode === 'elements' && Array.isArray(data.elements)) {
+          setScene(prev => ({
+            ...prev,
+            elements: [...prev.elements, ...data.elements.map((el: any) => ({
+              ...el,
+              id: Math.random().toString(36).slice(2, 10),
+            }))],
+          }))
+        } else if (data.mode === 'image' && data.src) {
+          const imgEl = {
+            id: Math.random().toString(36).slice(2, 10),
+            type: 'image' as const,
+            x: 0, y: 0,
+            width: data.width || 400,
+            height: data.height || 300,
+            rotation: 0, opacity: 1, zIndex: 200, locked: false,
+            props: { src: data.src, objectFit: 'contain', bgColor: '', bgOpacity: 1, shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 4, shadowColor: '#000000', borderWidth: 0, borderColor: '#06b6d4', borderRadius: 0, blurAmount: 0 },
+          }
+          setScene(prev => ({ ...prev, elements: [...prev.elements, imgEl] }))
+        }
+      }
+    } catch {}
     setLoaded(true)
   }, [])
 
