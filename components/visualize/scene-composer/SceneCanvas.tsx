@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState, useRef, useEffect } from 'react'
-import { Scene, SceneElement } from '@/lib/sceneTypes'
+import { Scene, SceneElement, Guide, Effect } from '@/lib/sceneTypes'
 import renderElementContent from './ElementRenderer'
 
 // ── Snap Guides ──────────────────────────────────────────────────────────────
@@ -18,6 +18,9 @@ function computeSnapGuides(
   newX: number, newY: number,
   elements: SceneElement[],
   sceneW: number, sceneH: number,
+  customGuides?: Guide[],
+  snapToElements = true,
+  snapToGuides = true,
 ): { x: number; y: number; guides: SnapGuide[] } {
   const guides: SnapGuide[] = []
   let snapX = newX
@@ -46,45 +49,72 @@ function computeSnapGuides(
   }
 
   // Check snap to other elements
-  for (const other of elements) {
-    if (other.id === draggingEl.id) continue
+  if (snapToElements) {
+    for (const other of elements) {
+      if (other.id === draggingEl.id) continue
 
-    const oL = other.x
-    const oR = other.x + other.width
-    const oCX = other.x + other.width / 2
-    const oT = other.y
-    const oB = other.y + other.height
-    const oCY = other.y + other.height / 2
+      const oL = other.x
+      const oR = other.x + other.width
+      const oCX = other.x + other.width / 2
+      const oT = other.y
+      const oB = other.y + other.height
+      const oCY = other.y + other.height / 2
 
-    // X-axis snaps
-    const xSnaps = [
-      { my: myL, target: oL },  // left-to-left
-      { my: myR, target: oR },  // right-to-right
-      { my: myL, target: oR },  // left-to-right
-      { my: myR, target: oL },  // right-to-left
-      { my: myCX, target: oCX }, // center-to-center
-    ]
-    for (const s of xSnaps) {
-      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
-        snapX = newX + (s.target - s.my)
-        guides.push({ axis: 'x', position: s.target })
-        break
+      // X-axis snaps
+      const xSnaps = [
+        { my: myL, target: oL },
+        { my: myR, target: oR },
+        { my: myL, target: oR },
+        { my: myR, target: oL },
+        { my: myCX, target: oCX },
+      ]
+      for (const s of xSnaps) {
+        if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+          snapX = newX + (s.target - s.my)
+          guides.push({ axis: 'x', position: s.target })
+          break
+        }
+      }
+
+      // Y-axis snaps
+      const ySnaps = [
+        { my: myT, target: oT },
+        { my: myB, target: oB },
+        { my: myT, target: oB },
+        { my: myB, target: oT },
+        { my: myCY, target: oCY },
+      ]
+      for (const s of ySnaps) {
+        if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+          snapY = newY + (s.target - s.my)
+          guides.push({ axis: 'y', position: s.target })
+          break
+        }
       }
     }
+  }
 
-    // Y-axis snaps
-    const ySnaps = [
-      { my: myT, target: oT },
-      { my: myB, target: oB },
-      { my: myT, target: oB },
-      { my: myB, target: oT },
-      { my: myCY, target: oCY },
-    ]
-    for (const s of ySnaps) {
-      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
-        snapY = newY + (s.target - s.my)
-        guides.push({ axis: 'y', position: s.target })
-        break
+  // Check snap to custom guides
+  if (snapToGuides && customGuides) {
+    for (const g of customGuides) {
+      if (g.axis === 'x') {
+        const edges = [myL, myR, myCX]
+        for (const e of edges) {
+          if (Math.abs(e - g.position) < SNAP_THRESHOLD) {
+            snapX = newX + (g.position - e)
+            guides.push({ axis: 'x', position: g.position })
+            break
+          }
+        }
+      } else {
+        const edges = [myT, myB, myCY]
+        for (const e of edges) {
+          if (Math.abs(e - g.position) < SNAP_THRESHOLD) {
+            snapY = newY + (g.position - e)
+            guides.push({ axis: 'y', position: g.position })
+            break
+          }
+        }
       }
     }
   }
@@ -123,6 +153,23 @@ function getGroupBBox(ids: Set<string>, elements: SceneElement[]): { x: number; 
 
 // ── SceneCanvas ──────────────────────────────────────────────────────────────
 
+// ── Effects to CSS boxShadow ─────────────────────────────────────────────────
+
+function effectsToCss(effects?: Effect[]): string | undefined {
+  if (!effects || effects.length === 0) return undefined
+  return effects.map(e => {
+    const inset = e.type === 'inner-shadow' || e.type === 'inner-glow' ? 'inset ' : ''
+    const ox = e.type === 'outer-glow' || e.type === 'inner-glow' ? 0 : (e.offsetX || 0)
+    const oy = e.type === 'outer-glow' || e.type === 'inner-glow' ? 0 : (e.offsetY || 0)
+    const hex = (e.color || '#000000').replace('#', '')
+    const r = parseInt(hex.substring(0, 2), 16) || 0
+    const g = parseInt(hex.substring(2, 4), 16) || 0
+    const b = parseInt(hex.substring(4, 6), 16) || 0
+    const a = e.opacity ?? 1
+    return `${inset}${ox}px ${oy}px ${e.blur || 0}px ${e.spread || 0}px rgba(${r},${g},${b},${a})`
+  }).join(', ')
+}
+
 interface Props {
   scene: Scene
   selectedId: string | null
@@ -133,9 +180,19 @@ interface Props {
   onSelectMany: (ids: string[]) => void
   onUpdateElement: (id: string, updates: Partial<SceneElement>) => void
   canvasRef: React.RefObject<HTMLDivElement | null>
+  showGrid?: boolean
+  showGuides?: boolean
+  snapToElements?: boolean
+  snapToGuides?: boolean
+  customGuides?: Guide[]
+  onAddGuide?: (guide: Guide) => void
+  onRemoveGuide?: (id: string) => void
+  showRulers?: boolean
+  penToolActive?: boolean
+  enteredGroupId?: string | null
 }
 
-export default function SceneCanvas({ scene, selectedId, selectedIds, highlightedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef }: Props) {
+export default function SceneCanvas({ scene, selectedId, selectedIds, highlightedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef, showGrid = true, showGuides = true, snapToElements = true, snapToGuides = true, customGuides, enteredGroupId }: Props) {
   const [drag, _setDrag] = useState<DragState>(null)
   const dragRef = useRef<DragState>(null)
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
@@ -250,7 +307,8 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
         const rawY = d.elY + dy
 
         const { x: snappedX, y: snappedY, guides } = computeSnapGuides(
-          el, rawX, rawY, scene.elements, scene.width, scene.height
+          el, rawX, rawY, scene.elements, scene.width, scene.height,
+          customGuides || scene.guides, snapToElements, snapToGuides,
         )
         setSnapGuides(guides)
 
@@ -323,7 +381,7 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
     }
-  }, [zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds, canvasRef, onSelectMany])
+  }, [zoom, onUpdateElement, scene.elements, scene.width, scene.height, selectedIds, canvasRef, onSelectMany, customGuides, scene.guides, snapToElements, snapToGuides])
 
   const allSelected = selectedIds || new Set(selectedId ? [selectedId] : [])
   const multiSelected = allSelected.size > 1
@@ -353,14 +411,16 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
         onMouseDown={handleCanvasMouseDown}
       >
         {/* Grid overlay */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
-            backgroundSize: '80px 80px',
-          }}
-        />
+        {showGrid && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
+              backgroundSize: '80px 80px',
+            }}
+          />
+        )}
 
         {/* Center crosshair */}
         <div className="absolute pointer-events-none" style={{ left: scene.width / 2 - 0.5, top: 0, width: 1, height: scene.height, background: 'rgba(255,255,255,0.03)' }} />
@@ -378,6 +438,22 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
             }
           />
         ))}
+
+        {/* Custom guides */}
+        {showGuides && (scene.guides || customGuides || []).map(guide => {
+          const g = guide as Guide
+          return (
+            <div
+              key={g.id}
+              className="absolute pointer-events-none"
+              style={
+                g.axis === 'x'
+                  ? { left: g.position, top: 0, width: 1, height: scene.height, borderLeft: '1px dashed #8b5cf6', opacity: 0.7, zIndex: 9995 }
+                  : { top: g.position, left: 0, height: 1, width: scene.width, borderTop: '1px dashed #8b5cf6', opacity: 0.7, zIndex: 9995 }
+              }
+            />
+          )
+        })}
 
         {/* Marquee selection rectangle */}
         {drag?.type === 'marquee' && (() => {
@@ -448,9 +524,40 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
             outlineOffset: 2,
           }
 
-          if (p.shadowBlur > 0) {
-            wrapperStyle.boxShadow = `${p.shadowOffsetX || 0}px ${p.shadowOffsetY || 0}px ${p.shadowBlur}px ${p.shadowColor || '#000000'}`
+          // Blend mode
+          if (el.blendMode && el.blendMode !== 'normal') {
+            wrapperStyle.mixBlendMode = el.blendMode as any
           }
+
+          // Effects → CSS boxShadow
+          const effectsShadow = effectsToCss(el.effects)
+          const universalShadow = p.shadowBlur > 0
+            ? `${p.shadowOffsetX || 0}px ${p.shadowOffsetY || 0}px ${p.shadowBlur}px ${p.shadowColor || '#000000'}`
+            : null
+
+          if (effectsShadow && universalShadow) {
+            wrapperStyle.boxShadow = `${universalShadow}, ${effectsShadow}`
+          } else if (effectsShadow) {
+            wrapperStyle.boxShadow = effectsShadow
+          } else if (universalShadow) {
+            wrapperStyle.boxShadow = universalShadow
+          }
+
+          // Clip mask
+          if (el.clipMaskId) {
+            const maskEl = scene.elements.find(m => m.id === el.clipMaskId)
+            if (maskEl) {
+              // Build clip path relative to this element
+              const rx = maskEl.x - el.x
+              const ry = maskEl.y - el.y
+              if (maskEl.type === 'shape' && maskEl.props.shape === 'circle') {
+                wrapperStyle.clipPath = `ellipse(${maskEl.width / 2}px ${maskEl.height / 2}px at ${rx + maskEl.width / 2}px ${ry + maskEl.height / 2}px)`
+              } else {
+                wrapperStyle.clipPath = `inset(${Math.max(0, ry)}px ${Math.max(0, el.width - rx - maskEl.width)}px ${Math.max(0, el.height - ry - maskEl.height)}px ${Math.max(0, rx)}px round ${maskEl.props.borderRadius || 0}px)`
+              }
+            }
+          }
+
           if (p.borderWidth > 0) {
             wrapperStyle.border = `${p.borderWidth}px solid ${p.borderColor || '#06b6d4'}`
           }

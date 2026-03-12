@@ -1,4 +1,25 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot' | 'path' | 'curved-text' | 'group'
+
+// ── Effects ─────────────────────────────────────────────────────────────────
+
+export interface Effect {
+  id: string
+  type: 'shadow' | 'inner-shadow' | 'outer-glow' | 'inner-glow'
+  color: string
+  blur: number
+  offsetX: number
+  offsetY: number
+  spread: number
+  opacity: number
+}
+
+// ── Guide ───────────────────────────────────────────────────────────────────
+
+export interface Guide {
+  id: string
+  axis: 'x' | 'y'
+  position: number
+}
 
 // ── Dynamic Slots ───────────────────────────────────────────────────────────
 
@@ -134,6 +155,10 @@ export interface SceneElement {
   enterFrame?: number
   exitFrame?: number
   keyframes?: Keyframe[]
+  blendMode?: string
+  effects?: Effect[]
+  clipMaskId?: string
+  parentGroupId?: string
 }
 
 // ── Template Data Binding ────────────────────────────────────────────────────
@@ -213,6 +238,7 @@ export interface Scene {
   templateConfig?: TemplateConfig
   templateData?: TemplateDataRow[]
   dynamicSlots?: DynamicSlot[]
+  guides?: Guide[]
 }
 
 // ── Catalog ─────────────────────────────────────────────────────────────────
@@ -229,6 +255,9 @@ export const ELEMENT_CATALOG: { type: ElementType; name: string; desc: string; i
   { type: 'ticker', name: 'Ticker', desc: 'Scrolling text crawl', icon: '\u21c4' },
   { type: 'zone-plot', name: 'Zone Plot', desc: 'Pitch locations with zone overlay', icon: '\u25ce' },
   { type: 'movement-plot', name: 'Movement Plot', desc: 'HB vs IVB scatter with season shapes', icon: '\u25c8' },
+  { type: 'path', name: 'Path', desc: 'Custom SVG path', icon: '\u2710' },
+  { type: 'curved-text', name: 'Curved Text', desc: 'Text along an arc', icon: '\u223F' },
+  { type: 'group', name: 'Group', desc: 'Group container', icon: '\u29C9' },
 ]
 
 // ── Shared style defaults ───────────────────────────────────────────────────
@@ -237,7 +266,7 @@ const UNIVERSAL_STYLE = {
   bgColor: '', bgOpacity: 1,
   shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 4, shadowColor: '#000000',
   borderWidth: 0, borderColor: '#06b6d4', borderRadius: 12,
-  blurAmount: 0,
+  blurAmount: 0, blendMode: 'normal',
 }
 
 const TEXT_STYLE = {
@@ -318,6 +347,26 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
       ...UNIVERSAL_STYLE, pitches: [], seasonShapes: [], bgColor: '#09090b',
       dotSize: 10, dotOpacity: 0.85, showKey: false, showSeasonShapes: true, maxRange: 24,
     },
+  },
+  'path': {
+    w: 300, h: 300,
+    props: {
+      ...UNIVERSAL_STYLE, pathData: 'M 50 150 L 150 50 L 250 150 L 200 250 L 100 250 Z',
+      stroke: '#06b6d4', strokeWidth: 2, fill: 'transparent', closed: true,
+      bgColor: '', borderWidth: 0, borderRadius: 0,
+    },
+  },
+  'curved-text': {
+    w: 300, h: 200,
+    props: {
+      ...UNIVERSAL_STYLE, ...TEXT_STYLE, text: 'Curved Text', fontSize: 24,
+      color: '#ffffff', arc: 180, radius: 120, startAngle: 0,
+      bgColor: '', borderWidth: 0, borderRadius: 0,
+    },
+  },
+  'group': {
+    w: 100, h: 100,
+    props: { childIds: [] },
   },
 }
 

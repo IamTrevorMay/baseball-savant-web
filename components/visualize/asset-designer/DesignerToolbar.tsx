@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { ElementType, SCENE_PRESETS } from '@/lib/sceneTypes'
+import SnapSettings from './SnapSettings'
 
 interface Props {
   onAddElement: (type: ElementType) => void
@@ -23,6 +24,12 @@ interface Props {
   saving: boolean
   sceneName: string
   onRenameSene: (name: string) => void
+  penToolActive?: boolean
+  onTogglePenTool?: () => void
+  onImportSvg?: () => void
+  onOpenAssetLibrary?: () => void
+  snapSettings?: { showGrid: boolean; showRulers: boolean; showGuides: boolean; snapToElements: boolean; snapToGuides: boolean }
+  onToggleSnapSetting?: (key: 'showGrid' | 'showRulers' | 'showGuides' | 'snapToElements' | 'snapToGuides') => void
 }
 
 const DESIGNER_ELEMENTS: { type: ElementType; icon: string; label: string }[] = [
@@ -40,6 +47,8 @@ export default function DesignerToolbar({
   zoom, onZoomIn, onZoomOut, onZoomFit,
   onSave, onExport, onPushTo, onOpenGallery,
   saving, sceneName, onRenameSene,
+  penToolActive, onTogglePenTool, onImportSvg, onOpenAssetLibrary,
+  snapSettings, onToggleSnapSetting,
 }: Props) {
   const [showPresets, setShowPresets] = useState(false)
   const [customW, setCustomW] = useState(canvasWidth)
@@ -93,6 +102,54 @@ export default function DesignerToolbar({
           {icon}
         </button>
       ))}
+
+      {/* Pen Tool */}
+      {onTogglePenTool && (
+        <button
+          onClick={onTogglePenTool}
+          className={`px-1.5 py-1 rounded text-[12px] transition ${penToolActive ? 'text-violet-400 bg-violet-600/20' : 'text-zinc-400 hover:text-violet-400 hover:bg-zinc-800'}`}
+          title="Pen Tool (draw path)"
+        >
+          {'\u2710'}
+        </button>
+      )}
+
+      {/* SVG Import */}
+      {onImportSvg && (
+        <button
+          onClick={onImportSvg}
+          className="px-1.5 py-1 rounded text-[11px] text-zinc-400 hover:text-violet-400 hover:bg-zinc-800 transition"
+          title="Import SVG"
+        >
+          SVG
+        </button>
+      )}
+
+      {/* Asset Library */}
+      {onOpenAssetLibrary && (
+        <button
+          onClick={onOpenAssetLibrary}
+          className="px-1.5 py-1 rounded text-[11px] text-zinc-400 hover:text-violet-400 hover:bg-zinc-800 transition"
+          title="Asset Library"
+        >
+          {'\u2726'}
+        </button>
+      )}
+
+      {/* Separator */}
+      <div className="border-l border-zinc-800 h-6 mx-1" />
+
+      {/* Snap Settings */}
+      {snapSettings && onToggleSnapSetting && (
+        <SnapSettings
+          showGrid={snapSettings.showGrid}
+          showRulers={snapSettings.showRulers}
+          showGuides={snapSettings.showGuides}
+          snapToElements={snapSettings.snapToElements}
+          snapToGuides={snapSettings.snapToGuides}
+          onToggle={onToggleSnapSetting}
+        />
+      )}
 
       {/* Separator */}
       <div className="border-l border-zinc-800 h-6 mx-1" />

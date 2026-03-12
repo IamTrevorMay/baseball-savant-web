@@ -117,6 +117,147 @@ function drawUniversalBg(ctx: CanvasRenderingContext2D, el: SceneElement) {
   }
 }
 
+// ── Blend mode mapping ──────────────────────────────────────────────────────
+
+const BLEND_MAP: Record<string, GlobalCompositeOperation> = {
+  normal: 'source-over', multiply: 'multiply', screen: 'screen', overlay: 'overlay',
+  darken: 'darken', lighten: 'lighten', 'color-dodge': 'color-dodge', 'color-burn': 'color-burn',
+  'hard-light': 'hard-light', 'soft-light': 'soft-light', difference: 'difference', exclusion: 'exclusion',
+}
+
+// ── Effects helper ──────────────────────────────────────────────────────────
+
+function applyEffects(ctx: CanvasRenderingContext2D, effects: any[] | undefined, drawFn: () => void) {
+  if (!effects || effects.length === 0) { drawFn(); return }
+  for (const e of effects) {
+    ctx.save()
+    const a = e.opacity ?? 1
+    const color = e.color || '#000000'
+    // Parse hex to rgba
+    const hex = color.replace('#', '')
+    const r = parseInt(hex.substring(0, 2), 16) || 0
+    const g = parseInt(hex.substring(2, 4), 16) || 0
+    const b = parseInt(hex.substring(4, 6), 16) || 0
+    ctx.shadowColor = `rgba(${r},${g},${b},${a})`
+    ctx.shadowBlur = e.blur || 0
+    if (e.type === 'outer-glow' || e.type === 'inner-glow') {
+      ctx.shadowOffsetX = 0
+      ctx.shadowOffsetY = 0
+    } else {
+      ctx.shadowOffsetX = e.offsetX || 0
+      ctx.shadowOffsetY = e.offsetY || 0
+    }
+    drawFn()
+    ctx.restore()
+  }
+  // Final draw without shadow for the element itself
+  ctx.save()
+  ctx.shadowColor = 'transparent'
+  ctx.shadowBlur = 0
+  drawFn()
+  ctx.restore()
+}
+
+// ── Path drawing helper ─────────────────────────────────────────────────────
+
+function drawPath(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const pathData = p.pathData || ''
+  if (!pathData) return
+
+  ctx.save()
+  ctx.translate(el.x, el.y)
+
+  const path = new Path2D(pathData)
+
+  if (p.fill && p.fill !== 'transparent') {
+    ctx.fillStyle = p.fill
+    ctx.fill(path)
+  }
+  if (p.strokeWidth > 0 && p.stroke && p.stroke !== 'transparent') {
+    ctx.strokeStyle = p.stroke
+    ctx.lineWidth = p.strokeWidth
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+    ctx.stroke(path)
+  }
+
+  ctx.restore()
+}
+
+// ── Curved text drawing helper ──────────────────────────────────────────────
+
+function drawCurvedText(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const text = applyTextTransform(p.text || 'Curved Text', p.textTransform)
+  const radius = p.radius || 120
+  const arc = p.arc || 180
+  const startAngle = p.startAngle || 0
+  const font = getFontStack(p.fontFamily)
+
+  const cx = el.x + el.width / 2
+  const cy = el.y + el.height / 2
+
+  ctx.save()
+  ctx.font = `${p.fontWeight || 600} ${p.fontSize || 24}px ${font}`
+  ctx.fillStyle = p.color || '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  const arcRad = (arc * Math.PI) / 180
+  const startRad = ((startAngle - 90) * Math.PI) / 180
+
+  // Measure total text width to center it on the arc
+  const totalWidth = ctx.measureText(text).width
+  const totalAngle = totalWidth / radius
+  const offset = startRad - totalAngle / 2
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+    const charW = ctx.measureText(char).width
+    const charsBefore = ctx.measureText(text.substring(0, i)).width
+    const charAngle = offset + (charsBefore + charW / 2) / radius
+
+    const x = cx + radius * Math.cos(charAngle)
+    const y = cy + radius * Math.sin(charAngle)
+
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(charAngle + Math.PI / 2)
+    ctx.fillText(char, 0, 0)
+    ctx.restore()
+  }
+
+  ctx.restore()
+}
+
+// ── Clip mask helper ────────────────────────────────────────────────────────
+
+function applyClipMask(ctx: CanvasRenderingContext2D, maskEl: SceneElement) {
+  ctx.beginPath()
+  if (maskEl.type === 'shape' && maskEl.props.shape === 'circle') {
+    ctx.ellipse(
+      maskEl.x + maskEl.width / 2, maskEl.y + maskEl.height / 2,
+      maskEl.width / 2, maskEl.height / 2, 0, 0, Math.PI * 2
+    )
+  } else if (maskEl.type === 'path' && maskEl.props.pathData) {
+    ctx.save()
+    ctx.translate(maskEl.x, maskEl.y)
+    const p = new Path2D(maskEl.props.pathData)
+    ctx.restore()
+    // Use Path2D clip — translate manually
+    const p2 = new Path2D()
+    const m = new DOMMatrix().translate(maskEl.x, maskEl.y)
+    p2.addPath(new Path2D(maskEl.props.pathData), m)
+    ctx.clip(p2)
+    return
+  } else {
+    const r = maskEl.props.borderRadius || 0
+    roundRect(ctx, maskEl.x, maskEl.y, maskEl.width, maskEl.height, r)
+  }
+  ctx.clip()
+}
+
 // ── Element renderers ────────────────────────────────────────────────────────
 
 function drawStatCard(ctx: CanvasRenderingContext2D, el: SceneElement) {
@@ -534,8 +675,13 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
   const sorted = [...scene.elements].sort((a, b) => a.zIndex - b.zIndex)
 
   for (const el of sorted) {
+    if (el.type === 'group') continue // groups are transparent containers
+
     ctx.save()
     ctx.globalAlpha = el.opacity
+
+    // Blend mode
+    ctx.globalCompositeOperation = BLEND_MAP[el.blendMode || 'normal'] || 'source-over'
 
     if (el.rotation) {
       ctx.translate(el.x + el.width / 2, el.y + el.height / 2)
@@ -543,50 +689,48 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
       ctx.translate(-(el.x + el.width / 2), -(el.y + el.height / 2))
     }
 
-    // Universal shadow (applied to the first fill/stroke of the element)
-    applyUniversalShadow(ctx, el.props)
-
-    // Universal background
-    drawUniversalBg(ctx, el)
-    resetShadow(ctx)
-
-    // Re-apply shadow for element content
-    applyUniversalShadow(ctx, el.props)
-
-    switch (el.type) {
-      case 'stat-card':
-        drawStatCard(ctx, el)
-        break
-      case 'text':
-        drawText(ctx, el)
-        break
-      case 'shape':
-        drawShape(ctx, el)
-        break
-      case 'player-image':
-        await drawPlayerImage(ctx, el)
-        break
-      case 'image':
-        await drawImage(ctx, el)
-        break
-      case 'comparison-bar':
-        drawComparisonBar(ctx, el)
-        break
-      case 'pitch-flight':
-        drawPitchFlightStatic(ctx, el)
-        break
-      case 'stadium':
-        await drawStadiumStatic(ctx, el)
-        break
-      case 'ticker':
-        drawTicker(ctx, el)
-        break
+    // Clip mask
+    if (el.clipMaskId) {
+      const maskEl = scene.elements.find(m => m.id === el.clipMaskId)
+      if (maskEl) applyClipMask(ctx, maskEl)
     }
 
-    resetShadow(ctx)
+    // Draw with effects
+    const drawElement = async () => {
+      // Universal shadow (applied to the first fill/stroke of the element)
+      applyUniversalShadow(ctx, el.props)
 
-    // Universal border (drawn last, on top)
-    drawUniversalBorder(ctx, el)
+      // Universal background
+      drawUniversalBg(ctx, el)
+      resetShadow(ctx)
+
+      // Re-apply shadow for element content
+      applyUniversalShadow(ctx, el.props)
+
+      switch (el.type) {
+        case 'stat-card': drawStatCard(ctx, el); break
+        case 'text': drawText(ctx, el); break
+        case 'shape': drawShape(ctx, el); break
+        case 'player-image': await drawPlayerImage(ctx, el); break
+        case 'image': await drawImage(ctx, el); break
+        case 'comparison-bar': drawComparisonBar(ctx, el); break
+        case 'pitch-flight': drawPitchFlightStatic(ctx, el); break
+        case 'stadium': await drawStadiumStatic(ctx, el); break
+        case 'ticker': drawTicker(ctx, el); break
+        case 'path': drawPath(ctx, el); break
+        case 'curved-text': drawCurvedText(ctx, el); break
+      }
+
+      resetShadow(ctx)
+      drawUniversalBorder(ctx, el)
+    }
+
+    if (el.effects && el.effects.length > 0) {
+      applyEffects(ctx, el.effects, () => { /* shadow layers drawn by applyEffects */ })
+      await drawElement()
+    } else {
+      await drawElement()
+    }
 
     ctx.restore()
   }
@@ -627,8 +771,11 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
   const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex)
 
   for (const el of sorted) {
+    if (el.type === 'group') continue
+
     ctx.save()
     ctx.globalAlpha = el.opacity
+    ctx.globalCompositeOperation = BLEND_MAP[el.blendMode || 'normal'] || 'source-over'
 
     if (el.rotation) {
       ctx.translate(el.x + el.width / 2, el.y + el.height / 2)
@@ -651,6 +798,8 @@ async function renderFrame(scene: Scene, frame: number): Promise<HTMLCanvasEleme
       case 'pitch-flight': drawPitchFlightStatic(ctx, el); break
       case 'stadium': await drawStadiumStatic(ctx, el); break
       case 'ticker': drawTicker(ctx, el); break
+      case 'path': drawPath(ctx, el); break
+      case 'curved-text': drawCurvedText(ctx, el); break
     }
 
     resetShadow(ctx)

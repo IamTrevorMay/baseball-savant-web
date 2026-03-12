@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { SceneElement } from '@/lib/sceneTypes'
+import { SceneElement, Effect } from '@/lib/sceneTypes'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import GradientPicker from './GradientPicker'
+import EffectsPanel from './EffectsPanel'
+import ClipMaskSection from './ClipMaskSection'
 
 // ── Field Helpers (matching PropertiesPanel) ──────────────────────────────────
 
@@ -142,11 +144,21 @@ interface Props {
   onUpdateProps: (propUpdates: Record<string, any>) => void
   onDelete: () => void
   onDuplicate: () => void
+  allElements?: SceneElement[]
 }
 
 const TEXT_TYPES = new Set(['text', 'stat-card', 'ticker', 'comparison-bar'])
 
-export default function DesignerPropertiesPanel({ element, onUpdate, onUpdateProps, onDelete, onDuplicate }: Props) {
+const BLEND_MODES = [
+  { value: 'normal', label: 'Normal' }, { value: 'multiply', label: 'Multiply' },
+  { value: 'screen', label: 'Screen' }, { value: 'overlay', label: 'Overlay' },
+  { value: 'darken', label: 'Darken' }, { value: 'lighten', label: 'Lighten' },
+  { value: 'color-dodge', label: 'Color Dodge' }, { value: 'color-burn', label: 'Color Burn' },
+  { value: 'hard-light', label: 'Hard Light' }, { value: 'soft-light', label: 'Soft Light' },
+  { value: 'difference', label: 'Difference' }, { value: 'exclusion', label: 'Exclusion' },
+]
+
+export default function DesignerPropertiesPanel({ element, onUpdate, onUpdateProps, onDelete, onDuplicate, allElements }: Props) {
   const p = element.props
   useGoogleFont(p.fontFamily || '')
 
@@ -283,6 +295,62 @@ export default function DesignerPropertiesPanel({ element, onUpdate, onUpdatePro
         </>
       )}
 
+      {/* Path */}
+      {element.type === 'path' && (
+        <Section title="Path">
+          <ClrField label="Stroke" value={p.stroke || '#06b6d4'} onChange={v => onUpdateProps({ stroke: v })} />
+          <NumField label="Stroke W" value={p.strokeWidth || 2} onChange={v => onUpdateProps({ strokeWidth: v })} min={0} max={20} />
+          <ClrField label="Fill" value={p.fill || 'transparent'} onChange={v => onUpdateProps({ fill: v })} />
+          <BoolField label="Closed" value={p.closed ?? true} onChange={v => onUpdateProps({ closed: v })} />
+          <div className="text-[10px] text-zinc-600 font-medium mt-2">Path Data</div>
+          <textarea
+            value={p.pathData || ''}
+            onChange={e => onUpdateProps({ pathData: e.target.value })}
+            rows={3}
+            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-300 font-mono focus:border-violet-600 outline-none resize-none"
+          />
+        </Section>
+      )}
+
+      {/* Curved Text */}
+      {element.type === 'curved-text' && (
+        <Section title="Curved Text">
+          <TxtField label="Text" value={p.text || ''} onChange={v => onUpdateProps({ text: v })} />
+          <NumField label="Font Size" value={p.fontSize || 24} onChange={v => onUpdateProps({ fontSize: v })} min={8} max={120} />
+          <ClrField label="Color" value={p.color || '#ffffff'} onChange={v => onUpdateProps({ color: v })} />
+          <SelField label="Font" value={p.fontFamily || ''} onChange={v => onUpdateProps({ fontFamily: v })} options={GOOGLE_FONTS} />
+          <NumField label="Weight" value={p.fontWeight || 600} onChange={v => onUpdateProps({ fontWeight: v })} min={100} max={900} step={100} />
+          <div className="text-[10px] text-zinc-600 font-medium mt-2">Arc</div>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-zinc-500">Arc</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="range"
+                min={-360} max={360} step={1}
+                value={p.arc || 180}
+                onChange={e => onUpdateProps({ arc: Number(e.target.value) })}
+                className="w-20 accent-violet-500"
+              />
+              <span className="text-[10px] text-zinc-400 w-10 text-right">{p.arc || 180}&deg;</span>
+            </div>
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] text-zinc-500">Radius</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="range"
+                min={50} max={500} step={1}
+                value={p.radius || 120}
+                onChange={e => onUpdateProps({ radius: Number(e.target.value) })}
+                className="w-20 accent-violet-500"
+              />
+              <span className="text-[10px] text-zinc-400 w-10 text-right">{p.radius || 120}px</span>
+            </div>
+          </label>
+          <NumField label="Start Angle" value={p.startAngle || 0} onChange={v => onUpdateProps({ startAngle: v })} min={0} max={360} />
+        </Section>
+      )}
+
       {/* Typography (for text types) */}
       {TEXT_TYPES.has(element.type) && (
         <Section title="Typography" collapsible defaultOpen={false}>
@@ -305,9 +373,25 @@ export default function DesignerPropertiesPanel({ element, onUpdate, onUpdatePro
         </Section>
       )}
 
+      {/* Effects */}
+      <EffectsPanel
+        effects={element.effects || []}
+        onChange={effects => onUpdate({ effects })}
+      />
+
+      {/* Clip Mask */}
+      {allElements && (
+        <ClipMaskSection
+          element={element}
+          allElements={allElements}
+          onUpdate={onUpdate}
+        />
+      )}
+
       {/* Style (universal) */}
       <Section title="Style" collapsible defaultOpen={false}>
-        <div className="text-[10px] text-zinc-600 font-medium">Drop Shadow</div>
+        <SelField label="Blend Mode" value={element.blendMode || 'normal'} onChange={v => onUpdate({ blendMode: v })} options={BLEND_MODES} />
+        <div className="text-[10px] text-zinc-600 font-medium mt-2">Drop Shadow</div>
         <NumField label="Blur" value={p.shadowBlur || 0} onChange={v => onUpdateProps({ shadowBlur: v })} min={0} max={50} />
         {(p.shadowBlur || 0) > 0 && (
           <>

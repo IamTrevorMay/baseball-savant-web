@@ -62,6 +62,77 @@ function TickerRenderer({ props: p, width, height }: { props: Record<string, any
   )
 }
 
+// ── Path Renderer ───────────────────────────────────────────────────────────
+
+function PathRenderer({ props: p, width, height }: { props: Record<string, any>; width: number; height: number }) {
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+      <path
+        d={p.pathData || ''}
+        fill={p.fill || 'transparent'}
+        stroke={p.stroke || '#06b6d4'}
+        strokeWidth={p.strokeWidth || 2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+// ── Curved Text Renderer ────────────────────────────────────────────────────
+
+function CurvedTextRenderer({ props: p, width, height }: { props: Record<string, any>; width: number; height: number }) {
+  const text = p.text || 'Curved Text'
+  const radius = p.radius || 120
+  const arc = p.arc || 180
+  const startAngle = p.startAngle || 0
+  const cx = width / 2
+  const cy = height / 2
+
+  // Build SVG arc path for textPath
+  const arcRad = (arc * Math.PI) / 180
+  const startRad = ((startAngle - 90) * Math.PI) / 180 - arcRad / 2
+  const endRad = startRad + arcRad
+
+  const x1 = cx + radius * Math.cos(startRad)
+  const y1 = cy + radius * Math.sin(startRad)
+  const x2 = cx + radius * Math.cos(endRad)
+  const y2 = cy + radius * Math.sin(endRad)
+
+  const largeArc = Math.abs(arc) > 180 ? 1 : 0
+  const sweep = arc >= 0 ? 1 : 0
+
+  const pathId = `curved-${Math.random().toString(36).slice(2, 8)}`
+  const d = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${x2} ${y2}`
+
+  const fontFamily = p.fontFamily ? `"${p.fontFamily}", sans-serif` : 'inherit'
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+      <defs>
+        <path id={pathId} d={d} fill="none" />
+      </defs>
+      <text
+        fill={p.color || '#ffffff'}
+        fontSize={p.fontSize || 24}
+        fontWeight={p.fontWeight || 600}
+        fontFamily={fontFamily}
+        textAnchor="middle"
+      >
+        <textPath href={`#${pathId}`} startOffset="50%">
+          {text}
+        </textPath>
+      </text>
+    </svg>
+  )
+}
+
+// ── Group Renderer (transparent, children render independently) ─────────────
+
+function GroupRenderer() {
+  return null
+}
+
 // ── Element Renderers ──────────────────────────────────────────────────────────
 
 function StatCardRenderer({ props: p }: { props: Record<string, any> }) {
@@ -271,6 +342,12 @@ export default function renderElementContent(el: SceneElement) {
       return <ZonePlotRenderer props={el.props} width={el.width} height={el.height} />
     case 'movement-plot':
       return <MovementPlotRenderer props={el.props} width={el.width} height={el.height} />
+    case 'path':
+      return <PathRenderer props={el.props} width={el.width} height={el.height} />
+    case 'curved-text':
+      return <CurvedTextRenderer props={el.props} width={el.width} height={el.height} />
+    case 'group':
+      return <GroupRenderer />
     default:
       return <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 text-xs">Unknown</div>
   }
