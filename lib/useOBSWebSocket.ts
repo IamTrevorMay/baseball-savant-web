@@ -57,7 +57,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
       // Listen for media playback ended
       obs.on('MediaInputPlaybackEnded' as any, (data: any) => {
         const inputName = data?.inputName
-        if (inputName?.startsWith('triton-media-') || inputName === 'triton-stinger') {
+        if (inputName?.startsWith('triton-media-')) {
           optionsRef.current?.onMediaEnded?.(inputName)
         }
       })

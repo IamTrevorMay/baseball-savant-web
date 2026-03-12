@@ -5,12 +5,6 @@ import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSet
 import { createClient } from '@supabase/supabase-js'
 import { useOBSWebSocket, OBSState } from '@/lib/useOBSWebSocket'
 
-export interface LiveStinger {
-  assetId: string
-  videoUrl: string
-  enterTransition: TransitionConfig | null
-}
-
 export interface VideoTimeInfo {
   remaining: number
   duration: number
@@ -27,8 +21,6 @@ interface BroadcastContextValue {
   loading: boolean
   slideshowSlideIndexes: Map<string, number>
 
-  // Live stinger + video time
-  liveStinger: LiveStinger | null
   videoTimeRemaining: Map<string, VideoTimeInfo>
 
   // Segment state
@@ -54,8 +46,6 @@ interface BroadcastContextValue {
   slideshowPrev: (assetId: string) => void
   getSlideshowIndex: (assetId: string) => number
   updateProjectSettings: (updates: Partial<BroadcastProjectSettings>) => void
-  handleStingerCutPoint: () => void
-  handleStingerComplete: () => void
   handleAdEnded: (assetId: string) => void
   setVideoTimeInfo: (assetId: string, remaining: number, duration: number) => void
   clearVideoTimeInfo: (assetId: string) => void
@@ -99,7 +89,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [loading, setLoading] = useState(true)
   const [slideshowSlideIndexes, setSlideshowSlideIndexes] = useState<Map<string, number>>(new Map())
   const [animatingAssets, setAnimatingAssets] = useState<Map<string, 'entering' | 'exiting'>>(new Map())
-  const [liveStinger, setLiveStinger] = useState<LiveStinger | null>(null)
   const [videoTimeRemaining, setVideoTimeRemaining] = useState<Map<string, VideoTimeInfo>>(new Map())
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
@@ -112,15 +101,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null)
 
   // ── OBS WebSocket integration ──────────────────────────────────────────
-  const handleStingerEndedRef = useRef<() => void>(() => {})
-
   const obs = useOBSWebSocket({
     onMediaEnded: (sourceName: string) => {
-      if (sourceName === 'triton-stinger') {
-        // Stinger finished playing in OBS — trigger cut point + hide stinger source
-        handleStingerEndedRef.current()
-        return
-      }
       // Extract assetId from 'triton-media-{assetId}'
       const assetId = sourceName.replace('triton-media-', '')
       const asset = assets.find(a => a.id === assetId)
@@ -149,13 +131,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     if (!dir) return null
     const filename = asset.ad_config?.source_filename
     if (!filename) return null
-    return `${dir.replace(/\/$/, '')}/${filename}`
-  }, [project])
-
-  // Helper: resolve stinger file path for OBS playback
-  const resolveStingerFilePath = useCallback((filename: string | null | undefined): string | null => {
-    const dir = project?.settings?.obsMediaDir
-    if (!dir || !filename) return null
     return `${dir.replace(/\/$/, '')}/${filename}`
   }, [project])
 
@@ -304,17 +279,9 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
 
   const showAsset = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
-    const stingerUrl = asset?.stinger_enabled ? asset.stinger_video_url : null
     const fps = project?.settings?.fps || 30
 
-    // Always send event to overlay (it manages its own stinger independently)
-    sendEvent('asset:show', {
-      assetId,
-      ...(stingerUrl ? {
-        assetStingerUrl: stingerUrl,
-        stingerEnterTransition: asset!.enter_transition,
-      } : {}),
-    })
+    sendEvent('asset:show', { assetId })
 
     // OBS native playback for video/ad when connected and file path is available
     if (obs.isConnected && asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
@@ -335,49 +302,26 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     }
 
-    // OBS native stinger playback
-    if (obs.isConnected && stingerUrl && asset?.stinger_source_filename) {
-      const stingerFilePath = resolveStingerFilePath(asset.stinger_source_filename)
-      if (stingerFilePath) {
-        console.log(`[OBS] Playing stinger for asset ${assetId}: ${stingerFilePath}`)
-        obs.createMediaSource('triton-stinger', stingerFilePath, {
-          x: 0, y: 0, width: 1920, height: 1080,
+    setVisibleAssetIds(prev => {
+      const next = new Set(prev)
+      next.add(assetId)
+      persistActiveState(next, activeSegmentId)
+      return next
+    })
+
+    // Track entering animation for studio preview
+    if (asset?.enter_transition) {
+      setAnimatingAssets(prev => new Map(prev).set(assetId, 'entering'))
+      const enterMs = (asset.enter_transition.durationFrames / fps) * 1000
+      setTimeout(() => {
+        setAnimatingAssets(prev => {
+          const next = new Map(prev)
+          if (next.get(assetId) === 'entering') next.delete(assetId)
+          return next
         })
-      }
+      }, enterMs + 50)
     }
-
-    if (stingerUrl) {
-      // Stinger mode: DON'T add asset to visible yet.
-      // Stinger plays fully, then when it ends and slides left,
-      // handleStingerCutPoint adds the asset to visibleAssetIds.
-      setLiveStinger({
-        assetId,
-        videoUrl: stingerUrl,
-        enterTransition: asset!.enter_transition,
-      })
-    } else {
-      // No stinger — show immediately with enter animation
-      setVisibleAssetIds(prev => {
-        const next = new Set(prev)
-        next.add(assetId)
-        persistActiveState(next, activeSegmentId)
-        return next
-      })
-
-      // Track entering animation for studio preview
-      if (asset?.enter_transition) {
-        setAnimatingAssets(prev => new Map(prev).set(assetId, 'entering'))
-        const enterMs = (asset.enter_transition.durationFrames / fps) * 1000
-        setTimeout(() => {
-          setAnimatingAssets(prev => {
-            const next = new Map(prev)
-            if (next.get(assetId) === 'entering') next.delete(assetId)
-            return next
-          })
-        }, enterMs + 50)
-      }
-    }
-  }, [assets, project, sendEvent, persistActiveState, activeSegmentId, obs, resolveOBSFilePath, resolveStingerFilePath])
+  }, [assets, project, sendEvent, persistActiveState, activeSegmentId, obs, resolveOBSFilePath])
 
   const hideAsset = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
@@ -553,21 +497,15 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     }
 
-    const stingerUrl = targetSegment.stinger_enabled
-      ? (targetSegment.stinger_video_url || targetSegment.stinger_storage_path)
-      : null
-
     // Send segment:switch event
     sendEvent('segment:switch', {
       segmentId: toSegmentId,
       assetsToHide,
       assetsToShow,
       overrides,
-      stingerUrl: stingerUrl || undefined,
-      stingerEnterTransition: stingerUrl ? (targetSegment.enter_transition || targetSegment.transition_override) : undefined,
     })
 
-    // OBS: clean up old video/ad sources, create new ones, play stinger
+    // OBS: clean up old video/ad sources, create new ones
     if (obs.isConnected) {
       for (const id of assetsToHide) {
         const asset = assets.find(a => a.id === id)
@@ -581,7 +519,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
           const filePath = resolveOBSFilePath(asset)
           if (filePath) {
             const sourceName = `triton-media-${id}`
-            // Use overrides if available
             const ov = overrides[id]
             obs.createMediaSource(sourceName, filePath, {
               x: ov?.x ?? asset.canvas_x,
@@ -596,47 +533,27 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
           }
         }
       }
-
-      // OBS native stinger playback for segment transitions
-      if (stingerUrl && targetSegment.stinger_source_filename) {
-        const stingerFilePath = resolveStingerFilePath(targetSegment.stinger_source_filename)
-        if (stingerFilePath) {
-          console.log(`[OBS] Playing segment stinger for ${toSegmentId}: ${stingerFilePath}`)
-          obs.createMediaSource('triton-stinger', stingerFilePath, {
-            x: 0, y: 0, width: 1920, height: 1080,
-          })
-        }
-      }
     }
 
     // Perform the local swap
-    const performSwap = () => {
-      setVisibleAssetIds(prev => {
-        const next = new Set(prev)
-        for (const id of assetsToHide) next.delete(id)
-        for (const id of assetsToShow) next.add(id)
-        return next
-      })
-      setActiveSegmentId(toSegmentId)
-      setSwitchingSegment(false)
+    setVisibleAssetIds(prev => {
+      const next = new Set(prev)
+      for (const id of assetsToHide) next.delete(id)
+      for (const id of assetsToShow) next.add(id)
+      return next
+    })
+    setActiveSegmentId(toSegmentId)
+    setSwitchingSegment(false)
 
-      // Persist
-      setVisibleAssetIds(prev => {
-        const merged = new Set(prev)
-        for (const id of assetsToHide) merged.delete(id)
-        for (const id of assetsToShow) merged.add(id)
-        persistActiveState(merged, toSegmentId)
-        return merged
-      })
-    }
-
-    if (stingerUrl) {
-      // Stinger plays fully then slides left — swap immediately (stinger covers the transition visually)
-      performSwap()
-    } else {
-      performSwap()
-    }
-  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState, assets, obs, resolveOBSFilePath, resolveStingerFilePath])
+    // Persist
+    setVisibleAssetIds(prev => {
+      const merged = new Set(prev)
+      for (const id of assetsToHide) merged.delete(id)
+      for (const id of assetsToShow) merged.add(id)
+      persistActiveState(merged, toSegmentId)
+      return merged
+    })
+  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState, assets, obs, resolveOBSFilePath])
 
   // Keyboard hotkey listener — assets + segments
   useEffect(() => {
@@ -692,23 +609,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     slideshowGoto(assetId, prev)
   }, [assets, slideshowSlideIndexes, slideshowGoto])
 
-  // Stinger ended: stinger is sliding away, NOW add the asset to visible
-  const handleStingerCutPoint = useCallback(() => {
-    const stinger = liveStinger
-    if (!stinger) return
-    setVisibleAssetIds(prev => {
-      const next = new Set(prev)
-      next.add(stinger.assetId)
-      persistActiveState(next, activeSegmentId)
-      return next
-    })
-  }, [liveStinger, persistActiveState, activeSegmentId])
-
-  // Stinger complete: stinger has finished its exit animation, remove it
-  const handleStingerComplete = useCallback(() => {
-    setLiveStinger(null)
-  }, [])
-
   // Ad video ended — trigger exit transition
   const handleAdEnded = useCallback((assetId: string) => {
     setVideoTimeRemaining(prev => {
@@ -719,15 +619,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     hideAsset(assetId)
   }, [hideAsset])
 
-  // Keep refs in sync for OBS callbacks
+  // Keep ref in sync for OBS callback
   handleAdEndedRef.current = handleAdEnded
-  handleStingerEndedRef.current = () => {
-    // Stinger video finished in OBS — fire cut point, then hide the OBS stinger source
-    handleStingerCutPoint()
-    obs.hideMediaSource('triton-stinger')
-    // Small delay then complete (stinger exit animation is handled by browser overlay)
-    setTimeout(() => handleStingerComplete(), 500)
-  }
 
   const setVideoTimeInfo = useCallback((assetId: string, remaining: number, duration: number) => {
     setVideoTimeRemaining(prev => {
@@ -858,13 +751,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   return (
     <BroadcastCtx.Provider value={{
       project, assets, session, visibleAssetIds, animatingAssets, selectedAssetId, previewingAssetId, loading,
-      slideshowSlideIndexes, liveStinger, videoTimeRemaining,
+      slideshowSlideIndexes, videoTimeRemaining,
       segments, segmentAssets, activeSegmentId, switchingSegment, selectedSegmentId,
       setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
-      handleStingerCutPoint, handleStingerComplete, handleAdEnded, setVideoTimeInfo, clearVideoTimeInfo,
+      handleAdEnded, setVideoTimeInfo, clearVideoTimeInfo,
       obsState: obs.state, obsConnect, obsDisconnect, obsSetupScene, obsCleanup, isOBSConnected: obs.isConnected,
       setSegments, setSelectedSegmentId, addSegment, updateSegment, removeSegment, switchSegment,
       addSegmentAsset, updateSegmentAsset, removeSegmentAsset, reloadSegmentAssets,

@@ -267,10 +267,6 @@ export default function AssetLibrary() {
           project_id: project.id,
           name: `${segment.name} (Copy)`,
           sort_order: segments.length,
-          stinger_video_url: segment.stinger_video_url,
-          stinger_storage_path: segment.stinger_storage_path,
-          stinger_enabled: segment.stinger_enabled,
-          stinger_cut_point: segment.stinger_cut_point,
           transition_override: segment.transition_override,
           hotkey_color: segment.hotkey_color,
         }),
@@ -919,11 +915,6 @@ export default function AssetLibrary() {
             <span className="text-[8px] font-mono bg-zinc-700 text-zinc-300 px-1 rounded shrink-0">
               {segment.hotkey_key.toUpperCase()}
             </span>
-          )}
-
-          {/* Stinger indicator */}
-          {segment.stinger_enabled && (
-            <span className="text-[9px] text-amber-400 shrink-0" title="Stinger enabled">S</span>
           )}
 
           {/* Switch to segment (when live) */}

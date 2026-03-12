@@ -107,90 +107,6 @@ function LiveAdVideo({
   )
 }
 
-// ── Stinger overlay for live preview ──────────────────────────────────────────
-
-function LiveStingerOverlay({
-  videoUrl,
-  enterTransition,
-  onStingerEnded,
-  onComplete,
-  fps,
-}: {
-  videoUrl: string
-  enterTransition: import('@/lib/broadcastTypes').TransitionConfig | null
-  onStingerEnded: () => void
-  onComplete: () => void
-  fps: number
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const enterStyleRef = useRef<HTMLStyleElement | null>(null)
-  const exitStyleRef = useRef<HTMLStyleElement | null>(null)
-  const [loaded, setLoaded] = useState(false)
-
-  // Apply enter transition on mount, start playback
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    video.play().catch(console.error)
-
-    if (enterTransition && wrapperRef.current) {
-      const result = generateCSSAnimation(enterTransition, 'enter', 1920, 1080, 0, 0, fps)
-      if (result) {
-        enterStyleRef.current = injectKeyframes(result.keyframes)
-        wrapperRef.current.style.animation = result.animation
-      }
-    }
-
-    return () => {
-      if (enterStyleRef.current) { removeKeyframes(enterStyleRef.current); enterStyleRef.current = null }
-      if (exitStyleRef.current) { removeKeyframes(exitStyleRef.current); exitStyleRef.current = null }
-    }
-  }, [videoUrl, enterTransition, fps])
-
-  // When stinger video ends: reveal asset, slide stinger left, then fire onComplete
-  const handleEnded = useCallback(() => {
-    onStingerEnded()
-
-    // Slide the stinger left to reveal the asset underneath
-    if (wrapperRef.current) {
-      const slideLeft = { presetId: 'slide-out-left', durationFrames: Math.round(fps * 0.5) }
-      const result = generateCSSAnimation(slideLeft, 'exit', 1920, 1080, 0, 0, fps)
-      if (result) {
-        if (enterStyleRef.current) { removeKeyframes(enterStyleRef.current); enterStyleRef.current = null }
-        exitStyleRef.current = injectKeyframes(result.keyframes)
-        wrapperRef.current.style.animation = result.animation
-        const match = result.animation.match(/(\d+)ms/)
-        const durationMs = match ? parseInt(match[1]) : 500
-        setTimeout(onComplete, durationMs)
-      } else {
-        onComplete()
-      }
-    } else {
-      onComplete()
-    }
-  }, [onStingerEnded, onComplete, fps])
-
-  return (
-    <div
-      ref={wrapperRef}
-      style={{ position: 'absolute', inset: 0, zIndex: 99999, pointerEvents: 'none' }}
-    >
-      <video
-        ref={videoRef}
-        src={toMediaUrl(videoUrl)}
-        onLoadedData={() => setLoaded(true)}
-        onEnded={handleEnded}
-        autoPlay
-        muted
-        playsInline
-        preload="auto"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: loaded ? 1 : 0 }}
-      />
-    </div>
-  )
-}
-
 // ── Live asset content renderer ───────────────────────────────────────────────
 
 function LiveAssetContent({
@@ -222,7 +138,6 @@ function LiveAssetContent({
 export default function LivePreview() {
   const {
     assets, visibleAssetIds, animatingAssets, setSelectedAssetId, project,
-    liveStinger, handleStingerCutPoint, handleStingerComplete,
     handleAdEnded, setVideoTimeInfo,
   } = useBroadcast()
 
@@ -251,9 +166,6 @@ export default function LivePreview() {
 
   const renderedAssets = assets.filter(a => renderedIds.has(a.id))
 
-  // When stinger is active and asset has stinger, hide the asset content until cut point fires
-  const stingerAssetId = liveStinger?.assetId ?? null
-
   return (
     <div ref={measRef} className="flex-1 overflow-hidden flex items-center justify-center bg-zinc-950 relative">
       {/* LIVE badge */}
@@ -275,10 +187,6 @@ export default function LivePreview() {
         {[...renderedAssets].sort((a, b) => a.layer - b.layer).map(asset => {
           const phase = animatingAssets.get(asset.id) || null
 
-          // If this asset is being revealed by a stinger, don't animate it with enter_transition
-          // The stinger handles the enter visually; the asset just appears under the stinger
-          const effectivePhase = (stingerAssetId === asset.id && phase === 'entering') ? null : phase
-
           return (
             <div
               key={asset.id}
@@ -292,7 +200,7 @@ export default function LivePreview() {
               }}
               onClick={e => { e.stopPropagation(); setSelectedAssetId(asset.id) }}
             >
-              <AnimatedAssetWrapper asset={asset} phase={effectivePhase} fps={fps}>
+              <AnimatedAssetWrapper asset={asset} phase={phase} fps={fps}>
                 <LiveAssetContent
                   asset={asset}
                   onAdEnded={handleAdEnded}
@@ -303,16 +211,6 @@ export default function LivePreview() {
           )
         })}
 
-        {/* Stinger overlay */}
-        {liveStinger && (
-          <LiveStingerOverlay
-            videoUrl={liveStinger.videoUrl}
-            enterTransition={liveStinger.enterTransition}
-            onStingerEnded={handleStingerCutPoint}
-            onComplete={handleStingerComplete}
-            fps={fps}
-          />
-        )}
       </div>
     </div>
   )

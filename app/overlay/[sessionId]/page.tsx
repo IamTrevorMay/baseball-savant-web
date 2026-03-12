@@ -3,10 +3,9 @@
 import { use } from 'react'
 import { useOverlaySession } from '@/lib/useOverlaySession'
 import OverlayAssetRenderer from '@/components/overlay/OverlayAssetRenderer'
-import StingerPlayer from '@/components/overlay/StingerPlayer'
 
 function OverlayInner({ sessionId }: { sessionId: string }) {
-  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset, notifyAdEnded, stinger, segmentOverrides, clearStinger, obsActive } = useOverlaySession(sessionId)
+  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset, notifyAdEnded, segmentOverrides, obsActive } = useOverlaySession(sessionId)
 
   if (error) {
     return (
@@ -55,16 +54,6 @@ function OverlayInner({ sessionId }: { sessionId: string }) {
             obsActive={obsActive}
           />
         ))}
-
-      {/* Stinger video overlay */}
-      {stinger?.playing && (
-        <StingerPlayer
-          videoUrl={stinger.videoUrl}
-          onStingerEnded={stinger.swapCallback}
-          onComplete={clearStinger}
-          enterTransition={stinger.enterTransition}
-        />
-      )}
 
       {/* Connection indicator — hidden in OBS, useful for debugging */}
       {!connected && (

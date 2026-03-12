@@ -2,14 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient, RealtimeChannel } from '@supabase/supabase-js'
-import { BroadcastAsset, BroadcastSession, BroadcastEvent, TransitionConfig } from './broadcastTypes'
-
-export interface StingerState {
-  playing: boolean
-  videoUrl: string
-  swapCallback: () => void
-  enterTransition?: TransitionConfig | null
-}
+import { BroadcastAsset, BroadcastSession } from './broadcastTypes'
 
 interface OverlayState {
   session: BroadcastSession | null
@@ -21,7 +14,6 @@ interface OverlayState {
   error: string | null
   activeSegmentId: string | null
   segmentOverrides: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
-  stinger: StingerState | null
   obsActive: boolean
 }
 
@@ -36,7 +28,6 @@ export function useOverlaySession(sessionId: string) {
     error: null,
     activeSegmentId: null,
     segmentOverrides: {},
-    stinger: null,
     obsActive: false,
   })
 
@@ -109,11 +100,6 @@ export function useOverlaySession(sessionId: string) {
     }, 100)
   }, [hideAsset, showAsset])
 
-  // Clear stinger
-  const clearStinger = useCallback(() => {
-    setState(prev => ({ ...prev, stinger: null }))
-  }, [])
-
   useEffect(() => {
     async function init() {
       try {
@@ -150,24 +136,8 @@ export function useOverlaySession(sessionId: string) {
 
         channel
           .on('broadcast', { event: 'asset:show' }, (payload: any) => {
-            const { assetId, assetStingerUrl, stingerEnterTransition } = payload.payload || {}
-            if (!assetId) return
-
-            if (assetStingerUrl) {
-              // Play stinger fully, then show asset when stinger ends
-              const swapCallback = () => { showAsset(assetId) }
-              setState(prev => ({
-                ...prev,
-                stinger: {
-                  playing: true,
-                  videoUrl: assetStingerUrl,
-                  swapCallback,
-                  enterTransition: stingerEnterTransition || null,
-                },
-              }))
-            } else {
-              showAsset(assetId)
-            }
+            const { assetId } = payload.payload || {}
+            if (assetId) showAsset(assetId)
           })
           .on('broadcast', { event: 'asset:hide' }, (payload: any) => {
             const assetId = payload.payload?.assetId
@@ -216,25 +186,9 @@ export function useOverlaySession(sessionId: string) {
           .on('broadcast', { event: 'segment:switch' }, (payload: any) => {
             const {
               segmentId, assetsToHide = [], assetsToShow = [], overrides = {},
-              stingerUrl, stingerEnterTransition,
             } = payload.payload || {}
 
-            if (stingerUrl) {
-              const swapCallback = () => {
-                performSegmentSwap(assetsToHide, assetsToShow, overrides, segmentId)
-              }
-              setState(prev => ({
-                ...prev,
-                stinger: {
-                  playing: true,
-                  videoUrl: stingerUrl,
-                  swapCallback,
-                  enterTransition: stingerEnterTransition || null,
-                },
-              }))
-            } else {
-              performSegmentSwap(assetsToHide, assetsToShow, overrides, segmentId)
-            }
+            performSegmentSwap(assetsToHide, assetsToShow, overrides, segmentId)
           })
           .on('broadcast', { event: 'session:sync' }, (payload: any) => {
             const visibleAssets = payload.payload?.visibleAssets || []
@@ -277,5 +231,5 @@ export function useOverlaySession(sessionId: string) {
     }
   }, [])
 
-  return { ...state, hideAsset, notifyAdEnded, clearStinger }
+  return { ...state, hideAsset, notifyAdEnded }
 }
