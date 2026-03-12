@@ -112,7 +112,6 @@ export interface BroadcastAsset {
   template_data?: TemplateDataValues
   slideshow_config?: SlideshowConfig
   ad_config?: AdConfig
-  source_filename?: string  // original filename for OBS native playback (video assets)
   canvas_x: number
   canvas_y: number
   canvas_width: number

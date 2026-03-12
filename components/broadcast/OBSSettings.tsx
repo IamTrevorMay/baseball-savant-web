@@ -54,11 +54,36 @@ export default function OBSSettings({ onClose }: { onClose: () => void }) {
   const mediaAssets = assets.filter(a => a.asset_type === 'video' || a.asset_type === 'advertisement')
 
   function resolveFilePath(asset: typeof mediaAssets[number]): string | null {
-    const filename = asset.ad_config?.source_filename || asset.source_filename
+    const filename = asset.ad_config?.source_filename
     if (!filename) return null
     const dir = mediaDir.trim() || project?.settings?.obsMediaDir || ''
     if (!dir) return null
     return `${dir.replace(/\/$/, '')}/${filename}`
+  }
+
+  function handleFolderDrop(e: React.DragEvent) {
+    e.preventDefault()
+    // When dragging a folder from Finder, the path is in the file list
+    const items = e.dataTransfer.items
+    if (items?.length) {
+      const item = items[0]
+      const entry = (item as any).webkitGetAsEntry?.()
+      if (entry?.isDirectory) {
+        // fullPath gives us the relative path from the drag root
+        setMediaDir(entry.fullPath || entry.name)
+      }
+    }
+    // Also check files — dragging from Finder gives us File objects with .path in Electron/CEF
+    const files = e.dataTransfer.files
+    if (files?.length) {
+      const file = files[0] as any
+      if (file.path) {
+        // Electron/Node-based environments expose .path
+        const path = file.path.replace(/\/[^/]+$/, '') // strip filename to get dir
+        setMediaDir(path)
+        updateProjectSettings({ obsMediaDir: path })
+      }
+    }
   }
 
   const statusColor =
@@ -196,13 +221,17 @@ export default function OBSSettings({ onClose }: { onClose: () => void }) {
             <p className="text-[10px] text-zinc-500">
               Local folder where your video and ad files are stored. OBS will play these natively.
             </p>
-            <div className="flex gap-2">
+            <div
+              className="flex gap-2"
+              onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+              onDrop={handleFolderDrop}
+            >
               <input
                 value={mediaDir}
                 onChange={e => setMediaDir(e.target.value)}
                 onBlur={handleSaveMediaDir}
                 className="flex-1 px-2.5 py-1.5 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-200 outline-none focus:border-zinc-600 font-mono"
-                placeholder="/Users/you/broadcast-media/"
+                placeholder="Drag a folder here or paste path"
               />
               <button
                 onClick={handleSaveMediaDir}
@@ -211,13 +240,16 @@ export default function OBSSettings({ onClose }: { onClose: () => void }) {
                 Save
               </button>
             </div>
+            <p className="text-[9px] text-zinc-600">
+              Tip: In Finder, right-click your media folder → "Copy as Pathname" and paste here.
+            </p>
 
             {/* Media asset file mapping */}
             {mediaAssets.length > 0 && (
               <div className="space-y-1">
                 <div className="text-[10px] text-zinc-500 font-medium">Asset File Mapping</div>
                 {mediaAssets.map(asset => {
-                  const filename = asset.ad_config?.source_filename || asset.source_filename
+                  const filename = asset.ad_config?.source_filename
                   const resolved = resolveFilePath(asset)
                   return (
                     <div key={asset.id} className="flex items-center gap-2 text-[10px] py-1 px-2 bg-zinc-800/50 rounded">

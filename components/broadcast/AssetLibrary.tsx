@@ -468,7 +468,7 @@ export default function AssetLibrary() {
             name: file.name.replace(/\.[^.]+$/, ''),
             asset_type: assetType,
             storage_path: result.url,
-            ...(isVideo ? { source_filename: file.name } : {}),
+            ...(isVideo ? { ad_config: { volume: 1, source_filename: file.name } } : {}),
             canvas_width: isVideo ? 1920 : 400,
             canvas_height: isVideo ? 1080 : 300,
             sort_order: assets.length,

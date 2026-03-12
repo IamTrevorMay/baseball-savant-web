@@ -139,7 +139,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const resolveOBSFilePath = useCallback((asset: BroadcastAsset): string | null => {
     const dir = project?.settings?.obsMediaDir
     if (!dir) return null
-    const filename = asset.ad_config?.source_filename || asset.source_filename
+    const filename = asset.ad_config?.source_filename
     if (!filename) return null
     return `${dir.replace(/\/$/, '')}/${filename}`
   }, [project])
