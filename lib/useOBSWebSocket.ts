@@ -125,22 +125,50 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     const sceneName = getSceneName(overrideScene)
 
     try {
-      console.log(`[OBS] Creating media source "${sourceName}" in scene "${sceneName}" → ${filePath}`)
+      console.log(`[OBS] Media source "${sourceName}" in scene "${sceneName}" → ${filePath}`)
 
       let sceneItemId: number | null = null
 
-      // Try to remove any stale source first
+      // Step 1: Ensure the input exists with correct settings
+      let inputExists = false
       try {
-        await obs.call('RemoveInput', { inputName: sourceName })
-        console.log(`[OBS] Removed stale source "${sourceName}"`)
-        // Small delay for OBS to process the removal
-        await new Promise(r => setTimeout(r, 100))
-      } catch (removeErr: any) {
-        console.log(`[OBS] RemoveInput skipped: ${removeErr?.message}`)
+        // Check if input already exists by trying to get its settings
+        await obs.call('GetInputSettings', { inputName: sourceName })
+        inputExists = true
+        console.log(`[OBS] Input "${sourceName}" already exists, updating file`)
+      } catch {
+        // Doesn't exist
       }
 
-      // Try to create the input
-      try {
+      if (inputExists) {
+        // Update existing input's file path and restart playback
+        await obs.call('SetInputSettings', {
+          inputName: sourceName,
+          inputSettings: {
+            local_file: filePath,
+            looping: false,
+            restart_on_activate: true,
+            hw_decode: true,
+          },
+          overlay: false,
+        })
+        // Check if it's in our scene
+        try {
+          const existing = await obs.call('GetSceneItemId', { sceneName, sourceName })
+          sceneItemId = existing.sceneItemId
+          await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true })
+          console.log(`[OBS] Re-enabled existing source, sceneItemId=${sceneItemId}`)
+        } catch {
+          // Input exists but not in this scene — remove it entirely and recreate
+          console.log(`[OBS] Input exists but not in scene, removing and recreating`)
+          try { await obs.call('RemoveInput', { inputName: sourceName }) } catch {}
+          await new Promise(r => setTimeout(r, 200))
+          inputExists = false // fall through to create
+        }
+      }
+
+      if (!inputExists) {
+        // Create fresh input
         const result = await obs.call('CreateInput', {
           sceneName,
           inputName: sourceName,
@@ -154,37 +182,10 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
           sceneItemEnabled: true,
         })
         sceneItemId = result.sceneItemId
-        console.log(`[OBS] Created source "${sourceName}", sceneItemId=${sceneItemId}`)
-      } catch (createErr: any) {
-        if (createErr?.message?.includes('already exists')) {
-          console.log(`[OBS] Source already exists, updating settings and re-adding to scene`)
-          // Update the existing source's file
-          await obs.call('SetInputSettings', {
-            inputName: sourceName,
-            inputSettings: {
-              local_file: filePath,
-              looping: false,
-              restart_on_activate: true,
-              hw_decode: true,
-            },
-            overlay: false,
-          })
-          // Check if it's already in the current scene
-          try {
-            const existing = await obs.call('GetSceneItemId', { sceneName, sourceName })
-            sceneItemId = existing.sceneItemId
-            await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true })
-          } catch {
-            // Not in this scene — we need to restart the media to pick up new settings
-            // Trigger restart by toggling the source
-            console.log(`[OBS] Source not in scene "${sceneName}", cannot add existing input to scene`)
-          }
-        } else {
-          throw createErr
-        }
+        console.log(`[OBS] Created new source, sceneItemId=${sceneItemId}`)
       }
 
-      // Set transform
+      // Step 2: Set transform + move to top (above browser overlay)
       if (sceneItemId != null) {
         await obs.call('SetSceneItemTransform', {
           sceneName,
@@ -197,7 +198,27 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
             boundsHeight: transform.height,
           },
         })
-        console.log(`[OBS] Transform set: ${transform.x},${transform.y} ${transform.width}x${transform.height}`)
+
+        // Move source to top of scene (highest index = on top of browser source)
+        try {
+          const { sceneItems } = await obs.call('GetSceneItemList', { sceneName })
+          const topIndex = sceneItems.length - 1
+          await obs.call('SetSceneItemIndex', { sceneName, sceneItemId, sceneItemIndex: topIndex })
+          console.log(`[OBS] Source moved to top (index ${topIndex}), transform set`)
+        } catch (err: any) {
+          console.log(`[OBS] Transform set (could not reorder: ${err?.message})`)
+        }
+      }
+
+      // Step 3: Trigger media restart to ensure it plays from the beginning
+      try {
+        await obs.call('TriggerMediaInputAction', {
+          inputName: sourceName,
+          mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART',
+        })
+        console.log(`[OBS] Media playback started`)
+      } catch (err: any) {
+        console.log(`[OBS] Could not trigger playback: ${err?.message}`)
       }
     } catch (err: any) {
       console.error(`[OBS] Failed to create media source "${sourceName}":`, err?.message)
