@@ -34,23 +34,28 @@ function BroadcastManagerInner() {
   // Stream Deck button layout state (persists across modal open/close)
   const [sdButtonOrder, setSdButtonOrder] = useState<ButtonEntry[]>([])
 
-  // Find first visible slideshow asset for prev/next
-  const handleSlideshowNext = useCallback(() => {
+  // Callback refs — allows Test Mode (StreamDeckGrid) to override what button presses do
+  const sdToggleRef = useRef<((id: string) => void) | null>(null)
+  const sdSlideNextRef = useRef<(() => void) | null>(null)
+  const sdSlidePrevRef = useRef<(() => void) | null>(null)
+
+  // Keep default callbacks fresh in refs
+  const defaultSlideshowNext = useCallback(() => {
     const slideshow = assets.find(a => a.asset_type === 'slideshow' && visibleAssetIds.has(a.id))
     if (slideshow) slideshowNext(slideshow.id)
   }, [assets, visibleAssetIds, slideshowNext])
 
-  const handleSlideshowPrev = useCallback(() => {
+  const defaultSlideshowPrev = useCallback(() => {
     const slideshow = assets.find(a => a.asset_type === 'slideshow' && visibleAssetIds.has(a.id))
     if (slideshow) slideshowPrev(slideshow.id)
   }, [assets, visibleAssetIds, slideshowPrev])
 
-  // Stream Deck physical device hook
+  // Stream Deck physical device hook — callbacks go through refs so Test Mode can override
   const streamDeck = useStreamDeck({
     callbacks: {
-      onToggleAsset: toggleAssetVisibility,
-      onSlideshowNext: handleSlideshowNext,
-      onSlideshowPrev: handleSlideshowPrev,
+      onToggleAsset: (id) => (sdToggleRef.current || toggleAssetVisibility)(id),
+      onSlideshowNext: () => (sdSlideNextRef.current || defaultSlideshowNext)(),
+      onSlideshowPrev: () => (sdSlidePrevRef.current || defaultSlideshowPrev)(),
       onSwitchSegment: switchSegment,
     },
   })
@@ -72,12 +77,12 @@ function BroadcastManagerInner() {
     setSdButtonOrder(entries)
   }, [assets, segments])
 
-  // Reactively push button state to physical device when things change
+  // Reactively push button state to physical device (canvas mode only — test mode handles its own)
   useEffect(() => {
-    if (streamDeck.isConnected && sdButtonOrder.length > 0) {
+    if (viewMode !== 'streamdeck' && streamDeck.isConnected && sdButtonOrder.length > 0) {
       streamDeck.updateButtons(sdButtonOrder, visibleAssetIds, activeSegmentId)
     }
-  }, [streamDeck.isConnected, sdButtonOrder, visibleAssetIds, activeSegmentId])
+  }, [viewMode, streamDeck.isConnected, sdButtonOrder, visibleAssetIds, activeSegmentId])
 
   if (loading) {
     return (
@@ -258,7 +263,11 @@ function BroadcastManagerInner() {
             </>
           )
         ) : (
-          <StreamDeckGrid />
+          <StreamDeckGrid
+            streamDeck={streamDeck}
+            sdButtonOrder={sdButtonOrder}
+            callbackRefs={{ toggle: sdToggleRef, slideNext: sdSlideNextRef, slidePrev: sdSlidePrevRef }}
+          />
         )}
       </div>
       <TriggerBar />

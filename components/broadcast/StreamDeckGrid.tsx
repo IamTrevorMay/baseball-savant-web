@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, MutableRefObject } from 'react'
 import { useBroadcast } from './BroadcastContext'
 import { BroadcastAsset } from '@/lib/broadcastTypes'
 import { SceneElement } from '@/lib/sceneTypes'
@@ -8,6 +8,8 @@ import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/ov
 import { generateSlideshowTransitionCSS } from '@/lib/slideshowTransitions'
 import renderElementContent from '@/components/visualize/scene-composer/ElementRenderer'
 import { toMediaUrl } from '@/lib/localMedia'
+import type { useStreamDeck } from '@/lib/useStreamDeck'
+import type { ButtonEntry } from '@/lib/streamDeckProfile'
 
 const CANVAS_W = 1920
 const CANVAS_H = 1080
@@ -395,7 +397,17 @@ function SlideshowControls({
 
 // ── StreamDeckGrid (Test Mode) ───────────────────────────────────────────────
 
-export default function StreamDeckGrid() {
+interface StreamDeckGridProps {
+  streamDeck?: ReturnType<typeof useStreamDeck>
+  sdButtonOrder?: ButtonEntry[]
+  callbackRefs?: {
+    toggle: MutableRefObject<((id: string) => void) | null>
+    slideNext: MutableRefObject<(() => void) | null>
+    slidePrev: MutableRefObject<(() => void) | null>
+  }
+}
+
+export default function StreamDeckGrid({ streamDeck, sdButtonOrder, callbackRefs }: StreamDeckGridProps) {
   const { assets, project } = useBroadcast()
 
   // Local test state — no session required
@@ -552,6 +564,47 @@ export default function StreamDeckGrid() {
     setTestAnimating(new Map())
     setTestSlideIndexes(new Map())
   }, [])
+
+  // ── Stream Deck: override page-level callbacks for test mode ────────────────
+
+  // Keep refs to latest test-mode handlers (avoid stale closures in callbackRefs)
+  const handleTestTriggerRef = useRef(handleTestTrigger)
+  handleTestTriggerRef.current = handleTestTrigger
+  const handleSlideshowNextRef = useRef(handleSlideshowNext)
+  handleSlideshowNextRef.current = handleSlideshowNext
+  const handleSlideshowPrevRef = useRef(handleSlideshowPrev)
+  handleSlideshowPrevRef.current = handleSlideshowPrev
+  const testVisibleIdsRef = useRef(testVisibleIds)
+  testVisibleIdsRef.current = testVisibleIds
+
+  useEffect(() => {
+    if (!callbackRefs) return
+
+    // Override page-level callbacks to route to test mode handlers
+    callbackRefs.toggle.current = (id: string) => handleTestTriggerRef.current(id)
+    callbackRefs.slideNext.current = () => {
+      const ss = assets.find(a => a.asset_type === 'slideshow' && testVisibleIdsRef.current.has(a.id))
+      if (ss) handleSlideshowNextRef.current(ss.id)
+    }
+    callbackRefs.slidePrev.current = () => {
+      const ss = assets.find(a => a.asset_type === 'slideshow' && testVisibleIdsRef.current.has(a.id))
+      if (ss) handleSlideshowPrevRef.current(ss.id)
+    }
+
+    return () => {
+      // Clear overrides when leaving test mode
+      callbackRefs.toggle.current = null
+      callbackRefs.slideNext.current = null
+      callbackRefs.slidePrev.current = null
+    }
+  }, [callbackRefs, assets])
+
+  // Push test-mode button state to physical device
+  useEffect(() => {
+    if (streamDeck?.isConnected && sdButtonOrder && sdButtonOrder.length > 0) {
+      streamDeck.updateButtons(sdButtonOrder, testVisibleIds, null)
+    }
+  }, [streamDeck?.isConnected, sdButtonOrder, testVisibleIds])
 
   // Animation end handler per asset (for the wrapper callback)
   const makeAnimEndHandler = useCallback((assetId: string) => () => {
