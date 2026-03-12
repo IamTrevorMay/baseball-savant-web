@@ -16,6 +16,11 @@ interface UseOBSWebSocketOptions {
   onDisconnected?: () => void
 }
 
+interface TrackedSource {
+  sceneItemId: number
+  sceneName: string
+}
+
 export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
   const [state, setState] = useState<OBSState>({
     status: 'disconnected',
@@ -28,6 +33,9 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
   const sceneNameRef = useRef<string | null>(null)
   const optionsRef = useRef(options)
   optionsRef.current = options
+
+  // Track created sources → sceneItemId so we can reuse them
+  const sourceMapRef = useRef<Map<string, TrackedSource>>(new Map())
 
   // Connect to OBS WebSocket
   const connect = useCallback(async (config: OBSConnectionConfig) => {
@@ -42,6 +50,9 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
       // Get current scene
       const { currentProgramSceneName } = await obs.call('GetCurrentProgramScene')
       sceneNameRef.current = currentProgramSceneName
+
+      // Clear tracked sources on new connection
+      sourceMapRef.current.clear()
 
       // Listen for media playback ended
       obs.on('MediaInputPlaybackEnded' as any, (data: any) => {
@@ -61,6 +72,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
         })
         obsRef.current = null
         sceneNameRef.current = null
+        sourceMapRef.current.clear()
         optionsRef.current?.onDisconnected?.()
       })
 
@@ -99,6 +111,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
       obsRef.current = null
     }
     sceneNameRef.current = null
+    sourceMapRef.current.clear()
     setState({
       status: 'disconnected',
       error: null,
@@ -112,7 +125,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     return overrideScene || sceneNameRef.current || 'Scene'
   }, [])
 
-  // Create a Media Source (ffmpeg_source) in OBS
+  // Create or reuse a Media Source (ffmpeg_source) in OBS
   const createMediaSource = useCallback(async (
     sourceName: string,
     filePath: string,
@@ -134,9 +147,47 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
         hw_decode: true,
       }
 
+      // Check if we already track this source
+      const tracked = sourceMapRef.current.get(sourceName)
+
+      if (tracked && tracked.sceneName === sceneName) {
+        // Source already exists and is in the scene — just update, enable, restart
+        await obs.call('SetInputSettings', {
+          inputName: sourceName,
+          inputSettings: mediaSettings,
+          overlay: false,
+        })
+        await obs.call('SetSceneItemEnabled', {
+          sceneName,
+          sceneItemId: tracked.sceneItemId,
+          sceneItemEnabled: true,
+        })
+        // Update transform
+        await obs.call('SetSceneItemTransform', {
+          sceneName,
+          sceneItemId: tracked.sceneItemId,
+          sceneItemTransform: {
+            positionX: transform.x,
+            positionY: transform.y,
+            boundsType: 'OBS_BOUNDS_SCALE_INNER',
+            boundsWidth: transform.width,
+            boundsHeight: transform.height,
+          },
+        })
+        // Restart playback
+        try {
+          await obs.call('TriggerMediaInputAction', {
+            inputName: sourceName,
+            mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART',
+          })
+        } catch {}
+        console.log(`[OBS] Reused tracked source, sceneItemId=${tracked.sceneItemId}`)
+        return
+      }
+
       let sceneItemId: number | null = null
 
-      // Check if input already exists globally in OBS
+      // Check if input already exists globally in OBS (from a previous session etc.)
       let inputExists = false
       try {
         await obs.call('GetInputSettings', { inputName: sourceName })
@@ -150,24 +201,22 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
           inputSettings: mediaSettings,
           overlay: false,
         })
-        console.log(`[OBS] Updated existing input settings`)
 
         // Check if it's already in this scene
         try {
           const existing = await obs.call('GetSceneItemId', { sceneName, sourceName })
           sceneItemId = existing.sceneItemId
           await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true })
-          console.log(`[OBS] Re-enabled in scene, sceneItemId=${sceneItemId}`)
+          console.log(`[OBS] Re-enabled existing in scene, sceneItemId=${sceneItemId}`)
         } catch {
-          // Not in this scene — add the existing input to the scene
-          console.log(`[OBS] Adding existing input to scene "${sceneName}"`)
+          // Not in this scene — add it
           const added = await obs.call('CreateSceneItem', {
             sceneName,
             sourceName,
             sceneItemEnabled: true,
           })
           sceneItemId = added.sceneItemId
-          console.log(`[OBS] Added to scene, sceneItemId=${sceneItemId}`)
+          console.log(`[OBS] Added existing input to scene, sceneItemId=${sceneItemId}`)
         }
       } else {
         // Create brand new input
@@ -182,8 +231,11 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
         console.log(`[OBS] Created new source, sceneItemId=${sceneItemId}`)
       }
 
-      // Set transform + move to top (above browser overlay)
+      // Track the source for reuse
       if (sceneItemId != null) {
+        sourceMapRef.current.set(sourceName, { sceneItemId, sceneName })
+
+        // Set transform
         await obs.call('SetSceneItemTransform', {
           sceneName,
           sceneItemId,
@@ -196,14 +248,12 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
           },
         })
 
+        // Move to top (above browser overlay)
         try {
           const { sceneItems } = await obs.call('GetSceneItemList', { sceneName })
           const topIndex = sceneItems.length - 1
           await obs.call('SetSceneItemIndex', { sceneName, sceneItemId, sceneItemIndex: topIndex })
-          console.log(`[OBS] Positioned and moved to top (index ${topIndex})`)
-        } catch (err: any) {
-          console.log(`[OBS] Positioned (reorder failed: ${err?.message})`)
-        }
+        } catch {}
       }
 
       // Force playback from beginning
@@ -221,20 +271,30 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     }
   }, [getSceneName])
 
-  // Remove a Media Source
-  const removeMediaSource = useCallback(async (sourceName: string) => {
+  // Hide a Media Source (disable scene item) — does NOT remove, keeps it for reuse
+  const hideMediaSource = useCallback(async (sourceName: string, overrideScene?: string) => {
     const obs = obsRef.current
     if (!obs) return
 
+    const sceneName = getSceneName(overrideScene)
+    const tracked = sourceMapRef.current.get(sourceName)
+
     try {
-      await obs.call('RemoveInput', { inputName: sourceName })
-    } catch (err: any) {
-      // Source might already be removed
-      if (!err?.message?.includes('not found')) {
-        console.error(`[OBS] Failed to remove source "${sourceName}":`, err?.message)
+      if (tracked) {
+        await obs.call('SetSceneItemEnabled', {
+          sceneName: tracked.sceneName,
+          sceneItemId: tracked.sceneItemId,
+          sceneItemEnabled: false,
+        })
+      } else {
+        // Fallback: look up by name
+        const { sceneItemId } = await obs.call('GetSceneItemId', { sceneName, sourceName })
+        await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: false })
       }
+    } catch (err: any) {
+      console.error(`[OBS] Failed to hide source "${sourceName}":`, err?.message)
     }
-  }, [])
+  }, [getSceneName])
 
   // Show a Media Source (enable scene item)
   const showMediaSource = useCallback(async (sourceName: string, overrideScene?: string) => {
@@ -242,25 +302,21 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     if (!obs) return
 
     const sceneName = getSceneName(overrideScene)
+    const tracked = sourceMapRef.current.get(sourceName)
+
     try {
-      const { sceneItemId } = await obs.call('GetSceneItemId', { sceneName, sourceName })
-      await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true })
+      if (tracked) {
+        await obs.call('SetSceneItemEnabled', {
+          sceneName: tracked.sceneName,
+          sceneItemId: tracked.sceneItemId,
+          sceneItemEnabled: true,
+        })
+      } else {
+        const { sceneItemId } = await obs.call('GetSceneItemId', { sceneName, sourceName })
+        await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: true })
+      }
     } catch (err: any) {
       console.error(`[OBS] Failed to show source "${sourceName}":`, err?.message)
-    }
-  }, [getSceneName])
-
-  // Hide a Media Source (disable scene item)
-  const hideMediaSource = useCallback(async (sourceName: string, overrideScene?: string) => {
-    const obs = obsRef.current
-    if (!obs) return
-
-    const sceneName = getSceneName(overrideScene)
-    try {
-      const { sceneItemId } = await obs.call('GetSceneItemId', { sceneName, sourceName })
-      await obs.call('SetSceneItemEnabled', { sceneName, sceneItemId, sceneItemEnabled: false })
-    } catch (err: any) {
-      console.error(`[OBS] Failed to hide source "${sourceName}":`, err?.message)
     }
   }, [getSceneName])
 
@@ -270,8 +326,6 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     if (!obs) return
 
     try {
-      // OBS uses dB for volume; convert linear 0-1 to dB
-      // vol=1 → 0dB, vol=0 → -100dB
       const volDb = volume <= 0 ? -100 : 20 * Math.log10(volume)
       await obs.call('SetInputVolume', { inputName: sourceName, inputVolumeDb: volDb })
     } catch (err: any) {
@@ -287,7 +341,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     try {
       const result = await obs.call('GetMediaInputStatus', { inputName: sourceName })
       return {
-        currentTime: (result.mediaCursor || 0) / 1000, // ms → seconds
+        currentTime: (result.mediaCursor || 0) / 1000,
         duration: (result.mediaDuration || 0) / 1000,
       }
     } catch {
@@ -303,21 +357,14 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     const sceneName = 'Triton Broadcast'
 
     try {
-      // Try to create the scene (may already exist)
       try {
         await obs.call('CreateScene', { sceneName })
-      } catch {
-        // Scene may already exist — that's fine
-      }
+      } catch {}
 
-      // Remove existing browser source if present
       try {
         await obs.call('RemoveInput', { inputName: 'triton-overlay' })
-      } catch {
-        // May not exist
-      }
+      } catch {}
 
-      // Create browser source
       await obs.call('CreateInput', {
         sceneName,
         inputName: 'triton-overlay',
@@ -332,10 +379,8 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
         },
       })
 
-      // Set the scene as current program scene
       await obs.call('SetCurrentProgramScene', { sceneName })
       sceneNameRef.current = sceneName
-
       setState(prev => ({ ...prev, currentScene: sceneName }))
     } catch (err: any) {
       console.error('[OBS] Failed to setup Triton scene:', err?.message)
@@ -361,6 +406,8 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
           console.warn(`[OBS] Could not remove ${input.inputName}: ${err?.message}`)
         }
       }
+      // Clear our tracking map
+      sourceMapRef.current.clear()
       return tritonInputs.length
     } catch (err: any) {
       console.error('[OBS] Cleanup failed:', err?.message)
@@ -383,7 +430,6 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     connect,
     disconnect,
     createMediaSource,
-    removeMediaSource,
     showMediaSource,
     hideMediaSource,
     setMediaVolume,

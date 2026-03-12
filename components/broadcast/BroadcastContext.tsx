@@ -360,10 +360,9 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
 
     sendEvent('asset:hide', { assetId })
 
-    // Clean up OBS media source for video/ad
+    // Hide OBS media source for video/ad (keeps source for reuse)
     if (obs.isConnected && asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
-      const sourceName = `triton-media-${assetId}`
-      obs.hideMediaSource(sourceName).then(() => obs.removeMediaSource(sourceName))
+      obs.hideMediaSource(`triton-media-${assetId}`)
     }
 
     if (asset?.exit_transition) {
@@ -548,8 +547,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       for (const id of assetsToHide) {
         const asset = assets.find(a => a.id === id)
         if (asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
-          const sourceName = `triton-media-${id}`
-          obs.hideMediaSource(sourceName).then(() => obs.removeMediaSource(sourceName))
+          obs.hideMediaSource(`triton-media-${id}`)
         }
       }
       for (const id of assetsToShow) {

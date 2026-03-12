@@ -499,11 +499,20 @@ export default function AssetLibrary() {
 
   const adFileInputRef = useRef<HTMLInputElement>(null)
 
+  const [adUploading, setAdUploading] = useState(false)
+
   async function handleAdSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (!project || !e.target.files?.length) return
     const file = e.target.files[0]
-    const blobUrl = URL.createObjectURL(file)
+    setAdUploading(true)
     try {
+      const result = await uploadBroadcastMedia(file, project.id)
+      if (!result) {
+        console.error('Ad upload failed')
+        setAdUploading(false)
+        return
+      }
+
       const assetRes = await fetch('/api/broadcast/assets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -511,7 +520,7 @@ export default function AssetLibrary() {
           project_id: project.id,
           name: file.name.replace(/\.[^.]+$/, ''),
           asset_type: 'advertisement',
-          storage_path: blobUrl,
+          storage_path: result.url,
           ad_config: { volume: 1, source_filename: file.name },
           canvas_width: 1920,
           canvas_height: 1080,
@@ -521,13 +530,13 @@ export default function AssetLibrary() {
       })
       const assetData = await assetRes.json()
       if (assetData.asset) {
-        // Override storage_path with blob URL for this session
-        addAsset({ ...assetData.asset, storage_path: blobUrl })
+        addAsset(assetData.asset)
         setSelectedAssetId(assetData.asset.id)
       }
     } catch (err) {
       console.error('Failed to create ad:', err)
     }
+    setAdUploading(false)
     if (adFileInputRef.current) adFileInputRef.current.value = ''
   }
 
@@ -992,8 +1001,8 @@ export default function AssetLibrary() {
           <button onClick={createSlideshow} className="flex-1 px-2 py-1 text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-500/20 transition">
             Slideshow
           </button>
-          <button onClick={() => adFileInputRef.current?.click()} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 transition">
-            Ad
+          <button onClick={() => adFileInputRef.current?.click()} disabled={adUploading} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 disabled:opacity-50 transition">
+            {adUploading ? 'Uploading...' : 'Ad'}
           </button>
         </div>
         <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
