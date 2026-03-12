@@ -253,7 +253,8 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
   }
 
   // When OBS is handling video/ad natively, render transparent placeholder to preserve z-index layering
-  if (obsActive && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
+  // Only do this if the asset has source_filename (meaning OBS can actually play it)
+  if (obsActive && (asset.asset_type === 'video' || asset.asset_type === 'advertisement') && asset.ad_config?.source_filename) {
     return (
       <div
         ref={wrapperRef}

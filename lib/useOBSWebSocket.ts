@@ -125,15 +125,18 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     const sceneName = getSceneName(overrideScene)
 
     try {
+      console.log(`[OBS] Creating media source "${sourceName}" in scene "${sceneName}" → ${filePath}`)
+
       // Remove any stale source with the same name first
       try {
         await obs.call('RemoveInput', { inputName: sourceName })
+        console.log(`[OBS] Removed stale source "${sourceName}"`)
       } catch {
         // Doesn't exist yet — that's fine
       }
 
       // Create the input
-      const { sceneItemId } = await obs.call('CreateInput', {
+      const result = await obs.call('CreateInput', {
         sceneName,
         inputName: sourceName,
         inputKind: 'ffmpeg_source',
@@ -146,11 +149,13 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
         sceneItemEnabled: true,
       })
 
+      console.log(`[OBS] Created source "${sourceName}", sceneItemId=${result.sceneItemId}`)
+
       // Set transform (position + bounds)
-      if (sceneItemId != null) {
+      if (result.sceneItemId != null) {
         await obs.call('SetSceneItemTransform', {
           sceneName,
-          sceneItemId,
+          sceneItemId: result.sceneItemId,
           sceneItemTransform: {
             positionX: transform.x,
             positionY: transform.y,
@@ -159,6 +164,7 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
             boundsHeight: transform.height,
           },
         })
+        console.log(`[OBS] Transform set: ${transform.x},${transform.y} ${transform.width}x${transform.height}`)
       }
     } catch (err: any) {
       console.error(`[OBS] Failed to create media source "${sourceName}":`, err?.message)

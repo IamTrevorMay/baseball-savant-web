@@ -300,6 +300,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     // OBS native playback for video/ad when connected and file path is available
     if (obs.isConnected && asset && (asset.asset_type === 'video' || asset.asset_type === 'advertisement')) {
       const filePath = resolveOBSFilePath(asset)
+      console.log(`[OBS] showAsset: type=${asset.asset_type}, source_filename=${asset.ad_config?.source_filename}, mediaDir=${project?.settings?.obsMediaDir}, resolved=${filePath}`)
       if (filePath) {
         const sourceName = `triton-media-${asset.id}`
         obs.createMediaSource(sourceName, filePath, {
