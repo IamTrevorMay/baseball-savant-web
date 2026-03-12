@@ -127,6 +127,7 @@ export interface BroadcastAsset {
   hotkey_color: string
   stinger_enabled?: boolean
   stinger_video_url?: string | null
+  stinger_source_filename?: string | null
   stinger_cut_point?: number
   sort_order: number
   created_at: string
@@ -142,6 +143,7 @@ export interface BroadcastSegment {
   sort_order: number
   stinger_video_url: string | null
   stinger_storage_path: string | null
+  stinger_source_filename: string | null
   stinger_enabled: boolean
   stinger_cut_point: number
   transition_override: TransitionConfig | null

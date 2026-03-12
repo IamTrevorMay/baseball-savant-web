@@ -112,8 +112,15 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null)
 
   // ── OBS WebSocket integration ──────────────────────────────────────────
+  const handleStingerEndedRef = useRef<() => void>(() => {})
+
   const obs = useOBSWebSocket({
     onMediaEnded: (sourceName: string) => {
+      if (sourceName === 'triton-stinger') {
+        // Stinger finished playing in OBS — trigger cut point + hide stinger source
+        handleStingerEndedRef.current()
+        return
+      }
       // Extract assetId from 'triton-media-{assetId}'
       const assetId = sourceName.replace('triton-media-', '')
       const asset = assets.find(a => a.id === assetId)
@@ -142,6 +149,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     if (!dir) return null
     const filename = asset.ad_config?.source_filename
     if (!filename) return null
+    return `${dir.replace(/\/$/, '')}/${filename}`
+  }, [project])
+
+  // Helper: resolve stinger file path for OBS playback
+  const resolveStingerFilePath = useCallback((filename: string | null | undefined): string | null => {
+    const dir = project?.settings?.obsMediaDir
+    if (!dir || !filename) return null
     return `${dir.replace(/\/$/, '')}/${filename}`
   }, [project])
 
@@ -321,6 +335,17 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     }
 
+    // OBS native stinger playback
+    if (obs.isConnected && stingerUrl && asset?.stinger_source_filename) {
+      const stingerFilePath = resolveStingerFilePath(asset.stinger_source_filename)
+      if (stingerFilePath) {
+        console.log(`[OBS] Playing stinger for asset ${assetId}: ${stingerFilePath}`)
+        obs.createMediaSource('triton-stinger', stingerFilePath, {
+          x: 0, y: 0, width: 1920, height: 1080,
+        })
+      }
+    }
+
     if (stingerUrl) {
       // Stinger mode: DON'T add asset to visible yet.
       // Stinger plays fully, then when it ends and slides left,
@@ -352,7 +377,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         }, enterMs + 50)
       }
     }
-  }, [assets, project, sendEvent, persistActiveState, activeSegmentId, obs, resolveOBSFilePath])
+  }, [assets, project, sendEvent, persistActiveState, activeSegmentId, obs, resolveOBSFilePath, resolveStingerFilePath])
 
   const hideAsset = useCallback((assetId: string) => {
     const asset = assets.find(a => a.id === assetId)
@@ -542,7 +567,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       stingerEnterTransition: stingerUrl ? (targetSegment.enter_transition || targetSegment.transition_override) : undefined,
     })
 
-    // OBS: clean up old video/ad sources, create new ones
+    // OBS: clean up old video/ad sources, create new ones, play stinger
     if (obs.isConnected) {
       for (const id of assetsToHide) {
         const asset = assets.find(a => a.id === id)
@@ -569,6 +594,17 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
               }
             })
           }
+        }
+      }
+
+      // OBS native stinger playback for segment transitions
+      if (stingerUrl && targetSegment.stinger_source_filename) {
+        const stingerFilePath = resolveStingerFilePath(targetSegment.stinger_source_filename)
+        if (stingerFilePath) {
+          console.log(`[OBS] Playing segment stinger for ${toSegmentId}: ${stingerFilePath}`)
+          obs.createMediaSource('triton-stinger', stingerFilePath, {
+            x: 0, y: 0, width: 1920, height: 1080,
+          })
         }
       }
     }
@@ -600,7 +636,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     } else {
       performSwap()
     }
-  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState, assets, obs, resolveOBSFilePath])
+  }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState, assets, obs, resolveOBSFilePath, resolveStingerFilePath])
 
   // Keyboard hotkey listener — assets + segments
   useEffect(() => {
@@ -683,8 +719,15 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     hideAsset(assetId)
   }, [hideAsset])
 
-  // Keep ref in sync for OBS callback
+  // Keep refs in sync for OBS callbacks
   handleAdEndedRef.current = handleAdEnded
+  handleStingerEndedRef.current = () => {
+    // Stinger video finished in OBS — fire cut point, then hide the OBS stinger source
+    handleStingerCutPoint()
+    obs.hideMediaSource('triton-stinger')
+    // Small delay then complete (stinger exit animation is handled by browser overlay)
+    setTimeout(() => handleStingerComplete(), 500)
+  }
 
   const setVideoTimeInfo = useCallback((assetId: string, remaining: number, duration: number) => {
     setVideoTimeRemaining(prev => {

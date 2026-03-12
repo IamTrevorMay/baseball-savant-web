@@ -51,6 +51,7 @@ function SegmentProperties() {
     if (!file || !segment) return
     const blobUrl = URL.createObjectURL(file)
     handleChange('stinger_video_url', blobUrl)
+    handleChange('stinger_source_filename', file.name)
     if (stingerFileRef.current) stingerFileRef.current.value = ''
   }
 
@@ -163,7 +164,7 @@ function SegmentProperties() {
                     </button>
                     {segment.stinger_video_url && (
                       <button
-                        onClick={() => handleChange('stinger_video_url', null)}
+                        onClick={() => { handleChange('stinger_video_url', null); handleChange('stinger_source_filename', null) }}
                         className="px-2 py-1.5 text-[10px] font-medium bg-zinc-800 text-red-400 border border-zinc-700 rounded hover:bg-red-900/30 transition"
                       >
                         Remove
@@ -445,7 +446,7 @@ function AssetPropertiesPanel() {
                       </button>
                       {asset.stinger_video_url && (
                         <button
-                          onClick={() => handleChange('stinger_video_url', null)}
+                          onClick={() => { handleChange('stinger_video_url', null); handleChange('stinger_source_filename', null) }}
                           className="px-2 py-1.5 text-[10px] font-medium bg-zinc-800 text-red-400 border border-zinc-700 rounded hover:bg-red-900/30 transition"
                         >
                           Remove
@@ -466,6 +467,7 @@ function AssetPropertiesPanel() {
                         const file = e.target.files?.[0]
                         if (!file) return
                         handleChange('stinger_video_url', URL.createObjectURL(file))
+                        handleChange('stinger_source_filename', file.name)
                         if (assetStingerFileRef.current) assetStingerFileRef.current.value = ''
                       }}
                     />
