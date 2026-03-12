@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useRef } from 'react'
+import { use, useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { BroadcastProvider, useBroadcast } from '@/components/broadcast/BroadcastContext'
 import BroadcastCanvas from '@/components/broadcast/BroadcastCanvas'
 import AssetLibrary from '@/components/broadcast/AssetLibrary'
@@ -12,11 +12,17 @@ import LiveControlGrid, { SlideshowControlStrip } from '@/components/broadcast/L
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
 import OBSSettings from '@/components/broadcast/OBSSettings'
+import { useStreamDeck } from '@/lib/useStreamDeck'
+import type { ButtonEntry } from '@/lib/streamDeckProfile'
 
 type ViewMode = 'canvas' | 'streamdeck'
 
 function BroadcastManagerInner() {
-  const { loading, project, session, updateProjectSettings, isOBSConnected } = useBroadcast()
+  const {
+    loading, project, session, updateProjectSettings, isOBSConnected,
+    assets, visibleAssetIds, activeSegmentId, segments,
+    toggleAssetVisibility, slideshowNext, slideshowPrev, switchSegment,
+  } = useBroadcast()
   const [viewMode, setViewMode] = useState<ViewMode>('canvas')
   const [showRefImage, setShowRefImage] = useState(true)
   const [refImageOpacity, setRefImageOpacity] = useState(50)
@@ -24,6 +30,54 @@ function BroadcastManagerInner() {
   const [showStreamDeckSetup, setShowStreamDeckSetup] = useState(false)
   const [showOBSSetup, setShowOBSSetup] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Stream Deck button layout state (persists across modal open/close)
+  const [sdButtonOrder, setSdButtonOrder] = useState<ButtonEntry[]>([])
+
+  // Find first visible slideshow asset for prev/next
+  const handleSlideshowNext = useCallback(() => {
+    const slideshow = assets.find(a => a.asset_type === 'slideshow' && visibleAssetIds.has(a.id))
+    if (slideshow) slideshowNext(slideshow.id)
+  }, [assets, visibleAssetIds, slideshowNext])
+
+  const handleSlideshowPrev = useCallback(() => {
+    const slideshow = assets.find(a => a.asset_type === 'slideshow' && visibleAssetIds.has(a.id))
+    if (slideshow) slideshowPrev(slideshow.id)
+  }, [assets, visibleAssetIds, slideshowPrev])
+
+  // Stream Deck physical device hook
+  const streamDeck = useStreamDeck({
+    callbacks: {
+      onToggleAsset: toggleAssetVisibility,
+      onSlideshowNext: handleSlideshowNext,
+      onSlideshowPrev: handleSlideshowPrev,
+      onSwitchSegment: switchSegment,
+    },
+  })
+
+  // Build default button layout from assets + segments
+  useEffect(() => {
+    const entries: ButtonEntry[] = []
+    const sorted = [...assets].sort((a, b) => a.sort_order - b.sort_order)
+    for (const asset of sorted) {
+      entries.push({ type: 'asset', asset })
+    }
+    // Add segment buttons
+    const sortedSegments = [...segments].sort((a, b) => a.sort_order - b.sort_order)
+    for (const segment of sortedSegments) {
+      entries.push({ type: 'segment', segment })
+    }
+    entries.push({ type: 'slideshow-prev' })
+    entries.push({ type: 'slideshow-next' })
+    setSdButtonOrder(entries)
+  }, [assets, segments])
+
+  // Reactively push button state to physical device when things change
+  useEffect(() => {
+    if (streamDeck.isConnected && sdButtonOrder.length > 0) {
+      streamDeck.updateButtons(sdButtonOrder, visibleAssetIds, activeSegmentId)
+    }
+  }, [streamDeck.isConnected, sdButtonOrder, visibleAssetIds, activeSegmentId])
 
   if (loading) {
     return (
@@ -91,9 +145,12 @@ function BroadcastManagerInner() {
         <div className="w-px h-4 bg-zinc-700 mx-1" />
         <button
           onClick={() => setShowStreamDeckSetup(true)}
-          className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition"
+          className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
         >
           Stream Deck
+          {streamDeck.isConnected && (
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          )}
         </button>
         <button
           onClick={() => setShowOBSSetup(true)}
@@ -205,7 +262,14 @@ function BroadcastManagerInner() {
         )}
       </div>
       <TriggerBar />
-      {showStreamDeckSetup && <StreamDeckSetup onClose={() => setShowStreamDeckSetup(false)} />}
+      {showStreamDeckSetup && (
+        <StreamDeckSetup
+          onClose={() => setShowStreamDeckSetup(false)}
+          streamDeck={streamDeck}
+          buttonOrder={sdButtonOrder}
+          onButtonOrderChange={setSdButtonOrder}
+        />
+      )}
       {showOBSSetup && <OBSSettings onClose={() => setShowOBSSetup(false)} />}
     </div>
   )

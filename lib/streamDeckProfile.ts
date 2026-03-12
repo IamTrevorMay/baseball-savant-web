@@ -1,4 +1,4 @@
-import type { BroadcastAsset } from './broadcastTypes'
+import type { BroadcastAsset, BroadcastSegment } from './broadcastTypes'
 
 type DeviceModel = 'sd' | 'sd-xl' | 'sd-mini' | 'sd-plus'
 
@@ -7,6 +7,14 @@ const DEVICE_DIMS: Record<DeviceModel, { cols: number; rows: number }> = {
   'sd-xl':   { cols: 8, rows: 4 },
   'sd-mini': { cols: 3, rows: 2 },
   'sd-plus': { cols: 4, rows: 2 },
+}
+
+// Physical button icon sizes per device model (pixels)
+const DEVICE_ICON_SIZES: Record<DeviceModel, number> = {
+  'sd':      72,
+  'sd-xl':   96,
+  'sd-mini': 80,
+  'sd-plus': 120,
 }
 
 // JS key name → Stream Deck HID keyCode approximation
@@ -22,19 +30,22 @@ const KEY_TO_KEYCODE: Record<string, number> = {
 
 export type ButtonEntry =
   | { type: 'asset'; asset: BroadcastAsset }
+  | { type: 'segment'; segment: BroadcastSegment }
   | { type: 'slideshow-prev' }
   | { type: 'slideshow-next' }
   | { type: 'empty' }
 
-export { DEVICE_DIMS }
+export { DEVICE_DIMS, DEVICE_ICON_SIZES }
 export type { DeviceModel }
 
 export async function generateButtonImage(
   label: string,
   color: string,
   hotkey?: string | null,
+  isActive?: boolean,
+  pixelSize?: number,
 ): Promise<string> {
-  const size = 144
+  const size = pixelSize || 144
   let canvas: OffscreenCanvas | HTMLCanvasElement
   let ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
 
@@ -51,27 +62,41 @@ export async function generateButtonImage(
   // Background
   ctx.fillStyle = color || '#3f3f46'
   ctx.beginPath()
-  ctx.roundRect(0, 0, size, size, 12)
+  ctx.roundRect(0, 0, size, size, Math.round(size * 0.08))
   ctx.fill()
 
+  // Active state: green border ring
+  if (isActive) {
+    const borderWidth = Math.max(3, Math.round(size * 0.04))
+    ctx.strokeStyle = '#10b981'
+    ctx.lineWidth = borderWidth
+    const inset = borderWidth / 2
+    ctx.beginPath()
+    ctx.roundRect(inset, inset, size - borderWidth, size - borderWidth, Math.round(size * 0.08))
+    ctx.stroke()
+  }
+
   // Label text (centered, truncated)
-  const displayLabel = label.length > 12 ? label.slice(0, 11) + '\u2026' : label
+  const fontSize = Math.max(10, Math.round(size * 0.11))
+  const maxChars = Math.max(6, Math.round(size / 12))
+  const displayLabel = label.length > maxChars ? label.slice(0, maxChars - 1) + '\u2026' : label
   ctx.fillStyle = '#ffffff'
-  ctx.font = 'bold 16px sans-serif'
+  ctx.font = `bold ${fontSize}px sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(displayLabel, size / 2, size / 2)
 
   // Hotkey badge (bottom-right)
   if (hotkey) {
+    const badgeFontSize = Math.max(8, Math.round(size * 0.075))
     ctx.fillStyle = 'rgba(0,0,0,0.4)'
     const badgeText = hotkey.toUpperCase()
-    ctx.font = 'bold 11px sans-serif'
+    ctx.font = `bold ${badgeFontSize}px sans-serif`
     const metrics = ctx.measureText(badgeText)
     const bw = metrics.width + 8
-    const bh = 16
-    const bx = size - bw - 6
-    const by = size - bh - 6
+    const bh = badgeFontSize + 4
+    const bx = size - bw - 4
+    const by = size - bh - 4
     ctx.beginPath()
     ctx.roundRect(bx, by, bw, bh, 4)
     ctx.fill()
@@ -95,6 +120,69 @@ export async function generateButtonImage(
   let binary = ''
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
   return 'data:image/png;base64,' + btoa(binary)
+}
+
+/** Render a button image and return raw RGBA pixel buffer for device fillKeyBuffer */
+export async function generateButtonBuffer(
+  label: string,
+  color: string,
+  pixelSize: number,
+  hotkey?: string | null,
+  isActive?: boolean,
+): Promise<Uint8Array> {
+  let canvas: OffscreenCanvas | HTMLCanvasElement
+  let ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
+
+  if (typeof OffscreenCanvas !== 'undefined') {
+    canvas = new OffscreenCanvas(pixelSize, pixelSize)
+    ctx = canvas.getContext('2d')!
+  } else {
+    canvas = document.createElement('canvas')
+    canvas.width = pixelSize
+    canvas.height = pixelSize
+    ctx = canvas.getContext('2d')!
+  }
+
+  // Background
+  ctx.fillStyle = color || '#3f3f46'
+  ctx.fillRect(0, 0, pixelSize, pixelSize)
+
+  // Active: green border
+  if (isActive) {
+    const bw = Math.max(3, Math.round(pixelSize * 0.05))
+    ctx.strokeStyle = '#10b981'
+    ctx.lineWidth = bw
+    ctx.strokeRect(bw / 2, bw / 2, pixelSize - bw, pixelSize - bw)
+  }
+
+  // Label
+  const fontSize = Math.max(8, Math.round(pixelSize * 0.14))
+  const maxChars = Math.max(5, Math.round(pixelSize / 10))
+  const displayLabel = label.length > maxChars ? label.slice(0, maxChars - 1) + '\u2026' : label
+  ctx.fillStyle = '#ffffff'
+  ctx.font = `bold ${fontSize}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(displayLabel, pixelSize / 2, pixelSize / 2)
+
+  // Hotkey badge
+  if (hotkey) {
+    const badgeFs = Math.max(7, Math.round(pixelSize * 0.09))
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'
+    const badgeText = hotkey.toUpperCase()
+    ctx.font = `bold ${badgeFs}px sans-serif`
+    const m = ctx.measureText(badgeText)
+    const bw = m.width + 6
+    const bh = badgeFs + 3
+    ctx.fillRect(pixelSize - bw - 3, pixelSize - bh - 3, bw, bh)
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(badgeText, pixelSize - bw / 2 - 3, pixelSize - bh / 2 - 3)
+  }
+
+  const imageData = ctx.getImageData(0, 0, pixelSize, pixelSize)
+  return new Uint8Array(imageData.data.buffer)
 }
 
 interface ProfileOptions {
@@ -156,6 +244,15 @@ export async function generateStreamDeckProfile(opts: ProfileOptions): Promise<B
         action.Settings = { openInBrowser: true, url }
       }
       actions.push(action)
+      continue
+    }
+
+    if (entry.type === 'segment') {
+      const { segment } = entry
+      const segLabel = segment.name
+      const segColor = segment.hotkey_color || '#6366f1'
+      const image = await generateButtonImage(segLabel, segColor, segment.hotkey_key)
+      actions.push({ Name: segLabel, States: [{ Title: segLabel, Image: image }] })
       continue
     }
 

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useBroadcast } from './BroadcastContext'
 import { generateStreamDeckProfile, DEVICE_DIMS, type DeviceModel, type ButtonEntry } from '@/lib/streamDeckProfile'
+import type { useStreamDeck } from '@/lib/useStreamDeck'
 
 const DEVICE_OPTIONS: { value: DeviceModel; label: string }[] = [
   { value: 'sd', label: 'Stream Deck (5×3)' },
@@ -11,8 +12,15 @@ const DEVICE_OPTIONS: { value: DeviceModel; label: string }[] = [
   { value: 'sd-plus', label: 'Stream Deck + (4×2)' },
 ]
 
-export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
-  const { project, assets, session, updateAsset } = useBroadcast()
+interface StreamDeckSetupProps {
+  onClose: () => void
+  streamDeck?: ReturnType<typeof useStreamDeck>
+  buttonOrder?: ButtonEntry[]
+  onButtonOrderChange?: (order: ButtonEntry[]) => void
+}
+
+export default function StreamDeckSetup({ onClose, streamDeck, buttonOrder: externalButtonOrder, onButtonOrderChange }: StreamDeckSetupProps) {
+  const { project, assets, session, updateAsset, segments, visibleAssetIds, activeSegmentId } = useBroadcast()
   const [deviceModel, setDeviceModel] = useState<DeviceModel>('sd')
   const [downloading, setDownloading] = useState(false)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
@@ -23,22 +31,15 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
   // --- Drag-and-drop state ---
-  const [buttonOrder, setButtonOrder] = useState<ButtonEntry[]>([])
+  const buttonOrder = externalButtonOrder || []
+  const setButtonOrder = onButtonOrderChange || (() => {})
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
 
-  // Build button order from assets whenever assets or device changes
-  useEffect(() => {
-    const entries: ButtonEntry[] = []
-    const s = [...assets].sort((a, b) => a.sort_order - b.sort_order)
-    for (const asset of s) {
-      entries.push({ type: 'asset', asset })
-    }
-    entries.push({ type: 'slideshow-prev' })
-    entries.push({ type: 'slideshow-next' })
-    while (entries.length < totalButtons) entries.push({ type: 'empty' })
-    setButtonOrder(entries.slice(0, totalButtons))
-  }, [assets, totalButtons])
+  // Pad button order to match grid when no external order
+  const gridEntries = [...buttonOrder]
+  while (gridEntries.length < totalButtons) gridEntries.push({ type: 'empty' })
+  const displayEntries = gridEntries.slice(0, totalButtons)
 
   // --- Drag handlers ---
   function handleDragStart(e: React.DragEvent, idx: number) {
@@ -64,24 +65,24 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
     setHoverIdx(null)
     if (fromIdx === null || fromIdx === dropIdx) return
 
-    setButtonOrder(prev => {
-      const next = [...prev]
-      const [moved] = next.splice(fromIdx, 1)
-      next.splice(dropIdx, 0, moved)
+    const next = [...buttonOrder]
+    // Ensure we have enough entries
+    while (next.length <= Math.max(fromIdx, dropIdx)) next.push({ type: 'empty' })
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(dropIdx, 0, moved)
 
-      // Persist sort_order for asset buttons
-      let order = 0
-      for (const entry of next) {
-        if (entry.type === 'asset') {
-          if (entry.asset.sort_order !== order) {
-            updateAsset(entry.asset.id, { sort_order: order })
-          }
-          order++
+    // Persist sort_order for asset buttons
+    let order = 0
+    for (const entry of next) {
+      if (entry.type === 'asset') {
+        if (entry.asset.sort_order !== order) {
+          updateAsset(entry.asset.id, { sort_order: order })
         }
+        order++
       }
+    }
 
-      return next
-    })
+    setButtonOrder(next)
   }
 
   function handleDragEnd() {
@@ -164,11 +165,15 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
       const { asset } = entry
       const label = asset.hotkey_label || asset.name
       const color = asset.hotkey_color || '#3f3f46'
+      const isActive = visibleAssetIds.has(asset.id)
       return (
         <div
           key={`btn-${idx}`}
-          className={`aspect-square rounded-lg border border-white/10 flex flex-col items-center justify-center p-1 relative cursor-grab active:cursor-grabbing select-none ${hoverRing} ${dragOpacity}`}
-          style={{ backgroundColor: color }}
+          className={`aspect-square rounded-lg flex flex-col items-center justify-center p-1 relative cursor-grab active:cursor-grabbing select-none ${hoverRing} ${dragOpacity}`}
+          style={{
+            backgroundColor: color,
+            border: isActive ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+          }}
           {...dragProps}
           {...dropProps}
         >
@@ -178,6 +183,34 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
           {asset.hotkey_key && (
             <span className="absolute bottom-0.5 right-1 text-[8px] text-white/60 font-mono">
               {asset.hotkey_key.toUpperCase()}
+            </span>
+          )}
+        </div>
+      )
+    }
+
+    if (entry.type === 'segment') {
+      const { segment } = entry
+      const color = segment.hotkey_color || '#6366f1'
+      const isActive = activeSegmentId === segment.id
+      return (
+        <div
+          key={`btn-${idx}`}
+          className={`aspect-square rounded-lg flex flex-col items-center justify-center p-1 relative cursor-grab active:cursor-grabbing select-none ${hoverRing} ${dragOpacity}`}
+          style={{
+            backgroundColor: color,
+            border: isActive ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+          }}
+          {...dragProps}
+          {...dropProps}
+        >
+          <span className="text-[7px] text-white/50 uppercase tracking-wider font-medium">Seg</span>
+          <span className="text-[10px] font-bold text-white text-center leading-tight truncate w-full px-0.5">
+            {segment.name.length > 8 ? segment.name.slice(0, 7) + '\u2026' : segment.name}
+          </span>
+          {segment.hotkey_key && (
+            <span className="absolute bottom-0.5 right-1 text-[8px] text-white/60 font-mono">
+              {segment.hotkey_key.toUpperCase()}
             </span>
           )}
         </div>
@@ -222,6 +255,9 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
     )
   }
 
+  const sdStatus = streamDeck?.state.status || 'disconnected'
+  const sdConnected = streamDeck?.isConnected || false
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
@@ -235,7 +271,66 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="px-5 py-4 space-y-5">
-          {/* Device selector + download */}
+          {/* Physical device connection */}
+          {streamDeck && (
+            <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50 p-3 space-y-2">
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Physical Device (WebHID)</p>
+
+              {sdStatus === 'disconnected' && (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={streamDeck.connect}
+                    className="px-3 py-1.5 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-500 text-white transition"
+                  >
+                    Connect Device
+                  </button>
+                  <span className="text-[10px] text-zinc-600">Chrome 89+ required &middot; HTTPS or localhost</span>
+                </div>
+              )}
+
+              {sdStatus === 'connecting' && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border border-zinc-500 border-t-indigo-400 rounded-full animate-spin" />
+                  <span className="text-xs text-zinc-400">Connecting...</span>
+                </div>
+              )}
+
+              {sdStatus === 'connected' && (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span className="text-xs text-zinc-200 font-medium">{streamDeck.state.deviceModel}</span>
+                    {streamDeck.state.serialNumber && (
+                      <span className="text-[10px] text-zinc-600 font-mono">{streamDeck.state.serialNumber}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={streamDeck.disconnect}
+                    className="px-2 py-1 text-[10px] font-medium rounded bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-600/50 transition"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              )}
+
+              {sdStatus === 'error' && (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                    <span className="text-xs text-red-400">{streamDeck.state.error}</span>
+                  </div>
+                  <button
+                    onClick={streamDeck.connect}
+                    className="px-2 py-1 text-[10px] font-medium rounded bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-600/50 transition"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Profile export: device selector + download */}
           <div className="flex items-center gap-3">
             <select
               value={deviceModel}
@@ -259,7 +354,10 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium mb-2">
               Button Layout
-              <span className="ml-2 normal-case tracking-normal text-zinc-600">Drag to rearrange</span>
+              <span className="ml-2 normal-case tracking-normal text-zinc-600">
+                Drag to rearrange
+                {sdConnected && ' \u2022 Live on device'}
+              </span>
             </p>
             <div
               className="grid gap-1.5"
@@ -268,7 +366,7 @@ export default function StreamDeckSetup({ onClose }: { onClose: () => void }) {
                 gridTemplateRows: `repeat(${dims.rows}, 1fr)`,
               }}
             >
-              {buttonOrder.map((entry, i) => renderCell(entry, i))}
+              {displayEntries.map((entry, i) => renderCell(entry, i))}
             </div>
           </div>
 
