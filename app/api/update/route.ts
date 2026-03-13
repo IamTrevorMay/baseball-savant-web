@@ -37,20 +37,48 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
   const csv = (await resp.text()).replace(/^\ufeff/, '') // strip UTF-8 BOM
   if (csv.length < 100) return { fetched: 0, inserted: 0, errors: 0, message: 'No data available for this date range' }
 
-  // Parse CSV
+  // Parse CSV (proper RFC 4180 parser to handle quoted fields with commas)
+  function parseCSVLine(line: string): string[] {
+    const fields: string[] = []
+    let i = 0
+    while (i <= line.length) {
+      if (i === line.length) { fields.push(''); break }
+      if (line[i] === '"') {
+        let val = ''
+        i++ // skip opening quote
+        while (i < line.length) {
+          if (line[i] === '"') {
+            if (i + 1 < line.length && line[i + 1] === '"') { val += '"'; i += 2 }
+            else { i++; break }
+          } else { val += line[i]; i++ }
+        }
+        fields.push(val)
+        if (i < line.length && line[i] === ',') i++ // skip comma
+      } else {
+        const next = line.indexOf(',', i)
+        if (next === -1) { fields.push(line.slice(i)); break }
+        fields.push(line.slice(i, next))
+        i = next + 1
+      }
+    }
+    return fields
+  }
+
   const lines = csv.split('\n')
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+  const headers = parseCSVLine(lines[0]).map(h => h.trim()).filter(h => h !== '')
+  const numHeaders = headers.length
   const rows: any[] = []
 
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue
-    const vals = lines[i].match(/(".*?"|[^,]*)/g)
-    if (!vals || vals.length !== headers.length) continue
+    const vals = parseCSVLine(lines[i])
+    // Allow rows with >= numHeaders fields (trailing empty fields from commas)
+    if (vals.length < numHeaders) continue
     const row: any = {}
     headers.forEach((h, j) => {
-      let v = vals[j]?.trim().replace(/^"|"$/g, '') || null
+      let v: any = vals[j]?.trim() || null
       if (v === '' || v === 'null') v = null
-      else if (v && !isNaN(Number(v)) && h !== 'game_date' && h !== 'sv_id') v = Number(v) as any
+      else if (v && !isNaN(Number(v)) && h !== 'game_date' && h !== 'sv_id') v = Number(v)
       row[h] = v
     })
     if (row.game_pk) rows.push(row)
