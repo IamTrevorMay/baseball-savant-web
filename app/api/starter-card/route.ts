@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
 
       // 4. Player metadata
       q(`
-        SELECT p.player_name, p.team,
+        SELECT p.name AS player_name, p.team,
                lp.birth_year
         FROM players p
         LEFT JOIN lahman_people lp ON lp.key_mlbam = p.id

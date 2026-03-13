@@ -171,6 +171,13 @@ export async function GET(req: NextRequest) {
         const cardJson = await cardRes.json()
         const data = cardJson.data || cardJson
 
+        // Override with MLB API data (more reliable for spring training / missing pitch data)
+        if (!data.pitcher_name || data.pitcher_name === 'Unknown') {
+          data.pitcher_name = starter.name
+        }
+        if (!data.game_date) data.game_date = cardDate
+        if (!data.opponent || data.opponent === '??') data.opponent = starter.gameInfo
+
         const populated = populateReportCard(templateScene, data)
 
         cards.push({
