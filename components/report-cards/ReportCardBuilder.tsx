@@ -23,11 +23,13 @@ interface Props {
   redo: () => void
   canUndo: boolean
   canRedo: boolean
+  onLoadTemplate?: (t: any) => void
+  activeTemplateId?: string | null
 }
 
 export default function ReportCardBuilder({
   scene, setScene, selectedId, setSelectedId, selectedIds, setSelectedIds,
-  zoom, setZoom, undo, redo, canUndo, canRedo,
+  zoom, setZoom, undo, redo, canUndo, canRedo, onLoadTemplate, activeTemplateId,
 }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const selectedElement = scene.elements.find(e => e.id === selectedId) ?? null
@@ -84,8 +86,8 @@ export default function ReportCardBuilder({
 
   return (
     <div className="flex flex-1 overflow-hidden" onKeyDown={handleKeyDown} tabIndex={-1}>
-      {/* Left: Element Catalog */}
-      <RCElementCatalog onAddElement={addElement} />
+      {/* Left: Element Catalog + Templates */}
+      <RCElementCatalog onAddElement={addElement} onLoadTemplate={onLoadTemplate} activeTemplateId={activeTemplateId} />
 
       {/* Center: Canvas */}
       <div className="flex-1 relative overflow-hidden bg-zinc-950">

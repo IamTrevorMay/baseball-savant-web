@@ -92,6 +92,15 @@ export default function ReportCardsPage() {
     await exportScenePNG(scene, `${templateName.replace(/\s+/g, '-').toLowerCase()}.png`)
   }, [scene, templateName])
 
+  // Load a saved template into the builder
+  const handleLoadTemplate = useCallback((t: { id: string; name: string; width: number; height: number; background: string; elements: any[] }) => {
+    setScene({ id: t.id, name: t.name, width: t.width, height: t.height, background: t.background, elements: t.elements || [] })
+    setSavedId(t.id)
+    setTemplateName(t.name)
+    setSelectedId(null)
+    setSelectedIds(new Set())
+  }, [setScene])
+
   // Canvas size
   const handleResize = useCallback((w: number, h: number) => {
     setScene(prev => ({ ...prev, width: w, height: h }))
@@ -209,6 +218,8 @@ export default function ReportCardsPage() {
           redo={redo}
           canUndo={canUndo}
           canRedo={canRedo}
+          onLoadTemplate={handleLoadTemplate}
+          activeTemplateId={savedId}
         />
       ) : (
         <ReportCardGenerator />
