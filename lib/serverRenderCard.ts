@@ -33,30 +33,51 @@ interface Scene {
 // ── Font setup ──────────────────────────────────────────────────────────────
 
 let _fontReady = false
+let _fontFamily = 'sans-serif'
 
 async function ensureFont(): Promise<void> {
   if (_fontReady) return
   try {
-    // Download Inter Regular + Bold from Google Fonts
-    const weights = [
-      { weight: '400', url: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMa2JL7W0Q5nw.woff2' },
-      { weight: '600', url: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMa25L7W0Q5nw.woff2' },
-      { weight: '700', url: 'https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMa2JL7W0Q5nw.woff2' },
+    // Download Inter Variable from fontsource CDN (TTF works best with @napi-rs/canvas)
+    const urls = [
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-400-normal.woff2',
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-600-normal.woff2',
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff2',
     ]
-    for (const { url } of weights) {
+    let registered = false
+    for (const url of urls) {
       try {
-        const resp = await fetch(url)
+        const resp = await fetch(url, { signal: AbortSignal.timeout(5000) })
         if (resp.ok) {
           const buf = Buffer.from(await resp.arrayBuffer())
           GlobalFonts.register(buf, 'Inter')
+          registered = true
         }
       } catch { /* skip */ }
     }
-  } catch { /* fallback to system fonts */ }
+    if (registered) {
+      _fontFamily = 'Inter'
+    }
+  } catch { /* fallback */ }
+
+  // Check what fonts are available
+  const families = GlobalFonts.families
+  if (families && families.length > 0) {
+    // If Inter was registered, use it; otherwise use first available
+    const hasInter = families.some((f: { family: string }) => f.family === 'Inter')
+    if (hasInter) {
+      _fontFamily = 'Inter'
+    } else if (_fontFamily === 'sans-serif') {
+      // Use first available system font
+      _fontFamily = families[0].family
+    }
+  }
   _fontReady = true
 }
 
-const FONT = 'Inter, sans-serif'
+function FONT(): string {
+  return _fontFamily
+}
 
 // ── Canvas helpers ──────────────────────────────────────────────────────────
 
@@ -157,7 +178,7 @@ async function drawPlayerImage(ctx: SKRSContext2D, el: SceneElement) {
 
   // Name label
   if (p.showLabel && p.playerName) {
-    ctx.font = `500 13px ${FONT}`
+    ctx.font = `500 13px ${FONT()}`
     ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
@@ -183,13 +204,13 @@ function drawRCStatBox(ctx: SKRSContext2D, el: SceneElement) {
   ctx.fillRect(x, y + 10, 3, h - 20)
 
   const labelSize = Math.max(10, (p.fontSize || 44) * 0.28)
-  ctx.font = `600 ${labelSize}px ${FONT}`
+  ctx.font = `600 ${labelSize}px ${FONT()}`
   ctx.fillStyle = '#a1a1aa'
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
   ctx.fillText((p.label || 'Stat').toUpperCase(), x + pad, y + pad)
 
-  ctx.font = `bold ${p.fontSize || 44}px ${FONT}`
+  ctx.font = `bold ${p.fontSize || 44}px ${FONT()}`
   ctx.fillStyle = color
   ctx.fillText(String(p.value ?? '--'), x + pad, y + pad + labelSize + 4)
   ctx.restore()
@@ -216,7 +237,7 @@ function drawRCTable(ctx: SKRSContext2D, el: SceneElement) {
   const headerY = y + 8
 
   // Header
-  ctx.font = `600 ${headerFontSize}px ${FONT}`
+  ctx.font = `600 ${headerFontSize}px ${FONT()}`
   ctx.fillStyle = p.headerColor || '#a1a1aa'
   ctx.textBaseline = 'top'
   for (let i = 0; i < cols.length; i++) {
@@ -234,7 +255,7 @@ function drawRCTable(ctx: SKRSContext2D, el: SceneElement) {
 
   // Rows
   const startY = headerY + headerFontSize + 12
-  ctx.font = `400 ${fontSize}px ${FONT}`
+  ctx.font = `400 ${fontSize}px ${FONT()}`
 
   for (let r = 0; r < rows.length; r++) {
     const ry = startY + r * rowH
@@ -276,7 +297,7 @@ function drawRCBarChart(ctx: SKRSContext2D, el: SceneElement) {
     const bw = (d.value / maxVal) * plotW
 
     ctx.fillStyle = '#a1a1aa'
-    ctx.font = `500 ${fontSize}px ${FONT}`
+    ctx.font = `500 ${fontSize}px ${FONT()}`
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
     ctx.fillText(d.label, x + pad.left - 8, by + barH / 2)
@@ -291,7 +312,7 @@ function drawRCBarChart(ctx: SKRSContext2D, el: SceneElement) {
 
     if (p.showValues !== false) {
       ctx.fillStyle = '#e4e4e7'
-      ctx.font = `600 ${fontSize}px ${FONT}`
+      ctx.font = `600 ${fontSize}px ${FONT()}`
       ctx.textAlign = 'left'
       ctx.fillText(d.value % 1 ? d.value.toFixed(1) : String(d.value), x + pad.left + Math.max(bw, 4) + 6, by + barH / 2)
     }
@@ -343,7 +364,7 @@ function drawRCDonutChart(ctx: SKRSContext2D, el: SceneElement) {
       const lx = cx + labelR * Math.cos(midAngle)
       const ly = cy + labelR * Math.sin(midAngle)
       ctx.fillStyle = '#a1a1aa'
-      ctx.font = `500 ${fontSize}px ${FONT}`
+      ctx.font = `500 ${fontSize}px ${FONT()}`
       ctx.textAlign = midAngle > Math.PI / 2 && midAngle < 3 * Math.PI / 2 ? 'right' : 'left'
       ctx.textBaseline = 'middle'
       const pct = ((item.value / total) * 100).toFixed(0)
@@ -399,7 +420,7 @@ function drawRCMovementPlot(ctx: SKRSContext2D, el: SceneElement) {
 
   // Axis labels
   ctx.fillStyle = '#71717a'
-  ctx.font = `500 10px ${FONT}`
+  ctx.font = `500 10px ${FONT()}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   ctx.fillText('HB (in)', x + w / 2, y + h - 14)
@@ -411,7 +432,7 @@ function drawRCMovementPlot(ctx: SKRSContext2D, el: SceneElement) {
 
   // Tick marks
   ctx.fillStyle = '#52525b'
-  ctx.font = `400 9px ${FONT}`
+  ctx.font = `400 9px ${FONT()}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   for (let v = -20; v <= 20; v += 10) {
@@ -482,7 +503,7 @@ function drawRCMovementPlot(ctx: SKRSContext2D, el: SceneElement) {
     let legendY = plotY + 8
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
-    ctx.font = `500 9px ${FONT}`
+    ctx.font = `500 9px ${FONT()}`
     for (const name of uniquePitches) {
       const color = pitchColor(name || '')
       ctx.fillStyle = color
@@ -590,7 +611,7 @@ export async function renderCardToPNG(scene: Scene): Promise<Buffer> {
         break
       case 'text': {
         const p = el.props
-        ctx.font = `${p.fontWeight || 400} ${p.fontSize || 16}px ${FONT}`
+        ctx.font = `${p.fontWeight || 400} ${p.fontSize || 16}px ${FONT()}`
         ctx.fillStyle = p.color || '#ffffff'
         ctx.textBaseline = 'middle'
         let tx = el.x
