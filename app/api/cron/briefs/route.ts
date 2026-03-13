@@ -19,10 +19,23 @@ const FEEDS = [
   { name: 'MLB.com', url: 'https://www.mlb.com/feeds/news/rss.xml' },
 ]
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Authorization',
+}
+
+export async function OPTIONS() {
+  return NextResponse.json(null, { headers: corsHeaders })
+}
+
+function json(body: any, init?: { status?: number }) {
+  return NextResponse.json(body, { ...init, headers: corsHeaders })
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   // Compute yesterday's date in ET
@@ -34,7 +47,7 @@ export async function GET(req: NextRequest) {
   // Skip offseason (Dec, Jan)
   const month = et.getMonth() + 1
   if (month === 12 || month === 1) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'offseason' })
+    return json({ ok: true, skipped: true, reason: 'offseason' })
   }
 
   // Force regeneration: delete existing brief for this date
@@ -51,7 +64,7 @@ export async function GET(req: NextRequest) {
     .maybeSingle()
 
   if (existing) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'already_exists', date: briefDate })
+    return json({ ok: true, skipped: true, reason: 'already_exists', date: briefDate })
   }
 
   try {
@@ -160,7 +173,7 @@ Return ONLY valid JSON, no markdown fences.`,
       const cleaned = jsonMatch ? jsonMatch[0] : textContent.trim()
       parsed = JSON.parse(cleaned)
     } catch {
-      return NextResponse.json({ error: 'Failed to parse Claude response', raw: textContent.slice(0, 500) }, { status: 500 })
+      return json({ error: 'Failed to parse Claude response', raw: textContent.slice(0, 500) }, { status: 500 })
     }
 
     // Assemble final HTML
@@ -190,13 +203,13 @@ Return ONLY valid JSON, no markdown fences.`,
       })
 
     if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
+      return json({ error: insertError.message }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, date: briefDate, title: parsed.title })
+    return json({ ok: true, date: briefDate, title: parsed.title })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return json({ error: msg }, { status: 500 })
   }
 }
 

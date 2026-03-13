@@ -6,10 +6,23 @@ export const maxDuration = 300
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Authorization',
+}
+
+export async function OPTIONS() {
+  return NextResponse.json(null, { headers: corsHeaders })
+}
+
+function json(body: any, init?: { status?: number }) {
+  return NextResponse.json(body, { ...init, headers: corsHeaders })
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   // Compute yesterday's date in ET
@@ -21,7 +34,7 @@ export async function GET(req: NextRequest) {
   // Skip offseason (Dec, Jan)
   const month = et.getMonth() + 1
   if (month === 12 || month === 1) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'offseason' })
+    return json({ ok: true, skipped: true, reason: 'offseason' })
   }
 
   // Force regeneration: delete existing cards for this date
@@ -39,7 +52,7 @@ export async function GET(req: NextRequest) {
     .maybeSingle()
 
   if (existing) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'already_exists', date: cardDate })
+    return json({ ok: true, skipped: true, reason: 'already_exists', date: cardDate })
   }
 
   try {
@@ -47,12 +60,12 @@ export async function GET(req: NextRequest) {
     const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?date=${cardDate}&sportId=1&hydrate=team`
     const scheduleRes = await fetch(scheduleUrl)
     if (!scheduleRes.ok) {
-      return NextResponse.json({ error: 'Failed to fetch schedule' }, { status: 500 })
+      return json({ error: 'Failed to fetch schedule' }, { status: 500 })
     }
     const scheduleData = await scheduleRes.json()
     const dateEntry = scheduleData?.dates?.[0]
     if (!dateEntry || !dateEntry.games?.length) {
-      return NextResponse.json({ ok: true, skipped: true, reason: 'no_games', date: cardDate })
+      return json({ ok: true, skipped: true, reason: 'no_games', date: cardDate })
     }
 
     const finishedGames = (dateEntry.games || []).filter(
@@ -60,7 +73,7 @@ export async function GET(req: NextRequest) {
     )
 
     if (finishedGames.length === 0) {
-      return NextResponse.json({ ok: true, skipped: true, reason: 'no_finished_games', date: cardDate })
+      return json({ ok: true, skipped: true, reason: 'no_finished_games', date: cardDate })
     }
 
     // 2. Fetch boxscores and extract starting pitchers
@@ -124,7 +137,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (starters.length === 0) {
-      return NextResponse.json({ ok: true, skipped: true, reason: 'no_starters', date: cardDate })
+      return json({ ok: true, skipped: true, reason: 'no_starters', date: cardDate })
     }
 
     // 3. Sort by IP desc, pitch_count desc → top 5
@@ -141,7 +154,7 @@ export async function GET(req: NextRequest) {
       .maybeSingle()
 
     if (templateError || !templateData) {
-      return NextResponse.json({
+      return json({
         error: 'Template "Test Starter Card" not found',
         detail: templateError?.message,
       }, { status: 500 })
@@ -204,7 +217,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (cards.length === 0) {
-      return NextResponse.json({ error: 'No cards generated', date: cardDate }, { status: 500 })
+      return json({ error: 'No cards generated', date: cardDate }, { status: 500 })
     }
 
     // 6. Batch insert
@@ -213,10 +226,10 @@ export async function GET(req: NextRequest) {
       .insert(cards)
 
     if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
+      return json({ error: insertError.message }, { status: 500 })
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       date: cardDate,
       count: cards.length,
@@ -224,6 +237,6 @@ export async function GET(req: NextRequest) {
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return json({ error: msg }, { status: 500 })
   }
 }
