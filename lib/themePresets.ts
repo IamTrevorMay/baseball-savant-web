@@ -411,6 +411,45 @@ function applyTeamColorOverlay(elements: SceneElement[], tc: TeamPalette): Scene
 }
 
 /**
+ * Apply team color overlay for Report Card elements (rc-* types).
+ * Maps team palette to RC-specific element properties.
+ */
+export function applyRCTeamColorOverlay(elements: SceneElement[], tc: TeamPalette): SceneElement[] {
+  return elements.map(el => {
+    const p = { ...el.props }
+    switch (el.type) {
+      case 'rc-stat-box':
+        p.color = tc.primary
+        p.bgColor = tc.secondary + '15' // light tint
+        break
+      case 'rc-table':
+        p.headerColor = tc.primary
+        break
+      case 'rc-heatmap':
+        p.colorHigh = tc.primary
+        break
+      case 'rc-bar-chart':
+        // uses pitch colors — no change
+        break
+      case 'rc-donut-chart':
+        // uses pitch colors — no change
+        break
+      case 'text':
+        p.color = tc.primary
+        break
+      case 'shape':
+        p.fill = tc.secondary
+        p.stroke = tc.primary
+        break
+      case 'player-image':
+        p.borderColor = tc.primary
+        break
+    }
+    return { ...el, props: p }
+  })
+}
+
+/**
  * Combined transform: apply theme preset first (full visual), then team colors on top (accent override).
  * Used in the broadcast pipeline where both may be active.
  */

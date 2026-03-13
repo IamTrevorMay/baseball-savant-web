@@ -390,7 +390,7 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   'rc-table': {
     w: 600, h: 300,
     props: {
-      ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 12,
+      ...UNIVERSAL_STYLE, ...TEXT_STYLE, bgColor: '#09090b', borderRadius: 12,
       columns: [
         { key: 'pitch_name', label: 'Pitch', format: 'raw' },
         { key: 'count', label: '#', format: 'integer' },

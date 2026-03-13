@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Scene, SceneElement, ElementType, createElement } from '@/lib/sceneTypes'
 import { defaultReportCardBinding } from '@/lib/reportCardDefaults'
+import { TEAM_COLORS } from '@/lib/teamColors'
+import { applyRCTeamColorOverlay } from '@/lib/themePresets'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
+import AlignmentBar from '@/components/visualize/asset-designer/AlignmentBar'
 import RCElementCatalog from './RCElementCatalog'
 import RCPropertiesPanel from './RCPropertiesPanel'
 
@@ -28,6 +31,7 @@ export default function ReportCardBuilder({
 }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const selectedElement = scene.elements.find(e => e.id === selectedId) ?? null
+  const [teamTheme, setTeamTheme] = useState('')
 
   const addElement = useCallback((type: ElementType) => {
     const el = createElement(type, scene.width / 2, scene.height / 2)
@@ -55,6 +59,16 @@ export default function ReportCardBuilder({
     setSelectedIds(new Set(ids))
     setSelectedId(ids.length > 0 ? ids[0] : null)
   }, [setSelectedId, setSelectedIds])
+
+  const handleApplyTeamTheme = useCallback((abbrev: string) => {
+    setTeamTheme(abbrev)
+    if (!abbrev || !TEAM_COLORS[abbrev]) return
+    const tc = TEAM_COLORS[abbrev]
+    setScene(prev => ({
+      ...prev,
+      elements: applyRCTeamColorOverlay(prev.elements, tc),
+    }))
+  }, [setScene])
 
   // Keyboard delete
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -110,10 +124,26 @@ export default function ReportCardBuilder({
           onUpdateElement={updateElement}
           canvasRef={canvasRef}
         />
+
+        {/* Alignment Bar for multi-select — rendered inside canvas coordinate space */}
+        {selectedIds.size > 1 && (
+          <AlignmentBar
+            selectedIds={selectedIds}
+            elements={scene.elements}
+            onUpdateElement={updateElement}
+          />
+        )}
       </div>
 
       {/* Right: Properties Panel */}
-      <RCPropertiesPanel element={selectedElement} onUpdate={updateElement} />
+      <RCPropertiesPanel
+        element={selectedElement}
+        onUpdate={updateElement}
+        teamTheme={teamTheme}
+        onTeamThemeChange={handleApplyTeamTheme}
+        selectedIds={selectedIds}
+        elements={scene.elements}
+      />
     </div>
   )
 }

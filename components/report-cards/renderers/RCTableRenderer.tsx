@@ -21,6 +21,10 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
   const textColor = p.textColor || '#e4e4e7'
   const fontSize = p.fontSize || 13
   const headerFontSize = p.headerFontSize || 11
+  const fontFamily = p.fontFamily || undefined
+  const letterSpacing = p.letterSpacing ? `${p.letterSpacing}px` : undefined
+  const lineHeight = p.lineHeight || undefined
+  const textTransform = p.textTransform || undefined
 
   if (columns.length === 0) {
     return (
@@ -33,16 +37,16 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
   return (
     <div
       className="w-full h-full overflow-hidden"
-      style={{ borderRadius: p.borderRadius ?? 12, background: p.bgColor || '#09090b' }}
+      style={{ borderRadius: p.borderRadius ?? 12, background: p.bgColor || '#09090b', fontFamily }}
     >
-      <table className="w-full border-collapse" style={{ fontSize }}>
+      <table className="w-full border-collapse" style={{ fontSize, letterSpacing, lineHeight }}>
         <thead>
           <tr>
             {columns.map(col => (
               <th
                 key={col.key}
                 className="text-left px-2.5 py-2 font-semibold uppercase tracking-wider border-b border-zinc-800"
-                style={{ color: headerColor, fontSize: headerFontSize }}
+                style={{ color: headerColor, fontSize: headerFontSize, textTransform: textTransform as any }}
               >
                 {col.label}
               </th>
