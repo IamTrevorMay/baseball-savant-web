@@ -1,0 +1,39 @@
+@font-face {
+  font-family: 'Milford Condensed';
+  src: url('/fonts/MilfordCondensed-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Trispace';
+  src: url('/fonts/Trispace-ExtraLight.woff') format('woff');
+  font-weight: 200;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Trispace';
+  src: url('/fonts/Trispace-Light.woff') format('woff');
+  font-weight: 300;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Trispace';
+  src: url('/fonts/Trispace-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Univers LT Std 59 Ultra Condensed';
+  src: url('/fonts/UniversLTStd59-UltraCondensed.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}

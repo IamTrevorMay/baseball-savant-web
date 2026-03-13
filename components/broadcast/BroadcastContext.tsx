@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
 import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig, OBSConnectionConfig } from '@/lib/broadcastTypes'
-import { WidgetState, DEFAULT_WIDGET_STATE, ChatMessage, Topic, LowerThirdMessage, Notification } from '@/lib/widgetTypes'
+import { WidgetState, DEFAULT_WIDGET_STATE, ChatMessage, Topic, LowerThirdMessage, Notification, TimerPreset } from '@/lib/widgetTypes'
 import { useChatConnection } from '@/lib/useChatConnection'
 import { createClient } from '@supabase/supabase-js'
 import { useOBSWebSocket, OBSState } from '@/lib/useOBSWebSocket'
@@ -90,6 +90,9 @@ interface BroadcastContextValue {
   startCountdown: () => void
   stopCountdown: () => void
   resetCountdown: () => void
+
+  // Timer preset actions
+  activateTimerPreset: (preset: TimerPreset) => void
 
   // Lower third actions
   highlightChatMessage: (msg: ChatMessage) => void
@@ -818,6 +821,48 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
   }, [sendEvent, projectId])
 
+  // Timer preset activation
+  const activateTimerPreset = useCallback((preset: TimerPreset) => {
+    // Find the first countdown widget asset
+    const countdownAsset = assets.find(a => a.asset_type === 'widget' && (a.widget_config as any)?.widget_type === 'countdown')
+
+    // If autoShow and we have a countdown asset, show it
+    if (preset.autoShow && countdownAsset) {
+      if (!visibleAssetIds.has(countdownAsset.id)) {
+        showAsset(countdownAsset.id)
+      }
+    }
+
+    // Set countdown total and remaining to preset seconds
+    const startedAt = new Date().toISOString()
+    setWidgetState(prev => {
+      const newCountdown = {
+        running: true,
+        remaining: preset.seconds,
+        total: preset.seconds,
+        startedAt,
+      }
+      sendEvent('widget:countdown-sync', { running: true, remaining: preset.seconds, total: preset.seconds, startedAt })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: projectId,
+          countdown_running: true,
+          countdown_remaining: preset.seconds,
+          countdown_total: preset.seconds,
+          countdown_started_at: startedAt,
+        }),
+      }).catch(console.error)
+      return {
+        ...prev,
+        countdown: newCountdown,
+        countdownAutoHide: preset.autoHide,
+        countdownSourceAssetId: countdownAsset?.id || null,
+      }
+    })
+  }, [assets, visibleAssetIds, showAsset, sendEvent, projectId])
+
   // Countdown tick
   useEffect(() => {
     if (widgetState.countdown.running) {
@@ -831,7 +876,11 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ project_id: projectId, countdown_running: false, countdown_remaining: 0, countdown_started_at: null }),
               }).catch(console.error)
-              return { ...prev, countdown: { ...prev.countdown, running: false, remaining: 0, startedAt: null } }
+              // Auto-hide countdown widget if preset had autoHide enabled
+              if (prev.countdownAutoHide && prev.countdownSourceAssetId) {
+                setTimeout(() => hideAsset(prev.countdownSourceAssetId!), 500)
+              }
+              return { ...prev, countdown: { ...prev.countdown, running: false, remaining: 0, startedAt: null }, countdownAutoHide: false, countdownSourceAssetId: null }
             }
             return prev
           }
@@ -855,7 +904,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         countdownIntervalRef.current = null
       }
     }
-  }, [widgetState.countdown.running, sendEvent, projectId])
+  }, [widgetState.countdown.running, sendEvent, projectId, hideAsset])
 
   // Lower third actions
   const highlightChatMessage = useCallback((msg: ChatMessage) => {
@@ -1103,6 +1152,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       widgetState, updateWidgetState, widgetPanelMode, setWidgetPanelMode,
       setTopics, goToTopic, nextTopic, prevTopic, setTopicVariant,
       setCountdownTotal, startCountdown, stopCountdown, resetCountdown,
+      activateTimerPreset,
       highlightChatMessage, clearLowerThird,
     }}>
       {children}

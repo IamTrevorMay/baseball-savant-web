@@ -33,17 +33,11 @@ export default function NotificationFeedOverlay({ notifications, config }: Props
   const visible = notifications.slice(-maxVisible)
   const fontSize = config.fontSize || 13
 
-  const bgHex = config.bgColor || '#000000'
-  const bgOpacity = config.bgOpacity ?? 0.6
-  const r = parseInt(bgHex.slice(1, 3), 16)
-  const g = parseInt(bgHex.slice(3, 5), 16)
-  const b = parseInt(bgHex.slice(5, 7), 16)
-
   return (
     <div style={{
       width: '100%',
       height: '100%',
-      backgroundColor: `rgba(${r},${g},${b},${bgOpacity})`,
+      background: 'transparent',
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'flex-end',
@@ -58,14 +52,22 @@ export default function NotificationFeedOverlay({ notifications, config }: Props
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
               padding: '4px 0',
               fontSize,
-              animation: 'notifIn 0.3s ease-out',
+              animation: 'notifIn 0.4s ease-out',
             }}
           >
-            <div style={{ width: 3, height: 16, borderRadius: 2, backgroundColor: color, flexShrink: 0 }} />
-            <span style={{ color, fontWeight: 700, fontSize: fontSize * 0.8, letterSpacing: 1 }}>
+            {/* Color bar — 5px wide like NodeCG chat borders */}
+            <div style={{ width: 5, height: 20, backgroundColor: color, flexShrink: 0 }} />
+            <span style={{
+              color,
+              fontWeight: 700,
+              fontSize: fontSize * 0.8,
+              letterSpacing: 1,
+              fontFamily: 'Trispace, sans-serif',
+              textTransform: 'uppercase',
+            }}>
               {getTypeLabel(n.type)}
             </span>
             <span style={{ color: '#FFFFFF', fontWeight: 600 }}>{n.displayName}</span>
@@ -76,7 +78,7 @@ export default function NotificationFeedOverlay({ notifications, config }: Props
       })}
       <style>{`
         @keyframes notifIn {
-          from { opacity: 0; transform: translateX(-10px); }
+          from { opacity: 0; transform: translateX(-20px); }
           to { opacity: 1; transform: translateX(0); }
         }
       `}</style>

@@ -53,12 +53,16 @@ export default function WidgetOverlayRenderer({ asset, widgetState, effectiveX, 
           <ChatOverlay messages={widgetState.chatMessages} config={config} width={effectiveW} height={effectiveH} />
         </div>
       )
-    case 'lowerthird':
+    case 'lowerthird': {
+      const activeTopic = widgetState.activeTopicIndex >= 0 && widgetState.activeTopicIndex < widgetState.topics.length
+        ? widgetState.topics[widgetState.activeTopicIndex]
+        : null
       return (
         <div style={wrapperStyle}>
-          <LowerThirdOverlay message={widgetState.lowerThird} visible={widgetState.lowerThirdVisible} config={config} width={effectiveW} height={effectiveH} />
+          <LowerThirdOverlay message={widgetState.lowerThird} visible={widgetState.lowerThirdVisible} config={config} width={effectiveW} height={effectiveH} topic={activeTopic} />
         </div>
       )
+    }
     case 'countdown':
       return (
         <div style={wrapperStyle}>

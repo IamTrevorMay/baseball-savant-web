@@ -38,6 +38,16 @@ export interface CountdownState {
   startedAt?: string | null
 }
 
+// ── Timer Preset Types ────────────────────────────────────────────────────
+
+export interface TimerPreset {
+  id: string
+  label: string       // e.g. "Ad Break", "BRB", "Starting Soon"
+  seconds: number     // duration in seconds
+  autoShow: boolean   // auto-show countdown widget when pressed
+  autoHide: boolean   // auto-hide countdown widget when timer reaches 0
+}
+
 // ── Lower Third Types ──────────────────────────────────────────────────────
 
 export interface LowerThirdMessage {
@@ -89,6 +99,7 @@ export interface CountdownWidgetConfig {
   bgOpacity: number
   label?: string
   showLabel: boolean
+  presets: TimerPreset[]
 }
 
 export interface TopicWidgetConfig {
@@ -140,6 +151,8 @@ export interface WidgetState {
   twitchChannel: string
   youtubeVideoId: string
   chatConnected: boolean
+  countdownAutoHide: boolean
+  countdownSourceAssetId: string | null
 }
 
 export const DEFAULT_WIDGET_STATE: WidgetState = {
@@ -155,6 +168,8 @@ export const DEFAULT_WIDGET_STATE: WidgetState = {
   twitchChannel: '',
   youtubeVideoId: '',
   chatConnected: false,
+  countdownAutoHide: false,
+  countdownSourceAssetId: null,
 }
 
 // ── Default widget configs ─────────────────────────────────────────────────
@@ -181,6 +196,7 @@ export const DEFAULT_WIDGET_CONFIGS: Record<WidgetType, WidgetConfig> = {
     bgColor: '#000000',
     bgOpacity: 0.7,
     showLabel: false,
+    presets: [],
   },
   topic: {
     widget_type: 'topic',

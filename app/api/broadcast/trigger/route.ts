@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { BroadcastSession } from '@/lib/broadcastTypes'
 
-const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'lowerthird_clear'] as const
+const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear'] as const
 type TriggerAction = typeof VALID_ACTIONS[number]
 
 export async function GET(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const aid = req.nextUrl.searchParams.get('aid')
     const action = req.nextUrl.searchParams.get('action') as TriggerAction | null
 
-    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'lowerthird_clear']
+    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear']
     if (!sid || !action) {
       return NextResponse.json({ error: 'sid and action are required' }, { status: 400 })
     }
@@ -48,6 +48,82 @@ export async function GET(req: NextRequest) {
     let resultIndex: number | undefined
 
     // ── Widget actions ─────────────────────────────────────────────────────
+
+    // countdown_preset — activate a saved timer preset
+    if (action === 'countdown_preset') {
+      const presetId = req.nextUrl.searchParams.get('preset_id')
+      if (!presetId) {
+        return NextResponse.json({ error: 'preset_id is required for countdown_preset action' }, { status: 400 })
+      }
+
+      // Find the countdown widget asset to look up the preset
+      const { data: countdownAssets } = await supabaseAdmin
+        .from('broadcast_assets')
+        .select('id, widget_config')
+        .eq('project_id', sess.project_id)
+        .eq('asset_type', 'widget')
+
+      const countdownAsset = countdownAssets?.find((a: any) => a.widget_config?.widget_type === 'countdown')
+      if (!countdownAsset) {
+        return NextResponse.json({ error: 'No countdown widget asset found' }, { status: 404 })
+      }
+
+      const presets = (countdownAsset.widget_config as any)?.presets || []
+      const preset = presets.find((p: any) => p.id === presetId)
+      if (!preset) {
+        return NextResponse.json({ error: 'Preset not found' }, { status: 404 })
+      }
+
+      const channel = supabaseAdmin.channel(sess.channel_name)
+      await channel.subscribe()
+
+      // If autoShow, show the countdown asset
+      if (preset.autoShow) {
+        visibleAssets.add(countdownAsset.id)
+        await channel.send({
+          type: 'broadcast',
+          event: 'asset:show',
+          payload: { assetId: countdownAsset.id, source: 'trigger-api', timestamp: Date.now() },
+        })
+      }
+
+      // Set countdown and start
+      const startedAt = new Date().toISOString()
+      const wsUpdates: Record<string, any> = {
+        countdown_running: true,
+        countdown_remaining: preset.seconds,
+        countdown_total: preset.seconds,
+        countdown_started_at: startedAt,
+        updated_at: new Date().toISOString(),
+      }
+
+      await supabaseAdmin
+        .from('broadcast_widget_state')
+        .update(wsUpdates)
+        .eq('project_id', sess.project_id)
+
+      // Send countdown sync event
+      await channel.send({
+        type: 'broadcast',
+        event: 'widget:countdown-sync',
+        payload: { running: true, remaining: preset.seconds, total: preset.seconds, startedAt, autoHide: preset.autoHide, countdownAssetId: countdownAsset.id, source: 'trigger-api', timestamp: Date.now() },
+      })
+
+      // Update active_state with new visible assets
+      const newActiveState = {
+        visibleAssets: Array.from(visibleAssets),
+        slideshowIndexes,
+      }
+      await supabaseAdmin
+        .from('broadcast_sessions')
+        .update({ active_state: newActiveState })
+        .eq('id', sid)
+
+      supabaseAdmin.removeChannel(channel)
+
+      return NextResponse.json({ ok: true, action, preset: { label: preset.label, seconds: preset.seconds } })
+    }
+
     if (action === 'topic_next' || action === 'topic_prev' || action === 'countdown_start' || action === 'countdown_stop' || action === 'lowerthird_clear') {
       const { data: ws } = await supabaseAdmin
         .from('broadcast_widget_state')

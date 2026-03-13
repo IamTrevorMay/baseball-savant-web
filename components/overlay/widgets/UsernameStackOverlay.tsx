@@ -8,56 +8,57 @@ interface Props {
 }
 
 export default function UsernameStackOverlay({ usernames, config }: Props) {
-  const maxVisible = config.maxVisible || 20
-  const visible = usernames.slice(-maxVisible)
-  const fontSize = config.fontSize || 13
-  const title = config.title || 'Chat'
+  const maxVisible = config.maxVisible || 22
+  const fontSize = config.fontSize || 14
 
-  const bgHex = config.bgColor || '#000000'
-  const bgOpacity = config.bgOpacity ?? 0.6
-  const r = parseInt(bgHex.slice(1, 3), 16)
-  const g = parseInt(bgHex.slice(3, 5), 16)
-  const b = parseInt(bgHex.slice(5, 7), 16)
+  // Pad to maxVisible slots (like NodeCG's Array.from({ length: 22 }))
+  const items = Array.from({ length: maxVisible }, (_, i) => usernames[i] ?? null)
+
+  // Center index for opacity gradient — most recent names are at the end
+  const centerIndex = Math.floor(maxVisible / 3)
 
   return (
     <div style={{
       width: '100%',
       height: '100%',
-      backgroundColor: `rgba(${r},${g},${b},${bgOpacity})`,
+      background: 'transparent',
       display: 'flex',
-      flexDirection: 'column',
-      padding: 8,
+      flexDirection: 'column-reverse',
+      gap: 9,
+      padding: '10px 0 5px',
       overflow: 'hidden',
+      color: '#000000',
+      fontSize,
+      textTransform: 'uppercase',
     }}>
-      {title && (
-        <div style={{
-          fontSize: fontSize * 0.85,
-          fontWeight: 700,
-          color: 'rgba(255,255,255,0.4)',
-          textTransform: 'uppercase',
-          letterSpacing: 2,
-          marginBottom: 6,
-          paddingBottom: 4,
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-        }}>
-          {title}
-        </div>
-      )}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-        {visible.map((name, i) => (
+      {items.map((username, index) => {
+        const hasUser = username !== null
+        const opacityFade = 1 - (0.05 * Math.abs(index - centerIndex))
+
+        return (
           <div
-            key={`${name}-${i}`}
+            key={index}
             style={{
-              fontSize,
-              color: '#d4d4d8',
-              padding: '2px 0',
-              animation: 'usernameIn 0.3s ease-out',
+              alignItems: 'center',
+              backgroundColor: `rgb(${hasUser ? '255 130 0' : '66 66 66'} / ${Math.max(0.1, opacityFade)})`,
+              boxShadow: 'inset 0 0 14px -2px rgb(0 0 0 / 0.5)',
+              display: 'grid',
+              flex: 1,
+              padding: '0 8px',
+              animation: hasUser ? 'usernameIn 0.3s ease-out' : undefined,
             }}
           >
-            {name}
+            <div style={{
+              overflow: 'hidden',
+              textAlign: 'center',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {username || ''}
+            </div>
           </div>
-        ))}
-      </div>
+        )
+      })}
       <style>{`
         @keyframes usernameIn {
           from { opacity: 0; transform: translateY(6px); }

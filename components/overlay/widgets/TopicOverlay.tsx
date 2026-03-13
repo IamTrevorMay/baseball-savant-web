@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import type { Topic, TopicWidgetConfig } from '@/lib/widgetTypes'
 
 interface Props {
@@ -9,6 +9,49 @@ interface Props {
   config: TopicWidgetConfig
   width: number
   height: number
+}
+
+const variantStyles = {
+  default: {
+    backgroundColor: 'rgb(8 227 250 / 0.05)',
+    textShadow: '0 0 18px rgb(1 226 250 / 0.75)',
+    color: '#01E2FA',
+  },
+  breakingNews: {
+    backgroundColor: 'rgb(250 51 1 / 0.15)',
+    textShadow: '0 0 18px rgb(250 1 1 / 0.75)',
+    color: '#FFA372',
+  },
+}
+
+function AutoTextSize({ maxFontSize, minFontSize, children }: { maxFontSize: number; minFontSize: number; children: React.ReactNode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const target = wrapperRef.current
+    if (!target) return
+    const parent = target.parentElement
+    if (!parent) return
+
+    const resize = () => {
+      let fontSize = maxFontSize
+      while (fontSize >= minFontSize) {
+        target.style.fontSize = `${fontSize}px`
+        const computed = getComputedStyle(parent)
+        const padding = parseInt(computed.paddingBottom) + parseInt(computed.paddingTop)
+        if (target.clientHeight <= parent.clientHeight - padding) break
+        fontSize -= 1
+      }
+    }
+
+    const observer = new MutationObserver(() => resize())
+    observer.observe(parent, { childList: true })
+    resize()
+
+    return () => observer.disconnect()
+  }, [maxFontSize, minFontSize, children])
+
+  return <div ref={wrapperRef}>{children}</div>
 }
 
 export default function TopicOverlay({ topics, activeIndex, config, width, height }: Props) {
@@ -21,7 +64,6 @@ export default function TopicOverlay({ topics, activeIndex, config, width, heigh
     prevIndexRef.current = activeIndex
 
     if (activeIndex < 0 || activeIndex >= topics.length) {
-      // Fade out
       setAnimating(true)
       setTimeout(() => {
         setDisplayTopic(null)
@@ -32,7 +74,6 @@ export default function TopicOverlay({ topics, activeIndex, config, width, heigh
 
     const newTopic = topics[activeIndex]
     if (displayTopic) {
-      // Transition: fade out then fade in
       setAnimating(true)
       setTimeout(() => {
         setDisplayTopic(newTopic)
@@ -43,73 +84,48 @@ export default function TopicOverlay({ topics, activeIndex, config, width, heigh
     }
   }, [activeIndex, topics])
 
-  const bgHex = config.bgColor || '#000000'
-  const bgOpacity = config.bgOpacity ?? 0.8
-  const r = parseInt(bgHex.slice(1, 3), 16)
-  const g = parseInt(bgHex.slice(3, 5), 16)
-  const b = parseInt(bgHex.slice(5, 7), 16)
-
   if (!displayTopic) return null
 
-  const isBreaking = displayTopic.variant === 'breakingNews'
-  const accentColor = isBreaking ? (config.breakingNewsColor || '#f97316') : (config.accentColor || '#06b6d4')
-  const glowColor = isBreaking ? 'rgba(249, 115, 22, 0.3)' : 'rgba(6, 182, 212, 0.3)'
-
-  // Auto-scale text — fit header within available space
-  const headerSize = Math.min(config.fontSize || 32, height * 0.35)
-  const bodySize = Math.round(headerSize * 0.5)
+  const variant = displayTopic.variant || 'default'
+  const styles = variantStyles[variant] || variantStyles.default
 
   return (
     <div style={{
       width: '100%',
       height: '100%',
-      backgroundColor: `rgba(${r},${g},${b},${bgOpacity})`,
-      borderLeft: `4px solid ${accentColor}`,
-      boxShadow: `0 0 20px ${glowColor}, inset 0 0 20px ${glowColor}`,
       display: 'flex',
       flexDirection: 'column',
-      justifyContent: 'center',
-      padding: '12px 24px',
+      fontFamily: 'Trispace, sans-serif',
+      overflow: 'hidden',
+      textTransform: 'uppercase',
+      backgroundColor: styles.backgroundColor,
+      textShadow: styles.textShadow,
+      color: styles.color,
       opacity: animating ? 0 : 1,
       transition: 'opacity 0.4s ease',
     }}>
-      {isBreaking && (
-        <div style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: 3,
-          color: accentColor,
-          marginBottom: 4,
-          animation: 'breakingPulse 1s ease-in-out infinite',
-        }}>
-          BREAKING NEWS
-        </div>
-      )}
+      {/* Index label + breaking news header */}
       <div style={{
-        fontSize: headerSize,
-        fontWeight: 700,
-        color: '#FFFFFF',
-        lineHeight: 1.2,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
+        fontSize: 20,
+        padding: '11px 18px',
+        ...styles,
       }}>
-        {displayTopic.header}
+        [{activeIndex}] {variant === 'breakingNews' && displayTopic.header}
       </div>
-      {displayTopic.body && (
-        <div style={{
-          fontSize: bodySize,
-          color: 'rgba(255,255,255,0.7)',
-          lineHeight: 1.3,
-          marginTop: 4,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
+
+      {/* Body text with auto-sizing */}
+      <div style={{
+        alignItems: 'center',
+        display: 'grid',
+        flex: 1,
+        overflow: 'hidden',
+        padding: '20px 40px',
+      }}>
+        <AutoTextSize maxFontSize={config.fontSize || 40} minFontSize={0}>
           {displayTopic.body}
-        </div>
-      )}
+        </AutoTextSize>
+      </div>
+
       <style>{`
         @keyframes breakingPulse {
           0%, 100% { opacity: 1; }

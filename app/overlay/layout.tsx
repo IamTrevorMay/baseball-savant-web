@@ -1,4 +1,5 @@
 import './overlay.css'
+import './overlay-fonts.css'
 
 export const metadata = {
   title: 'Triton Broadcast Overlay',
