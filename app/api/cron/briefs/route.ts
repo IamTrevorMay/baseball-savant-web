@@ -37,6 +37,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, reason: 'offseason' })
   }
 
+  // Force regeneration: delete existing brief for this date
+  const force = req.nextUrl.searchParams.get('force') === 'true'
+  if (force) {
+    await supabaseAdmin.from('briefs').delete().eq('date', briefDate)
+  }
+
   // Idempotency: skip if brief already exists
   const { data: existing } = await supabaseAdmin
     .from('briefs')

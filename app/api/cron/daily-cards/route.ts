@@ -24,6 +24,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, reason: 'offseason' })
   }
 
+  // Force regeneration: delete existing cards for this date
+  const force = req.nextUrl.searchParams.get('force') === 'true'
+  if (force) {
+    await supabaseAdmin.from('daily_cards').delete().eq('date', cardDate)
+  }
+
   // Idempotency: skip if cards already exist for this date
   const { data: existing } = await supabaseAdmin
     .from('daily_cards')
