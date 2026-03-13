@@ -107,13 +107,21 @@ Box score data:\n${JSON.stringify(performanceData)}`
 
 Return JSON with exactly these fields: title, summary, topPerformances, worstPerformances.
 
-For topPerformances and worstPerformances, generate HTML using these styling rules:
-- Each performance is a div with class "flex items-start gap-3 py-2 border-b border-zinc-800/50 last:border-0"
-- Player name: <span class="font-semibold text-white">Name</span>
-- Team: <span class="text-zinc-500 text-xs ml-1">TEA</span>
-- Stats line: <span class="text-zinc-400 text-xs">3-for-4, 2 HR, 5 RBI</span> or <span class="text-zinc-400 text-xs">7.0 IP, 1 ER, 10 K</span>
-- For worst performances use <span class="text-red-400/70 text-xs"> for the stats line
-- Wrap each section in a div, no section headers needed (the parent will add them)
+For topPerformances and worstPerformances, generate HTML using INLINE STYLES (no CSS classes). Each performance entry should be a table row in this exact format:
+
+<tr>
+  <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap">
+    <span style="font-weight:600;color:#f0f0f0">Player Name</span>
+    <span style="color:rgba(255,255,255,0.35);font-size:11px;margin-left:4px">TEA</span>
+  </td>
+  <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);font-size:12px;text-align:right">
+    3-for-4, 2 HR, 5 RBI
+  </td>
+</tr>
+
+Wrap all rows in: <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>...</tbody></table>
+
+For worst performances, use color:#f87171 on the stats td instead of the default.
 
 For top performances, highlight dominant pitching (lots of K, low ER, deep outings) and big offensive games (multi-hit, HR, high RBI).
 For worst performances, highlight blown starts (short outings, high ER), 0-for with multiple K, etc.
@@ -172,6 +180,59 @@ Return ONLY valid JSON, no markdown fences.`,
 
 /* ─── HTML Builders ─── */
 
+const S = {
+  // Layout
+  wrap: 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#d4d4d8;line-height:1.5;',
+  section: 'margin-bottom:40px;',
+  sectionTitle: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.35);margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);',
+  // Box score cards
+  cardGrid: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;',
+  card: 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;overflow:hidden;',
+  cardHeader: 'display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);',
+  teamRow: 'display:flex;align-items:center;gap:8px;',
+  teamAbbrev: 'font-size:13px;font-weight:700;width:36px;',
+  teamScore: 'font-size:20px;font-weight:800;',
+  scoreWin: 'color:#ffffff;',
+  scoreLose: 'color:rgba(255,255,255,0.35);',
+  atSymbol: 'color:rgba(255,255,255,0.2);font-size:11px;font-weight:400;margin:0 4px;',
+  // Linescore
+  linescoreWrap: 'padding:0 16px 10px;overflow-x:auto;',
+  linescoreTable: 'width:100%;border-collapse:collapse;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;font-size:10px;',
+  lsHeader: 'color:rgba(255,255,255,0.25);font-weight:500;padding:4px 0;text-align:center;',
+  lsHeaderTeam: 'color:rgba(255,255,255,0.25);font-weight:500;padding:4px 0;text-align:left;width:36px;',
+  lsCell: 'padding:3px 0;text-align:center;min-width:18px;',
+  lsCellScored: 'color:#ffffff;font-weight:600;',
+  lsCellEmpty: 'color:rgba(255,255,255,0.2);',
+  lsTotalR: 'font-weight:700;padding:3px 4px;text-align:center;border-left:1px solid rgba(255,255,255,0.08);',
+  lsTotalHE: 'color:rgba(255,255,255,0.4);padding:3px 4px;text-align:center;',
+  // Decisions
+  decRow: 'padding:6px 16px 10px;font-size:11px;color:rgba(255,255,255,0.4);display:flex;gap:12px;flex-wrap:wrap;',
+  decW: 'color:#34d399;',
+  decL: 'color:#f87171;',
+  decS: 'color:#38bdf8;',
+  // Expanded box
+  expandToggle: 'display:block;width:100%;padding:6px 16px;background:rgba(255,255,255,0.02);border:none;border-top:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.3);font-size:10px;font-family:inherit;cursor:pointer;text-align:center;',
+  detailsInner: 'padding:12px 16px;border-top:1px solid rgba(255,255,255,0.06);',
+  detailLabel: 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:rgba(255,255,255,0.3);margin:12px 0 4px;',
+  detailTable: 'width:100%;border-collapse:collapse;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;font-size:10px;',
+  dtHead: 'color:rgba(255,255,255,0.25);font-weight:500;padding:3px 0;text-align:center;',
+  dtHeadLeft: 'color:rgba(255,255,255,0.25);font-weight:500;padding:3px 0;text-align:left;',
+  dtCell: 'padding:2px 0;text-align:center;color:rgba(255,255,255,0.55);border-bottom:1px solid rgba(255,255,255,0.04);',
+  dtCellName: 'padding:2px 0;text-align:left;color:rgba(255,255,255,0.7);border-bottom:1px solid rgba(255,255,255,0.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;',
+  dtCellHi: 'font-weight:600;color:#ffffff;',
+  dtCellHr: 'font-weight:700;color:#fbbf24;',
+  dtCellRbi: 'color:#34d399;',
+  dtCellK: 'color:rgba(248,113,113,0.6);',
+  dtCellSo: 'color:#34d399;',
+  // Performances
+  perfWrap: 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px 20px;',
+  // News
+  newsItem: 'display:flex;align-items:start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);',
+  newsTitle: 'font-size:13px;font-weight:500;color:#e2e8f0;line-height:1.4;text-decoration:none;',
+  newsDesc: 'font-size:11px;color:rgba(255,255,255,0.35);margin-top:3px;line-height:1.4;',
+  newsBadge: 'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);white-space:nowrap;margin-top:1px;',
+}
+
 function assembleBriefHtml(parts: {
   boxScoresHtml: string
   topPerformances: string
@@ -183,225 +244,168 @@ function assembleBriefHtml(parts: {
 
   if (!parts.isOffDay && parts.boxScoresHtml) {
     sections.push(`
-<div class="mb-8">
-  <h2 class="text-lg font-bold text-white mb-4">Box Scores</h2>
-  <div class="space-y-3">${parts.boxScoresHtml}</div>
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Box Scores</div>
+  <div style="${S.cardGrid}">${parts.boxScoresHtml}</div>
 </div>`)
   }
 
   if (parts.topPerformances) {
     sections.push(`
-<div class="mb-8">
-  <h2 class="text-lg font-bold text-white mb-3">Top Performances</h2>
-  <div class="bg-zinc-900 rounded-lg border border-zinc-800 p-4">${parts.topPerformances}</div>
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Top Performances</div>
+  <div style="${S.perfWrap}">${parts.topPerformances}</div>
 </div>`)
   }
 
   if (parts.worstPerformances) {
     sections.push(`
-<div class="mb-8">
-  <h2 class="text-lg font-bold text-white mb-3">Worst Performances</h2>
-  <div class="bg-zinc-900 rounded-lg border border-zinc-800 p-4">${parts.worstPerformances}</div>
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Rough Outings</div>
+  <div style="${S.perfWrap}">${parts.worstPerformances}</div>
 </div>`)
   }
 
   if (parts.newsHtml) {
     sections.push(`
-<div class="mb-8">
-  <h2 class="text-lg font-bold text-white mb-3">Latest Headlines</h2>
-  <div class="space-y-2">${parts.newsHtml}</div>
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Headlines</div>
+  <div>${parts.newsHtml}</div>
 </div>`)
   }
 
-  return `<div class="space-y-2">${sections.join('')}</div>`
+  return `<div style="${S.wrap}">${sections.join('')}</div>`
 }
 
 function buildBoxScoresHtml(boxScores: any[]): string {
   return boxScores.map(bs => {
     const { away, home, innings, totals, decisions } = bs
     const numInnings = Math.max(innings.length, 9)
+    const awayWon = totals.away.runs > totals.home.runs
 
-    // Inning headers
-    const inningHeaders = Array.from({ length: numInnings }, (_, i) =>
-      `<th class="px-1.5 py-1 text-center text-zinc-500 font-normal w-7">${i + 1}</th>`
+    // Linescore header
+    const innHeaders = Array.from({ length: numInnings }, (_, i) =>
+      `<th style="${S.lsHeader}">${i + 1}</th>`
     ).join('')
 
-    // Team inning cells
-    const awayInnings = Array.from({ length: numInnings }, (_, i) => {
-      const val = innings[i]?.away?.runs
-      return `<td class="px-1.5 py-1 text-center ${val != null && val > 0 ? 'text-white font-medium' : 'text-zinc-500'}">${val ?? '-'}</td>`
-    }).join('')
+    // Inning cells
+    const makeInningCells = (side: 'away' | 'home') =>
+      Array.from({ length: numInnings }, (_, i) => {
+        const val = innings[i]?.[side]?.runs
+        const scored = val != null && val > 0
+        return `<td style="${S.lsCell}${scored ? S.lsCellScored : S.lsCellEmpty}">${val ?? '-'}</td>`
+      }).join('')
 
-    const homeInnings = Array.from({ length: numInnings }, (_, i) => {
-      const val = innings[i]?.home?.runs
-      return `<td class="px-1.5 py-1 text-center ${val != null && val > 0 ? 'text-white font-medium' : 'text-zinc-500'}">${val ?? '-'}</td>`
-    }).join('')
-
-    // Decisions line
+    // Decisions
     const decParts: string[] = []
-    if (decisions.winner) decParts.push(`<span class="text-emerald-400">W:</span> ${decisions.winner}`)
-    if (decisions.loser) decParts.push(`<span class="text-red-400">L:</span> ${decisions.loser}`)
-    if (decisions.save) decParts.push(`<span class="text-cyan-400">S:</span> ${decisions.save}`)
-    const decisionsHtml = decParts.length > 0
-      ? `<div class="text-xs text-zinc-400 mt-2 flex gap-4">${decParts.join(' ')}</div>`
-      : ''
+    if (decisions.winner) decParts.push(`<span><span style="${S.decW}">W</span> ${decisions.winner}</span>`)
+    if (decisions.loser) decParts.push(`<span><span style="${S.decL}">L</span> ${decisions.loser}</span>`)
+    if (decisions.save) decParts.push(`<span><span style="${S.decS}">S</span> ${decisions.save}</span>`)
 
-    // Expandable full box score
-    const awayBattersHtml = (away.batters || []).map((b: any) =>
-      `<tr class="border-b border-zinc-800/30">
-        <td class="py-0.5 pr-3 text-zinc-300">${b.name}</td>
-        <td class="px-1.5 text-center">${b.ab}</td>
-        <td class="px-1.5 text-center">${b.r}</td>
-        <td class="px-1.5 text-center ${b.h > 0 ? 'text-white font-medium' : ''}">${b.h}</td>
-        <td class="px-1.5 text-center ${b.rbi > 0 ? 'text-emerald-400' : ''}">${b.rbi}</td>
-        <td class="px-1.5 text-center ${b.hr > 0 ? 'text-amber-400 font-bold' : ''}">${b.hr}</td>
-        <td class="px-1.5 text-center">${b.bb}</td>
-        <td class="px-1.5 text-center ${b.so > 0 ? 'text-red-400/60' : ''}">${b.so}</td>
+    // Expanded batting/pitching tables
+    const makeBatterRows = (batters: any[]) => batters.map((b: any) =>
+      `<tr>
+        <td style="${S.dtCellName}">${b.name}</td>
+        <td style="${S.dtCell}">${b.ab}</td>
+        <td style="${S.dtCell}">${b.r}</td>
+        <td style="${S.dtCell}${b.h > 0 ? S.dtCellHi : ''}">${b.h}</td>
+        <td style="${S.dtCell}${b.rbi > 0 ? S.dtCellRbi : ''}">${b.rbi}</td>
+        <td style="${S.dtCell}${b.hr > 0 ? S.dtCellHr : ''}">${b.hr}</td>
+        <td style="${S.dtCell}">${b.bb}</td>
+        <td style="${S.dtCell}${b.so > 0 ? S.dtCellK : ''}">${b.so}</td>
       </tr>`
     ).join('')
 
-    const homeBattersHtml = (home.batters || []).map((b: any) =>
-      `<tr class="border-b border-zinc-800/30">
-        <td class="py-0.5 pr-3 text-zinc-300">${b.name}</td>
-        <td class="px-1.5 text-center">${b.ab}</td>
-        <td class="px-1.5 text-center">${b.r}</td>
-        <td class="px-1.5 text-center ${b.h > 0 ? 'text-white font-medium' : ''}">${b.h}</td>
-        <td class="px-1.5 text-center ${b.rbi > 0 ? 'text-emerald-400' : ''}">${b.rbi}</td>
-        <td class="px-1.5 text-center ${b.hr > 0 ? 'text-amber-400 font-bold' : ''}">${b.hr}</td>
-        <td class="px-1.5 text-center">${b.bb}</td>
-        <td class="px-1.5 text-center ${b.so > 0 ? 'text-red-400/60' : ''}">${b.so}</td>
+    const makePitcherRows = (pitchers: any[]) => pitchers.map((p: any) =>
+      `<tr>
+        <td style="${S.dtCellName}">${p.name}</td>
+        <td style="${S.dtCell}">${p.ip}</td>
+        <td style="${S.dtCell}">${p.h}</td>
+        <td style="${S.dtCell}">${p.r}</td>
+        <td style="${S.dtCell}">${p.er}</td>
+        <td style="${S.dtCell}">${p.bb}</td>
+        <td style="${S.dtCell}${p.so > 0 ? S.dtCellSo : ''}">${p.so}</td>
+        <td style="${S.dtCell};color:rgba(255,255,255,0.25)">${p.pitches}</td>
       </tr>`
     ).join('')
 
-    const awayPitchersHtml = (away.pitchers || []).map((p: any) =>
-      `<tr class="border-b border-zinc-800/30">
-        <td class="py-0.5 pr-3 text-zinc-300">${p.name}</td>
-        <td class="px-1.5 text-center">${p.ip}</td>
-        <td class="px-1.5 text-center">${p.h}</td>
-        <td class="px-1.5 text-center">${p.r}</td>
-        <td class="px-1.5 text-center">${p.er}</td>
-        <td class="px-1.5 text-center">${p.bb}</td>
-        <td class="px-1.5 text-center ${p.so > 0 ? 'text-emerald-400' : ''}">${p.so}</td>
-        <td class="px-1.5 text-center text-zinc-500">${p.pitches}</td>
-      </tr>`
-    ).join('')
-
-    const homePitchersHtml = (home.pitchers || []).map((p: any) =>
-      `<tr class="border-b border-zinc-800/30">
-        <td class="py-0.5 pr-3 text-zinc-300">${p.name}</td>
-        <td class="px-1.5 text-center">${p.ip}</td>
-        <td class="px-1.5 text-center">${p.h}</td>
-        <td class="px-1.5 text-center">${p.r}</td>
-        <td class="px-1.5 text-center">${p.er}</td>
-        <td class="px-1.5 text-center">${p.bb}</td>
-        <td class="px-1.5 text-center ${p.so > 0 ? 'text-emerald-400' : ''}">${p.so}</td>
-        <td class="px-1.5 text-center text-zinc-500">${p.pitches}</td>
-      </tr>`
-    ).join('')
-
-    const batterHeader = `<tr class="text-zinc-500 text-[10px] uppercase tracking-wider">
-      <th class="text-left py-1 pr-3 font-medium">Batter</th>
-      <th class="px-1.5 text-center font-medium">AB</th>
-      <th class="px-1.5 text-center font-medium">R</th>
-      <th class="px-1.5 text-center font-medium">H</th>
-      <th class="px-1.5 text-center font-medium">RBI</th>
-      <th class="px-1.5 text-center font-medium">HR</th>
-      <th class="px-1.5 text-center font-medium">BB</th>
-      <th class="px-1.5 text-center font-medium">SO</th>
+    const batHeader = `<tr>
+      <th style="${S.dtHeadLeft}">Batter</th>
+      <th style="${S.dtHead}">AB</th><th style="${S.dtHead}">R</th><th style="${S.dtHead}">H</th>
+      <th style="${S.dtHead}">RBI</th><th style="${S.dtHead}">HR</th><th style="${S.dtHead}">BB</th><th style="${S.dtHead}">SO</th>
     </tr>`
 
-    const pitcherHeader = `<tr class="text-zinc-500 text-[10px] uppercase tracking-wider">
-      <th class="text-left py-1 pr-3 font-medium">Pitcher</th>
-      <th class="px-1.5 text-center font-medium">IP</th>
-      <th class="px-1.5 text-center font-medium">H</th>
-      <th class="px-1.5 text-center font-medium">R</th>
-      <th class="px-1.5 text-center font-medium">ER</th>
-      <th class="px-1.5 text-center font-medium">BB</th>
-      <th class="px-1.5 text-center font-medium">SO</th>
-      <th class="px-1.5 text-center font-medium">NP</th>
+    const pitHeader = `<tr>
+      <th style="${S.dtHeadLeft}">Pitcher</th>
+      <th style="${S.dtHead}">IP</th><th style="${S.dtHead}">H</th><th style="${S.dtHead}">R</th>
+      <th style="${S.dtHead}">ER</th><th style="${S.dtHead}">BB</th><th style="${S.dtHead}">SO</th><th style="${S.dtHead}">NP</th>
     </tr>`
-
-    const winnerAbbrev = totals.away.runs > totals.home.runs ? away.team.abbrev : home.team.abbrev
-    const loserAbbrev = totals.away.runs > totals.home.runs ? home.team.abbrev : away.team.abbrev
 
     return `
-<details class="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden group">
-  <summary class="cursor-pointer hover:bg-zinc-800/50 transition px-4 py-3">
-    <div class="inline-flex items-center gap-0 w-full">
-      <!-- Linescore table -->
-      <div class="overflow-x-auto flex-1">
-        <table class="text-[11px] font-mono w-full">
-          <thead>
-            <tr class="text-zinc-600">
-              <th class="text-left pr-3 py-1 font-medium w-12">Team</th>
-              ${inningHeaders}
-              <th class="px-2 py-1 text-center font-bold text-zinc-400 w-8">R</th>
-              <th class="px-2 py-1 text-center font-medium text-zinc-500 w-8">H</th>
-              <th class="px-2 py-1 text-center font-medium text-zinc-500 w-8">E</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="${totals.away.runs > totals.home.runs ? 'text-white' : 'text-zinc-400'}">
-              <td class="pr-3 py-1 font-bold text-xs">${away.team.abbrev}</td>
-              ${awayInnings}
-              <td class="px-2 py-1 text-center font-bold text-sm">${totals.away.runs}</td>
-              <td class="px-2 py-1 text-center text-zinc-400">${totals.away.hits}</td>
-              <td class="px-2 py-1 text-center text-zinc-500">${totals.away.errors}</td>
-            </tr>
-            <tr class="${totals.home.runs > totals.away.runs ? 'text-white' : 'text-zinc-400'}">
-              <td class="pr-3 py-1 font-bold text-xs">${home.team.abbrev}</td>
-              ${homeInnings}
-              <td class="px-2 py-1 text-center font-bold text-sm">${totals.home.runs}</td>
-              <td class="px-2 py-1 text-center text-zinc-400">${totals.home.hits}</td>
-              <td class="px-2 py-1 text-center text-zinc-500">${totals.home.errors}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="shrink-0 ml-3 text-zinc-600 group-open:rotate-180 transition-transform">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4.5l3 3 3-3"/></svg>
-      </div>
+<div style="${S.card}">
+  <!-- Score header -->
+  <div style="${S.cardHeader}">
+    <div style="${S.teamRow}">
+      <span style="${S.teamAbbrev}${awayWon ? S.scoreWin : S.scoreLose}">${away.team.abbrev}</span>
+      <span style="${S.teamScore}${awayWon ? S.scoreWin : S.scoreLose}">${totals.away.runs}</span>
     </div>
-    ${decisionsHtml}
-  </summary>
-  <!-- Expanded details -->
-  <div class="border-t border-zinc-800 px-4 py-3 space-y-4">
-    <!-- Away batters -->
-    <div>
-      <div class="text-xs font-bold text-zinc-400 mb-1">${away.team.abbrev} Batting</div>
-      <table class="text-[11px] font-mono w-full">${batterHeader}${awayBattersHtml}</table>
-    </div>
-    <!-- Away pitchers -->
-    <div>
-      <div class="text-xs font-bold text-zinc-400 mb-1">${away.team.abbrev} Pitching</div>
-      <table class="text-[11px] font-mono w-full">${pitcherHeader}${awayPitchersHtml}</table>
-    </div>
-    <!-- Home batters -->
-    <div>
-      <div class="text-xs font-bold text-zinc-400 mb-1">${home.team.abbrev} Batting</div>
-      <table class="text-[11px] font-mono w-full">${batterHeader}${homeBattersHtml}</table>
-    </div>
-    <!-- Home pitchers -->
-    <div>
-      <div class="text-xs font-bold text-zinc-400 mb-1">${home.team.abbrev} Pitching</div>
-      <table class="text-[11px] font-mono w-full">${pitcherHeader}${homePitchersHtml}</table>
+    <span style="${S.atSymbol}">@</span>
+    <div style="${S.teamRow}">
+      <span style="${S.teamScore}${!awayWon ? S.scoreWin : S.scoreLose}">${totals.home.runs}</span>
+      <span style="${S.teamAbbrev}${!awayWon ? S.scoreWin : S.scoreLose}">${home.team.abbrev}</span>
     </div>
   </div>
-</details>`
+  <!-- Linescore -->
+  <div style="${S.linescoreWrap}">
+    <table style="${S.linescoreTable}">
+      <thead><tr><th style="${S.lsHeaderTeam}"></th>${innHeaders}<th style="${S.lsHeader};border-left:1px solid rgba(255,255,255,0.08)">R</th><th style="${S.lsHeader}">H</th><th style="${S.lsHeader}">E</th></tr></thead>
+      <tbody>
+        <tr style="${awayWon ? 'color:#fff' : 'color:rgba(255,255,255,0.4)'}">
+          <td style="text-align:left;font-weight:700;padding:3px 0;font-size:11px">${away.team.abbrev}</td>
+          ${makeInningCells('away')}
+          <td style="${S.lsTotalR}">${totals.away.runs}</td>
+          <td style="${S.lsTotalHE}">${totals.away.hits}</td>
+          <td style="${S.lsTotalHE}">${totals.away.errors}</td>
+        </tr>
+        <tr style="${!awayWon ? 'color:#fff' : 'color:rgba(255,255,255,0.4)'}">
+          <td style="text-align:left;font-weight:700;padding:3px 0;font-size:11px">${home.team.abbrev}</td>
+          ${makeInningCells('home')}
+          <td style="${S.lsTotalR}">${totals.home.runs}</td>
+          <td style="${S.lsTotalHE}">${totals.home.hits}</td>
+          <td style="${S.lsTotalHE}">${totals.home.errors}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  ${decParts.length > 0 ? `<div style="${S.decRow}">${decParts.join('')}</div>` : ''}
+  <!-- Expandable details -->
+  <details>
+    <summary style="${S.expandToggle}">Full Box Score</summary>
+    <div style="${S.detailsInner}">
+      <div style="${S.detailLabel}">${away.team.abbrev} Batting</div>
+      <table style="${S.detailTable}">${batHeader}${makeBatterRows(away.batters || [])}</table>
+      <div style="${S.detailLabel}">${away.team.abbrev} Pitching</div>
+      <table style="${S.detailTable}">${pitHeader}${makePitcherRows(away.pitchers || [])}</table>
+      <div style="${S.detailLabel};margin-top:16px">${home.team.abbrev} Batting</div>
+      <table style="${S.detailTable}">${batHeader}${makeBatterRows(home.batters || [])}</table>
+      <div style="${S.detailLabel}">${home.team.abbrev} Pitching</div>
+      <table style="${S.detailTable}">${pitHeader}${makePitcherRows(home.pitchers || [])}</table>
+    </div>
+  </details>
+</div>`
   }).join('')
 }
 
 function buildNewsHtml(articles: any[]): string {
   if (articles.length === 0) return ''
-  return articles.map(a => `
-<a href="${a.link}" target="_blank" rel="noopener noreferrer"
-   class="block bg-zinc-900 rounded-lg border border-zinc-800 p-3 hover:border-zinc-700 hover:bg-zinc-800/50 transition">
-  <div class="flex items-start justify-between gap-3">
-    <div class="flex-1 min-w-0">
-      <div class="text-sm font-medium text-zinc-200 leading-snug mb-1">${escapeHtml(a.title)}</div>
-      <div class="text-xs text-zinc-500 line-clamp-1">${escapeHtml(a.description)}</div>
+  return articles.map((a, i) => `
+<a href="${a.link}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:inherit;display:block;">
+  <div style="${S.newsItem}${i === articles.length - 1 ? 'border-bottom:none;' : ''}">
+    <div style="flex:1;min-width:0;">
+      <div style="${S.newsTitle}">${escapeHtml(a.title)}</div>
+      ${a.description ? `<div style="${S.newsDesc}">${escapeHtml(a.description)}</div>` : ''}
     </div>
-    <span class="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">${escapeHtml(a.source)}</span>
+    <span style="${S.newsBadge}">${escapeHtml(a.source)}</span>
   </div>
 </a>`).join('')
 }
