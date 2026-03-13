@@ -224,17 +224,28 @@ function drawRCTable(ctx: SKRSContext2D, el: SceneElement) {
   const fontSize = p.fontSize || 13
   const headerFontSize = p.headerFontSize || 11
   const radius = p.borderRadius ?? 12
+  const title = p.title || ''
 
   ctx.save()
   ctx.fillStyle = p.bgColor || '#09090b'
   roundRect(ctx, x, y, w, h, radius)
   ctx.fill()
 
+  let titleOffset = 0
+  if (title) {
+    titleOffset = 22
+    ctx.fillStyle = p.headerColor || '#a1a1aa'
+    ctx.font = `600 ${Math.max(10, headerFontSize + 1)}px ${FONT()}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title, x + w / 2, y + 6)
+  }
+
   if (cols.length === 0) { ctx.restore(); return }
 
   const colW = w / cols.length
-  const rowH = Math.min(28, (h - 30) / Math.max(rows.length, 1))
-  const headerY = y + 8
+  const rowH = Math.min(28, (h - 30 - titleOffset) / Math.max(rows.length, 1))
+  const headerY = y + 8 + titleOffset
 
   // Header
   ctx.font = `600 ${headerFontSize}px ${FONT()}`
@@ -276,16 +287,27 @@ function drawRCBarChart(ctx: SKRSContext2D, el: SceneElement) {
   const barData: { label: string; value: number; color?: string }[] = p.barData || []
   const fontSize = p.fontSize || 12
   const radius = p.borderRadius ?? 12
+  const title = p.title || ''
 
   ctx.save()
   ctx.fillStyle = p.bgColor || '#09090b'
   roundRect(ctx, x, y, w, h, radius)
   ctx.fill()
 
+  let titleOffset = 0
+  if (title) {
+    titleOffset = 28
+    ctx.fillStyle = '#a1a1aa'
+    ctx.font = `600 ${Math.max(10, fontSize)}px ${FONT()}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title, x + w / 2, y + 8)
+  }
+
   if (barData.length === 0) { ctx.restore(); return }
 
   const maxVal = Math.max(...barData.map(d => d.value), 1)
-  const pad = { top: 15, right: 15, bottom: 15, left: 80 }
+  const pad = { top: 15 + titleOffset, right: 15, bottom: 15, left: 80 }
   const plotW = w - pad.left - pad.right
   const barH = Math.min(26, (h - pad.top - pad.bottom - (barData.length - 1) * 6) / barData.length)
   const totalH = barData.length * barH + (barData.length - 1) * 6
@@ -327,11 +349,22 @@ function drawRCDonutChart(ctx: SKRSContext2D, el: SceneElement) {
   const innerRadiusRatio = p.innerRadius ?? 0.55
   const fontSize = p.fontSize || 12
   const radius = p.borderRadius ?? 12
+  const title = p.title || ''
 
   ctx.save()
   ctx.fillStyle = p.bgColor || '#09090b'
   roundRect(ctx, x, y, w, h, radius)
   ctx.fill()
+
+  let titleOffset = 0
+  if (title) {
+    titleOffset = 24
+    ctx.fillStyle = '#a1a1aa'
+    ctx.font = `600 ${Math.max(10, fontSize)}px ${FONT()}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title, x + w / 2, y + 6)
+  }
 
   if (usageData.length === 0) { ctx.restore(); return }
 
@@ -339,7 +372,7 @@ function drawRCDonutChart(ctx: SKRSContext2D, el: SceneElement) {
   if (total === 0) { ctx.restore(); return }
 
   const cx = x + w / 2
-  const cy = y + h / 2
+  const cy = y + (h + titleOffset) / 2
   const outerR = Math.min(w, h) / 2 - 30
   const innerR = outerR * innerRadiusRatio
 
@@ -519,6 +552,204 @@ function drawRCMovementPlot(ctx: SKRSContext2D, el: SceneElement) {
   ctx.restore()
 }
 
+function drawRCStatline(ctx: SKRSContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  const statline = p.statline || { ip: '?', h: 0, r: 0, k: 0, bb: 0, decision: 'ND', era: '--' }
+  const fontSize = p.fontSize || 18
+  const color = p.color || '#ffffff'
+  const headerColor = p.headerColor || '#a1a1aa'
+  const radius = p.borderRadius ?? 8
+  const title = p.title || ''
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || 'rgba(255,255,255,0.04)'
+  roundRect(ctx, x, y, w, h, radius)
+  ctx.fill()
+
+  const labels = ['IP', 'H', 'R', 'SO', 'BB', 'W/L', 'ERA']
+  const values = [statline.ip, String(statline.h), String(statline.r), String(statline.k), String(statline.bb), statline.decision, statline.era]
+  const cellW = w / labels.length
+
+  let contentY = y
+  let contentH = h
+
+  if (title) {
+    const titleSize = Math.max(9, fontSize * 0.55)
+    ctx.font = `600 ${titleSize}px ${FONT()}`
+    ctx.fillStyle = headerColor
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title.toUpperCase(), x + w / 2, y + 4)
+    contentY = y + titleSize + 8
+    contentH = h - titleSize - 8
+  }
+
+  const labelSize = Math.max(8, fontSize * 0.55)
+  const midY = contentY + contentH / 2
+
+  for (let i = 0; i < labels.length; i++) {
+    const cx = x + i * cellW + cellW / 2
+
+    if (i > 0) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x + i * cellW, contentY + 6)
+      ctx.lineTo(x + i * cellW, contentY + contentH - 6)
+      ctx.stroke()
+    }
+
+    ctx.font = `500 ${labelSize}px ${FONT()}`
+    ctx.fillStyle = headerColor
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(labels[i], cx, midY - 2)
+
+    ctx.font = `700 ${fontSize}px ${FONT()}`
+    ctx.fillStyle = color
+    ctx.textBaseline = 'top'
+    ctx.fillText(values[i], cx, midY + 2)
+  }
+
+  ctx.restore()
+}
+
+function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
+  const p = el.props
+  const { x: ex, y: ey, width: w, height: h } = el
+  const locations: { plate_x: number; plate_z: number }[] = p.locations || []
+  const binsX = p.binsX || 5
+  const binsY = p.binsY || 5
+  const radius = p.borderRadius ?? 8
+  const title = p.title || ''
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || '#09090b'
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.fill()
+
+  let titleOffset = 0
+  if (title) {
+    titleOffset = 24
+    ctx.fillStyle = '#a1a1aa'
+    ctx.font = `600 12px ${FONT()}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title, ex + w / 2, ey + 6)
+  }
+
+  const pad = 20
+  const plotW = w - pad * 2
+  const plotH = h - pad * 2 - titleOffset
+
+  const bins: number[][] = Array.from({ length: binsY }, () => Array(binsX).fill(0))
+  let maxCount = 0
+  const VXM = -2, VXX = 2, VZM = 0.5, VZX = 4.5
+
+  for (const loc of locations) {
+    const bx = Math.floor(((loc.plate_x - VXM) / (VXX - VXM)) * binsX)
+    const by = Math.floor(((VZX - loc.plate_z) / (VZX - VZM)) * binsY)
+    if (bx >= 0 && bx < binsX && by >= 0 && by < binsY) {
+      bins[by][bx]++
+      if (bins[by][bx] > maxCount) maxCount = bins[by][bx]
+    }
+  }
+
+  const cellW = plotW / binsX
+  const cellH = plotH / binsY
+  const low = [24, 24, 27]
+  const high = [239, 68, 68]
+
+  for (let row = 0; row < binsY; row++) {
+    for (let col = 0; col < binsX; col++) {
+      const count = bins[row][col]
+      const t = maxCount > 0 ? count / maxCount : 0
+      const r = Math.round(low[0] + (high[0] - low[0]) * t)
+      const g = Math.round(low[1] + (high[1] - low[1]) * t)
+      const b = Math.round(low[2] + (high[2] - low[2]) * t)
+      ctx.globalAlpha = Math.max(0.3, t)
+      ctx.fillStyle = `rgb(${r},${g},${b})`
+      ctx.fillRect(ex + pad + col * cellW, ey + pad + titleOffset + row * cellH, cellW, cellH)
+
+      if (count > 0) {
+        ctx.globalAlpha = 0.9
+        ctx.fillStyle = t > 0.5 ? '#ffffff' : '#a1a1aa'
+        ctx.font = `400 11px ${FONT()}`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(count), ex + pad + col * cellW + cellW / 2, ey + pad + titleOffset + row * cellH + cellH / 2)
+      }
+    }
+  }
+  ctx.globalAlpha = 1
+
+  if (p.showZone !== false) {
+    const toX = (px: number) => ex + pad + ((px - VXM) / (VXX - VXM)) * plotW
+    const toY = (pz: number) => ey + pad + titleOffset + ((VZX - pz) / (VZX - VZM)) * plotH
+    ctx.strokeStyle = '#71717a'
+    ctx.lineWidth = 2
+    ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
+  }
+
+  ctx.restore()
+}
+
+function drawRCZonePlot(ctx: SKRSContext2D, el: SceneElement) {
+  const p = el.props
+  const { x: ex, y: ey, width: w, height: h } = el
+  const pitches: { plate_x: number; plate_z: number; pitch_name: string }[] = p.pitches || []
+  const dotSize = p.dotSize || 8
+  const dotOpacity = p.dotOpacity ?? 0.85
+  const radius = p.borderRadius ?? 8
+  const title = p.title || ''
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || '#09090b'
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.fill()
+
+  let titleOffset = 0
+  if (title) {
+    titleOffset = 24
+    ctx.fillStyle = '#a1a1aa'
+    ctx.font = `600 12px ${FONT()}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title, ex + w / 2, ey + 6)
+  }
+
+  const VXM = -2.5, VXX = 2.5, VZM = 0, VZX = 5
+  const pad = 25
+  const plotW = w - pad * 2
+  const plotH = h - pad * 2 - titleOffset
+
+  const toX = (px: number) => ex + pad + ((px - VXM) / (VXX - VXM)) * plotW
+  const toY = (pz: number) => ey + pad + titleOffset + ((VZX - pz) / (VZX - VZM)) * plotH
+
+  // Strike zone
+  if (p.showZone !== false) {
+    ctx.strokeStyle = p.zoneColor || '#52525b'
+    ctx.lineWidth = p.zoneLineWidth || 2
+    ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
+  }
+
+  // Dots
+  for (const pitch of pitches) {
+    const cx = toX(pitch.plate_x)
+    const cy = toY(pitch.plate_z)
+    const color = pitchColor(pitch.pitch_name)
+    ctx.globalAlpha = dotOpacity
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(cx, cy, dotSize / 2, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
+
+  ctx.restore()
+}
+
 // Universal background helper
 function drawUniversalBg(ctx: SKRSContext2D, el: SceneElement) {
   const p = el.props
@@ -605,6 +836,15 @@ export async function renderCardToPNG(scene: Scene): Promise<Buffer> {
         break
       case 'rc-movement-plot':
         drawRCMovementPlot(ctx, el)
+        break
+      case 'rc-statline':
+        drawRCStatline(ctx, el)
+        break
+      case 'rc-heatmap':
+        drawRCHeatmap(ctx, el)
+        break
+      case 'rc-zone-plot':
+        drawRCZonePlot(ctx, el)
         break
       case 'shape':
         drawUniversalBg(ctx, el)
