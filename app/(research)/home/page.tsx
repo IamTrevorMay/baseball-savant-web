@@ -100,6 +100,9 @@ export default function HomePage() {
 
   const isToday = scoresDate === todayStr
 
+  /* ─── Brief state ─── */
+  const [latestBrief, setLatestBrief] = useState<{ id: string; date: string; title: string; summary: string } | null>(null)
+
   /* ─── News state ─── */
   const [news, setNews] = useState<NewsItem[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
@@ -133,6 +136,7 @@ export default function HomePage() {
   }, [selectedGamePk])
 
   useEffect(() => {
+    fetch('/api/briefs?latest=true').then(r => r.json()).then(d => { if (d.brief) setLatestBrief(d.brief) }).catch(() => {})
     fetch('/api/news').then(r => r.json()).then(d => { setNews(d.items || []); setNewsLoading(false) }).catch(() => setNewsLoading(false))
   }, [])
 
@@ -173,6 +177,27 @@ export default function HomePage() {
       <ResearchNav active="/home" />
 
       <div className="max-w-7xl mx-auto px-6 py-6">
+        {/* ─── Today's Brief Banner ─── */}
+        {latestBrief && (
+          <a href="/briefs" className="block mb-6 bg-zinc-900 border border-zinc-800 rounded-lg p-5 hover:border-emerald-700/50 hover:bg-zinc-800/50 transition group">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Daily Brief</span>
+                  <span className="text-[10px] text-zinc-600">
+                    {new Date(latestBrief.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                <h3 className="text-sm font-semibold text-white group-hover:text-emerald-400 transition mb-1 truncate">{latestBrief.title}</h3>
+                <p className="text-xs text-zinc-500 line-clamp-1">{latestBrief.summary}</p>
+              </div>
+              <svg className="w-5 h-5 text-zinc-600 group-hover:text-emerald-400 transition shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </a>
+        )}
+
         {/* ─── Scores Section ─── */}
         <div className="mb-10">
           <div className="flex items-center justify-between mb-6">

@@ -4,6 +4,7 @@ import TridentLogo from '@/components/TridentLogo'
 
 const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
+  { href: '/briefs', label: 'Briefs' },
   { href: '/explore', label: 'Explore' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
