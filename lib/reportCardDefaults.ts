@@ -36,7 +36,9 @@ export const RC_STAT_METRICS = [
   { key: 'fb_hb', label: 'FB HB' },
   { key: 'fb_ext', label: 'FB Extension' },
   { key: 'fb_havaa', label: 'FB hAVAA' },
+  { key: 'cmd_plus', label: 'Cmd+' },
   { key: 'waste_pct', label: 'Waste%' },
+  { key: 'avg_missfire', label: 'Missfire' },
   { key: 'avg_cluster', label: 'Cluster Score' },
   { key: 'avg_brink', label: 'Brink Score' },
 ]
@@ -54,7 +56,12 @@ export const RC_TABLE_COLUMNS = [
   { key: 'csw_pct', label: 'CSW%', format: '1f' },
   { key: 'xslgcon', label: 'xSLGcon', format: '3f' },
   { key: 'stuff_plus', label: 'Stuff+', format: 'integer' },
+  { key: 'cmd_plus', label: 'Cmd+', format: 'integer' },
   { key: 'whiffs', label: 'Whiffs', format: 'integer' },
+  { key: 'avg_missfire', label: 'Missfire', format: '2f' },
+  { key: 'deception_score', label: 'Deception', format: '1f' },
+  { key: 'avg_cluster', label: 'Cluster', format: '2f' },
+  { key: 'avg_brink', label: 'Brink', format: '2f' },
   { key: 'triton_plus', label: 'Triton+', format: 'integer' },
 ]
 
@@ -66,7 +73,12 @@ export const RC_BAR_METRICS = [
   { key: 'csw_pct', label: 'CSW%' },
   { key: 'str_pct', label: 'Str%' },
   { key: 'stuff_plus', label: 'Stuff+' },
+  { key: 'cmd_plus', label: 'Cmd+' },
   { key: 'xslgcon', label: 'xSLGcon' },
+  { key: 'avg_missfire', label: 'Missfire' },
+  { key: 'deception_score', label: 'Deception' },
+  { key: 'avg_cluster', label: 'Cluster' },
+  { key: 'avg_brink', label: 'Brink' },
   { key: 'triton_plus', label: 'Triton+' },
 ]
 

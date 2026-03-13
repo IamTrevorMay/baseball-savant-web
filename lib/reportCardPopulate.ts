@@ -39,7 +39,9 @@ function getStatValue(data: StarterCardData, metric: string): number | string | 
     case 'fb_ext': return data.primary_fastball?.avg_ext ?? null
     case 'fb_havaa': return data.primary_fastball?.avg_havaa ?? null
     // Command
+    case 'cmd_plus': return data.command.cmd_plus
     case 'waste_pct': return data.command.waste_pct
+    case 'avg_missfire': return data.command.avg_missfire
     case 'avg_cluster': return data.command.avg_cluster
     case 'avg_brink': return data.command.avg_brink
     default: return null

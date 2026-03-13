@@ -234,8 +234,8 @@ export interface StarterCardData {
   season_movement: { pitch_name: string; avg_hb: number; avg_ivb: number; std_hb: number; std_ivb: number }[]
   locations_lhb: { plate_x: number; plate_z: number; pitch_name: string }[]
   locations_rhb: { plate_x: number; plate_z: number; pitch_name: string }[]
-  pitch_metrics: { pitch_name: string; count: number; avg_velo: number; velo_diff: number; avg_ivb: number; avg_hb: number; avg_ext: number; str_pct: number; swstr_pct: number; csw_pct: number; xslgcon: number; stuff_plus: number; whiffs: number; unique_score: number | null; deception_score: number | null; cmd_plus: number | null; triton_plus: number }[]
-  command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null }
+  pitch_metrics: { pitch_name: string; count: number; avg_velo: number; velo_diff: number; avg_ivb: number; avg_hb: number; avg_ext: number; str_pct: number; swstr_pct: number; csw_pct: number; xslgcon: number; stuff_plus: number; whiffs: number; unique_score: number | null; deception_score: number | null; cmd_plus: number | null; avg_missfire: number | null; avg_cluster: number | null; avg_brink: number | null; triton_plus: number }[]
+  command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null; cmd_plus: number | null; avg_missfire: number | null }
 }
 
 // ── Scene ───────────────────────────────────────────────────────────────────

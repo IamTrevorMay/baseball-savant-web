@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
-import { plusToGrade, isFastball } from '@/lib/leagueStats'
+import { plusToGrade, isFastball, computeStuffRV, computePlus, STUFF_LEAGUE_BY_YEAR } from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -272,9 +272,22 @@ export async function GET(req: NextRequest) {
         ? bipPitches.reduce((s: number, p: any) => s + p.estimated_slg_using_speedangle, 0) / bipPitches.length
         : 0
 
-      // Stuff+
+      // Stuff+: average DB column, fallback to computeStuffRV + computePlus
       const stuffArr = pts.filter((p: any) => p.stuff_plus != null).map((p: any) => p.stuff_plus)
-      const avgStuff = stuffArr.length > 0 ? stuffArr.reduce((s: number, v: number) => s + v, 0) / stuffArr.length : 100
+      let avgStuff: number
+      if (stuffArr.length > 0) {
+        avgStuff = stuffArr.reduce((s: number, v: number) => s + v, 0) / stuffArr.length
+      } else {
+        const year = pts[0]?.game_year || 2025
+        const rvArr = pts.map((p: any) => computeStuffRV(p)).filter((v: any): v is number => v != null)
+        const league = (STUFF_LEAGUE_BY_YEAR as any)[year]?.[ptName]
+        if (rvArr.length > 0 && league) {
+          const avgRV = rvArr.reduce((s: number, v: number) => s + v, 0) / rvArr.length
+          avgStuff = computePlus(avgRV, league.mean, league.stddev)
+        } else {
+          avgStuff = 100
+        }
+      }
 
       const veloDiff = avgFbVelo != null ? avgVelo - avgFbVelo : 0
 
@@ -301,6 +314,9 @@ export async function GET(req: NextRequest) {
         unique_score: dec.unique_score ?? null,
         deception_score: dec.deception_score ?? null,
         cmd_plus: null as number | null, // filled in below
+        avg_missfire: null as number | null, // filled in below
+        avg_cluster: null as number | null, // filled in below
+        avg_brink: null as number | null, // filled in below
         triton_plus: 0, // filled in below
       })
 
@@ -334,12 +350,13 @@ export async function GET(req: NextRequest) {
     const cmd = computeOutingCommand(cmdPitchRows)
 
     // ── Grades ───────────────────────────────────────────────────────────
-    // Stuff grade: weighted average stuff_plus
-    let stuffSum = 0, stuffN = 0
-    for (const p of pitches) {
-      if (p.stuff_plus != null) { stuffSum += p.stuff_plus; stuffN++ }
+    // Stuff grade: weighted average from per-pitch-type stuff+ (already computed with fallback)
+    let stuffWeightedSum = 0, stuffWeightedN = 0
+    for (const pm of pitchMetrics) {
+      stuffWeightedSum += pm.stuff_plus * pm.count
+      stuffWeightedN += pm.count
     }
-    const avgStuffPlus = stuffN > 0 ? stuffSum / stuffN : 100
+    const avgStuffPlus = stuffWeightedN > 0 ? stuffWeightedSum / stuffWeightedN : 100
     const cmdPlus = cmd.overall_cmd_plus ?? 100
 
     const stuffGrade = plusToGrade(avgStuffPlus)
@@ -348,10 +365,14 @@ export async function GET(req: NextRequest) {
     const tritonGrade = plusToGrade(tritonPlus)
     const startGrade = tritonGrade
 
-    // Fill in cmd_plus and triton_plus per pitch
+    // Fill in command metrics and triton_plus per pitch
     for (const pm of pitchMetrics) {
-      const ptCmd = cmd.byPitch[pm.pitch_name]?.cmd_plus ?? null
+      const ptCmdData = cmd.byPitch[pm.pitch_name]
+      const ptCmd = ptCmdData?.cmd_plus ?? null
       pm.cmd_plus = ptCmd != null ? +ptCmd.toFixed(0) : null
+      pm.avg_missfire = ptCmdData?.avg_missfire ?? null
+      pm.avg_cluster = ptCmdData?.avg_cluster ?? null
+      pm.avg_brink = ptCmdData?.avg_brink ?? null
       pm.triton_plus = +((0.5 * pm.stuff_plus + 0.5 * (ptCmd ?? 100))).toFixed(0)
     }
 
@@ -440,7 +461,7 @@ export async function GET(req: NextRequest) {
       locations_lhb: locationsLhb,
       locations_rhb: locationsRhb,
       pitch_metrics: pitchMetrics,
-      command: cmd.aggregate,
+      command: { ...cmd.aggregate, cmd_plus: cmd.overall_cmd_plus, avg_missfire: (() => { let s = 0, n = 0; for (const pm of pitchMetrics) { if (pm.avg_missfire != null) { s += pm.avg_missfire * pm.count; n += pm.count } } return n > 0 ? s / n : null })() },
     }
 
     return NextResponse.json({ data })
