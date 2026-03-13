@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 const rssParser = new Parser({
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: `${prompt}\n\nData:\n${JSON.stringify(payload)}` }],
       system: `You are a baseball analyst writing a daily brief for a professional scouting platform called Triton.
 
@@ -124,7 +124,8 @@ Return ONLY valid JSON, no markdown fences.`,
     // Parse JSON from response (handle potential markdown fences)
     let parsed: { title: string; summary: string; html: string }
     try {
-      const cleaned = textContent.replace(/^```json?\n?/, '').replace(/\n?```$/, '').trim()
+      const jsonMatch = textContent.match(/\{[\s\S]*\}/)
+      const cleaned = jsonMatch ? jsonMatch[0] : textContent.trim()
       parsed = JSON.parse(cleaned)
     } catch {
       return NextResponse.json({ error: 'Failed to parse Claude response', raw: textContent.slice(0, 500) }, { status: 500 })
