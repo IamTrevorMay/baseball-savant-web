@@ -36,27 +36,34 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
     )
   }
 
+  // Compute dynamic row height to fill bounding box
+  const titleH = title ? Math.max(10, headerFontSize + 1) + 12 : 0
+  const headerH = headerFontSize + 16 + 1 // header row + border
+  const availableH = height - titleH - headerH
+  const rowCount = Math.max(rows.length, 1)
+  const rowH = Math.max(0, availableH / rowCount)
+
   return (
     <div
-      className="w-full h-full overflow-hidden"
+      className="w-full h-full overflow-hidden flex flex-col"
       style={{ borderRadius: p.borderRadius ?? 12, background: p.bgColor || '#09090b', fontFamily }}
     >
       {title && (
         <div
-          className="text-center font-semibold uppercase tracking-wider px-2.5 pt-2"
-          style={{ color: headerColor, fontSize: Math.max(10, headerFontSize + 1) }}
+          className="text-center font-semibold uppercase tracking-wider px-2.5 shrink-0"
+          style={{ color: headerColor, fontSize: Math.max(10, headerFontSize + 1), paddingTop: 6, paddingBottom: 4 }}
         >
           {title}
         </div>
       )}
-      <table className="w-full border-collapse" style={{ fontSize, letterSpacing, lineHeight }}>
+      <table className="w-full border-collapse flex-1" style={{ fontSize, letterSpacing, lineHeight }}>
         <thead>
           <tr>
             {columns.map(col => (
               <th
                 key={col.key}
-                className="text-left px-2.5 py-2 font-semibold uppercase tracking-wider border-b border-zinc-800"
-                style={{ color: headerColor, fontSize: headerFontSize, textTransform: textTransform as any }}
+                className="text-left px-2.5 font-semibold uppercase tracking-wider border-b border-zinc-800"
+                style={{ color: headerColor, fontSize: headerFontSize, textTransform: textTransform as any, height: headerH }}
               >
                 {col.label}
               </th>
@@ -66,7 +73,7 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="text-center py-4 text-zinc-600 text-xs">
+              <td colSpan={columns.length} className="text-center text-zinc-600 text-xs" style={{ height: rowH }}>
                 No data — generate to populate
               </td>
             </tr>
@@ -74,7 +81,7 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
             rows.map((row, i) => (
               <tr key={i} className="border-b border-zinc-800/50 last:border-b-0">
                 {columns.map(col => (
-                  <td key={col.key} className="px-2.5 py-1.5" style={{ color: textColor }}>
+                  <td key={col.key} className="px-2.5" style={{ color: textColor, height: rowH }}>
                     <span className="flex items-center gap-1.5">
                       {col.key === 'pitch_name' && (
                         <span

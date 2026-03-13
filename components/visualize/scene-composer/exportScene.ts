@@ -711,28 +711,31 @@ function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
   if (cols.length === 0) { ctx.restore(); return }
 
   const colW = w / cols.length
-  const rowH = Math.min(28, (h - 30 - titleOffset) / Math.max(rows.length, 1))
-  const headerY = y + 8 + titleOffset
+  const headerH = headerFontSize + 16 + 1
+  const headerY = y + titleOffset
+  const availableH = h - titleOffset - headerH
+  const rowCount = Math.max(rows.length, 1)
+  const rowH = Math.max(0, availableH / rowCount)
 
   // Header
   ctx.font = `600 ${headerFontSize}px ${font}`
   ctx.fillStyle = '#a1a1aa'
-  ctx.textBaseline = 'top'
+  ctx.textBaseline = 'middle'
   for (let i = 0; i < cols.length; i++) {
     ctx.textAlign = 'left'
-    ctx.fillText(cols[i].label, x + i * colW + 10, headerY)
+    ctx.fillText(cols[i].label, x + i * colW + 10, headerY + headerH / 2)
   }
 
   // Separator
   ctx.strokeStyle = '#27272a'
   ctx.lineWidth = 1
   ctx.beginPath()
-  ctx.moveTo(x + 8, headerY + headerFontSize + 6)
-  ctx.lineTo(x + w - 8, headerY + headerFontSize + 6)
+  ctx.moveTo(x + 8, headerY + headerH)
+  ctx.lineTo(x + w - 8, headerY + headerH)
   ctx.stroke()
 
   // Rows
-  const startY = headerY + headerFontSize + 12
+  const startY = headerY + headerH
   ctx.font = `400 ${fontSize}px ${font}`
 
   for (let r = 0; r < rows.length; r++) {
@@ -742,7 +745,8 @@ function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
       const val = rows[r][cols[c].key] ?? '--'
       ctx.fillStyle = cols[c].key === 'pitch_name' ? (rows[r]._color || '#e4e4e7') : '#e4e4e7'
       ctx.textAlign = 'left'
-      ctx.fillText(String(val), x + c * colW + 10, ry)
+      ctx.textBaseline = 'middle'
+      ctx.fillText(String(val), x + c * colW + 10, ry + rowH / 2)
     }
   }
   ctx.restore()
@@ -777,13 +781,14 @@ function drawRCBarChart(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const maxVal = Math.max(...barData.map(d => d.value), 1)
   const pad = { top: 15 + titleOffset, right: 15, bottom: 15, left: 80 }
   const plotW = w - pad.left - pad.right
-  const barH = Math.min(26, (h - pad.top - pad.bottom - (barData.length - 1) * 6) / barData.length)
-  const totalH = barData.length * barH + (barData.length - 1) * 6
-  const startY = y + pad.top + ((h - pad.top - pad.bottom) - totalH) / 2
+  const plotH = h - pad.top - pad.bottom
+  const gap = 6
+  const barH = (plotH - (barData.length - 1) * gap) / barData.length
+  const startY = y + pad.top
 
   for (let i = 0; i < barData.length; i++) {
     const d = barData[i]
-    const by = startY + i * (barH + 6)
+    const by = startY + i * (barH + gap)
     const bw = (d.value / maxVal) * plotW
 
     ctx.fillStyle = '#a1a1aa'

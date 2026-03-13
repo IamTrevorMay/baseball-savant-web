@@ -64,13 +64,13 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
     const plotH = height - pad.top - pad.bottom
 
     if (orientation === 'horizontal') {
-      const barH = Math.min(30, (plotH - (barData.length - 1) * 6) / barData.length)
-      const totalH = barData.length * barH + (barData.length - 1) * 6
-      const startY = pad.top + (plotH - totalH) / 2
+      const gap = 6
+      const barH = (plotH - (barData.length - 1) * gap) / barData.length
+      const startY = pad.top
 
       for (let i = 0; i < barData.length; i++) {
         const d = barData[i]
-        const y = startY + i * (barH + 6)
+        const y = startY + i * (barH + gap)
         const barW = (d.value / maxVal) * plotW
         const color = d.color || getPitchColor(d.label)
 
@@ -107,13 +107,13 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
       }
     } else {
       // Vertical bars
-      const barW = Math.min(40, (plotW - (barData.length - 1) * 8) / barData.length)
-      const totalW = barData.length * barW + (barData.length - 1) * 8
-      const startX = pad.left + (plotW - totalW) / 2
+      const vGap = 8
+      const barW = (plotW - (barData.length - 1) * vGap) / barData.length
+      const startX = pad.left
 
       for (let i = 0; i < barData.length; i++) {
         const d = barData[i]
-        const x = startX + i * (barW + 8)
+        const x = startX + i * (barW + vGap)
         const barH = (d.value / maxVal) * plotH
         const color = d.color || getPitchColor(d.label)
 

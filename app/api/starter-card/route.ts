@@ -58,7 +58,8 @@ export async function GET(req: NextRequest) {
         SELECT plate_x, plate_z, pitch_name, sz_top, sz_bot, zone, game_year, stand,
                description, pfx_x, pfx_z, release_speed, release_extension,
                estimated_slg_using_speedangle, stuff_plus, type,
-               release_pos_x, release_pos_z, vx0, vy0, vz0, ax, ay, az
+               release_pos_x, release_pos_z, vx0, vy0, vz0, ax, ay, az,
+               release_spin_rate, spin_axis, arm_angle, p_throws
         FROM pitches
         WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
           AND pitch_name IS NOT NULL
@@ -143,6 +144,10 @@ export async function GET(req: NextRequest) {
       ax: r.ax != null ? Number(r.ax) : null,
       ay: r.ay != null ? Number(r.ay) : null,
       az: r.az != null ? Number(r.az) : null,
+      release_spin_rate: r.release_spin_rate != null ? Number(r.release_spin_rate) : null,
+      spin_axis: r.spin_axis != null ? Number(r.spin_axis) : null,
+      arm_angle: r.arm_angle != null ? Number(r.arm_angle) : null,
+      p_throws: r.p_throws || null,
     }))
 
     // Get p_throws from first pitch
