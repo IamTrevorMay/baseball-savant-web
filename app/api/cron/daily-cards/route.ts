@@ -151,9 +151,10 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. For each starter: fetch data from /api/starter-card, populate template
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+    // Use NEXT_PUBLIC_SITE_URL (production domain) to avoid Vercel deployment protection
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || (
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+    )
 
     const cards: any[] = []
 
