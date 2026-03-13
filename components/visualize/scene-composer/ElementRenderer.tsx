@@ -6,6 +6,11 @@ import PitchFlightRenderer from './PitchFlightRenderer'
 import StadiumRenderer from './StadiumRenderer'
 import ZonePlotRenderer from './ZonePlotRenderer'
 import MovementPlotRenderer from './MovementPlotRenderer'
+import RCStatBoxRenderer from '@/components/report-cards/renderers/RCStatBoxRenderer'
+import RCTableRenderer from '@/components/report-cards/renderers/RCTableRenderer'
+import RCHeatmapRenderer from '@/components/report-cards/renderers/RCHeatmapRenderer'
+import RCBarChartRenderer from '@/components/report-cards/renderers/RCBarChartRenderer'
+import RCDonutChartRenderer from '@/components/report-cards/renderers/RCDonutChartRenderer'
 
 // ── Ticker Renderer ──────────────────────────────────────────────────────────
 
@@ -348,6 +353,20 @@ export default function renderElementContent(el: SceneElement) {
       return <CurvedTextRenderer props={el.props} width={el.width} height={el.height} />
     case 'group':
       return <GroupRenderer />
+    case 'rc-stat-box':
+      return <RCStatBoxRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-table':
+      return <RCTableRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-heatmap':
+      return <RCHeatmapRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-zone-plot':
+      return <ZonePlotRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-movement-plot':
+      return <MovementPlotRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-bar-chart':
+      return <RCBarChartRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-donut-chart':
+      return <RCDonutChartRenderer props={el.props} width={el.width} height={el.height} />
     default:
       return <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 text-xs">Unknown</div>
   }

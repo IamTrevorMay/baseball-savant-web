@@ -650,6 +650,275 @@ function drawTicker(ctx: CanvasRenderingContext2D, el: SceneElement) {
   ctx.restore()
 }
 
+// ── RC element draw functions ────────────────────────────────────────────────
+
+function drawRCStatBox(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  const radius = p.borderRadius ?? 12
+  const font = getFontStack(p.fontFamily)
+  const color = p.color || '#06b6d4'
+  const pad = 16
+
+  ctx.save()
+  // Background
+  ctx.fillStyle = p.bgColor || 'rgba(255,255,255,0.04)'
+  roundRect(ctx, x, y, w, h, radius)
+  ctx.fill()
+  // Accent bar
+  ctx.fillStyle = color
+  ctx.fillRect(x, y + 10, 3, h - 20)
+
+  const labelSize = Math.max(10, (p.fontSize || 44) * 0.28)
+  ctx.font = `600 ${labelSize}px ${font}`
+  ctx.fillStyle = '#a1a1aa'
+  ctx.textBaseline = 'top'
+  ctx.textAlign = 'left'
+  ctx.fillText((p.label || 'Stat').toUpperCase(), x + pad, y + pad)
+
+  ctx.font = `bold ${p.fontSize || 44}px ${font}`
+  ctx.fillStyle = color
+  ctx.fillText(String(p.value ?? '--'), x + pad, y + pad + labelSize + 4)
+  ctx.restore()
+}
+
+function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  const font = getFontStack()
+  const cols: { key: string; label: string }[] = p.columns || []
+  const rows: Record<string, any>[] = p.rows || []
+  const fontSize = p.fontSize || 13
+  const headerFontSize = p.headerFontSize || 11
+  const radius = p.borderRadius ?? 12
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || '#09090b'
+  roundRect(ctx, x, y, w, h, radius)
+  ctx.fill()
+
+  if (cols.length === 0) { ctx.restore(); return }
+
+  const colW = w / cols.length
+  const rowH = Math.min(28, (h - 30) / Math.max(rows.length, 1))
+  const headerY = y + 8
+
+  // Header
+  ctx.font = `600 ${headerFontSize}px ${font}`
+  ctx.fillStyle = '#a1a1aa'
+  ctx.textBaseline = 'top'
+  for (let i = 0; i < cols.length; i++) {
+    ctx.textAlign = 'left'
+    ctx.fillText(cols[i].label, x + i * colW + 10, headerY)
+  }
+
+  // Separator
+  ctx.strokeStyle = '#27272a'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(x + 8, headerY + headerFontSize + 6)
+  ctx.lineTo(x + w - 8, headerY + headerFontSize + 6)
+  ctx.stroke()
+
+  // Rows
+  const startY = headerY + headerFontSize + 12
+  ctx.font = `400 ${fontSize}px ${font}`
+
+  for (let r = 0; r < rows.length; r++) {
+    const ry = startY + r * rowH
+    if (ry + rowH > y + h) break
+    for (let c = 0; c < cols.length; c++) {
+      const val = rows[r][cols[c].key] ?? '--'
+      ctx.fillStyle = cols[c].key === 'pitch_name' ? (rows[r]._color || '#e4e4e7') : '#e4e4e7'
+      ctx.textAlign = 'left'
+      ctx.fillText(String(val), x + c * colW + 10, ry)
+    }
+  }
+  ctx.restore()
+}
+
+function drawRCBarChart(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  const font = getFontStack()
+  const barData: { label: string; value: number; color?: string }[] = p.barData || []
+  const fontSize = p.fontSize || 12
+  const radius = p.borderRadius ?? 12
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || '#09090b'
+  roundRect(ctx, x, y, w, h, radius)
+  ctx.fill()
+
+  if (barData.length === 0) { ctx.restore(); return }
+
+  const maxVal = Math.max(...barData.map(d => d.value), 1)
+  const pad = { top: 15, right: 15, bottom: 15, left: 80 }
+  const plotW = w - pad.left - pad.right
+  const barH = Math.min(26, (h - pad.top - pad.bottom - (barData.length - 1) * 6) / barData.length)
+  const totalH = barData.length * barH + (barData.length - 1) * 6
+  const startY = y + pad.top + ((h - pad.top - pad.bottom) - totalH) / 2
+
+  for (let i = 0; i < barData.length; i++) {
+    const d = barData[i]
+    const by = startY + i * (barH + 6)
+    const bw = (d.value / maxVal) * plotW
+
+    ctx.fillStyle = '#a1a1aa'
+    ctx.font = `500 ${fontSize}px ${font}`
+    ctx.textAlign = 'right'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(d.label, x + pad.left - 8, by + barH / 2)
+
+    ctx.fillStyle = '#27272a'
+    roundRect(ctx, x + pad.left, by, plotW, barH, 4)
+    ctx.fill()
+
+    ctx.fillStyle = d.color || '#06b6d4'
+    roundRect(ctx, x + pad.left, by, Math.max(bw, 4), barH, 4)
+    ctx.fill()
+
+    if (p.showValues !== false) {
+      ctx.fillStyle = '#e4e4e7'
+      ctx.font = `600 ${fontSize}px ${font}`
+      ctx.textAlign = 'left'
+      ctx.fillText(d.value % 1 ? d.value.toFixed(1) : String(d.value), x + pad.left + Math.max(bw, 4) + 6, by + barH / 2)
+    }
+  }
+  ctx.restore()
+}
+
+function drawRCDonutChart(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  const font = getFontStack()
+  const usageData: { label: string; value: number; color?: string }[] = p.usageData || []
+  const innerRadiusRatio = p.innerRadius ?? 0.55
+  const fontSize = p.fontSize || 12
+  const radius = p.borderRadius ?? 12
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || '#09090b'
+  roundRect(ctx, x, y, w, h, radius)
+  ctx.fill()
+
+  if (usageData.length === 0) { ctx.restore(); return }
+
+  const total = usageData.reduce((s, d) => s + d.value, 0)
+  if (total === 0) { ctx.restore(); return }
+
+  const cx = x + w / 2
+  const cy = y + h / 2
+  const outerR = Math.min(w, h) / 2 - 30
+  const innerR = outerR * innerRadiusRatio
+
+  let angle = -Math.PI / 2
+
+  for (const item of usageData) {
+    const sliceAngle = (item.value / total) * Math.PI * 2
+
+    ctx.beginPath()
+    ctx.arc(cx, cy, outerR, angle, angle + sliceAngle)
+    ctx.arc(cx, cy, innerR, angle + sliceAngle, angle, true)
+    ctx.closePath()
+    ctx.fillStyle = item.color || '#06b6d4'
+    ctx.fill()
+    ctx.strokeStyle = p.bgColor || '#09090b'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    if (p.showLabels !== false && sliceAngle > 0.15) {
+      const midAngle = angle + sliceAngle / 2
+      const labelR = outerR + 16
+      const lx = cx + labelR * Math.cos(midAngle)
+      const ly = cy + labelR * Math.sin(midAngle)
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = `500 ${fontSize}px ${font}`
+      ctx.textAlign = midAngle > Math.PI / 2 && midAngle < 3 * Math.PI / 2 ? 'right' : 'left'
+      ctx.textBaseline = 'middle'
+      const pct = ((item.value / total) * 100).toFixed(0)
+      ctx.fillText(`${item.label} ${pct}%`, lx, ly)
+    }
+
+    angle += sliceAngle
+  }
+
+  // Center hole
+  ctx.beginPath()
+  ctx.arc(cx, cy, innerR - 1, 0, Math.PI * 2)
+  ctx.fillStyle = p.bgColor || '#09090b'
+  ctx.fill()
+
+  ctx.restore()
+}
+
+function drawRCHeatmap(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x: ex, y: ey, width: w, height: h } = el
+  const locations: { plate_x: number; plate_z: number }[] = p.locations || []
+  const binsX = p.binsX || 5
+  const binsY = p.binsY || 5
+  const radius = p.borderRadius ?? 8
+
+  ctx.save()
+  ctx.fillStyle = p.bgColor || '#09090b'
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.fill()
+
+  const pad = 20
+  const plotW = w - pad * 2
+  const plotH = h - pad * 2
+
+  const bins: number[][] = Array.from({ length: binsY }, () => Array(binsX).fill(0))
+  let maxCount = 0
+  const VXM = -2, VXX = 2, VZM = 0.5, VZX = 4.5
+
+  for (const loc of locations) {
+    const bx = Math.floor(((loc.plate_x - VXM) / (VXX - VXM)) * binsX)
+    const by = Math.floor(((VZX - loc.plate_z) / (VZX - VZM)) * binsY)
+    if (bx >= 0 && bx < binsX && by >= 0 && by < binsY) {
+      bins[by][bx]++
+      if (bins[by][bx] > maxCount) maxCount = bins[by][bx]
+    }
+  }
+
+  const cellW = plotW / binsX
+  const cellH = plotH / binsY
+  const low = [24, 24, 27] // #18181b
+  const high = [239, 68, 68] // #ef4444
+
+  for (let row = 0; row < binsY; row++) {
+    for (let col = 0; col < binsX; col++) {
+      const count = bins[row][col]
+      const t = maxCount > 0 ? count / maxCount : 0
+      const r = Math.round(low[0] + (high[0] - low[0]) * t)
+      const g = Math.round(low[1] + (high[1] - low[1]) * t)
+      const b = Math.round(low[2] + (high[2] - low[2]) * t)
+      ctx.fillStyle = `rgba(${r},${g},${b},${Math.max(0.3, t)})`
+      ctx.fillRect(ex + pad + col * cellW, ey + pad + row * cellH, cellW, cellH)
+
+      if (count > 0) {
+        ctx.fillStyle = t > 0.5 ? '#ffffff' : '#a1a1aa'
+        ctx.font = '11px Inter, system-ui, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(count), ex + pad + col * cellW + cellW / 2, ey + pad + row * cellH + cellH / 2)
+      }
+    }
+  }
+
+  // Zone outline
+  if (p.showZone !== false) {
+    const toX = (px: number) => ex + pad + ((px - VXM) / (VXX - VXM)) * plotW
+    const toY = (pz: number) => ey + pad + ((VZX - pz) / (VZX - VZM)) * plotH
+    ctx.strokeStyle = '#71717a'
+    ctx.lineWidth = 2
+    ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
+  }
+
+  ctx.restore()
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export async function exportScenePNG(scene: Scene, filename: string): Promise<void> {
@@ -719,6 +988,12 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
         case 'ticker': drawTicker(ctx, el); break
         case 'path': drawPath(ctx, el); break
         case 'curved-text': drawCurvedText(ctx, el); break
+        case 'rc-stat-box': drawRCStatBox(ctx, el); break
+        case 'rc-table': drawRCTable(ctx, el); break
+        case 'rc-heatmap': drawRCHeatmap(ctx, el); break
+        case 'rc-bar-chart': drawRCBarChart(ctx, el); break
+        case 'rc-donut-chart': drawRCDonutChart(ctx, el); break
+        // rc-zone-plot and rc-movement-plot share the same props as zone-plot/movement-plot
       }
 
       resetShadow(ctx)
