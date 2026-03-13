@@ -5,6 +5,7 @@ import { Scene, SceneElement, ElementType, createElement } from '@/lib/sceneType
 import { defaultReportCardBinding } from '@/lib/reportCardDefaults'
 import { TEAM_COLORS } from '@/lib/teamColors'
 import { applyRCTeamColorOverlay } from '@/lib/themePresets'
+import { suggestLayout } from '@/lib/reportCardLayout'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import AlignmentBar from '@/components/visualize/asset-designer/AlignmentBar'
 import RCElementCatalog from './RCElementCatalog'
@@ -113,6 +114,13 @@ export default function ReportCardBuilder({
             className="px-2 py-1 bg-zinc-800/80 border border-zinc-700 rounded text-xs text-zinc-400 hover:text-white disabled:opacity-30"
           >
             Redo
+          </button>
+          <button
+            onClick={() => setScene(prev => suggestLayout(prev))}
+            className="px-2 py-1 bg-zinc-800/80 border border-zinc-700 rounded text-xs text-zinc-400 hover:text-white hover:border-cyan-500/40 transition"
+            title="Auto-arrange elements"
+          >
+            Suggest Layout
           </button>
         </div>
 

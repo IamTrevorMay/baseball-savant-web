@@ -1,4 +1,4 @@
-export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot' | 'path' | 'curved-text' | 'group' | 'rc-table' | 'rc-heatmap' | 'rc-zone-plot' | 'rc-movement-plot' | 'rc-stat-box' | 'rc-bar-chart' | 'rc-donut-chart'
+export type ElementType = 'stat-card' | 'text' | 'shape' | 'player-image' | 'image' | 'comparison-bar' | 'pitch-flight' | 'stadium' | 'ticker' | 'zone-plot' | 'movement-plot' | 'path' | 'curved-text' | 'group' | 'rc-table' | 'rc-heatmap' | 'rc-zone-plot' | 'rc-movement-plot' | 'rc-stat-box' | 'rc-bar-chart' | 'rc-donut-chart' | 'rc-statline'
 
 // ── Effects ─────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ export type DataSchemaType = 'leaderboard' | 'outing' | 'starter-card' | 'percen
 
 // ── Report Card Binding ──────────────────────────────────────────────────────
 
-export type ReportCardObjectType = 'rc-table' | 'rc-heatmap' | 'rc-zone-plot' | 'rc-movement-plot' | 'rc-stat-box' | 'rc-bar-chart' | 'rc-donut-chart'
+export type ReportCardObjectType = 'rc-table' | 'rc-heatmap' | 'rc-zone-plot' | 'rc-movement-plot' | 'rc-stat-box' | 'rc-bar-chart' | 'rc-donut-chart' | 'rc-statline'
 
 export interface ReportCardBinding {
   objectType: ReportCardObjectType
@@ -226,7 +226,7 @@ export interface StarterCardData {
   age: number | null
   game_date: string
   opponent: string
-  game_line: { ip: string; er: number; h: number; hr: number; bb: number; k: number; whiffs: number; csw_pct: number; pitches: number }
+  game_line: { ip: string; er: number; h: number; hr: number; bb: number; k: number; whiffs: number; csw_pct: number; pitches: number; r: number; decision: string; era: string }
   grades: { start: string; stuff: string; command: string; triton: string }
   primary_fastball: { name: string; avg_velo: number; avg_ext: number; avg_ivb: number; avg_hb: number; avg_havaa: number } | null
   usage: { pitch_name: string; outing_pct: number; vs_lhb_pct: number; vs_rhb_pct: number; season_pct: number }[]
@@ -399,16 +399,16 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
         { key: 'avg_hb', label: 'HB', format: '1f' },
         { key: 'swstr_pct', label: 'SwStr%', format: '1f' },
       ],
-      rows: [], headerColor: '#a1a1aa', textColor: '#e4e4e7', fontSize: 13, headerFontSize: 11,
+      rows: [], headerColor: '#a1a1aa', textColor: '#e4e4e7', fontSize: 13, headerFontSize: 11, title: '',
     },
   },
   'rc-heatmap': {
     w: 300, h: 340,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, metric: 'count', binsX: 5, binsY: 5, colorLow: '#18181b', colorHigh: '#ef4444', showZone: true, locations: [] },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, metric: 'count', binsX: 5, binsY: 5, colorLow: '#18181b', colorHigh: '#ef4444', showZone: true, locations: [], title: '' },
   },
   'rc-zone-plot': {
     w: 300, h: 340,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, dotSize: 8, dotOpacity: 0.85, showZone: true, zoneColor: '#52525b', colorBy: 'pitch_type', pitches: [] },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, dotSize: 8, dotOpacity: 0.85, showZone: true, zoneColor: '#52525b', colorBy: 'pitch_type', pitches: [], title: '' },
   },
   'rc-movement-plot': {
     w: 340, h: 320,
@@ -416,11 +416,20 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   },
   'rc-bar-chart': {
     w: 400, h: 250,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 12, metric: 'avg_velo', orientation: 'horizontal', barColor: '#06b6d4', barData: [], fontSize: 12, showValues: true },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 12, metric: 'avg_velo', orientation: 'horizontal', barColor: '#06b6d4', barData: [], fontSize: 12, showValues: true, title: '' },
   },
   'rc-donut-chart': {
     w: 280, h: 280,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 12, innerRadius: 0.55, showLabels: true, fontSize: 12, usageData: [] },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 12, innerRadius: 0.55, showLabels: true, fontSize: 12, usageData: [], title: '' },
+  },
+  'rc-statline': {
+    w: 700, h: 60,
+    props: {
+      ...UNIVERSAL_STYLE, bgColor: 'rgba(255,255,255,0.04)', borderRadius: 8,
+      fontSize: 18, fontFamily: '', color: '#ffffff', headerColor: '#a1a1aa',
+      statline: { ip: '?', h: 0, r: 0, k: 0, bb: 0, decision: 'ND', era: '--' },
+      title: '',
+    },
   },
 }
 

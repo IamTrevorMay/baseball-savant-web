@@ -26,6 +26,8 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
   const lineHeight = p.lineHeight || undefined
   const textTransform = p.textTransform || undefined
 
+  const title = p.title || ''
+
   if (columns.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center text-zinc-500 text-xs">
@@ -39,6 +41,14 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
       className="w-full h-full overflow-hidden"
       style={{ borderRadius: p.borderRadius ?? 12, background: p.bgColor || '#09090b', fontFamily }}
     >
+      {title && (
+        <div
+          className="text-center font-semibold uppercase tracking-wider px-2.5 pt-2"
+          style={{ color: headerColor, fontSize: Math.max(10, headerFontSize + 1) }}
+        >
+          {title}
+        </div>
+      )}
       <table className="w-full border-collapse" style={{ fontSize, letterSpacing, lineHeight }}>
         <thead>
           <tr>

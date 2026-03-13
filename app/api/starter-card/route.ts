@@ -162,7 +162,7 @@ export async function GET(req: NextRequest) {
     const opponent = metaRes.data?.[0]?.opponent || '??'
 
     // ── Boxscore extraction ──────────────────────────────────────────────
-    let gameLine = { ip: '?', er: 0, h: 0, hr: 0, bb: 0, k: 0, pitches: 0 }
+    let gameLine = { ip: '?', er: 0, h: 0, hr: 0, bb: 0, k: 0, pitches: 0, r: 0, decision: 'ND', era: '--' }
     if (boxscoreRes) {
       const pid = Number(pitcherId)
       for (const side of ['home', 'away'] as const) {
@@ -170,14 +170,22 @@ export async function GET(req: NextRequest) {
         if (pitchers.includes(pid)) {
           const pStats = boxscoreRes?.teams?.[side]?.players?.[`ID${pid}`]?.stats?.pitching
           if (pStats) {
+            // Determine W/L decision
+            let decision = 'ND'
+            if (pStats.wins >= 1) decision = 'W'
+            else if (pStats.losses >= 1) decision = 'L'
+
             gameLine = {
               ip: pStats.inningsPitched || '?',
               h: pStats.hits ?? 0,
+              r: pStats.runs ?? 0,
               er: pStats.earnedRuns ?? 0,
               hr: pStats.homeRuns ?? 0,
               bb: pStats.baseOnBalls ?? 0,
               k: pStats.strikeOuts ?? 0,
               pitches: pStats.numberOfPitches ?? 0,
+              decision,
+              era: pStats.era ?? '--',
             }
           }
           break

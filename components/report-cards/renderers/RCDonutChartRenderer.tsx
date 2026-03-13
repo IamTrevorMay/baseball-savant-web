@@ -22,6 +22,7 @@ export default function RCDonutChartRenderer({ props: p, width, height }: Props)
   const showLabels = p.showLabels !== false
   const fontSize = p.fontSize || 12
   const bgColor = p.bgColor || '#09090b'
+  const title = p.title || ''
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -37,6 +38,16 @@ export default function RCDonutChartRenderer({ props: p, width, height }: Props)
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, width, height)
 
+    let titleOffset = 0
+    if (title) {
+      titleOffset = 24
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = `600 ${Math.max(10, fontSize)}px Inter, system-ui, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(title, width / 2, 6)
+    }
+
     if (usageData.length === 0) {
       ctx.fillStyle = '#52525b'
       ctx.font = '12px Inter, system-ui, sans-serif'
@@ -50,7 +61,7 @@ export default function RCDonutChartRenderer({ props: p, width, height }: Props)
     if (total === 0) return
 
     const cx = width / 2
-    const cy = height / 2
+    const cy = (height + titleOffset) / 2
     const outerR = Math.min(width, height) / 2 - 30
     const innerR = outerR * innerRadius
 
@@ -96,7 +107,7 @@ export default function RCDonutChartRenderer({ props: p, width, height }: Props)
     ctx.arc(cx, cy, innerR - 1, 0, Math.PI * 2)
     ctx.fillStyle = bgColor
     ctx.fill()
-  }, [usageData, width, height, innerRadius, showLabels, fontSize, bgColor])
+  }, [usageData, width, height, innerRadius, showLabels, fontSize, bgColor, title])
 
   return (
     <canvas

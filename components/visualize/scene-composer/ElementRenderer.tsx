@@ -11,6 +11,7 @@ import RCTableRenderer from '@/components/report-cards/renderers/RCTableRenderer
 import RCHeatmapRenderer from '@/components/report-cards/renderers/RCHeatmapRenderer'
 import RCBarChartRenderer from '@/components/report-cards/renderers/RCBarChartRenderer'
 import RCDonutChartRenderer from '@/components/report-cards/renderers/RCDonutChartRenderer'
+import RCStatlineRenderer from '@/components/report-cards/renderers/RCStatlineRenderer'
 
 // ── Ticker Renderer ──────────────────────────────────────────────────────────
 
@@ -367,6 +368,8 @@ export default function renderElementContent(el: SceneElement) {
       return <RCBarChartRenderer props={el.props} width={el.width} height={el.height} />
     case 'rc-donut-chart':
       return <RCDonutChartRenderer props={el.props} width={el.width} height={el.height} />
+    case 'rc-statline':
+      return <RCStatlineRenderer props={el.props} width={el.width} height={el.height} />
     default:
       return <div className="w-full h-full bg-zinc-800/50 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 text-xs">Unknown</div>
   }

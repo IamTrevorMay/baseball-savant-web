@@ -134,6 +134,14 @@ export function populateReportCard(scene: Scene, data: StarterCardData, title?: 
         return { ...el, props: { ...el.props, usageData } }
       }
 
+      case 'rc-statline': {
+        const gl = data.game_line
+        return { ...el, props: { ...el.props, statline: {
+          ip: gl.ip, h: gl.h, r: gl.r ?? 0, k: gl.k, bb: gl.bb,
+          decision: gl.decision ?? 'ND', era: gl.era ?? '--',
+        }}}
+      }
+
       default:
         return el
     }

@@ -8,6 +8,7 @@ export const RC_ELEMENT_CATALOG: { type: ElementType; name: string; desc: string
   { type: 'rc-movement-plot', name: 'Movement Plot', desc: 'HB vs IVB scatter', icon: '◈' },
   { type: 'rc-bar-chart', name: 'Bar Chart', desc: 'Metric by pitch type', icon: '▬' },
   { type: 'rc-donut-chart', name: 'Donut Chart', desc: 'Pitch usage breakdown', icon: '◔' },
+  { type: 'rc-statline', name: 'Statline', desc: 'IP H R SO BB W/L ERA', icon: '═' },
 ]
 
 export const RC_LAYOUT_CATALOG: { type: ElementType; name: string; desc: string; icon: string }[] = [
@@ -108,6 +109,8 @@ export function defaultReportCardBinding(type: ReportCardObjectType): ReportCard
     case 'rc-bar-chart':
       return { objectType: type, metric: 'avg_velo', format: '1f', dataSource: 'starter-card' }
     case 'rc-donut-chart':
+      return { objectType: type, dataSource: 'starter-card' }
+    case 'rc-statline':
       return { objectType: type, dataSource: 'starter-card' }
   }
 }

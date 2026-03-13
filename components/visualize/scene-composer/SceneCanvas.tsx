@@ -520,7 +520,9 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
             zIndex: el.zIndex,
             outline: selected
               ? `2px solid ${isPrimary ? '#06b6d4' : '#06b6d480'}`
-              : highlightedIds?.has(el.id) ? '2px solid #10b981' : undefined,
+              : highlightedIds?.has(el.id)
+                ? '2px solid #10b981'
+                : '1px solid rgba(255,255,255,0.12)',
             outlineOffset: 2,
           }
 

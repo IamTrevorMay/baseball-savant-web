@@ -42,6 +42,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
   const colorHigh = p.colorHigh || '#ef4444'
   const showZone = p.showZone !== false
   const bgColor = p.bgColor || '#09090b'
+  const title = p.title || ''
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -54,19 +55,31 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
     canvas.height = height * dpr
     ctx.scale(dpr, dpr)
 
+    let titleOffset = 0
+    if (title) {
+      titleOffset = 24
+    }
     const pad = 25
     const plotW = width - pad * 2
-    const plotH = height - pad * 2
+    const plotH = height - pad * 2 - titleOffset
 
     function toX(plateX: number): number {
       return pad + ((plateX - VIEW_X_MIN) / (VIEW_X_MAX - VIEW_X_MIN)) * plotW
     }
     function toY(plateZ: number): number {
-      return pad + ((VIEW_Z_MAX - plateZ) / (VIEW_Z_MAX - VIEW_Z_MIN)) * plotH
+      return pad + titleOffset + ((VIEW_Z_MAX - plateZ) / (VIEW_Z_MAX - VIEW_Z_MIN)) * plotH
     }
 
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, width, height)
+
+    if (title) {
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = '600 12px Inter, system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(title, width / 2, 6)
+    }
 
     // Bin the pitches
     const bins: number[][] = Array.from({ length: binsY }, () => Array(binsX).fill(0))
@@ -91,7 +104,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
         const t = maxCount > 0 ? count / maxCount : 0
         ctx.fillStyle = interpolateColor(colorLow, colorHigh, t)
         ctx.globalAlpha = Math.max(0.3, t)
-        ctx.fillRect(pad + col * cellW, pad + row * cellH, cellW, cellH)
+        ctx.fillRect(pad + col * cellW, pad + titleOffset + row * cellH, cellW, cellH)
 
         // Count label
         if (count > 0) {
@@ -100,7 +113,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
           ctx.font = '11px Inter, system-ui, sans-serif'
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
-          ctx.fillText(String(count), pad + col * cellW + cellW / 2, pad + row * cellH + cellH / 2)
+          ctx.fillText(String(count), pad + col * cellW + cellW / 2, pad + titleOffset + row * cellH + cellH / 2)
         }
       }
     }
@@ -117,7 +130,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
       ctx.lineWidth = 2
       ctx.strokeRect(zx1, zy1, zx2 - zx1, zy2 - zy1)
     }
-  }, [locations, width, height, binsX, binsY, colorLow, colorHigh, showZone, bgColor])
+  }, [locations, width, height, binsX, binsY, colorLow, colorHigh, showZone, bgColor, title])
 
   return (
     <canvas

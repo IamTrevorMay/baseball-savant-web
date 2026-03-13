@@ -22,6 +22,7 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
   const showValues = p.showValues !== false
   const fontSize = p.fontSize || 12
   const bgColor = p.bgColor || '#09090b'
+  const title = p.title || ''
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -37,6 +38,17 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, width, height)
 
+    // Title
+    let titleOffset = 0
+    if (title) {
+      titleOffset = 28
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = `600 ${Math.max(10, fontSize)}px Inter, system-ui, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(title, width / 2, 8)
+    }
+
     if (barData.length === 0) {
       ctx.fillStyle = '#52525b'
       ctx.font = '12px Inter, system-ui, sans-serif'
@@ -47,7 +59,7 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
     }
 
     const maxVal = Math.max(...barData.map(d => d.value), 1)
-    const pad = { top: 15, right: 15, bottom: 15, left: 80 }
+    const pad = { top: 15 + titleOffset, right: 15, bottom: 15, left: 80 }
     const plotW = width - pad.left - pad.right
     const plotH = height - pad.top - pad.bottom
 
@@ -137,7 +149,7 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
         }
       }
     }
-  }, [barData, width, height, orientation, showValues, fontSize, bgColor])
+  }, [barData, width, height, orientation, showValues, fontSize, bgColor, title])
 
   return (
     <canvas

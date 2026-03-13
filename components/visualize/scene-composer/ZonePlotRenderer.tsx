@@ -37,6 +37,7 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
   const showKey = p.showKey !== false
   const zoneColor = p.zoneColor || '#52525b'
   const zoneLineWidth = p.zoneLineWidth || 2
+  const title = p.title || ''
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -49,11 +50,16 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
     canvas.height = height * dpr
     ctx.scale(dpr, dpr)
 
+    let titleOffset = 0
+    if (title) {
+      titleOffset = 24
+    }
+
     // Padding for key at bottom
     const keyHeight = showKey ? 50 : 0
-    const plotH = height - keyHeight
+    const plotH = height - keyHeight - titleOffset
     const padX = 30
-    const padY = 20
+    const padY = 20 + titleOffset
     const plotW = width - padX * 2
     const plotArea = plotH - padY * 2
 
@@ -69,6 +75,15 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
     // Background
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, width, height)
+
+    // Title
+    if (title) {
+      ctx.fillStyle = '#a1a1aa'
+      ctx.font = '600 12px Inter, system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      ctx.fillText(title, width / 2, 6)
+    }
 
     // Strike zone
     if (showZone) {
@@ -162,7 +177,7 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
         ctx.fillText(type, ex + 15, ey)
       }
     }
-  }, [pitches, width, height, showZone, dotSize, dotOpacity, bgColor, showKey, zoneColor, zoneLineWidth])
+  }, [pitches, width, height, showZone, dotSize, dotOpacity, bgColor, showKey, zoneColor, zoneLineWidth, title])
 
   return (
     <canvas

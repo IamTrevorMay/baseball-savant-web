@@ -18,11 +18,14 @@ interface Props {
   onAddElement: (type: ElementType) => void
   onLoadTemplate?: (t: Template) => void
   activeTemplateId?: string | null
+  onRenameTemplate?: (id: string, newName: string) => void
 }
 
-export default function RCElementCatalog({ onAddElement, onLoadTemplate, activeTemplateId }: Props) {
+export default function RCElementCatalog({ onAddElement, onLoadTemplate, activeTemplateId, onRenameTemplate }: Props) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
 
   useEffect(() => {
     fetch('/api/report-card-templates')
@@ -40,6 +43,21 @@ export default function RCElementCatalog({ onAddElement, onLoadTemplate, activeT
       .then(d => setTemplates(d.templates || []))
       .catch(() => {})
   }, [activeTemplateId])
+
+  const handleRenameSubmit = async (id: string) => {
+    const trimmed = renameValue.trim()
+    if (!trimmed) { setRenamingId(null); return }
+    try {
+      await fetch(`/api/report-card-templates/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      setTemplates(prev => prev.map(t => t.id === id ? { ...t, name: trimmed } : t))
+      onRenameTemplate?.(id, trimmed)
+    } catch { /* ignore */ }
+    setRenamingId(null)
+  }
 
   return (
     <div className="w-56 shrink-0 bg-zinc-900 border-r border-zinc-800 overflow-y-auto flex flex-col">
@@ -139,7 +157,31 @@ export default function RCElementCatalog({ onAddElement, onLoadTemplate, activeT
                 </div>
                 {/* Name */}
                 <div className="px-2 py-1.5">
-                  <div className="text-[11px] font-medium text-zinc-300 truncate">{t.name}</div>
+                  {renamingId === t.id ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onBlur={() => handleRenameSubmit(t.id)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleRenameSubmit(t.id)
+                        if (e.key === 'Escape') setRenamingId(null)
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      className="w-full text-[11px] font-medium text-zinc-200 bg-zinc-800 border border-cyan-500/50 rounded px-1 py-0.5 outline-none"
+                    />
+                  ) : (
+                    <div
+                      className="text-[11px] font-medium text-zinc-300 truncate cursor-text"
+                      onDoubleClick={e => {
+                        e.stopPropagation()
+                        setRenamingId(t.id)
+                        setRenameValue(t.name)
+                      }}
+                    >
+                      {t.name}
+                    </div>
+                  )}
                   <div className="text-[9px] text-zinc-600">{t.width}×{t.height}</div>
                 </div>
               </button>

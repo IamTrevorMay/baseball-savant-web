@@ -317,6 +317,19 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
             </>
           )}
 
+          {/* Title — for chart types + statline */}
+          {['rc-bar-chart', 'rc-table', 'rc-heatmap', 'rc-donut-chart', 'rc-zone-plot', 'rc-statline'].includes(element.type) && (
+            <LabeledInput label="Title">
+              <input
+                type="text"
+                value={element.props.title || ''}
+                onChange={e => updateProp('title', e.target.value)}
+                placeholder="Optional title"
+                className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-200 focus:outline-none focus:border-cyan-500/50"
+              />
+            </LabeledInput>
+          )}
+
           {/* Movement Plot */}
           {element.type === 'rc-movement-plot' && (
             <>
