@@ -8,6 +8,7 @@ import { injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
 import { generateSlideshowTransitionCSS } from '@/lib/slideshowTransitions'
 import { useBroadcast } from './BroadcastContext'
 import { toMediaUrl } from '@/lib/localMedia'
+import WidgetCanvasPreview from './WidgetCanvasPreview'
 
 export function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   const p = el.props
@@ -154,6 +155,10 @@ export function SlideshowPreview({ asset, isVisible }: { asset: BroadcastAsset; 
 export default function AssetPreview({ asset, isVisible }: { asset: BroadcastAsset; isVisible: boolean }) {
   const assetOpacity = asset.opacity ?? 1
   const dimmedOpacity = isVisible ? assetOpacity : assetOpacity * 0.3
+
+  if (asset.asset_type === 'widget') {
+    return <WidgetCanvasPreview asset={asset} isVisible={isVisible} />
+  }
 
   if (asset.asset_type === 'slideshow') {
     return <SlideshowPreview asset={asset} isVisible={isVisible} />

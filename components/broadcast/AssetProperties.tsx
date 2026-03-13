@@ -7,6 +7,7 @@ import { BroadcastSegment, BroadcastSegmentAsset, TransitionConfig } from '@/lib
 import TemplateDataPanel from './TemplateDataPanel'
 import SlideshowEditor from './SlideshowEditor'
 import Link from 'next/link'
+import WidgetControlPanel from './widgets/WidgetControlPanel'
 
 // ── Segment Properties Panel ────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ function SegmentProperties() {
   }
 
   return (
-    <div className="w-72 bg-zinc-900 border-l border-zinc-800 flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto">
       <div className="px-4 py-3 border-b border-zinc-800">
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Segment Properties</h3>
         <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{segment.name}</p>
@@ -224,7 +225,7 @@ function AssetPropertiesPanel() {
 
   if (!asset) {
     return (
-      <div className="w-72 bg-zinc-900 border-l border-zinc-800 flex items-center justify-center">
+      <div className="flex items-center justify-center h-full">
         <p className="text-xs text-zinc-600">Select an asset to edit properties</p>
       </div>
     )
@@ -257,7 +258,7 @@ function AssetPropertiesPanel() {
   const exitTransitions = getTransitions('exit')
 
   return (
-    <div className="w-72 bg-zinc-900 border-l border-zinc-800 flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto">
       <div className="px-4 py-3 border-b border-zinc-800">
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Properties</h3>
         <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{asset.name}</p>
@@ -463,15 +464,47 @@ function AssetPropertiesPanel() {
   )
 }
 
-// ── Main export — switches between asset and segment properties ─────────────
+// ── Main export — switches between asset/segment properties and widgets ──────
 
 export default function AssetProperties() {
-  const { selectedAssetId, selectedSegmentId } = useBroadcast()
+  const { selectedAssetId, selectedSegmentId, widgetPanelMode, setWidgetPanelMode } = useBroadcast()
 
-  // Show segment properties if a segment header is selected
-  if (selectedSegmentId && !selectedAssetId) {
-    return <SegmentProperties />
-  }
+  return (
+    <div className="w-72 bg-zinc-900 border-l border-zinc-800 flex flex-col h-full">
+      {/* Tab toggle */}
+      <div className="flex border-b border-zinc-800 shrink-0">
+        <button
+          onClick={() => setWidgetPanelMode('properties')}
+          className={`flex-1 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition ${
+            widgetPanelMode === 'properties'
+              ? 'text-red-400 border-b-2 border-red-400 bg-red-500/5'
+              : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          Properties
+        </button>
+        <button
+          onClick={() => setWidgetPanelMode('widgets')}
+          className={`flex-1 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition ${
+            widgetPanelMode === 'widgets'
+              ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+              : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          Widgets
+        </button>
+      </div>
 
-  return <AssetPropertiesPanel />
+      {/* Panel content */}
+      <div className="flex-1 overflow-hidden">
+        {widgetPanelMode === 'widgets' ? (
+          <WidgetControlPanel />
+        ) : selectedSegmentId && !selectedAssetId ? (
+          <SegmentProperties />
+        ) : (
+          <AssetPropertiesPanel />
+        )}
+      </div>
+    </div>
+  )
 }

@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
 import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig, OBSConnectionConfig } from '@/lib/broadcastTypes'
+import { WidgetState, DEFAULT_WIDGET_STATE, ChatMessage, Topic, LowerThirdMessage, Notification } from '@/lib/widgetTypes'
+import { useChatConnection } from '@/lib/useChatConnection'
 import { createClient } from '@supabase/supabase-js'
 import { useOBSWebSocket, OBSState } from '@/lib/useOBSWebSocket'
 
@@ -69,6 +71,29 @@ interface BroadcastContextValue {
   updateSegmentAsset: (id: string, updates: Partial<BroadcastSegmentAsset>) => void
   removeSegmentAsset: (id: string) => void
   reloadSegmentAssets: () => Promise<void>
+
+  // Widget state
+  widgetState: WidgetState
+  updateWidgetState: (updates: Partial<WidgetState>) => void
+  widgetPanelMode: 'properties' | 'widgets'
+  setWidgetPanelMode: (mode: 'properties' | 'widgets') => void
+
+  // Topic actions
+  setTopics: (topics: Topic[]) => void
+  goToTopic: (index: number) => void
+  nextTopic: () => void
+  prevTopic: () => void
+  setTopicVariant: (topicId: string, variant: 'default' | 'breakingNews') => void
+
+  // Countdown actions
+  setCountdownTotal: (seconds: number) => void
+  startCountdown: () => void
+  stopCountdown: () => void
+  resetCountdown: () => void
+
+  // Lower third actions
+  highlightChatMessage: (msg: ChatMessage) => void
+  clearLowerThird: () => void
 }
 
 const BroadcastCtx = createContext<BroadcastContextValue | null>(null)
@@ -99,6 +124,11 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
   const [switchingSegment, setSwitchingSegment] = useState(false)
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null)
+
+  // Widget state
+  const [widgetState, setWidgetState] = useState<WidgetState>(DEFAULT_WIDGET_STATE)
+  const [widgetPanelMode, setWidgetPanelMode] = useState<'properties' | 'widgets'>('properties')
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // ── OBS WebSocket integration ──────────────────────────────────────────
   const obs = useOBSWebSocket({
@@ -213,6 +243,35 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
             map.set(sa.scene_id, list)
           }
           setSegmentAssets(map)
+        }
+
+        // Load widget state
+        try {
+          const wsRes = await fetch(`/api/broadcast/widget-state?project_id=${projectId}`)
+          const wsData = await wsRes.json()
+          if (wsData.state) {
+            setWidgetState(prev => ({
+              ...prev,
+              topics: wsData.state.topics || [],
+              activeTopicIndex: wsData.state.active_topic_index ?? -1,
+              countdown: {
+                running: wsData.state.countdown_running || false,
+                remaining: wsData.state.countdown_remaining || 0,
+                total: wsData.state.countdown_total || 0,
+                startedAt: wsData.state.countdown_started_at || null,
+              },
+              lowerThird: wsData.state.lower_third_message || null,
+              lowerThirdVisible: wsData.state.lower_third_visible || false,
+              notifications: wsData.state.notification_feed || [],
+              usernameStack: wsData.state.username_stack || [],
+              panelOrder: wsData.state.panel_order || DEFAULT_WIDGET_STATE.panelOrder,
+              twitchChannel: wsData.state.twitch_channel || '',
+              youtubeVideoId: wsData.state.youtube_video_id || '',
+              chatConnected: wsData.state.chat_connected || false,
+            }))
+          }
+        } catch (err) {
+          console.error('Failed to load widget state:', err)
         }
       } catch (err) {
         console.error('Failed to load broadcast project:', err)
@@ -622,6 +681,286 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   // Keep ref in sync for OBS callback
   handleAdEndedRef.current = handleAdEnded
 
+  // ── Widget Actions ────────────────────────────────────────────────────
+
+  const updateWidgetState = useCallback((updates: Partial<WidgetState>) => {
+    setWidgetState(prev => ({ ...prev, ...updates }))
+    // Persist relevant fields to DB
+    const dbUpdates: Record<string, any> = {}
+    if ('topics' in updates) dbUpdates.topics = updates.topics
+    if ('activeTopicIndex' in updates) dbUpdates.active_topic_index = updates.activeTopicIndex
+    if ('notifications' in updates) dbUpdates.notification_feed = updates.notifications
+    if ('usernameStack' in updates) dbUpdates.username_stack = updates.usernameStack
+    if ('panelOrder' in updates) dbUpdates.panel_order = updates.panelOrder
+    if ('twitchChannel' in updates) dbUpdates.twitch_channel = updates.twitchChannel
+    if ('youtubeVideoId' in updates) dbUpdates.youtube_video_id = updates.youtubeVideoId
+    if ('chatConnected' in updates) dbUpdates.chat_connected = updates.chatConnected
+    if ('lowerThird' in updates) dbUpdates.lower_third_message = updates.lowerThird
+    if ('lowerThirdVisible' in updates) dbUpdates.lower_third_visible = updates.lowerThirdVisible
+    if (Object.keys(dbUpdates).length > 0) {
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, ...dbUpdates }),
+      }).catch(console.error)
+    }
+  }, [projectId])
+
+  // Topic actions
+  const setTopics = useCallback((topics: Topic[]) => {
+    updateWidgetState({ topics })
+    sendEvent('widget:topic-change', { topics, activeTopicIndex: widgetState.activeTopicIndex })
+  }, [updateWidgetState, sendEvent, widgetState.activeTopicIndex])
+
+  const goToTopic = useCallback((index: number) => {
+    setWidgetState(prev => {
+      const newState = { ...prev, activeTopicIndex: index }
+      sendEvent('widget:topic-change', { topics: prev.topics, activeTopicIndex: index })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, active_topic_index: index }),
+      }).catch(console.error)
+      return newState
+    })
+  }, [sendEvent, projectId])
+
+  const nextTopic = useCallback(() => {
+    setWidgetState(prev => {
+      const next = Math.min(prev.activeTopicIndex + 1, prev.topics.length - 1)
+      sendEvent('widget:topic-change', { topics: prev.topics, activeTopicIndex: next })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, active_topic_index: next }),
+      }).catch(console.error)
+      return { ...prev, activeTopicIndex: next }
+    })
+  }, [sendEvent, projectId])
+
+  const prevTopic = useCallback(() => {
+    setWidgetState(prev => {
+      const next = Math.max(prev.activeTopicIndex - 1, -1)
+      sendEvent('widget:topic-change', { topics: prev.topics, activeTopicIndex: next })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, active_topic_index: next }),
+      }).catch(console.error)
+      return { ...prev, activeTopicIndex: next }
+    })
+  }, [sendEvent, projectId])
+
+  const setTopicVariant = useCallback((topicId: string, variant: 'default' | 'breakingNews') => {
+    setWidgetState(prev => {
+      const newTopics = prev.topics.map(t => t.id === topicId ? { ...t, variant } : t)
+      sendEvent('widget:topic-change', { topics: newTopics, activeTopicIndex: prev.activeTopicIndex })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, topics: newTopics }),
+      }).catch(console.error)
+      return { ...prev, topics: newTopics }
+    })
+  }, [sendEvent, projectId])
+
+  // Countdown actions
+  const setCountdownTotal = useCallback((seconds: number) => {
+    setWidgetState(prev => {
+      const newCountdown = { ...prev.countdown, total: seconds, remaining: seconds }
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, countdown_total: seconds, countdown_remaining: seconds }),
+      }).catch(console.error)
+      return { ...prev, countdown: newCountdown }
+    })
+  }, [projectId])
+
+  const startCountdown = useCallback(() => {
+    const startedAt = new Date().toISOString()
+    setWidgetState(prev => {
+      const remaining = prev.countdown.remaining > 0 ? prev.countdown.remaining : prev.countdown.total
+      const newCountdown = { ...prev.countdown, running: true, remaining, startedAt }
+      sendEvent('widget:countdown-sync', { running: true, remaining, total: prev.countdown.total, startedAt })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, countdown_running: true, countdown_remaining: remaining, countdown_started_at: startedAt }),
+      }).catch(console.error)
+      return { ...prev, countdown: newCountdown }
+    })
+  }, [sendEvent, projectId])
+
+  const stopCountdown = useCallback(() => {
+    setWidgetState(prev => {
+      const newCountdown = { ...prev.countdown, running: false, startedAt: null }
+      sendEvent('widget:countdown-sync', { running: false, remaining: prev.countdown.remaining, total: prev.countdown.total })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, countdown_running: false, countdown_started_at: null, countdown_remaining: prev.countdown.remaining }),
+      }).catch(console.error)
+      return { ...prev, countdown: newCountdown }
+    })
+  }, [sendEvent, projectId])
+
+  const resetCountdown = useCallback(() => {
+    setWidgetState(prev => {
+      const newCountdown = { running: false, remaining: prev.countdown.total, total: prev.countdown.total, startedAt: null }
+      sendEvent('widget:countdown-sync', { running: false, remaining: prev.countdown.total, total: prev.countdown.total })
+      fetch('/api/broadcast/widget-state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, countdown_running: false, countdown_remaining: prev.countdown.total, countdown_started_at: null }),
+      }).catch(console.error)
+      return { ...prev, countdown: newCountdown }
+    })
+  }, [sendEvent, projectId])
+
+  // Countdown tick
+  useEffect(() => {
+    if (widgetState.countdown.running) {
+      countdownIntervalRef.current = setInterval(() => {
+        setWidgetState(prev => {
+          if (!prev.countdown.running || prev.countdown.remaining <= 0) {
+            if (prev.countdown.remaining <= 0 && prev.countdown.running) {
+              sendEvent('widget:countdown-sync', { running: false, remaining: 0, total: prev.countdown.total })
+              fetch('/api/broadcast/widget-state', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_id: projectId, countdown_running: false, countdown_remaining: 0, countdown_started_at: null }),
+              }).catch(console.error)
+              return { ...prev, countdown: { ...prev.countdown, running: false, remaining: 0, startedAt: null } }
+            }
+            return prev
+          }
+          const newRemaining = prev.countdown.remaining - 1
+          // Sync every 5 seconds to keep overlay in sync without flooding
+          if (newRemaining % 5 === 0) {
+            sendEvent('widget:countdown-sync', { running: true, remaining: newRemaining, total: prev.countdown.total, startedAt: prev.countdown.startedAt })
+          }
+          return { ...prev, countdown: { ...prev.countdown, remaining: newRemaining } }
+        })
+      }, 1000)
+    } else {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current)
+        countdownIntervalRef.current = null
+      }
+    }
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current)
+        countdownIntervalRef.current = null
+      }
+    }
+  }, [widgetState.countdown.running, sendEvent, projectId])
+
+  // Lower third actions
+  const highlightChatMessage = useCallback((msg: ChatMessage) => {
+    const lt: LowerThirdMessage = {
+      displayName: msg.displayName,
+      content: msg.content,
+      provider: msg.provider,
+      color: msg.color,
+      expiresAt: Date.now() + 14000,
+    }
+    setWidgetState(prev => ({ ...prev, lowerThird: lt, lowerThirdVisible: true }))
+    sendEvent('widget:lowerthird-show', lt)
+    fetch('/api/broadcast/widget-state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, lower_third_message: lt, lower_third_visible: true }),
+    }).catch(console.error)
+    // Auto-clear after 14s
+    setTimeout(() => {
+      setWidgetState(prev => {
+        if (prev.lowerThird?.expiresAt === lt.expiresAt) {
+          sendEvent('widget:lowerthird-hide', {})
+          fetch('/api/broadcast/widget-state', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId, lower_third_visible: false, lower_third_message: null }),
+          }).catch(console.error)
+          return { ...prev, lowerThird: null, lowerThirdVisible: false }
+        }
+        return prev
+      })
+    }, 14000)
+  }, [sendEvent, projectId])
+
+  const clearLowerThird = useCallback(() => {
+    setWidgetState(prev => ({ ...prev, lowerThird: null, lowerThirdVisible: false }))
+    sendEvent('widget:lowerthird-hide', {})
+    fetch('/api/broadcast/widget-state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, lower_third_visible: false, lower_third_message: null }),
+    }).catch(console.error)
+  }, [sendEvent, projectId])
+
+  // Chat connection handlers
+  const handleChatMessage = useCallback((msg: ChatMessage) => {
+    setWidgetState(prev => ({
+      ...prev,
+      chatMessages: [...prev.chatMessages.slice(-499), msg],
+    }))
+    sendEvent('widget:chat-message', msg)
+  }, [sendEvent])
+
+  const handleChatBatch = useCallback((msgs: ChatMessage[]) => {
+    setWidgetState(prev => ({
+      ...prev,
+      chatMessages: [...prev.chatMessages, ...msgs].slice(-500),
+    }))
+    sendEvent('widget:chat-batch', { messages: msgs })
+  }, [sendEvent])
+
+  const handleChatNotification = useCallback((notif: Notification) => {
+    setWidgetState(prev => ({
+      ...prev,
+      notifications: [...prev.notifications, notif],
+    }))
+    sendEvent('widget:notification', notif)
+    fetch('/api/broadcast/widget-state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, notification_feed: [...widgetState.notifications, notif] }),
+    }).catch(console.error)
+  }, [sendEvent, projectId, widgetState.notifications])
+
+  const handleUsernameStackUpdate = useCallback((name: string) => {
+    setWidgetState(prev => {
+      const stack = prev.usernameStack.filter(n => n !== name)
+      stack.push(name)
+      const trimmed = stack.slice(-50)
+      sendEvent('widget:username-stack', { stack: trimmed })
+      return { ...prev, usernameStack: trimmed }
+    })
+  }, [sendEvent])
+
+  useChatConnection({
+    twitchChannel: widgetState.twitchChannel,
+    youtubeVideoId: widgetState.youtubeVideoId,
+    connected: widgetState.chatConnected && !!session,
+    onMessage: handleChatMessage,
+    onBatch: handleChatBatch,
+    onNotification: handleChatNotification,
+    onUsernameStackUpdate: handleUsernameStackUpdate,
+  })
+
+  // Auto-switch to widgets panel when widget asset selected
+  const wrappedSetSelectedAssetId = useCallback((id: string | null) => {
+    setSelectedAssetId(id)
+    if (id) {
+      const asset = assets.find(a => a.id === id)
+      if (asset?.asset_type === 'widget') {
+        setWidgetPanelMode('widgets')
+      }
+    }
+  }, [assets])
+
   const setVideoTimeInfo = useCallback((assetId: string, remaining: number, duration: number) => {
     setVideoTimeRemaining(prev => {
       const next = new Map(prev)
@@ -753,7 +1092,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       project, assets, session, visibleAssetIds, animatingAssets, selectedAssetId, previewingAssetId, loading,
       slideshowSlideIndexes, videoTimeRemaining,
       segments, segmentAssets, activeSegmentId, switchingSegment, selectedSegmentId,
-      setProject, setAssets, setSelectedAssetId, addAsset, updateAsset, removeAsset,
+      setProject, setAssets, setSelectedAssetId: wrappedSetSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,
       slideshowGoto, slideshowNext, slideshowPrev, getSlideshowIndex,
       updateProjectSettings,
@@ -761,6 +1100,10 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       obsState: obs.state, obsConnect, obsDisconnect, obsSetupScene, obsCleanup, isOBSConnected: obs.isConnected,
       setSegments, setSelectedSegmentId, addSegment, updateSegment, removeSegment, switchSegment,
       addSegmentAsset, updateSegmentAsset, removeSegmentAsset, reloadSegmentAssets,
+      widgetState, updateWidgetState, widgetPanelMode, setWidgetPanelMode,
+      setTopics, goToTopic, nextTopic, prevTopic, setTopicVariant,
+      setCountdownTotal, startCountdown, stopCountdown, resetCountdown,
+      highlightChatMessage, clearLowerThird,
     }}>
       {children}
     </BroadcastCtx.Provider>

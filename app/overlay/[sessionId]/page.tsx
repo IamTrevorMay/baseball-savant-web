@@ -5,7 +5,23 @@ import { useOverlaySession } from '@/lib/useOverlaySession'
 import OverlayAssetRenderer from '@/components/overlay/OverlayAssetRenderer'
 
 function OverlayInner({ sessionId }: { sessionId: string }) {
-  const { session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error, hideAsset, notifyAdEnded, segmentOverrides, obsActive } = useOverlaySession(sessionId)
+  const {
+    session, assets, visibleAssetIds, animatingAssets, slideshowIndexes, connected, error,
+    hideAsset, notifyAdEnded, segmentOverrides, obsActive,
+    widgetChatMessages, widgetTopics, widgetActiveTopicIndex, widgetCountdown,
+    widgetLowerThird, widgetLowerThirdVisible, widgetNotifications, widgetUsernameStack,
+  } = useOverlaySession(sessionId)
+
+  const widgetState = {
+    chatMessages: widgetChatMessages,
+    topics: widgetTopics,
+    activeTopicIndex: widgetActiveTopicIndex,
+    countdown: widgetCountdown,
+    lowerThird: widgetLowerThird,
+    lowerThirdVisible: widgetLowerThirdVisible,
+    notifications: widgetNotifications,
+    usernameStack: widgetUsernameStack,
+  }
 
   if (error) {
     return (
@@ -52,6 +68,7 @@ function OverlayInner({ sessionId }: { sessionId: string }) {
             onVideoEnded={asset.asset_type === 'advertisement' ? () => { hideAsset(asset.id); notifyAdEnded(asset.id) } : undefined}
             overrides={segmentOverrides[asset.id]}
             obsActive={obsActive}
+            widgetState={widgetState}
           />
         ))}
 

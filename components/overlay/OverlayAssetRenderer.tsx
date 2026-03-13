@@ -7,6 +7,8 @@ import renderElementContent from '@/components/visualize/scene-composer/ElementR
 import { generateCSSAnimation, injectKeyframes, removeKeyframes } from '@/lib/overlayAnimationEngine'
 import { generateSlideshowTransitionCSS } from '@/lib/slideshowTransitions'
 import { toMediaUrl } from '@/lib/localMedia'
+import WidgetOverlayRenderer from './WidgetOverlayRenderer'
+import type { ChatMessage, Topic, CountdownState, LowerThirdMessage, Notification } from '@/lib/widgetTypes'
 
 function computeWrapperStyle(el: SceneElement): React.CSSProperties {
   const p = el.props
@@ -124,6 +126,17 @@ interface AssetOverrides {
   opacity?: number
 }
 
+interface WidgetOverlayState {
+  chatMessages: ChatMessage[]
+  topics: Topic[]
+  activeTopicIndex: number
+  countdown: CountdownState
+  lowerThird: LowerThirdMessage | null
+  lowerThirdVisible: boolean
+  notifications: Notification[]
+  usernameStack: string[]
+}
+
 interface Props {
   asset: BroadcastAsset
   animationPhase: 'entering' | 'exiting' | null
@@ -132,9 +145,10 @@ interface Props {
   onVideoEnded?: () => void
   overrides?: AssetOverrides
   obsActive?: boolean
+  widgetState?: WidgetOverlayState
 }
 
-export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded, overrides, obsActive }: Props) {
+export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, slideshowIndex = 0, onVideoEnded, overrides, obsActive, widgetState }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const styleRef = useRef<HTMLStyleElement | null>(null)
 
@@ -177,6 +191,21 @@ export default function OverlayAssetRenderer({ asset, animationPhase, fps = 30, 
   const effectiveH = overrides?.height ?? asset.canvas_height
   const effectiveLayer = overrides?.layer ?? asset.layer
   const assetOpacity = overrides?.opacity ?? asset.opacity ?? 1
+
+  if (asset.asset_type === 'widget' && asset.widget_config && widgetState) {
+    return (
+      <WidgetOverlayRenderer
+        asset={asset}
+        widgetState={widgetState}
+        effectiveX={effectiveX}
+        effectiveY={effectiveY}
+        effectiveW={effectiveW}
+        effectiveH={effectiveH}
+        effectiveLayer={effectiveLayer}
+        assetOpacity={assetOpacity}
+      />
+    )
+  }
 
   if (asset.asset_type === 'slideshow') {
     return (

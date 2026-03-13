@@ -1,4 +1,5 @@
 import { SceneElement } from './sceneTypes'
+import { WidgetConfig } from './widgetTypes'
 
 // ── OBS WebSocket ──────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ export interface BroadcastProject {
 
 // ── Broadcast Asset ─────────────────────────────────────────────────────────
 
-export type BroadcastAssetType = 'scene' | 'image' | 'video' | 'slideshow' | 'advertisement'
+export type BroadcastAssetType = 'scene' | 'image' | 'video' | 'slideshow' | 'advertisement' | 'widget'
 
 export interface AdConfig {
   volume: number
@@ -112,6 +113,7 @@ export interface BroadcastAsset {
   template_data?: TemplateDataValues
   slideshow_config?: SlideshowConfig
   ad_config?: AdConfig
+  widget_config?: WidgetConfig
   canvas_x: number
   canvas_y: number
   canvas_width: number
@@ -190,6 +192,15 @@ export type BroadcastEventType =
   | 'session:sync'
   | 'segment:switch'
   | 'obs:status'
+  | 'widget:chat-message'
+  | 'widget:chat-batch'
+  | 'widget:topic-change'
+  | 'widget:countdown-sync'
+  | 'widget:lowerthird-show'
+  | 'widget:lowerthird-hide'
+  | 'widget:notification'
+  | 'widget:username-stack'
+  | 'widget:state-sync'
 
 export interface BroadcastEvent {
   event: BroadcastEventType

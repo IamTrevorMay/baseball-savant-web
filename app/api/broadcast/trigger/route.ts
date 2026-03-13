@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { BroadcastSession } from '@/lib/broadcastTypes'
 
-const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev'] as const
+const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'lowerthird_clear'] as const
 type TriggerAction = typeof VALID_ACTIONS[number]
 
 export async function GET(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const aid = req.nextUrl.searchParams.get('aid')
     const action = req.nextUrl.searchParams.get('action') as TriggerAction | null
 
-    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev']
+    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'lowerthird_clear']
     if (!sid || !action) {
       return NextResponse.json({ error: 'sid and action are required' }, { status: 400 })
     }
@@ -46,6 +46,65 @@ export async function GET(req: NextRequest) {
     let eventPayload: Record<string, any>
     let resultVisible: boolean | undefined
     let resultIndex: number | undefined
+
+    // ── Widget actions ─────────────────────────────────────────────────────
+    if (action === 'topic_next' || action === 'topic_prev' || action === 'countdown_start' || action === 'countdown_stop' || action === 'lowerthird_clear') {
+      const { data: ws } = await supabaseAdmin
+        .from('broadcast_widget_state')
+        .select('*')
+        .eq('project_id', sess.project_id)
+        .single()
+
+      if (!ws) return NextResponse.json({ error: 'Widget state not found' }, { status: 404 })
+
+      let eventName: string
+      let eventPayload: Record<string, any> = { source: 'trigger-api' }
+      const wsUpdates: Record<string, any> = { updated_at: new Date().toISOString() }
+
+      if (action === 'topic_next' || action === 'topic_prev') {
+        const topics = ws.topics || []
+        if (topics.length === 0) return NextResponse.json({ error: 'No topics configured' }, { status: 400 })
+        const current = ws.active_topic_index ?? -1
+        const next = action === 'topic_next'
+          ? Math.min(current + 1, topics.length - 1)
+          : Math.max(current - 1, -1)
+        wsUpdates.active_topic_index = next
+        eventName = 'widget:topic-change'
+        eventPayload = { ...eventPayload, topics, activeTopicIndex: next }
+      } else if (action === 'countdown_start') {
+        wsUpdates.countdown_running = true
+        wsUpdates.countdown_started_at = new Date().toISOString()
+        if (ws.countdown_remaining <= 0) wsUpdates.countdown_remaining = ws.countdown_total
+        eventName = 'widget:countdown-sync'
+        eventPayload = { ...eventPayload, running: true, remaining: wsUpdates.countdown_remaining ?? ws.countdown_remaining, total: ws.countdown_total, startedAt: wsUpdates.countdown_started_at }
+      } else if (action === 'countdown_stop') {
+        wsUpdates.countdown_running = false
+        wsUpdates.countdown_started_at = null
+        eventName = 'widget:countdown-sync'
+        eventPayload = { ...eventPayload, running: false, remaining: ws.countdown_remaining, total: ws.countdown_total }
+      } else {
+        // lowerthird_clear
+        wsUpdates.lower_third_visible = false
+        wsUpdates.lower_third_message = null
+        eventName = 'widget:lowerthird-hide'
+      }
+
+      await supabaseAdmin
+        .from('broadcast_widget_state')
+        .update(wsUpdates)
+        .eq('project_id', sess.project_id)
+
+      const channel = supabaseAdmin.channel(sess.channel_name)
+      await channel.subscribe()
+      await channel.send({
+        type: 'broadcast',
+        event: eventName,
+        payload: { ...eventPayload, timestamp: Date.now() },
+      })
+      supabaseAdmin.removeChannel(channel)
+
+      return NextResponse.json({ ok: true, action })
+    }
 
     if (action === 'slideshow_visible_next' || action === 'slideshow_visible_prev') {
       // Find the first visible slideshow asset with 2+ slides

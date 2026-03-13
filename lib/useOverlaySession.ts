@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient, RealtimeChannel } from '@supabase/supabase-js'
 import { BroadcastAsset, BroadcastSession } from './broadcastTypes'
+import { ChatMessage, Topic, CountdownState, LowerThirdMessage, Notification } from './widgetTypes'
 
 interface OverlayState {
   session: BroadcastSession | null
@@ -15,6 +16,15 @@ interface OverlayState {
   activeSegmentId: string | null
   segmentOverrides: Record<string, Partial<{ x: number; y: number; width: number; height: number; layer: number; opacity: number }>>
   obsActive: boolean
+  // Widget state
+  widgetChatMessages: ChatMessage[]
+  widgetTopics: Topic[]
+  widgetActiveTopicIndex: number
+  widgetCountdown: CountdownState
+  widgetLowerThird: LowerThirdMessage | null
+  widgetLowerThirdVisible: boolean
+  widgetNotifications: Notification[]
+  widgetUsernameStack: string[]
 }
 
 export function useOverlaySession(sessionId: string) {
@@ -29,6 +39,14 @@ export function useOverlaySession(sessionId: string) {
     activeSegmentId: null,
     segmentOverrides: {},
     obsActive: false,
+    widgetChatMessages: [],
+    widgetTopics: [],
+    widgetActiveTopicIndex: -1,
+    widgetCountdown: { running: false, remaining: 0, total: 0, startedAt: null },
+    widgetLowerThird: null,
+    widgetLowerThirdVisible: false,
+    widgetNotifications: [],
+    widgetUsernameStack: [],
   })
 
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -201,6 +219,83 @@ export function useOverlaySession(sessionId: string) {
           .on('broadcast', { event: 'obs:status' }, (payload: any) => {
             const connected = payload.payload?.connected ?? false
             setState(prev => ({ ...prev, obsActive: connected }))
+          })
+          // Widget events
+          .on('broadcast', { event: 'widget:chat-message' }, (payload: any) => {
+            const msg = payload.payload as ChatMessage
+            if (msg?.id) {
+              setState(prev => ({
+                ...prev,
+                widgetChatMessages: [...prev.widgetChatMessages.slice(-499), msg],
+              }))
+            }
+          })
+          .on('broadcast', { event: 'widget:chat-batch' }, (payload: any) => {
+            const msgs = payload.payload?.messages as ChatMessage[] | undefined
+            if (msgs?.length) {
+              setState(prev => ({
+                ...prev,
+                widgetChatMessages: [...prev.widgetChatMessages, ...msgs].slice(-500),
+              }))
+            }
+          })
+          .on('broadcast', { event: 'widget:topic-change' }, (payload: any) => {
+            const { topics, activeTopicIndex } = payload.payload || {}
+            setState(prev => ({
+              ...prev,
+              ...(topics !== undefined && { widgetTopics: topics }),
+              ...(activeTopicIndex !== undefined && { widgetActiveTopicIndex: activeTopicIndex }),
+            }))
+          })
+          .on('broadcast', { event: 'widget:countdown-sync' }, (payload: any) => {
+            const { running, remaining, total, startedAt } = payload.payload || {}
+            setState(prev => ({
+              ...prev,
+              widgetCountdown: {
+                running: running ?? prev.widgetCountdown.running,
+                remaining: remaining ?? prev.widgetCountdown.remaining,
+                total: total ?? prev.widgetCountdown.total,
+                startedAt: startedAt !== undefined ? startedAt : prev.widgetCountdown.startedAt,
+              },
+            }))
+          })
+          .on('broadcast', { event: 'widget:lowerthird-show' }, (payload: any) => {
+            const msg = payload.payload as LowerThirdMessage
+            if (msg) {
+              setState(prev => ({ ...prev, widgetLowerThird: msg, widgetLowerThirdVisible: true }))
+            }
+          })
+          .on('broadcast', { event: 'widget:lowerthird-hide' }, () => {
+            setState(prev => ({ ...prev, widgetLowerThird: null, widgetLowerThirdVisible: false }))
+          })
+          .on('broadcast', { event: 'widget:notification' }, (payload: any) => {
+            const notif = payload.payload as Notification
+            if (notif?.id) {
+              setState(prev => ({
+                ...prev,
+                widgetNotifications: [...prev.widgetNotifications.slice(-99), notif],
+              }))
+            }
+          })
+          .on('broadcast', { event: 'widget:username-stack' }, (payload: any) => {
+            const stack = payload.payload?.stack as string[] | undefined
+            if (stack) {
+              setState(prev => ({ ...prev, widgetUsernameStack: stack }))
+            }
+          })
+          .on('broadcast', { event: 'widget:state-sync' }, (payload: any) => {
+            const p = payload.payload || {}
+            setState(prev => ({
+              ...prev,
+              ...(p.chatMessages && { widgetChatMessages: p.chatMessages }),
+              ...(p.topics && { widgetTopics: p.topics }),
+              ...(p.activeTopicIndex !== undefined && { widgetActiveTopicIndex: p.activeTopicIndex }),
+              ...(p.countdown && { widgetCountdown: p.countdown }),
+              ...(p.lowerThird !== undefined && { widgetLowerThird: p.lowerThird }),
+              ...(p.lowerThirdVisible !== undefined && { widgetLowerThirdVisible: p.lowerThirdVisible }),
+              ...(p.notifications && { widgetNotifications: p.notifications }),
+              ...(p.usernameStack && { widgetUsernameStack: p.usernameStack }),
+            }))
           })
           .subscribe((status: string) => {
             setState(prev => ({ ...prev, connected: status === 'SUBSCRIBED' }))

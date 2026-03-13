@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
         template_data: body.template_data || null,
         slideshow_config: body.slideshow_config || null,
         ad_config: body.ad_config || null,
+        widget_config: body.widget_config || null,
         canvas_x: body.canvas_x ?? 0,
         canvas_y: body.canvas_y ?? 0,
         canvas_width: body.canvas_width ?? 1920,

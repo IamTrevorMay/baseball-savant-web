@@ -7,6 +7,7 @@ import { CustomTemplateRecord } from '@/lib/sceneTypes'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
 import { getSampleData } from '@/lib/templateBindingSchemas'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
+import { WidgetType, WIDGET_DEFAULT_DIMENSIONS, WIDGET_LABELS, DEFAULT_WIDGET_CONFIGS } from '@/lib/widgetTypes'
 
 interface SavedScene {
   id: string
@@ -496,6 +497,36 @@ export default function AssetLibrary() {
   const adFileInputRef = useRef<HTMLInputElement>(null)
 
   const [adUploading, setAdUploading] = useState(false)
+  const [showWidgetPicker, setShowWidgetPicker] = useState(false)
+
+  async function createWidget(widgetType: WidgetType) {
+    if (!project) return
+    const dims = WIDGET_DEFAULT_DIMENSIONS[widgetType]
+    const config = DEFAULT_WIDGET_CONFIGS[widgetType]
+    try {
+      const assetRes = await fetch('/api/broadcast/assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: project.id,
+          name: WIDGET_LABELS[widgetType],
+          asset_type: 'widget',
+          widget_config: config,
+          canvas_width: dims.w,
+          canvas_height: dims.h,
+          sort_order: assets.length,
+        }),
+      })
+      const assetData = await assetRes.json()
+      if (assetData.asset) {
+        addAsset(assetData.asset)
+        setSelectedAssetId(assetData.asset.id)
+      }
+    } catch (err) {
+      console.error('Failed to create widget:', err)
+    }
+    setShowWidgetPicker(false)
+  }
 
   async function handleAdSelect(e: React.ChangeEvent<HTMLInputElement>) {
     if (!project || !e.target.files?.length) return
@@ -568,6 +599,7 @@ export default function AssetLibrary() {
     if (asset.asset_type === 'video') return 'V'
     if (asset.asset_type === 'advertisement') return 'A'
     if (asset.asset_type === 'slideshow') return 'P'
+    if (asset.asset_type === 'widget') return 'W'
     return 'I'
   }
 
@@ -766,6 +798,13 @@ export default function AssetLibrary() {
             }}
           >
             {asset.name}
+          </span>
+        )}
+
+        {/* Widget type badge */}
+        {asset.asset_type === 'widget' && asset.widget_config && (
+          <span className="text-[8px] bg-cyan-500/15 text-cyan-400 px-1 rounded shrink-0">
+            {(asset.widget_config as any).widget_type}
           </span>
         )}
 
@@ -996,6 +1035,11 @@ export default function AssetLibrary() {
             {adUploading ? 'Uploading...' : 'Ad'}
           </button>
         </div>
+        <div className="flex gap-1.5">
+          <button onClick={() => setShowWidgetPicker(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-500/20 transition">
+            Widget
+          </button>
+        </div>
         <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
         <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleAdSelect} />
       </div>
@@ -1205,6 +1249,41 @@ export default function AssetLibrary() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Widget Type Picker Modal */}
+      {showWidgetPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowWidgetPicker(false)}>
+          <div className="w-[400px] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-white">Add Widget</h2>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Select a widget type for the overlay</p>
+              </div>
+              <button onClick={() => setShowWidgetPicker(false)} className="text-zinc-500 hover:text-zinc-300">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-2">
+              {(['chat', 'lowerthird', 'countdown', 'topic', 'notifications', 'usernames'] as WidgetType[]).map(wt => {
+                const dims = WIDGET_DEFAULT_DIMENSIONS[wt]
+                return (
+                  <button
+                    key={wt}
+                    onClick={() => createWidget(wt)}
+                    className="bg-zinc-800 border border-zinc-700 hover:border-cyan-500/40 rounded-lg p-3 text-left transition"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-6 h-6 rounded bg-cyan-500/15 flex items-center justify-center text-[10px] font-bold text-cyan-400">W</div>
+                      <span className="text-xs font-medium text-white">{WIDGET_LABELS[wt]}</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500">{dims.w}x{dims.h}</div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
