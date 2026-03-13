@@ -34,7 +34,7 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
 
   if (!resp.ok) throw new Error('Failed to fetch from Baseball Savant')
 
-  const csv = await resp.text()
+  const csv = (await resp.text()).replace(/^\ufeff/, '') // strip UTF-8 BOM
   if (csv.length < 100) return { fetched: 0, inserted: 0, errors: 0, message: 'No data available for this date range' }
 
   // Parse CSV
