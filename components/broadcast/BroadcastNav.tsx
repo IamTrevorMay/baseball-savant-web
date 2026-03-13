@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 
 const TABS = [
   { label: 'Projects', href: '/broadcast' },
+  { label: 'Cards', href: '/daily-cards' },
 ]
 
 export default function BroadcastNav() {
