@@ -70,8 +70,19 @@ export async function GET(req: NextRequest) {
 
     const isOffDay = finishedGames.length === 0
 
+    // Build player name → ID lookup from box score data (early, for box score HTML)
+    const playerNameToIdEarly: Record<string, number> = {}
+    for (const bs of boxScores) {
+      for (const b of [...(bs.away.batters || []), ...(bs.home.batters || [])]) {
+        if (b.name && b.id) playerNameToIdEarly[b.name] = b.id
+      }
+      for (const p of [...(bs.away.pitchers || []), ...(bs.home.pitchers || [])]) {
+        if (p.name && p.id) playerNameToIdEarly[p.name] = p.id
+      }
+    }
+
     // Build box scores HTML (deterministic — no Claude needed)
-    const boxScoresHtml = buildBoxScoresHtml(boxScores)
+    const boxScoresHtml = buildBoxScoresHtml(boxScores, playerNameToIdEarly)
 
     // Build news HTML (deterministic)
     const topNews = newsItems.slice(0, 10)
@@ -90,10 +101,11 @@ export async function GET(req: NextRequest) {
     }))
 
     const claudePrompt = isOffDay
-      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, topPerformances, worstPerformances }. topPerformances and worstPerformances should be empty strings.`
-      : `Analyze these ${briefDate} MLB box scores and return JSON with exactly 4 fields:
+      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, topPerformances, worstPerformances }. dayRundown, topPerformances and worstPerformances should be empty strings.`
+      : `Analyze these ${briefDate} MLB box scores and return JSON with exactly 5 fields:
 - "title": Catchy headline (e.g., "Yankees Cruise, Dodgers Walk Off — March 11 Recap")
 - "summary": 1-2 sentence summary of the day
+- "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold.
 - "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Use a styled list with player names, teams, and key stats.
 - "worstPerformances": HTML section of the 4-5 worst individual performances. Same format.
 
@@ -101,11 +113,13 @@ Box score data:\n${JSON.stringify(performanceData)}`
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
+      max_tokens: 6144,
       messages: [{ role: 'user', content: claudePrompt }],
       system: `You are a baseball analyst writing a daily brief for a professional scouting platform.
 
-Return JSON with exactly these fields: title, summary, topPerformances, worstPerformances.
+Return JSON with exactly these fields: title, summary, dayRundown, topPerformances, worstPerformances.
+
+For dayRundown, write a narrative recap of the day under 500 words. Use HTML with inline styles. Format as 3-5 paragraphs wrapped in <p> tags with style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;". Bold player names using <strong style="color:#f0f0f0">Player Name</strong>. Tell the story of the day like a sportswriter — weave together the biggest moments, comebacks, dominant performances, and storylines.
 
 For topPerformances and worstPerformances, generate HTML using INLINE STYLES (no CSS classes). Each performance entry should be a table row in this exact format:
 
@@ -134,7 +148,7 @@ Return ONLY valid JSON, no markdown fences.`,
       .map(b => b.text)
       .join('')
 
-    let parsed: { title: string; summary: string; topPerformances: string; worstPerformances: string }
+    let parsed: { title: string; summary: string; dayRundown: string; topPerformances: string; worstPerformances: string }
     try {
       const jsonMatch = textContent.match(/\{[\s\S]*\}/)
       const cleaned = jsonMatch ? jsonMatch[0] : textContent.trim()
@@ -145,11 +159,13 @@ Return ONLY valid JSON, no markdown fences.`,
 
     // Assemble final HTML
     const finalHtml = assembleBriefHtml({
+      dayRundown: parsed.dayRundown,
       boxScoresHtml,
       topPerformances: parsed.topPerformances,
       worstPerformances: parsed.worstPerformances,
       newsHtml,
       isOffDay,
+      playerNameToId: playerNameToIdEarly,
     })
 
     // Insert into briefs table
@@ -234,13 +250,24 @@ const S = {
 }
 
 function assembleBriefHtml(parts: {
+  dayRundown: string
   boxScoresHtml: string
   topPerformances: string
   worstPerformances: string
   newsHtml: string
   isOffDay: boolean
+  playerNameToId: Record<string, number>
 }) {
   const sections: string[] = []
+
+  // Day Rundown — narrative story of the day (first section)
+  if (parts.dayRundown) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">The Day in Baseball</div>
+  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.dayRundown, parts.playerNameToId)}</div>
+</div>`)
+  }
 
   if (!parts.isOffDay && parts.boxScoresHtml) {
     sections.push(`
@@ -254,7 +281,7 @@ function assembleBriefHtml(parts: {
     sections.push(`
 <div style="${S.section}">
   <div style="${S.sectionTitle}">Top Performances</div>
-  <div style="${S.perfWrap}">${parts.topPerformances}</div>
+  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.topPerformances, parts.playerNameToId)}</div>
 </div>`)
   }
 
@@ -262,7 +289,7 @@ function assembleBriefHtml(parts: {
     sections.push(`
 <div style="${S.section}">
   <div style="${S.sectionTitle}">Rough Outings</div>
-  <div style="${S.perfWrap}">${parts.worstPerformances}</div>
+  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.worstPerformances, parts.playerNameToId)}</div>
 </div>`)
   }
 
@@ -277,7 +304,37 @@ function assembleBriefHtml(parts: {
   return `<div style="${S.wrap}">${sections.join('')}</div>`
 }
 
-function buildBoxScoresHtml(boxScores: any[]): string {
+/** Replace player names in HTML with clickable links to their Triton research page. */
+function linkifyPlayerNames(html: string, nameToId: Record<string, number>): string {
+  // Sort by name length descending to match longer names first (e.g., "J.D. Martinez" before "Martinez")
+  const names = Object.keys(nameToId).sort((a, b) => b.length - a.length)
+  const linkStyle = 'color:inherit;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.2);text-underline-offset:2px;'
+  let result = html
+  for (const name of names) {
+    if (!name || name.length < 4) continue // skip very short names to avoid false matches
+    const id = nameToId[name]
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // Replace name inside <strong> tags: <strong>Name</strong> → <strong><a>Name</a></strong>
+    result = result.replace(
+      new RegExp(`(<strong[^>]*>)(${escapedName})(</strong>)`, 'g'),
+      `$1<a href="/player/${id}" target="_blank" rel="noopener" style="${linkStyle}">$2</a>$3`
+    )
+    // Replace name inside <span> with font-weight:600 (performance tables): <span style="...">Name</span>
+    result = result.replace(
+      new RegExp(`(<span[^>]*font-weight:600[^>]*>)(${escapedName})(</span>)`, 'g'),
+      `$1<a href="/player/${id}" target="_blank" rel="noopener" style="${linkStyle}">$2</a>$3`
+    )
+  }
+  return result
+}
+
+function playerLink(name: string, id: number | undefined): string {
+  if (!id) return escapeHtml(name)
+  const style = 'color:inherit;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.2);text-underline-offset:2px;'
+  return `<a href="/player/${id}" target="_blank" rel="noopener" style="${style}">${escapeHtml(name)}</a>`
+}
+
+function buildBoxScoresHtml(boxScores: any[], nameToId: Record<string, number>): string {
   return boxScores.map(bs => {
     const { away, home, innings, totals, decisions } = bs
     const numInnings = Math.max(innings.length, 9)
@@ -298,14 +355,14 @@ function buildBoxScoresHtml(boxScores: any[]): string {
 
     // Decisions
     const decParts: string[] = []
-    if (decisions.winner) decParts.push(`<span><span style="${S.decW}">W</span> ${decisions.winner}</span>`)
-    if (decisions.loser) decParts.push(`<span><span style="${S.decL}">L</span> ${decisions.loser}</span>`)
-    if (decisions.save) decParts.push(`<span><span style="${S.decS}">S</span> ${decisions.save}</span>`)
+    if (decisions.winner) decParts.push(`<span><span style="${S.decW}">W</span> ${playerLink(decisions.winner, nameToId[decisions.winner])}</span>`)
+    if (decisions.loser) decParts.push(`<span><span style="${S.decL}">L</span> ${playerLink(decisions.loser, nameToId[decisions.loser])}</span>`)
+    if (decisions.save) decParts.push(`<span><span style="${S.decS}">S</span> ${playerLink(decisions.save, nameToId[decisions.save])}</span>`)
 
     // Expanded batting/pitching tables
     const makeBatterRows = (batters: any[]) => batters.map((b: any) =>
       `<tr>
-        <td style="${S.dtCellName}">${b.name}</td>
+        <td style="${S.dtCellName}">${playerLink(b.name, b.id || nameToId[b.name])}</td>
         <td style="${S.dtCell}">${b.ab}</td>
         <td style="${S.dtCell}">${b.r}</td>
         <td style="${S.dtCell}${b.h > 0 ? S.dtCellHi : ''}">${b.h}</td>
@@ -318,7 +375,7 @@ function buildBoxScoresHtml(boxScores: any[]): string {
 
     const makePitcherRows = (pitchers: any[]) => pitchers.map((p: any) =>
       `<tr>
-        <td style="${S.dtCellName}">${p.name}</td>
+        <td style="${S.dtCellName}">${playerLink(p.name, p.id || nameToId[p.name])}</td>
         <td style="${S.dtCell}">${p.ip}</td>
         <td style="${S.dtCell}">${p.h}</td>
         <td style="${S.dtCell}">${p.r}</td>
@@ -462,7 +519,7 @@ async function fetchFullBoxScore(gamePk: number) {
       if (!p) return null
       const s = p.stats?.batting || {}
       return {
-        name: p.person?.fullName || '',
+        id, name: p.person?.fullName || '',
         ab: s.atBats ?? 0, r: s.runs ?? 0, h: s.hits ?? 0,
         rbi: s.rbi ?? 0, hr: s.homeRuns ?? 0, bb: s.baseOnBalls ?? 0, so: s.strikeOuts ?? 0,
       }
@@ -473,7 +530,7 @@ async function fetchFullBoxScore(gamePk: number) {
       if (!p) return null
       const s = p.stats?.pitching || {}
       return {
-        name: p.person?.fullName || '',
+        id, name: p.person?.fullName || '',
         ip: s.inningsPitched || '0.0', h: s.hits ?? 0, r: s.runs ?? 0,
         er: s.earnedRuns ?? 0, so: s.strikeOuts ?? 0, bb: s.baseOnBalls ?? 0,
         pitches: s.numberOfPitches ?? 0,
