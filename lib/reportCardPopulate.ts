@@ -117,11 +117,13 @@ export function populateReportCard(scene: Scene, data: StarterCardData, title?: 
 
       case 'rc-bar-chart': {
         const metric = binding.metric || 'avg_velo'
-        const barData = data.pitch_metrics.map(pm => ({
-          label: pm.pitch_name,
-          value: (pm as any)[metric] ?? 0,
-          color: getPitchColor(pm.pitch_name),
-        }))
+        const barData = data.pitch_metrics
+          .filter(pm => (pm as any)[metric] != null)
+          .map(pm => ({
+            label: pm.pitch_name,
+            value: (pm as any)[metric],
+            color: getPitchColor(pm.pitch_name),
+          }))
         return { ...el, props: { ...el.props, barData, metric } }
       }
 

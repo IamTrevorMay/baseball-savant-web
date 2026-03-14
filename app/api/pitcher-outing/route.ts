@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
-import { computeStuffRV, computePlus, getLeagueBaseline } from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -180,22 +179,11 @@ export async function GET(req: NextRequest) {
         typeof p.description === 'string' && p.description.includes('swinging_strike')
       ).length
 
-      // Stuff+: average DB column, fallback to computeStuffRV + computePlus
+      // Stuff+: use DB column only (not in Statcast CSV)
       const stuffArr = pts.filter((p: any) => p.stuff_plus != null).map((p: any) => Number(p.stuff_plus))
-      if (stuffArr.length > 0) {
-        stuffPlusByType[name] = Math.round(stuffArr.reduce((s, v) => s + v, 0) / stuffArr.length)
-      } else {
-        // Fallback: compute from pitch mechanics
-        const year = pts[0]?.game_year || 2025
-        const rvArr = pts.map((p: any) => computeStuffRV(p)).filter((v): v is number => v != null)
-        const league = getLeagueBaseline('stuff', name, year)
-        if (rvArr.length > 0 && league) {
-          const avgRV = rvArr.reduce((s, v) => s + v, 0) / rvArr.length
-          stuffPlusByType[name] = Math.round(computePlus(avgRV, league.mean, league.stddev))
-        } else {
-          stuffPlusByType[name] = null
-        }
-      }
+      stuffPlusByType[name] = stuffArr.length > 0
+        ? Math.round(stuffArr.reduce((s, v) => s + v, 0) / stuffArr.length)
+        : null
     }
 
     // Build deception lookup

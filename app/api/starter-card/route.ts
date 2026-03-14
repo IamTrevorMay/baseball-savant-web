@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
-import { plusToGrade, isFastball, computeStuffRV, computePlus, getLeagueBaseline } from '@/lib/leagueStats'
+import { plusToGrade, isFastball } from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -285,22 +285,11 @@ export async function GET(req: NextRequest) {
         ? bipPitches.reduce((s: number, p: any) => s + p.estimated_slg_using_speedangle, 0) / bipPitches.length
         : 0
 
-      // Stuff+: average DB column, fallback to computeStuffRV + computePlus
+      // Stuff+: use DB column only (not populated in Statcast CSV yet)
       const stuffArr = pts.filter((p: any) => p.stuff_plus != null).map((p: any) => p.stuff_plus)
-      let avgStuff: number
-      if (stuffArr.length > 0) {
-        avgStuff = stuffArr.reduce((s: number, v: number) => s + v, 0) / stuffArr.length
-      } else {
-        const year = pts[0]?.game_year || 2025
-        const rvArr = pts.map((p: any) => computeStuffRV(p)).filter((v: any): v is number => v != null)
-        const league = getLeagueBaseline('stuff', ptName, year)
-        if (rvArr.length > 0 && league) {
-          const avgRV = rvArr.reduce((s: number, v: number) => s + v, 0) / rvArr.length
-          avgStuff = computePlus(avgRV, league.mean, league.stddev)
-        } else {
-          avgStuff = 100
-        }
-      }
+      const avgStuff: number | null = stuffArr.length > 0
+        ? stuffArr.reduce((s: number, v: number) => s + v, 0) / stuffArr.length
+        : null
 
       const veloDiff = avgFbVelo != null ? avgVelo - avgFbVelo : 0
 
@@ -322,7 +311,7 @@ export async function GET(req: NextRequest) {
         swstr_pct: +swstrPct.toFixed(1),
         csw_pct: +ptCswPct.toFixed(1),
         xslgcon: +xslgcon.toFixed(3),
-        stuff_plus: +avgStuff.toFixed(0),
+        stuff_plus: avgStuff != null ? +avgStuff.toFixed(0) : null,
         whiffs: ptSwStr,
         unique_score: dec.unique_score ?? null,
         deception_score: dec.deception_score ?? null,
@@ -363,19 +352,21 @@ export async function GET(req: NextRequest) {
     const cmd = computeOutingCommand(cmdPitchRows)
 
     // ── Grades ───────────────────────────────────────────────────────────
-    // Stuff grade: weighted average from per-pitch-type stuff+ (already computed with fallback)
+    // Stuff grade: weighted average from per-pitch-type stuff+ (null when DB not populated)
     let stuffWeightedSum = 0, stuffWeightedN = 0
     for (const pm of pitchMetrics) {
-      stuffWeightedSum += pm.stuff_plus * pm.count
-      stuffWeightedN += pm.count
+      if (pm.stuff_plus != null) {
+        stuffWeightedSum += pm.stuff_plus * pm.count
+        stuffWeightedN += pm.count
+      }
     }
-    const avgStuffPlus = stuffWeightedN > 0 ? stuffWeightedSum / stuffWeightedN : 100
+    const avgStuffPlus = stuffWeightedN > 0 ? stuffWeightedSum / stuffWeightedN : null
     const cmdPlus = cmd.overall_cmd_plus ?? 100
 
-    const stuffGrade = plusToGrade(avgStuffPlus)
+    const stuffGrade = avgStuffPlus != null ? plusToGrade(avgStuffPlus) : '--'
     const cmdGrade = plusToGrade(cmdPlus)
-    const tritonPlus = 0.5 * avgStuffPlus + 0.5 * cmdPlus
-    const tritonGrade = plusToGrade(tritonPlus)
+    const tritonPlus = avgStuffPlus != null ? 0.5 * avgStuffPlus + 0.5 * cmdPlus : null
+    const tritonGrade = tritonPlus != null ? plusToGrade(tritonPlus) : '--'
     const startGrade = tritonGrade
 
     // Fill in command metrics and triton_plus per pitch
@@ -386,7 +377,7 @@ export async function GET(req: NextRequest) {
       pm.avg_missfire = ptCmdData?.avg_missfire ?? null
       pm.avg_cluster = ptCmdData?.avg_cluster ?? null
       pm.avg_brink = ptCmdData?.avg_brink ?? null
-      pm.triton_plus = +((0.5 * pm.stuff_plus + 0.5 * (ptCmd ?? 100))).toFixed(0)
+      pm.triton_plus = pm.stuff_plus != null ? +((0.5 * pm.stuff_plus + 0.5 * (ptCmd ?? 100))).toFixed(0) : null
     }
 
     // ── Primary fastball ─────────────────────────────────────────────────
