@@ -109,11 +109,85 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
   // Refresh materialized view
   await supabase.rpc('refresh_player_summary')
 
+  // Compute Stuff+ for the ingested date range
+  const stuffResult = await computeStuffPlusForDateRange(supabase as any, start_date, end_date)
+
   return {
     fetched: rows.length,
     inserted,
     errors,
-    message: `Fetched ${rows.length} pitches, ${inserted} processed`
+    message: `Fetched ${rows.length} pitches, ${inserted} processed`,
+    stuff_plus: stuffResult,
+  }
+}
+
+async function computeStuffPlusForDateRange(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  startDate: string,
+  endDate: string
+) {
+  try {
+    const q = (sql: string) => sb.rpc('run_query', { query_text: sql.trim() })
+
+    // Determine affected years from date range
+    const startYear = new Date(startDate).getFullYear()
+    const endYear = new Date(endDate).getFullYear()
+    const years: number[] = []
+    for (let y = startYear; y <= endYear; y++) years.push(y)
+
+    // Refresh baselines for affected years
+    for (const year of years) {
+      await q(`
+        INSERT INTO pitch_baselines (pitch_name, game_year, avg_velo, std_velo, avg_movement, std_movement, avg_ext, std_ext, pitch_count)
+        SELECT
+          pitch_name,
+          game_year,
+          ROUND(AVG(release_speed)::numeric, 4),
+          ROUND(STDDEV(release_speed)::numeric, 4),
+          ROUND(AVG(SQRT(POWER(pfx_x * 12, 2) + POWER(pfx_z * 12, 2)))::numeric, 4),
+          ROUND(STDDEV(SQRT(POWER(pfx_x * 12, 2) + POWER(pfx_z * 12, 2)))::numeric, 4),
+          ROUND(AVG(release_extension)::numeric, 4),
+          ROUND(STDDEV(release_extension)::numeric, 4),
+          COUNT(*)::int
+        FROM pitches
+        WHERE pitch_name IS NOT NULL
+          AND release_speed IS NOT NULL
+          AND pfx_x IS NOT NULL AND pfx_z IS NOT NULL
+          AND release_extension IS NOT NULL
+          AND game_year = ${year}
+        GROUP BY pitch_name, game_year
+        ON CONFLICT (pitch_name, game_year) DO UPDATE SET
+          avg_velo     = EXCLUDED.avg_velo,
+          std_velo     = EXCLUDED.std_velo,
+          avg_movement = EXCLUDED.avg_movement,
+          std_movement = EXCLUDED.std_movement,
+          avg_ext      = EXCLUDED.avg_ext,
+          std_ext      = EXCLUDED.std_ext,
+          pitch_count  = EXCLUDED.pitch_count
+      `)
+    }
+
+    // Update stuff_plus for pitches in the date range (scoped — no batching needed)
+    await q(`
+      UPDATE pitches p
+      SET stuff_plus = GREATEST(0, LEAST(200, ROUND(
+        100
+        + COALESCE((p.release_speed - b.avg_velo) / NULLIF(b.std_velo, 0), 0) * 4.5
+        + COALESCE((SQRT(POWER(p.pfx_x * 12, 2) + POWER(p.pfx_z * 12, 2)) - b.avg_movement) / NULLIF(b.std_movement, 0), 0) * 3.5
+        + COALESCE((p.release_extension - b.avg_ext) / NULLIF(b.std_ext, 0), 0) * 2.0
+      )::numeric))
+      FROM pitch_baselines b
+      WHERE p.pitch_name = b.pitch_name
+        AND p.game_year = b.game_year
+        AND p.game_date BETWEEN '${startDate}' AND '${endDate}'
+        AND p.release_speed IS NOT NULL
+    `)
+
+    return { ok: true, years }
+  } catch (err: any) {
+    console.error('computeStuffPlusForDateRange error:', err)
+    return { ok: false, error: err.message }
   }
 }
 
