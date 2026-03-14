@@ -1921,7 +1921,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
           m.avg_hb.toFixed(1),
           m.avg_ext.toFixed(1),
           String(m.whiffs),
-          String(Math.round(m.stuff_plus)),
+          m.stuff_plus != null ? String(Math.round(m.stuff_plus)) : '--',
           m.unique_score != null ? m.unique_score.toFixed(1) : '--',
           m.deception_score != null ? m.deception_score.toFixed(1) : '--',
           m.cmd_plus != null ? String(Math.round(m.cmd_plus)) : '--',
@@ -1931,7 +1931,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
           const isCmdPlus = j === 9
           const isPlusCol = isStuffPlus || isCmdPlus
           let color = '#a1a1aa'
-          if (isStuffPlus) {
+          if (isStuffPlus && m.stuff_plus != null) {
             color = m.stuff_plus >= 100 ? '#10b981' : '#ef4444'
           } else if (isCmdPlus && m.cmd_plus != null) {
             color = m.cmd_plus >= 100 ? '#10b981' : '#ef4444'
