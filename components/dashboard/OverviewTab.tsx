@@ -206,21 +206,13 @@ function calcArsenal(data: any[]) {
     const clusterPlus = computeYearWeightedPlus(pitches, name, 'cluster',
       pts => { const v = pts.map((p: any) => p.cluster).filter((x: any) => x != null); return ptAvgFn(v) }, true)
 
-    // Stuff+: use DB stuff_plus if available, otherwise client-side stuff_rv
-    const stuffPlus = computeYearWeightedPlus(pitches, name, 'stuff',
-      pts => {
-        const vals = pts.map((p: any) => p.stuff_plus != null ? null : p.stuff_rv).filter((x: any) => x != null)
-        // If DB values exist, use them directly
-        const dbVals = pts.map((p: any) => p.stuff_plus).filter((x: any) => x != null)
-        if (dbVals.length > vals.length) return null // will use DB path
-        return ptAvgFn(vals)
-      }, true) // invert: lower rv = better stuff = higher plus
-
-    // If DB stuff_plus values dominate, compute a simple average of those
+    // Stuff+: DB stuff_plus (0-200 scale) preferred; fall back to Z-score stuff_rv (same scale)
     const dbStuffPlusVals = pitches.map((p: any) => p.stuff_plus).filter((x: any) => x != null)
-    const finalStuffPlus = dbStuffPlusVals.length > pitches.length * 0.5
-      ? Math.round(dbStuffPlusVals.reduce((a: number, b: number) => a + b, 0) / dbStuffPlusVals.length)
-      : stuffPlus
+    const clientStuffVals = pitches.map((p: any) => p.stuff_rv).filter((x: any) => x != null)
+    const stuffSrc = dbStuffPlusVals.length > pitches.length * 0.5 ? dbStuffPlusVals : clientStuffVals
+    const finalStuffPlus = stuffSrc.length > 0
+      ? Math.round(stuffSrc.reduce((a: number, b: number) => a + b, 0) / stuffSrc.length)
+      : null
 
     return {
       name, count: pitches.length, usagePct: pct(pitches.length, total),

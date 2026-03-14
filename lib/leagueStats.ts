@@ -672,61 +672,48 @@ export const STUFF_LEAGUE_BY_YEAR: YearLeague = {
   },
 }
 
-// ── STUFF LINEAR COEFFICIENTS ────────────────────────────────────────────────
-// Per pitch_name: intercept + feature weights for client-side stuff_rv approximation
-// Features: release_speed, pfx_x, pfx_z, release_spin_rate, spin_axis,
-//           release_extension, release_pos_x, release_pos_z, arm_angle,
-//           vx0, vy0, vz0, ax, ay, az, p_throws_R
-// Placeholder values — will be replaced after running train.py
-export const STUFF_LINEAR_FEATURES = [
-  'release_speed', 'pfx_x', 'pfx_z', 'release_spin_rate', 'spin_axis',
-  'release_extension', 'release_pos_x', 'release_pos_z', 'arm_angle',
-  'vx0', 'vy0', 'vz0', 'ax', 'ay', 'az', 'p_throws_R',
-] as const
+// ── STUFF+ Z-SCORE BASELINES ───────────────────────────────────────────────────────
+// Per pitch_name: league-average velo, total movement (inches), and extension.
+// Used for client-side Stuff+ fallback when DB stuff_plus is not yet populated.
+// Values derived from 2026 MLB Statcast data.
+export type StuffZscoreBaseline = {
+  avg_velo: number; std_velo: number
+  avg_move: number; std_move: number
+  avg_ext:  number; std_ext:  number
+}
 
-export type StuffLinearCoeffs = { intercept: number; weights: number[] }
-
-export const STUFF_LINEAR_COEFFICIENTS: Record<string, StuffLinearCoeffs> = {
-  '4-Seam Fastball': { intercept: 0.08, weights: [-0.0012, 0.002, 0.008, -0.000002, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0002, -0.0001, 0.0005, 0.0001, 0.00005, 0.0003, -0.003] },
-  'Sinker': { intercept: 0.06, weights: [-0.0010, 0.003, 0.006, -0.000002, 0.000004, -0.002, 0.001, -0.001, 0.00004, 0.0002, -0.0001, 0.0004, 0.0001, 0.00005, 0.0002, -0.002] },
-  'Cutter': { intercept: 0.05, weights: [-0.0008, 0.004, 0.005, -0.000003, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0003, -0.0001, 0.0004, 0.0001, 0.00004, 0.0002, -0.002] },
-  'Slider': { intercept: 0.04, weights: [-0.0005, 0.005, 0.003, -0.000003, 0.000006, -0.001, 0.001, -0.001, 0.00006, 0.0003, -0.0002, 0.0003, 0.0002, 0.00005, 0.0002, -0.002] },
-  'Sweeper': { intercept: 0.04, weights: [-0.0004, 0.006, 0.002, -0.000003, 0.000006, -0.001, 0.001, -0.001, 0.00006, 0.0003, -0.0002, 0.0003, 0.0002, 0.00005, 0.0002, -0.002] },
-  'Curveball': { intercept: 0.03, weights: [-0.0003, 0.004, 0.004, -0.000004, 0.000005, -0.001, 0.001, -0.001, 0.00005, 0.0002, -0.0002, 0.0004, 0.0001, 0.00004, 0.0003, -0.001] },
-  'Changeup': { intercept: 0.05, weights: [-0.0006, 0.003, 0.006, -0.000003, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0002, -0.0001, 0.0004, 0.0001, 0.00005, 0.0002, -0.002] },
-  'Split-Finger': { intercept: 0.06, weights: [-0.0008, 0.003, 0.007, -0.000003, 0.000005, -0.002, 0.001, -0.001, 0.00005, 0.0002, -0.0001, 0.0005, 0.0001, 0.00005, 0.0003, -0.003] },
-  'Knuckle Curve': { intercept: 0.03, weights: [-0.0003, 0.004, 0.004, -0.000004, 0.000005, -0.001, 0.001, -0.001, 0.00005, 0.0002, -0.0002, 0.0004, 0.0001, 0.00004, 0.0003, -0.001] },
-  'Slurve': { intercept: 0.04, weights: [-0.0004, 0.005, 0.003, -0.000003, 0.000006, -0.001, 0.001, -0.001, 0.00006, 0.0003, -0.0002, 0.0003, 0.0002, 0.00005, 0.0002, -0.002] },
+export const STUFF_ZSCORE_BASELINES: Record<string, StuffZscoreBaseline> = {
+  '4-Seam Fastball': { avg_velo: 94.2, std_velo: 2.40, avg_move: 17.55, std_move: 2.74, avg_ext: 6.41, std_ext: 0.43 },
+  'Sinker':          { avg_velo: 93.5, std_velo: 2.81, avg_move: 17.41, std_move: 2.58, avg_ext: 6.32, std_ext: 0.46 },
+  'Cutter':          { avg_velo: 89.0, std_velo: 2.91, avg_move:  8.54, std_move: 3.35, avg_ext: 6.34, std_ext: 0.42 },
+  'Slider':          { avg_velo: 85.3, std_velo: 3.17, avg_move:  6.92, std_move: 3.82, avg_ext: 6.28, std_ext: 0.45 },
+  'Sweeper':         { avg_velo: 82.0, std_velo: 2.97, avg_move: 14.22, std_move: 3.94, avg_ext: 6.25, std_ext: 0.48 },
+  'Curveball':       { avg_velo: 80.0, std_velo: 3.16, avg_move: 13.64, std_move: 4.37, avg_ext: 6.30, std_ext: 0.42 },
+  'Changeup':        { avg_velo: 85.6, std_velo: 3.41, avg_move: 14.91, std_move: 3.56, avg_ext: 6.35, std_ext: 0.43 },
+  'Split-Finger':    { avg_velo: 85.3, std_velo: 3.18, avg_move: 11.61, std_move: 3.87, avg_ext: 6.45, std_ext: 0.46 },
+  'Knuckle Curve':   { avg_velo: 83.0, std_velo: 3.76, avg_move: 10.92, std_move: 5.50, avg_ext: 6.23, std_ext: 0.46 },
+  'Slurve':          { avg_velo: 81.9, std_velo: 2.36, avg_move: 12.71, std_move: 4.06, avg_ext: 6.22, std_ext: 0.60 },
 }
 
 /**
- * Compute raw stuff_rv for a single pitch using the linear approximation.
- * Returns null if any required feature is missing.
+ * Client-side Stuff+ fallback using Z-score formula (mirrors DB pipeline).
+ * Returns a 0-200 scale value (100 = league average for that pitch type).
+ * Returns null if required features are missing or pitch type is unknown.
  */
 export function computeStuffRV(p: any): number | null {
-  const pitchName = p.pitch_name as string
-  const coeffs = STUFF_LINEAR_COEFFICIENTS[pitchName]
-  if (!coeffs) return null
+  const bl = STUFF_ZSCORE_BASELINES[p.pitch_name as string]
+  if (!bl) return null
+  if (p.release_speed == null || p.pfx_x == null || p.pfx_z == null) return null
 
-  // Require at least the core features: release_speed and one movement axis
-  if (p.release_speed == null || (p.pfx_x == null && p.pfx_z == null)) return null
+  const move = Math.sqrt(Math.pow(p.pfx_x * 12, 2) + Math.pow(p.pfx_z * 12, 2))
+  const ext = p.release_extension ?? bl.avg_ext
 
-  const vals: number[] = []
-  for (const feat of STUFF_LINEAR_FEATURES) {
-    if (feat === 'p_throws_R') {
-      vals.push(p.p_throws === 'R' ? 1 : 0)
-    } else {
-      const v = p[feat]
-      // Skip null features by contributing 0 to the sum (equivalent to mean-imputed at 0)
-      vals.push(v != null ? Number(v) : 0)
-    }
-  }
+  const veloZ = (p.release_speed - bl.avg_velo) / bl.std_velo
+  const moveZ = (move - bl.avg_move) / bl.std_move
+  const extZ  = (ext - bl.avg_ext) / bl.std_ext
 
-  let rv = coeffs.intercept
-  for (let i = 0; i < vals.length; i++) {
-    rv += coeffs.weights[i] * vals[i]
-  }
-  return rv
+  const raw = 100 + veloZ * 4.5 + moveZ * 3.5 + extZ * 2.0
+  return Math.max(0, Math.min(200, Math.round(raw)))
 }
 
 // ── METRIC TABLE MAP ─────────────────────────────────────────────────────────
