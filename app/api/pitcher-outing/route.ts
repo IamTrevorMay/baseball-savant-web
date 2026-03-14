@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
+import { computeStuffRV } from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -179,8 +180,11 @@ export async function GET(req: NextRequest) {
         typeof p.description === 'string' && p.description.includes('swinging_strike')
       ).length
 
-      // Stuff+: use DB column only (not in Statcast CSV)
-      const stuffArr = pts.filter((p: any) => p.stuff_plus != null).map((p: any) => Number(p.stuff_plus))
+      // Stuff+: prefer DB column, fall back to client-side Z-score
+      const stuffArr = pts.map((p: any) => {
+        if (p.stuff_plus != null) return Number(p.stuff_plus)
+        return computeStuffRV(p)
+      }).filter((x): x is number => x != null)
       stuffPlusByType[name] = stuffArr.length > 0
         ? Math.round(stuffArr.reduce((s, v) => s + v, 0) / stuffArr.length)
         : null

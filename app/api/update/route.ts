@@ -111,6 +111,9 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
 
   // Compute Stuff+ for the ingested date range
   const stuffResult = await computeStuffPlusForDateRange(supabase as any, start_date, end_date)
+  if (!stuffResult.ok) {
+    console.error('Stuff+ computation failed:', stuffResult.error)
+  }
 
   return {
     fetched: rows.length,
@@ -128,7 +131,14 @@ async function computeStuffPlusForDateRange(
   endDate: string
 ) {
   try {
-    const q = (sql: string) => sb.rpc('run_query', { query_text: sql.trim() })
+    const m = async (sql: string) => {
+      const res = await sb.rpc('run_mutation', { query_text: sql.trim() })
+      if (res.error) {
+        console.error('run_mutation error:', res.error.message)
+        throw new Error(`run_mutation failed: ${res.error.message}`)
+      }
+      return res
+    }
 
     // Determine affected years from date range
     const startYear = new Date(startDate).getFullYear()
@@ -138,7 +148,7 @@ async function computeStuffPlusForDateRange(
 
     // Refresh baselines for affected years
     for (const year of years) {
-      await q(`
+      await m(`
         INSERT INTO pitch_baselines (pitch_name, game_year, avg_velo, std_velo, avg_movement, std_movement, avg_ext, std_ext, pitch_count)
         SELECT
           pitch_name,
@@ -169,7 +179,7 @@ async function computeStuffPlusForDateRange(
     }
 
     // Update stuff_plus for pitches in the date range (scoped — no batching needed)
-    await q(`
+    await m(`
       UPDATE pitches p
       SET stuff_plus = GREATEST(0, LEAST(200, ROUND(
         100

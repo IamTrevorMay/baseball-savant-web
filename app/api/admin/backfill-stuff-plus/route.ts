@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+const m = (sql: string) => supabase.rpc('run_mutation', { query_text: sql.trim() })
 
 /**
  * GET /api/admin/backfill-stuff-plus?year=YYYY
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
           )
       `
 
-      const { data: updateResult, error: updateErr } = await q(sql)
+      const { data: updateResult, error: updateErr } = await m(sql)
       if (updateErr) {
         return NextResponse.json({
           error: updateErr.message,

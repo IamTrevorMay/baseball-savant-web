@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+const m = (sql: string) => supabase.rpc('run_mutation', { query_text: sql.trim() })
 
 /**
  * GET /api/admin/compute-stuff-baselines?year=YYYY
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
       RETURNING pitch_name, game_year, pitch_count
     `
 
-    const { data, error } = await q(sql)
+    const { data, error } = await m(sql)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const rows = data || []

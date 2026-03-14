@@ -673,35 +673,188 @@ export const STUFF_LEAGUE_BY_YEAR: YearLeague = {
 }
 
 // ── STUFF+ Z-SCORE BASELINES ───────────────────────────────────────────────────────
-// Per pitch_name: league-average velo, total movement (inches), and extension.
+// Per pitch_name per year: league-average velo, total movement (inches), and extension.
 // Used for client-side Stuff+ fallback when DB stuff_plus is not yet populated.
-// Values derived from 2026 MLB Statcast data.
+// Values derived from actual pitch_baselines table (computed from Statcast data).
 export type StuffZscoreBaseline = {
   avg_velo: number; std_velo: number
   avg_move: number; std_move: number
   avg_ext:  number; std_ext:  number
 }
 
-export const STUFF_ZSCORE_BASELINES: Record<string, StuffZscoreBaseline> = {
-  '4-Seam Fastball': { avg_velo: 94.2, std_velo: 2.40, avg_move: 17.55, std_move: 2.74, avg_ext: 6.41, std_ext: 0.43 },
-  'Sinker':          { avg_velo: 93.5, std_velo: 2.81, avg_move: 17.41, std_move: 2.58, avg_ext: 6.32, std_ext: 0.46 },
-  'Cutter':          { avg_velo: 89.0, std_velo: 2.91, avg_move:  8.54, std_move: 3.35, avg_ext: 6.34, std_ext: 0.42 },
-  'Slider':          { avg_velo: 85.3, std_velo: 3.17, avg_move:  6.92, std_move: 3.82, avg_ext: 6.28, std_ext: 0.45 },
-  'Sweeper':         { avg_velo: 82.0, std_velo: 2.97, avg_move: 14.22, std_move: 3.94, avg_ext: 6.25, std_ext: 0.48 },
-  'Curveball':       { avg_velo: 80.0, std_velo: 3.16, avg_move: 13.64, std_move: 4.37, avg_ext: 6.30, std_ext: 0.42 },
-  'Changeup':        { avg_velo: 85.6, std_velo: 3.41, avg_move: 14.91, std_move: 3.56, avg_ext: 6.35, std_ext: 0.43 },
-  'Split-Finger':    { avg_velo: 85.3, std_velo: 3.18, avg_move: 11.61, std_move: 3.87, avg_ext: 6.45, std_ext: 0.46 },
-  'Knuckle Curve':   { avg_velo: 83.0, std_velo: 3.76, avg_move: 10.92, std_move: 5.50, avg_ext: 6.23, std_ext: 0.46 },
-  'Slurve':          { avg_velo: 81.9, std_velo: 2.36, avg_move: 12.71, std_move: 4.06, avg_ext: 6.22, std_ext: 0.60 },
+// Year-specific baselines from pitch_baselines table
+const BL_BY_YEAR: Record<number, Record<string, StuffZscoreBaseline>> = {
+  2015: {
+    '4-Seam Fastball': { avg_velo: 93.13, std_velo: 2.84, avg_move: 18.08, std_move: 3.64, avg_ext: 6.17, std_ext: 0.49 },
+    'Sinker':          { avg_velo: 92.14, std_velo: 2.97, avg_move: 17.75, std_move: 3.58, avg_ext: 6.08, std_ext: 0.51 },
+    'Cutter':          { avg_velo: 88.37, std_velo: 3.27, avg_move: 10.96, std_move: 4.62, avg_ext: 5.97, std_ext: 0.50 },
+    'Slider':          { avg_velo: 84.83, std_velo: 3.39, avg_move: 8.26,  std_move: 4.15, avg_ext: 5.80, std_ext: 0.48 },
+    'Sweeper':         { avg_velo: 82.20, std_velo: 1.91, avg_move: 17.30, std_move: 3.55, avg_ext: 5.44, std_ext: 0.44 },
+    'Curveball':       { avg_velo: 78.17, std_velo: 4.08, avg_move: 14.78, std_move: 5.60, avg_ext: 5.67, std_ext: 0.54 },
+    'Changeup':        { avg_velo: 84.00, std_velo: 3.46, avg_move: 15.84, std_move: 4.32, avg_ext: 6.11, std_ext: 0.55 },
+    'Split-Finger':    { avg_velo: 85.01, std_velo: 3.01, avg_move: 12.54, std_move: 4.20, avg_ext: 5.81, std_ext: 0.44 },
+    'Knuckle Curve':   { avg_velo: 80.72, std_velo: 3.15, avg_move: 14.90, std_move: 5.00, avg_ext: 5.77, std_ext: 0.58 },
+    'Slurve':          { avg_velo: 86.43, std_velo: 1.65, avg_move: 14.11, std_move: 5.95, avg_ext: 6.03, std_ext: 0.32 },
+  },
+  2016: {
+    '4-Seam Fastball': { avg_velo: 93.23, std_velo: 2.79, avg_move: 18.03, std_move: 3.60, avg_ext: 6.20, std_ext: 0.46 },
+    'Sinker':          { avg_velo: 92.39, std_velo: 2.83, avg_move: 17.80, std_move: 3.50, avg_ext: 6.13, std_ext: 0.47 },
+    'Cutter':          { avg_velo: 88.63, std_velo: 2.91, avg_move: 10.69, std_move: 4.33, avg_ext: 6.02, std_ext: 0.48 },
+    'Slider':          { avg_velo: 84.96, std_velo: 3.39, avg_move: 8.38,  std_move: 4.12, avg_ext: 5.86, std_ext: 0.46 },
+    'Sweeper':         { avg_velo: 82.38, std_velo: 2.06, avg_move: 16.13, std_move: 4.70, avg_ext: 5.46, std_ext: 0.51 },
+    'Curveball':       { avg_velo: 78.02, std_velo: 4.12, avg_move: 15.00, std_move: 5.65, avg_ext: 5.73, std_ext: 0.50 },
+    'Changeup':        { avg_velo: 84.17, std_velo: 3.54, avg_move: 15.63, std_move: 4.39, avg_ext: 6.14, std_ext: 0.49 },
+    'Split-Finger':    { avg_velo: 84.97, std_velo: 2.97, avg_move: 12.83, std_move: 4.42, avg_ext: 5.78, std_ext: 0.44 },
+    'Knuckle Curve':   { avg_velo: 80.64, std_velo: 3.08, avg_move: 15.64, std_move: 4.70, avg_ext: 5.75, std_ext: 0.56 },
+    'Slurve':          { avg_velo: 83.43, std_velo: 2.62, avg_move: 16.31, std_move: 4.57, avg_ext: 5.76, std_ext: 0.30 },
+  },
+  2017: {
+    '4-Seam Fastball': { avg_velo: 93.23, std_velo: 2.79, avg_move: 19.50, std_move: 3.59, avg_ext: 6.17, std_ext: 0.48 },
+    'Sinker':          { avg_velo: 92.18, std_velo: 2.72, avg_move: 19.19, std_move: 3.71, avg_ext: 6.11, std_ext: 0.49 },
+    'Cutter':          { avg_velo: 88.34, std_velo: 2.97, avg_move: 10.76, std_move: 4.66, avg_ext: 5.98, std_ext: 0.47 },
+    'Slider':          { avg_velo: 84.54, std_velo: 3.34, avg_move: 8.48,  std_move: 4.43, avg_ext: 5.82, std_ext: 0.46 },
+    'Sweeper':         { avg_velo: 81.55, std_velo: 2.22, avg_move: 16.01, std_move: 4.85, avg_ext: 5.55, std_ext: 0.57 },
+    'Curveball':       { avg_velo: 77.76, std_velo: 3.92, avg_move: 13.20, std_move: 5.20, avg_ext: 5.71, std_ext: 0.52 },
+    'Changeup':        { avg_velo: 84.17, std_velo: 3.48, avg_move: 17.22, std_move: 4.33, avg_ext: 6.11, std_ext: 0.52 },
+    'Split-Finger':    { avg_velo: 84.57, std_velo: 2.72, avg_move: 14.45, std_move: 5.07, avg_ext: 5.78, std_ext: 0.44 },
+    'Knuckle Curve':   { avg_velo: 80.45, std_velo: 3.33, avg_move: 13.33, std_move: 5.12, avg_ext: 5.65, std_ext: 0.54 },
+    'Slurve':          { avg_velo: 83.53, std_velo: 3.52, avg_move: 13.97, std_move: 4.15, avg_ext: 5.74, std_ext: 0.35 },
+  },
+  2018: {
+    '4-Seam Fastball': { avg_velo: 93.15, std_velo: 2.74, avg_move: 17.81, std_move: 2.77, avg_ext: 6.15, std_ext: 0.46 },
+    'Sinker':          { avg_velo: 92.20, std_velo: 2.87, avg_move: 18.01, std_move: 2.70, avg_ext: 6.06, std_ext: 0.48 },
+    'Cutter':          { avg_velo: 88.60, std_velo: 2.77, avg_move: 9.29,  std_move: 3.31, avg_ext: 5.97, std_ext: 0.44 },
+    'Slider':          { avg_velo: 84.45, std_velo: 3.41, avg_move: 7.49,  std_move: 3.93, avg_ext: 5.77, std_ext: 0.44 },
+    'Sweeper':         { avg_velo: 81.08, std_velo: 2.53, avg_move: 16.64, std_move: 3.95, avg_ext: 5.62, std_ext: 0.63 },
+    'Curveball':       { avg_velo: 78.07, std_velo: 3.63, avg_move: 14.31, std_move: 5.21, avg_ext: 5.65, std_ext: 0.50 },
+    'Changeup':        { avg_velo: 84.22, std_velo: 3.39, avg_move: 16.07, std_move: 3.52, avg_ext: 6.07, std_ext: 0.48 },
+    'Split-Finger':    { avg_velo: 85.11, std_velo: 2.64, avg_move: 12.54, std_move: 4.19, avg_ext: 5.75, std_ext: 0.43 },
+    'Knuckle Curve':   { avg_velo: 80.90, std_velo: 2.95, avg_move: 13.38, std_move: 5.22, avg_ext: 5.71, std_ext: 0.52 },
+    'Slurve':          { avg_velo: 83.37, std_velo: 2.73, avg_move: 14.02, std_move: 3.75, avg_ext: 5.66, std_ext: 0.30 },
+  },
+  2019: {
+    '4-Seam Fastball': { avg_velo: 93.39, std_velo: 2.63, avg_move: 17.80, std_move: 2.83, avg_ext: 6.16, std_ext: 0.46 },
+    'Sinker':          { avg_velo: 92.52, std_velo: 2.83, avg_move: 17.98, std_move: 2.76, avg_ext: 6.08, std_ext: 0.48 },
+    'Cutter':          { avg_velo: 88.43, std_velo: 2.84, avg_move: 9.02,  std_move: 3.19, avg_ext: 5.93, std_ext: 0.45 },
+    'Slider':          { avg_velo: 84.73, std_velo: 3.24, avg_move: 7.34,  std_move: 3.84, avg_ext: 5.77, std_ext: 0.45 },
+    'Sweeper':         { avg_velo: 81.09, std_velo: 2.92, avg_move: 17.22, std_move: 4.09, avg_ext: 5.63, std_ext: 0.49 },
+    'Curveball':       { avg_velo: 78.47, std_velo: 3.49, avg_move: 14.15, std_move: 5.34, avg_ext: 5.67, std_ext: 0.49 },
+    'Changeup':        { avg_velo: 84.54, std_velo: 3.44, avg_move: 16.29, std_move: 3.44, avg_ext: 6.07, std_ext: 0.49 },
+    'Split-Finger':    { avg_velo: 85.35, std_velo: 2.53, avg_move: 11.98, std_move: 4.27, avg_ext: 5.89, std_ext: 0.37 },
+    'Knuckle Curve':   { avg_velo: 80.77, std_velo: 3.17, avg_move: 13.67, std_move: 5.24, avg_ext: 5.71, std_ext: 0.53 },
+    'Slurve':          { avg_velo: 82.45, std_velo: 3.34, avg_move: 14.36, std_move: 4.67, avg_ext: 5.66, std_ext: 0.35 },
+  },
+  2020: {
+    '4-Seam Fastball': { avg_velo: 93.36, std_velo: 2.71, avg_move: 18.05, std_move: 2.87, avg_ext: 6.38, std_ext: 0.46 },
+    'Sinker':          { avg_velo: 92.66, std_velo: 2.97, avg_move: 18.05, std_move: 2.55, avg_ext: 6.32, std_ext: 0.45 },
+    'Cutter':          { avg_velo: 88.22, std_velo: 2.93, avg_move: 9.25,  std_move: 3.35, avg_ext: 6.32, std_ext: 0.42 },
+    'Slider':          { avg_velo: 84.41, std_velo: 3.55, avg_move: 7.21,  std_move: 3.84, avg_ext: 6.25, std_ext: 0.46 },
+    'Sweeper':         { avg_velo: 80.58, std_velo: 3.19, avg_move: 15.61, std_move: 3.56, avg_ext: 6.31, std_ext: 0.47 },
+    'Curveball':       { avg_velo: 78.23, std_velo: 3.79, avg_move: 14.41, std_move: 5.19, avg_ext: 6.23, std_ext: 0.44 },
+    'Changeup':        { avg_velo: 84.45, std_velo: 3.43, avg_move: 15.95, std_move: 3.26, avg_ext: 6.30, std_ext: 0.47 },
+    'Split-Finger':    { avg_velo: 85.25, std_velo: 2.69, avg_move: 12.80, std_move: 4.04, avg_ext: 6.34, std_ext: 0.39 },
+    'Knuckle Curve':   { avg_velo: 81.25, std_velo: 2.90, avg_move: 13.34, std_move: 5.47, avg_ext: 6.20, std_ext: 0.48 },
+    'Slurve':          { avg_velo: 82.39, std_velo: 2.23, avg_move: 15.16, std_move: 3.08, avg_ext: 6.14, std_ext: 0.39 },
+  },
+  2021: {
+    '4-Seam Fastball': { avg_velo: 93.70, std_velo: 2.52, avg_move: 18.22, std_move: 2.82, avg_ext: 6.37, std_ext: 0.44 },
+    'Sinker':          { avg_velo: 92.98, std_velo: 3.01, avg_move: 18.09, std_move: 2.69, avg_ext: 6.30, std_ext: 0.46 },
+    'Cutter':          { avg_velo: 88.65, std_velo: 3.41, avg_move: 9.20,  std_move: 3.41, avg_ext: 6.28, std_ext: 0.39 },
+    'Slider':          { avg_velo: 84.86, std_velo: 3.34, avg_move: 7.45,  std_move: 3.99, avg_ext: 6.26, std_ext: 0.45 },
+    'Sweeper':         { avg_velo: 81.21, std_velo: 3.44, avg_move: 15.17, std_move: 3.90, avg_ext: 6.27, std_ext: 0.47 },
+    'Curveball':       { avg_velo: 78.48, std_velo: 3.84, avg_move: 14.40, std_move: 5.09, avg_ext: 6.22, std_ext: 0.41 },
+    'Changeup':        { avg_velo: 84.81, std_velo: 3.48, avg_move: 16.27, std_move: 3.22, avg_ext: 6.30, std_ext: 0.45 },
+    'Split-Finger':    { avg_velo: 85.73, std_velo: 2.92, avg_move: 12.09, std_move: 4.00, avg_ext: 6.30, std_ext: 0.41 },
+    'Knuckle Curve':   { avg_velo: 80.98, std_velo: 3.18, avg_move: 13.66, std_move: 5.11, avg_ext: 6.22, std_ext: 0.46 },
+    'Slurve':          { avg_velo: 82.66, std_velo: 2.21, avg_move: 14.81, std_move: 3.32, avg_ext: 5.93, std_ext: 0.37 },
+  },
+  2022: {
+    '4-Seam Fastball': { avg_velo: 93.92, std_velo: 2.54, avg_move: 18.29, std_move: 2.82, avg_ext: 6.39, std_ext: 0.43 },
+    'Sinker':          { avg_velo: 93.33, std_velo: 2.89, avg_move: 17.89, std_move: 2.75, avg_ext: 6.33, std_ext: 0.44 },
+    'Cutter':          { avg_velo: 89.07, std_velo: 3.38, avg_move: 9.39,  std_move: 3.31, avg_ext: 6.29, std_ext: 0.38 },
+    'Slider':          { avg_velo: 85.14, std_velo: 3.25, avg_move: 7.39,  std_move: 3.90, avg_ext: 6.27, std_ext: 0.45 },
+    'Sweeper':         { avg_velo: 81.59, std_velo: 3.15, avg_move: 15.05, std_move: 3.87, avg_ext: 6.27, std_ext: 0.46 },
+    'Curveball':       { avg_velo: 78.68, std_velo: 3.60, avg_move: 14.59, std_move: 4.95, avg_ext: 6.23, std_ext: 0.41 },
+    'Changeup':        { avg_velo: 85.33, std_velo: 3.39, avg_move: 16.24, std_move: 3.17, avg_ext: 6.34, std_ext: 0.44 },
+    'Split-Finger':    { avg_velo: 87.07, std_velo: 2.98, avg_move: 12.76, std_move: 3.98, avg_ext: 6.32, std_ext: 0.40 },
+    'Knuckle Curve':   { avg_velo: 81.64, std_velo: 3.41, avg_move: 12.98, std_move: 5.46, avg_ext: 6.31, std_ext: 0.45 },
+    'Slurve':          { avg_velo: 82.59, std_velo: 2.39, avg_move: 15.30, std_move: 3.31, avg_ext: 5.94, std_ext: 0.36 },
+  },
+  2023: {
+    '4-Seam Fastball': { avg_velo: 94.16, std_velo: 2.47, avg_move: 17.90, std_move: 2.66, avg_ext: 6.51, std_ext: 0.45 },
+    'Sinker':          { avg_velo: 93.39, std_velo: 2.92, avg_move: 17.66, std_move: 2.77, avg_ext: 6.43, std_ext: 0.46 },
+    'Cutter':          { avg_velo: 89.21, std_velo: 3.33, avg_move: 8.98,  std_move: 3.24, avg_ext: 6.37, std_ext: 0.40 },
+    'Slider':          { avg_velo: 85.45, std_velo: 3.13, avg_move: 7.08,  std_move: 3.90, avg_ext: 6.41, std_ext: 0.46 },
+    'Sweeper':         { avg_velo: 81.60, std_velo: 3.01, avg_move: 14.92, std_move: 3.78, avg_ext: 6.44, std_ext: 0.49 },
+    'Curveball':       { avg_velo: 79.02, std_velo: 3.63, avg_move: 14.48, std_move: 5.04, avg_ext: 6.36, std_ext: 0.46 },
+    'Changeup':        { avg_velo: 85.43, std_velo: 3.40, avg_move: 16.09, std_move: 3.19, avg_ext: 6.46, std_ext: 0.46 },
+    'Split-Finger':    { avg_velo: 86.71, std_velo: 3.27, avg_move: 12.31, std_move: 3.89, avg_ext: 6.43, std_ext: 0.44 },
+    'Knuckle Curve':   { avg_velo: 81.97, std_velo: 3.45, avg_move: 12.22, std_move: 5.19, avg_ext: 6.34, std_ext: 0.43 },
+    'Slurve':          { avg_velo: 82.28, std_velo: 2.48, avg_move: 15.15, std_move: 3.79, avg_ext: 6.02, std_ext: 0.39 },
+  },
+  2024: {
+    '4-Seam Fastball': { avg_velo: 94.29, std_velo: 2.46, avg_move: 18.01, std_move: 2.69, avg_ext: 6.53, std_ext: 0.44 },
+    'Sinker':          { avg_velo: 93.29, std_velo: 2.77, avg_move: 17.47, std_move: 2.68, avg_ext: 6.43, std_ext: 0.47 },
+    'Cutter':          { avg_velo: 89.54, std_velo: 3.14, avg_move: 9.26,  std_move: 3.29, avg_ext: 6.40, std_ext: 0.43 },
+    'Slider':          { avg_velo: 85.73, std_velo: 3.01, avg_move: 6.76,  std_move: 3.58, avg_ext: 6.44, std_ext: 0.46 },
+    'Sweeper':         { avg_velo: 81.85, std_velo: 2.97, avg_move: 14.95, std_move: 3.63, avg_ext: 6.41, std_ext: 0.47 },
+    'Curveball':       { avg_velo: 79.40, std_velo: 3.40, avg_move: 14.25, std_move: 4.78, avg_ext: 6.41, std_ext: 0.46 },
+    'Changeup':        { avg_velo: 85.45, std_velo: 3.37, avg_move: 15.87, std_move: 3.24, avg_ext: 6.45, std_ext: 0.46 },
+    'Split-Finger':    { avg_velo: 86.53, std_velo: 3.24, avg_move: 11.92, std_move: 3.80, avg_ext: 6.51, std_ext: 0.44 },
+    'Knuckle Curve':   { avg_velo: 81.90, std_velo: 3.51, avg_move: 12.57, std_move: 5.33, avg_ext: 6.41, std_ext: 0.39 },
+    'Slurve':          { avg_velo: 81.90, std_velo: 2.47, avg_move: 14.58, std_move: 4.07, avg_ext: 6.19, std_ext: 0.38 },
+  },
+  2025: {
+    '4-Seam Fastball': { avg_velo: 94.50, std_velo: 2.53, avg_move: 18.13, std_move: 2.59, avg_ext: 6.51, std_ext: 0.44 },
+    'Sinker':          { avg_velo: 93.80, std_velo: 2.80, avg_move: 17.69, std_move: 2.64, avg_ext: 6.40, std_ext: 0.45 },
+    'Cutter':          { avg_velo: 89.73, std_velo: 2.99, avg_move: 9.24,  std_move: 3.30, avg_ext: 6.37, std_ext: 0.39 },
+    'Slider':          { avg_velo: 86.13, std_velo: 3.14, avg_move: 6.54,  std_move: 3.56, avg_ext: 6.41, std_ext: 0.46 },
+    'Sweeper':         { avg_velo: 82.49, std_velo: 2.96, avg_move: 14.43, std_move: 3.66, avg_ext: 6.35, std_ext: 0.43 },
+    'Curveball':       { avg_velo: 79.71, std_velo: 3.68, avg_move: 14.55, std_move: 4.59, avg_ext: 6.36, std_ext: 0.47 },
+    'Changeup':        { avg_velo: 85.84, std_velo: 3.68, avg_move: 15.83, std_move: 3.15, avg_ext: 6.44, std_ext: 0.44 },
+    'Split-Finger':    { avg_velo: 86.45, std_velo: 3.51, avg_move: 12.56, std_move: 3.83, avg_ext: 6.56, std_ext: 0.42 },
+    'Knuckle Curve':   { avg_velo: 82.85, std_velo: 3.78, avg_move: 12.44, std_move: 5.41, avg_ext: 6.36, std_ext: 0.39 },
+    'Slurve':          { avg_velo: 81.82, std_velo: 2.46, avg_move: 13.97, std_move: 4.35, avg_ext: 6.15, std_ext: 0.44 },
+  },
+  2026: {
+    '4-Seam Fastball': { avg_velo: 94.20, std_velo: 2.40, avg_move: 17.55, std_move: 2.74, avg_ext: 6.41, std_ext: 0.43 },
+    'Sinker':          { avg_velo: 93.49, std_velo: 2.81, avg_move: 17.41, std_move: 2.58, avg_ext: 6.32, std_ext: 0.46 },
+    'Cutter':          { avg_velo: 88.95, std_velo: 2.91, avg_move: 8.54,  std_move: 3.35, avg_ext: 6.34, std_ext: 0.42 },
+    'Slider':          { avg_velo: 85.32, std_velo: 3.17, avg_move: 6.92,  std_move: 3.82, avg_ext: 6.28, std_ext: 0.45 },
+    'Sweeper':         { avg_velo: 81.99, std_velo: 2.97, avg_move: 14.22, std_move: 3.94, avg_ext: 6.25, std_ext: 0.48 },
+    'Curveball':       { avg_velo: 79.95, std_velo: 3.16, avg_move: 13.64, std_move: 4.37, avg_ext: 6.30, std_ext: 0.42 },
+    'Changeup':        { avg_velo: 85.59, std_velo: 3.41, avg_move: 14.91, std_move: 3.56, avg_ext: 6.35, std_ext: 0.43 },
+    'Split-Finger':    { avg_velo: 85.33, std_velo: 3.18, avg_move: 11.61, std_move: 3.87, avg_ext: 6.45, std_ext: 0.46 },
+    'Knuckle Curve':   { avg_velo: 82.98, std_velo: 3.76, avg_move: 10.92, std_move: 5.50, avg_ext: 6.23, std_ext: 0.46 },
+    'Slurve':          { avg_velo: 81.88, std_velo: 2.36, avg_move: 12.71, std_move: 4.06, avg_ext: 6.22, std_ext: 0.60 },
+  },
+}
+
+// Default baselines (latest year) for when year is unknown
+export const STUFF_ZSCORE_BASELINES = BL_BY_YEAR[2026]
+
+/**
+ * Get year-specific baselines for a pitch type. Falls back to nearest available year.
+ */
+function getStuffBaseline(pitchName: string, year?: number): StuffZscoreBaseline | undefined {
+  if (year != null && BL_BY_YEAR[year]?.[pitchName]) return BL_BY_YEAR[year][pitchName]
+  // Fall back to nearest year
+  if (year != null) {
+    const years = Object.keys(BL_BY_YEAR).map(Number).sort((a, b) => Math.abs(a - year) - Math.abs(b - year))
+    for (const y of years) {
+      if (BL_BY_YEAR[y]?.[pitchName]) return BL_BY_YEAR[y][pitchName]
+    }
+  }
+  return STUFF_ZSCORE_BASELINES[pitchName]
 }
 
 /**
  * Client-side Stuff+ fallback using Z-score formula (mirrors DB pipeline).
- * Returns a 0-200 scale value (100 = league average for that pitch type).
+ * Returns a 0-200 scale value (100 = league average for that pitch type in that year).
  * Returns null if required features are missing or pitch type is unknown.
  */
 export function computeStuffRV(p: any): number | null {
-  const bl = STUFF_ZSCORE_BASELINES[p.pitch_name as string]
+  const bl = getStuffBaseline(p.pitch_name as string, p.game_year)
   if (!bl) return null
   if (p.release_speed == null || p.pfx_x == null || p.pfx_z == null) return null
 

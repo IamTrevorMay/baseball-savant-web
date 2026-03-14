@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
-import { plusToGrade, isFastball } from '@/lib/leagueStats'
+import { plusToGrade, isFastball, computeStuffRV } from '@/lib/leagueStats'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -285,8 +285,11 @@ export async function GET(req: NextRequest) {
         ? bipPitches.reduce((s: number, p: any) => s + p.estimated_slg_using_speedangle, 0) / bipPitches.length
         : 0
 
-      // Stuff+: use DB column only (not populated in Statcast CSV yet)
-      const stuffArr = pts.filter((p: any) => p.stuff_plus != null).map((p: any) => p.stuff_plus)
+      // Stuff+: prefer DB column, fall back to client-side Z-score
+      const stuffArr = pts.map((p: any) => {
+        if (p.stuff_plus != null) return Number(p.stuff_plus)
+        return computeStuffRV(p)
+      }).filter((x): x is number => x != null)
       const avgStuff: number | null = stuffArr.length > 0
         ? stuffArr.reduce((s: number, v: number) => s + v, 0) / stuffArr.length
         : null
