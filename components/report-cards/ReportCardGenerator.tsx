@@ -33,7 +33,7 @@ export default function ReportCardGenerator() {
   // Inputs
   const [playerId, setPlayerId] = useState<number | null>(null)
   const [playerName, setPlayerName] = useState('')
-  const [season, setSeason] = useState('2025')
+  const [season, setSeason] = useState('2026')
   const [games, setGames] = useState<GameOption[]>([])
   const [selectedGamePk, setSelectedGamePk] = useState<number | null>(null)
   const [title, setTitle] = useState('')
@@ -182,7 +182,7 @@ export default function ReportCardGenerator() {
             onChange={e => setSeason(e.target.value)}
             className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-200 focus:outline-none focus:border-cyan-500/50"
           >
-            {Array.from({ length: 11 }, (_, i) => 2025 - i).map(y => (
+            {Array.from({ length: 12 }, (_, i) => 2026 - i).map(y => (
               <option key={y} value={String(y)}>{y}</option>
             ))}
           </select>

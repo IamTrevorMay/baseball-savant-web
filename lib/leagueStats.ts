@@ -663,6 +663,13 @@ export const STUFF_LEAGUE_BY_YEAR: YearLeague = {
     'Sweeper': { mean: -0.0100, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0130, stddev: 0.0060 },
     'Knuckle Curve': { mean: -0.0108, stddev: 0.0062 }, 'Slurve': { mean: -0.0100, stddev: 0.0050 },
   },
+  2026: {
+    '4-Seam Fastball': { mean: -0.0045, stddev: 0.0042 }, 'Slider': { mean: -0.0095, stddev: 0.0055 },
+    'Sinker': { mean: -0.0018, stddev: 0.0040 }, 'Changeup': { mean: -0.0115, stddev: 0.0058 },
+    'Curveball': { mean: -0.0095, stddev: 0.0068 }, 'Cutter': { mean: -0.0040, stddev: 0.0042 },
+    'Sweeper': { mean: -0.0100, stddev: 0.0058 }, 'Split-Finger': { mean: -0.0130, stddev: 0.0060 },
+    'Knuckle Curve': { mean: -0.0108, stddev: 0.0062 }, 'Slurve': { mean: -0.0100, stddev: 0.0050 },
+  },
 }
 
 // ── STUFF LINEAR COEFFICIENTS ────────────────────────────────────────────────
@@ -701,14 +708,17 @@ export function computeStuffRV(p: any): number | null {
   const coeffs = STUFF_LINEAR_COEFFICIENTS[pitchName]
   if (!coeffs) return null
 
+  // Require at least the core features: release_speed and one movement axis
+  if (p.release_speed == null || (p.pfx_x == null && p.pfx_z == null)) return null
+
   const vals: number[] = []
   for (const feat of STUFF_LINEAR_FEATURES) {
     if (feat === 'p_throws_R') {
       vals.push(p.p_throws === 'R' ? 1 : 0)
     } else {
       const v = p[feat]
-      if (v == null) return null
-      vals.push(Number(v))
+      // Skip null features by contributing 0 to the sum (equivalent to mean-imputed at 0)
+      vals.push(v != null ? Number(v) : 0)
     }
   }
 
@@ -731,7 +741,7 @@ const METRIC_TABLES: Record<MetricName, YearLeague> = {
 }
 
 // Available years in the data, sorted
-const AVAILABLE_YEARS = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+const AVAILABLE_YEARS = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
 /**
  * Get year-specific league baseline for a metric+pitchName combo.
