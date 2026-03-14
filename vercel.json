@@ -30,7 +30,7 @@
     },
     {
       "path": "/api/cron/daily-cards",
-      "schedule": "10 14 * * *"
+      "schedule": "0 10 * * *"
     }
   ]
 }

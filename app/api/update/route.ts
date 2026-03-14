@@ -100,7 +100,7 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     const batch = rows.slice(i, i + batchSize)
     const { error } = await supabase.from('pitches').upsert(batch, {
       onConflict: 'game_pk,at_bat_number,pitch_number',
-      ignoreDuplicates: true
+      ignoreDuplicates: false
     })
     if (error) errors += batch.length
     else inserted += batch.length
