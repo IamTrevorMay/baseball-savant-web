@@ -56,6 +56,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // 0. Load config (template + top_n)
+    const { data: configRow } = await supabaseAdmin
+      .from('daily_cards_config')
+      .select('template_id, top_n')
+      .limit(1)
+      .maybeSingle()
+
     // 1. Fetch finished games via MLB Schedule API
     const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?date=${cardDate}&sportId=1&hydrate=team`
     const scheduleRes = await fetch(scheduleUrl)
@@ -140,22 +147,41 @@ export async function GET(req: NextRequest) {
       return json({ ok: true, skipped: true, reason: 'no_starters', date: cardDate })
     }
 
-    // 3. Sort by IP desc, pitch_count desc → top 5
+    // 3. Sort by IP desc, pitch_count desc → top N
+    const topN = configRow?.top_n || 5
     starters.sort((a, b) => b.ip - a.ip || b.pitchCount - a.pitchCount)
-    const top5 = starters.slice(0, 5)
+    const top5 = starters.slice(0, topN)
 
-    // 4. Load "Test Starter Card" template
-    const { data: templateData, error: templateError } = await supabaseAdmin
-      .from('report_card_templates')
-      .select('*')
-      .eq('user_id', DEFAULT_USER_ID)
-      .ilike('name', '%Test Starter Card%')
-      .limit(1)
-      .maybeSingle()
+    // 4. Load template from config (falls back to name search if no config)
+    let templateData: any = null
+    let templateError: any = null
+
+    if (configRow?.template_id) {
+      const result = await supabaseAdmin
+        .from('report_card_templates')
+        .select('*')
+        .eq('id', configRow.template_id)
+        .maybeSingle()
+      templateData = result.data
+      templateError = result.error
+    }
+
+    // Fallback: search by name if config missing or template deleted
+    if (!templateData) {
+      const result = await supabaseAdmin
+        .from('report_card_templates')
+        .select('*')
+        .eq('user_id', DEFAULT_USER_ID)
+        .ilike('name', '%Starter Card%')
+        .limit(1)
+        .maybeSingle()
+      templateData = result.data
+      templateError = result.error
+    }
 
     if (templateError || !templateData) {
       return json({
-        error: 'Template "Test Starter Card" not found',
+        error: 'No report card template found. Set one in daily cards config.',
         detail: templateError?.message,
       }, { status: 500 })
     }
