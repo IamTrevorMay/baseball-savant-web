@@ -25,10 +25,14 @@ export async function GET(req: NextRequest) {
     return json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Compute yesterday's date in ET
+  // Compute the latest date with available Statcast data.
+  // Statcast data isn't ready until ~4am EST the following day,
+  // so before 4am EST we go back 2 days, after 4am we use yesterday.
   const now = new Date()
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  et.setDate(et.getDate() - 1)
+  const etHour = et.getHours()
+  const daysBack = etHour < 4 ? 2 : 1
+  et.setDate(et.getDate() - daysBack)
   const cardDate = et.toISOString().slice(0, 10)
 
   // Skip offseason (Dec, Jan)
