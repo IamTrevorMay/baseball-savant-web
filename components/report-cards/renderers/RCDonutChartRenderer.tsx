@@ -38,11 +38,16 @@ export default function RCDonutChartRenderer({ props: p, width, height }: Props)
     ctx.fillStyle = bgColor
     ctx.fillRect(0, 0, width, height)
 
+    // Dynamic font sizing based on container
+    const dynFont = Math.max(12, Math.min(20, Math.floor(Math.min(width, height) * 0.055)))
+    const effectiveFont = fontSize !== 12 ? fontSize : dynFont
+
     let titleOffset = 0
     if (title) {
-      titleOffset = 24
+      const titleFont = Math.max(12, effectiveFont + 1)
+      titleOffset = titleFont + 12
       ctx.fillStyle = '#a1a1aa'
-      ctx.font = `600 ${Math.max(10, fontSize)}px Inter, system-ui, sans-serif`
+      ctx.font = `600 ${titleFont}px Inter, system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(title, width / 2, 6)
@@ -91,7 +96,7 @@ export default function RCDonutChartRenderer({ props: p, width, height }: Props)
         const ly = cy + labelR * Math.sin(midAngle)
 
         ctx.fillStyle = '#a1a1aa'
-        ctx.font = `500 ${fontSize}px Inter, system-ui, sans-serif`
+        ctx.font = `500 ${effectiveFont}px Inter, system-ui, sans-serif`
         ctx.textAlign = midAngle > Math.PI / 2 && midAngle < 3 * Math.PI / 2 ? 'right' : 'left'
         ctx.textBaseline = 'middle'
 

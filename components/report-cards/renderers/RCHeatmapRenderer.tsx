@@ -55,9 +55,12 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
     canvas.height = height * dpr
     ctx.scale(dpr, dpr)
 
+    // Dynamic font sizing based on container
+    const dynFont = Math.max(12, Math.min(20, Math.floor(Math.min(width, height) * 0.055)))
+
     let titleOffset = 0
     if (title) {
-      titleOffset = 24
+      titleOffset = dynFont + 12
     }
     const pad = 25
     const plotW = width - pad * 2
@@ -75,7 +78,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
 
     if (title) {
       ctx.fillStyle = '#a1a1aa'
-      ctx.font = '600 12px Inter, system-ui, sans-serif'
+      ctx.font = `600 ${dynFont}px Inter, system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(title, width / 2, 6)
@@ -110,7 +113,8 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
         if (count > 0) {
           ctx.globalAlpha = 0.9
           ctx.fillStyle = t > 0.5 ? '#ffffff' : '#a1a1aa'
-          ctx.font = '11px Inter, system-ui, sans-serif'
+          const cellFont = Math.max(10, Math.min(18, Math.floor(Math.min(cellW, cellH) * 0.4)))
+          ctx.font = `${cellFont}px Inter, system-ui, sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
           ctx.fillText(String(count), pad + col * cellW + cellW / 2, pad + titleOffset + row * cellH + cellH / 2)

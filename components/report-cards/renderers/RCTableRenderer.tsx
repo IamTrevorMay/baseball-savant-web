@@ -37,19 +37,19 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
   }
 
   // Compute dynamic row height and font sizes to fill bounding box
-  const titleH = title ? 20 : 0
-  const approxHeaderH = (p.headerFontSize || 11) + 17
+  const titleH = title ? 24 : 0
+  const approxHeaderH = (p.headerFontSize || 13) + 18
   const availableH = height - titleH - approxHeaderH
   const rowCount = Math.max(rows.length, 1)
   const rowH = Math.max(0, availableH / rowCount)
 
-  // Scale font with row height if not explicitly set
+  // Scale font with row height if not explicitly set — fill the space
   const dynamicFontSize = fontSize !== 13
     ? fontSize
-    : Math.min(18, Math.max(8, Math.floor(rowH * 0.52)))
+    : Math.min(28, Math.max(10, Math.floor(rowH * 0.58)))
   const dynamicHeaderFontSize = headerFontSize !== 11
     ? headerFontSize
-    : Math.max(7, Math.floor(dynamicFontSize * 0.78))
+    : Math.max(9, Math.floor(dynamicFontSize * 0.82))
   const headerH = dynamicHeaderFontSize + 16 + 1
 
   // Scale horizontal cell padding with column count
@@ -65,7 +65,7 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
       {title && (
         <div
           className="text-center font-semibold uppercase tracking-wider px-2.5 shrink-0"
-          style={{ color: headerColor, fontSize: Math.max(10, dynamicHeaderFontSize + 1), paddingTop: 6, paddingBottom: 4 }}
+          style={{ color: headerColor, fontSize: Math.max(11, dynamicHeaderFontSize + 2), paddingTop: 6, paddingBottom: 4 }}
         >
           {title}
         </div>
@@ -95,15 +95,17 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
             rows.map((row, i) => (
               <tr key={i} className="border-b border-zinc-800/50 last:border-b-0">
                 {columns.map(col => (
-                  <td key={col.key} style={{ color: textColor, height: rowH, paddingLeft: colPad, paddingRight: colPad }}>
-                    <span className="flex items-center gap-1.5">
+                  <td key={col.key} style={{ color: textColor, height: rowH, paddingLeft: colPad, paddingRight: colPad, verticalAlign: 'middle' }}>
+                    <span className="flex items-center gap-1.5" style={{ lineHeight: 1.15 }}>
                       {col.key === 'pitch_name' && (
                         <span
                           className="inline-block rounded-full shrink-0"
                           style={{ width: dotSize, height: dotSize, background: row._color || getPitchColor(row.pitch_name) }}
                         />
                       )}
-                      {row[col.key] ?? '--'}
+                      <span className={col.key === 'pitch_name' ? 'whitespace-normal break-words' : 'whitespace-nowrap'}>
+                        {row[col.key] ?? '--'}
+                      </span>
                     </span>
                   </td>
                 ))}

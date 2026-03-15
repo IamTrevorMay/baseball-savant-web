@@ -20,7 +20,8 @@ const STAT_LABELS = ['IP', 'H', 'R', 'SO', 'BB', 'W/L', 'ERA']
 
 export default function RCStatlineRenderer({ props: p, width, height }: Props) {
   const statline: Statline = p.statline || { ip: '?', h: 0, r: 0, k: 0, bb: 0, decision: 'ND', era: '--' }
-  const fontSize = p.fontSize || 18
+  const dynFont = Math.max(18, Math.min(36, Math.floor(height * 0.35)))
+  const fontSize = p.fontSize && p.fontSize !== 18 ? p.fontSize : dynFont
   const color = p.color || '#ffffff'
   const headerColor = p.headerColor || '#a1a1aa'
   const bgColor = p.bgColor || 'rgba(255,255,255,0.04)'
@@ -48,7 +49,7 @@ export default function RCStatlineRenderer({ props: p, width, height }: Props) {
       {title && (
         <div
           className="text-center font-semibold uppercase tracking-wider shrink-0 pt-1"
-          style={{ fontSize: Math.max(9, fontSize * 0.55), color: headerColor }}
+          style={{ fontSize: Math.max(11, fontSize * 0.5), color: headerColor }}
         >
           {title}
         </div>
@@ -63,7 +64,7 @@ export default function RCStatlineRenderer({ props: p, width, height }: Props) {
               <div className="flex flex-col items-center justify-center px-3">
                 <div
                   className="uppercase tracking-wider font-medium"
-                  style={{ fontSize: Math.max(8, fontSize * 0.55), color: headerColor, lineHeight: 1.2 }}
+                  style={{ fontSize: Math.max(10, fontSize * 0.5), color: headerColor, lineHeight: 1.2 }}
                 >
                   {label}
                 </div>

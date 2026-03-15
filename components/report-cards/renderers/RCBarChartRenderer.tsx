@@ -41,9 +41,10 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
     // Title
     let titleOffset = 0
     if (title) {
-      titleOffset = 28
+      const titleFont = Math.max(12, Math.min(20, Math.floor(Math.min(width, height) * 0.06)))
+      titleOffset = titleFont + 14
       ctx.fillStyle = '#a1a1aa'
-      ctx.font = `600 ${Math.max(10, fontSize)}px Inter, system-ui, sans-serif`
+      ctx.font = `600 ${titleFont}px Inter, system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(title, width / 2, 8)
@@ -58,8 +59,24 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
       return
     }
 
+    // Dynamically scale font size based on container
+    const dynFont = Math.max(11, Math.min(22, Math.floor(Math.min(width, height) * 0.055)))
+    const effectiveFont = fontSize !== 12 ? fontSize : dynFont
+
     const maxVal = Math.max(...barData.map(d => d.value), 1)
-    const pad = { top: 15 + titleOffset, right: 15, bottom: 15, left: 80 }
+
+    // Measure longest label to size left padding dynamically
+    ctx.font = `500 ${effectiveFont}px Inter, system-ui, sans-serif`
+    let maxLabelW = 80
+    if (orientation === 'horizontal') {
+      for (const d of barData) {
+        const w = ctx.measureText(d.label).width
+        if (w > maxLabelW) maxLabelW = w
+      }
+      maxLabelW += 14 // padding after label
+    }
+
+    const pad = { top: 15 + titleOffset, right: 15, bottom: 15, left: orientation === 'horizontal' ? maxLabelW : 30 }
     const plotW = width - pad.left - pad.right
     const plotH = height - pad.top - pad.bottom
 
@@ -74,12 +91,25 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
         const barW = (d.value / maxVal) * plotW
         const color = d.color || getPitchColor(d.label)
 
-        // Label
+        // Label — wrap long text to multiple lines if needed
         ctx.fillStyle = '#a1a1aa'
-        ctx.font = `500 ${fontSize}px Inter, system-ui, sans-serif`
+        ctx.font = `500 ${effectiveFont}px Inter, system-ui, sans-serif`
         ctx.textAlign = 'right'
         ctx.textBaseline = 'middle'
-        ctx.fillText(d.label, pad.left - 8, y + barH / 2)
+        const labelMaxW = pad.left - 14
+        const labelW = ctx.measureText(d.label).width
+        if (labelW > labelMaxW && d.label.includes(' ')) {
+          // Split into two lines
+          const words = d.label.split(' ')
+          const mid = Math.ceil(words.length / 2)
+          const line1 = words.slice(0, mid).join(' ')
+          const line2 = words.slice(mid).join(' ')
+          const lineH = effectiveFont * 1.15
+          ctx.fillText(line1, pad.left - 8, y + barH / 2 - lineH / 2)
+          ctx.fillText(line2, pad.left - 8, y + barH / 2 + lineH / 2)
+        } else {
+          ctx.fillText(d.label, pad.left - 8, y + barH / 2)
+        }
 
         // Bar bg
         ctx.fillStyle = '#27272a'
@@ -96,7 +126,7 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
         // Value
         if (showValues) {
           ctx.fillStyle = '#e4e4e7'
-          ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`
+          ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
           ctx.textAlign = 'left'
           ctx.fillText(
             typeof d.value === 'number' ? (d.value % 1 ? d.value.toFixed(1) : String(d.value)) : String(d.value),
@@ -107,44 +137,59 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
       }
     } else {
       // Vertical bars
+      const vLabelFont = Math.max(10, effectiveFont - 2)
+      const labelH = vLabelFont * 2.4 // space for up to 2 wrapped lines
       const vGap = 8
+      const vPad = { ...pad, bottom: 10 + labelH }
+      const vPlotH = height - vPad.top - vPad.bottom
       const barW = (plotW - (barData.length - 1) * vGap) / barData.length
-      const startX = pad.left
+      const startX = vPad.left
 
       for (let i = 0; i < barData.length; i++) {
         const d = barData[i]
         const x = startX + i * (barW + vGap)
-        const barH = (d.value / maxVal) * plotH
+        const barH = (d.value / maxVal) * vPlotH
         const color = d.color || getPitchColor(d.label)
 
         // Bar bg
         ctx.fillStyle = '#27272a'
         ctx.beginPath()
-        ctx.roundRect(x, pad.top, barW, plotH, 4)
+        ctx.roundRect(x, vPad.top, barW, vPlotH, 4)
         ctx.fill()
 
         // Bar fill
         ctx.fillStyle = color
         ctx.beginPath()
-        ctx.roundRect(x, pad.top + plotH - barH, barW, Math.max(barH, 4), 4)
+        ctx.roundRect(x, vPad.top + vPlotH - barH, barW, Math.max(barH, 4), 4)
         ctx.fill()
 
-        // Label
+        // Label — wrap to two lines if needed
         ctx.fillStyle = '#a1a1aa'
-        ctx.font = `500 ${Math.max(9, fontSize - 2)}px Inter, system-ui, sans-serif`
+        ctx.font = `500 ${vLabelFont}px Inter, system-ui, sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'top'
-        ctx.fillText(d.label, x + barW / 2, pad.top + plotH + 4)
+        const lblW = ctx.measureText(d.label).width
+        if (lblW > barW + vGap && d.label.includes(' ')) {
+          const words = d.label.split(' ')
+          const mid = Math.ceil(words.length / 2)
+          const line1 = words.slice(0, mid).join(' ')
+          const line2 = words.slice(mid).join(' ')
+          const lineH = vLabelFont * 1.15
+          ctx.fillText(line1, x + barW / 2, vPad.top + vPlotH + 4)
+          ctx.fillText(line2, x + barW / 2, vPad.top + vPlotH + 4 + lineH)
+        } else {
+          ctx.fillText(d.label, x + barW / 2, vPad.top + vPlotH + 4)
+        }
 
         // Value
         if (showValues) {
           ctx.fillStyle = '#e4e4e7'
-          ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`
+          ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
           ctx.textBaseline = 'bottom'
           ctx.fillText(
             typeof d.value === 'number' ? (d.value % 1 ? d.value.toFixed(1) : String(d.value)) : String(d.value),
             x + barW / 2,
-            pad.top + plotH - barH - 4
+            vPad.top + vPlotH - barH - 4
           )
         }
       }

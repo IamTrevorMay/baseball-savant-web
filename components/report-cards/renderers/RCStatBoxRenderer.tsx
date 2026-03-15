@@ -8,7 +8,7 @@ interface Props {
 
 export default function RCStatBoxRenderer({ props: p, width, height }: Props) {
   const fontSize = p.fontSize || 44
-  const labelSize = Math.max(10, fontSize * 0.28)
+  const labelSize = Math.max(12, fontSize * 0.36)
   const color = p.color || '#06b6d4'
   const fontFamily = p.fontFamily || undefined
   const letterSpacing = p.letterSpacing ? `${p.letterSpacing}px` : undefined

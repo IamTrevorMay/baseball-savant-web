@@ -272,7 +272,7 @@ function PlayerImageRenderer({ props: p, width, height }: { props: Record<string
 
 function ComparisonBarRenderer({ props: p, height }: { props: Record<string, any>; height: number }) {
   const pct = Math.min(100, Math.max(0, (p.value / p.maxValue) * 100))
-  const labelSize = p.fontSize > 0 ? p.fontSize : Math.max(10, Math.min(16, height * 0.28))
+  const labelSize = p.fontSize > 0 ? p.fontSize : Math.max(12, Math.min(24, height * 0.32))
   const barH = Math.max(6, height * 0.35)
   const gap = Math.max(2, height * 0.06)
   const barBg = p.barBgColor || '#27272a'
@@ -286,8 +286,8 @@ function ComparisonBarRenderer({ props: p, height }: { props: Record<string, any
 
   return (
     <div className="w-full h-full flex flex-col justify-center px-1" style={{ gap }}>
-      <div className="flex items-center justify-between">
-        <span className="text-zinc-400 font-medium" style={{ fontSize: labelSize, ...textStyle }}>{p.label}</span>
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-zinc-400 font-medium truncate min-w-0" style={{ fontSize: labelSize, lineHeight: 1.2, ...textStyle }}>{p.label}</span>
         {p.showValue && (
           <span className="text-white font-bold" style={{ fontSize: labelSize, fontVariantNumeric: 'tabular-nums', ...textStyle }}>
             {p.value}
