@@ -123,14 +123,15 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
         ctx.roundRect(pad.left, y, Math.max(barW, 4), barH, 4)
         ctx.fill()
 
-        // Value
+        // Value — inside the bar, right-aligned near the end
         if (showValues) {
-          ctx.fillStyle = '#e4e4e7'
+          const valText = typeof d.value === 'number' ? (d.value % 1 ? d.value.toFixed(1) : String(d.value)) : String(d.value)
+          ctx.fillStyle = '#ffffff'
           ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
-          ctx.textAlign = 'left'
+          ctx.textAlign = 'right'
           ctx.fillText(
-            typeof d.value === 'number' ? (d.value % 1 ? d.value.toFixed(1) : String(d.value)) : String(d.value),
-            pad.left + Math.max(barW, 4) + 6,
+            valText,
+            pad.left + Math.max(barW, 4) - 8,
             y + barH / 2
           )
         }
@@ -181,15 +182,16 @@ export default function RCBarChartRenderer({ props: p, width, height }: Props) {
           ctx.fillText(d.label, x + barW / 2, vPad.top + vPlotH + 4)
         }
 
-        // Value
+        // Value — inside the bar, near the top
         if (showValues) {
-          ctx.fillStyle = '#e4e4e7'
+          const valText = typeof d.value === 'number' ? (d.value % 1 ? d.value.toFixed(1) : String(d.value)) : String(d.value)
+          ctx.fillStyle = '#ffffff'
           ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
-          ctx.textBaseline = 'bottom'
+          ctx.textBaseline = 'top'
           ctx.fillText(
-            typeof d.value === 'number' ? (d.value % 1 ? d.value.toFixed(1) : String(d.value)) : String(d.value),
+            valText,
             x + barW / 2,
-            vPad.top + vPlotH - barH - 4
+            vPad.top + vPlotH - barH + 6
           )
         }
       }

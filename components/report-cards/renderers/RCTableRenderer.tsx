@@ -45,8 +45,8 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
 
   // Scale font with row height if not explicitly set — fill the space
   const dynamicFontSize = fontSize !== 16
-    ? fontSize
-    : Math.min(34, Math.max(12, Math.floor(rowH * 0.7)))
+    ? Math.round(fontSize * 1.1)
+    : Math.min(37, Math.max(13, Math.floor(rowH * 0.77)))
   const dynamicHeaderFontSize = headerFontSize !== 13
     ? headerFontSize
     : Math.max(11, Math.floor(dynamicFontSize * 0.82))
