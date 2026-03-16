@@ -175,6 +175,11 @@ async function ingestWBCGames(season: number, startDate?: string, endDate?: stri
         else totalRows += batch.length
       }
 
+      // Fix player_name: CSV stores batter name, we want pitcher name
+      await supabase.rpc('run_mutation', {
+        query_text: `UPDATE wbc_pitches w SET player_name = p.name FROM players p WHERE w.pitcher = p.id AND w.game_pk = ${gamePk}`
+      })
+
       // Rate-limit: 1s between games
       await new Promise(r => setTimeout(r, 1000))
     } catch (err: any) {

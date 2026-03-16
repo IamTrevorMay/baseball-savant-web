@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
         SELECT
           b.batter,
           p.name AS player_name,
-          w.home_team,
           COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) AS pa,
           COUNT(CASE WHEN w.events IN ('single','double','triple','home_run') THEN 1 END) AS h,
           COUNT(CASE WHEN w.events = 'home_run' THEN 1 END) AS hr_count,
@@ -70,7 +69,7 @@ export async function POST(req: NextRequest) {
         FROM (SELECT DISTINCT batter FROM wbc_pitches WHERE pitch_type NOT IN ('PO','IN') ${seasonFilter}) b
         JOIN wbc_pitches w ON w.batter = b.batter AND w.pitch_type NOT IN ('PO','IN') ${seasonFilter}
         LEFT JOIN players p ON p.id = b.batter
-        GROUP BY b.batter, p.name, w.home_team
+        GROUP BY b.batter, p.name
         HAVING COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) >= 5
         ORDER BY ${safeSortBy} ${safeSortDir}
         LIMIT ${safeLimit}
@@ -84,7 +83,6 @@ export async function POST(req: NextRequest) {
         SELECT
           w.pitcher,
           w.player_name,
-          w.home_team,
           COUNT(*) AS pitches,
           CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
             THEN ROUND(100.0 * COUNT(CASE WHEN w.events IN ('strikeout','strikeout_double_play') THEN 1 END)::numeric
@@ -94,10 +92,8 @@ export async function POST(req: NextRequest) {
             THEN ROUND(100.0 * COUNT(CASE WHEN w.events = 'walk' THEN 1 END)::numeric
               / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
             ELSE 0 END AS bb_pct,
-          CASE WHEN COUNT(CASE WHEN w.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt','swinging_pitchout') THEN 1 END) + COUNT(CASE WHEN w.description LIKE '%foul%' OR w.description LIKE '%hit_into_play%' OR w.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt','swinging_pitchout') THEN 1 END) > 0
-            THEN ROUND(100.0 * COUNT(CASE WHEN w.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt','swinging_pitchout') THEN 1 END)::numeric
-              / NULLIF(COUNT(CASE WHEN w.description NOT IN ('ball','blocked_ball','called_strike','pitchout','hit_by_pitch') AND w.description NOT LIKE '%bunt%' OR w.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt','swinging_pitchout','foul','foul_tip') THEN 1 END), 0), 1)
-            ELSE 0 END AS whiff_pct,
+          ROUND(100.0 * COUNT(CASE WHEN w.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt') THEN 1 END)::numeric
+            / NULLIF(COUNT(CASE WHEN w.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt','foul','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score') THEN 1 END), 0), 1) AS whiff_pct,
           ROUND(AVG(w.release_speed)::numeric, 1) AS avg_velo,
           CASE WHEN COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END) > 0
             THEN ROUND(COUNT(CASE WHEN w.events IN ('single','double','triple','home_run') THEN 1 END)::numeric
@@ -105,7 +101,7 @@ export async function POST(req: NextRequest) {
             ELSE 0 END AS ba
         FROM wbc_pitches w
         WHERE w.pitch_type NOT IN ('PO','IN') ${seasonFilter}
-        GROUP BY w.pitcher, w.player_name, w.home_team
+        GROUP BY w.pitcher, w.player_name
         HAVING COUNT(*) >= 30
         ORDER BY ${safeSortBy} ${safeSortDir}
         LIMIT ${safeLimit}

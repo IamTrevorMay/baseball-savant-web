@@ -201,6 +201,11 @@ async function backfillSeason(season: number) {
         }
       }
 
+      // Fix player_name: CSV stores batter name, we want pitcher name
+      await supabase.rpc('run_mutation', {
+        query_text: `UPDATE wbc_pitches w SET player_name = p.name FROM players p WHERE w.pitcher = p.id AND w.game_pk = ${game.gamePk}`
+      })
+
       totalRows += gameInserted
       console.log(`${gameInserted} pitches`)
 
