@@ -24,6 +24,7 @@ const ADVANCED_LINKS = [
 ]
 
 const MORE_LINKS = [
+  { href: '/wbc', label: 'WBC' },
   { href: '/glossary', label: 'Glossary' },
 ]
 
