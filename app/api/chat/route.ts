@@ -8,6 +8,49 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// ── MLB Stats API helpers ──────────────────────────────────────────
+const MLB_API = 'https://statsapi.mlb.com/api/v1'
+
+const TEAM_IDS: Record<string, number> = {
+  ARI: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CWS: 145, CIN: 113,
+  CLE: 114, COL: 115, DET: 116, HOU: 117, KC: 118, LAA: 108, LAD: 119,
+  MIA: 146, MIL: 158, MIN: 142, NYM: 121, NYY: 147, OAK: 133, PHI: 143,
+  PIT: 134, SD: 135, SF: 137, SEA: 136, STL: 138, TB: 139, TEX: 140,
+  TOR: 141, WSH: 120,
+}
+
+const TEAM_NAMES: Record<string, string> = {
+  diamondbacks: 'ARI', dbacks: 'ARI', braves: 'ATL', orioles: 'BAL',
+  'red sox': 'BOS', redsox: 'BOS', cubs: 'CHC', 'white sox': 'CWS',
+  whitesox: 'CWS', reds: 'CIN', guardians: 'CLE', indians: 'CLE',
+  rockies: 'COL', tigers: 'DET', astros: 'HOU', royals: 'KC',
+  angels: 'LAA', dodgers: 'LAD', marlins: 'MIA', brewers: 'MIL',
+  twins: 'MIN', mets: 'NYM', yankees: 'NYY', athletics: 'OAK',
+  'a\'s': 'OAK', phillies: 'PHI', pirates: 'PIT', padres: 'SD',
+  giants: 'SF', mariners: 'SEA', cardinals: 'STL', rays: 'TB',
+  rangers: 'TEX', 'blue jays': 'TOR', bluejays: 'TOR', nationals: 'WSH',
+  arizona: 'ARI', atlanta: 'ATL', baltimore: 'BAL', boston: 'BOS',
+  chicago: 'CHC', cincinnati: 'CIN', cleveland: 'CLE', colorado: 'COL',
+  detroit: 'DET', houston: 'HOU', 'kansas city': 'KC', 'los angeles': 'LAD',
+  miami: 'MIA', milwaukee: 'MIL', minnesota: 'MIN', 'new york': 'NYY',
+  oakland: 'OAK', philadelphia: 'PHI', pittsburgh: 'PIT', 'san diego': 'SD',
+  'san francisco': 'SF', seattle: 'SEA', 'st. louis': 'STL', 'st louis': 'STL',
+  'tampa bay': 'TB', texas: 'TEX', toronto: 'TOR', washington: 'WSH',
+}
+
+function resolveTeamAbbrev(input: string): string | null {
+  const upper = input.trim().toUpperCase()
+  if (TEAM_IDS[upper]) return upper
+  const lower = input.trim().toLowerCase()
+  return TEAM_NAMES[lower] || null
+}
+
+async function mlbFetch(url: string): Promise<any> {
+  const res = await fetch(url, { next: { revalidate: 60 } } as any)
+  if (!res.ok) throw new Error(`MLB API ${res.status}: ${res.statusText}`)
+  return res.json()
+}
+
 const MODEL_BUILDER_SYSTEM_PROMPT = `You are a baseball analytics model builder embedded in the Triton app. You help users create custom metric formulas that can be deployed as computed columns on the pitches table.
 
 DATABASE SCHEMA - Table: pitches
@@ -121,6 +164,20 @@ IMPORTANT QUERY GUIDELINES:
 - Zone% = pitches where zone between 1 and 9 / total pitches
 - For "best" or "nastiest" queries, define the metric clearly
 
+MLB STATS API TOOLS:
+You also have access to live MLB Stats API tools for real-time / official data:
+
+- get_games: Today's scores, schedule, probable pitchers, or detailed box scores. Use for "who's pitching tonight?", "what's the score?", "how did [team] do yesterday?". For box score detail, first get the schedule to find the gamePk, then call again with gamePk + detail=true.
+- get_standings: Current or historical division standings. Use for "what are the standings?", "who leads the AL East?".
+- get_team_roster: Active 26-man roster for any team. Use for "who's on the Yankees roster?", "is [player] on the active roster?".
+- get_player_info: Player bio and official career stats (year-by-year). Use for "what are [player]'s career stats?", "when did [player] debut?". Requires MLB player ID — use search_players first to find the ID.
+
+WHEN TO USE WHICH:
+- Live scores, schedule, rosters, standings → MLB API tools
+- Official career stats (W-L, ERA, batting avg) → get_player_info OR Lahman tables
+- Pitch-level Statcast analysis (velocity, movement, spin, whiff rate) → query_database on pitches table
+- Historical all-time records (pre-2015) → query_database on Lahman tables
+
 When responding:
 - Be concise and analytical
 - Use numbers and data to support points
@@ -162,7 +219,57 @@ const tools: Anthropic.Tool[] = [
       },
       required: ['name']
     }
-  }
+  },
+  {
+    name: 'get_games',
+    description: 'Get MLB game scores, schedule, and probable pitchers for a date, or a detailed box score for a specific game. Use for live scores, yesterday\'s results, upcoming matchups.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date: { type: 'string', description: 'Date in YYYY-MM-DD format, or "today" or "yesterday". Defaults to today.' },
+        gamePk: { type: 'number', description: 'Specific game ID for box score detail. Get this from a schedule call first.' },
+        detail: { type: 'boolean', description: 'If true and gamePk provided, fetch full box score with batting/pitching lines.' },
+      },
+      required: []
+    }
+  },
+  {
+    name: 'get_standings',
+    description: 'Get MLB division standings including W-L, pct, GB, streak, last 10, and run differential.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        season: { type: 'number', description: 'Season year. Defaults to current year.' },
+        type: { type: 'string', enum: ['regular', 'spring'], description: 'Standings type. Defaults to regular season.' },
+      },
+      required: []
+    }
+  },
+  {
+    name: 'get_team_roster',
+    description: 'Get the active roster for an MLB team. Accepts team abbreviation (NYY, LAD) or name (Yankees, Dodgers).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        team: { type: 'string', description: 'Team abbreviation (e.g. NYY) or name (e.g. Yankees).' },
+        season: { type: 'number', description: 'Season year. Defaults to current year.' },
+      },
+      required: ['team']
+    }
+  },
+  {
+    name: 'get_player_info',
+    description: 'Get player bio info and optionally career year-by-year stats from the MLB Stats API. Requires MLB player ID (use search_players first).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        playerId: { type: 'number', description: 'MLB player ID.' },
+        includeStats: { type: 'boolean', description: 'Include year-by-year career stats. Defaults to true.' },
+        statGroup: { type: 'string', enum: ['pitching', 'hitting'], description: 'Stat group to fetch. Defaults to pitching.' },
+      },
+      required: ['playerId']
+    }
+  },
 ]
 
 const modelBuilderTools: Anthropic.Tool[] = [
@@ -261,6 +368,138 @@ export async function POST(req: NextRequest) {
           } else if (block.name === 'test_formula') {
             const input = block.input as { formula: string }
             result = await handleTestFormula(input.formula)
+          } else if (block.name === 'get_games') {
+            const input = block.input as { date?: string; gamePk?: number; detail?: boolean }
+            try {
+              if (input.gamePk && input.detail) {
+                // Box score mode
+                const [box, line] = await Promise.all([
+                  mlbFetch(`${MLB_API}/game/${input.gamePk}/boxscore`),
+                  mlbFetch(`${MLB_API}/game/${input.gamePk}/linescore`),
+                ])
+                const fmt = (side: any) => {
+                  const batters = (side.batters || []).slice(0, 12).map((id: number) => {
+                    const p = side.players?.[`ID${id}`]
+                    if (!p) return null
+                    const s = p.stats?.batting || {}
+                    return { name: p.person?.fullName, pos: p.position?.abbreviation, ab: s.atBats, r: s.runs, h: s.hits, rbi: s.rbi, hr: s.homeRuns, bb: s.baseOnBalls, k: s.strikeOuts, avg: s.avg }
+                  }).filter(Boolean)
+                  const pitchers = (side.pitchers || []).map((id: number) => {
+                    const p = side.players?.[`ID${id}`]
+                    if (!p) return null
+                    const s = p.stats?.pitching || {}
+                    return { name: p.person?.fullName, ip: s.inningsPitched, h: s.hits, r: s.runs, er: s.earnedRuns, bb: s.baseOnBalls, k: s.strikeOuts, pitches: s.numberOfPitches }
+                  }).filter(Boolean)
+                  return { batters, pitchers }
+                }
+                const innings = (line.innings || []).map((inn: any) => ({ inning: inn.num, away: inn.away?.runs ?? '-', home: inn.home?.runs ?? '-' }))
+                result = JSON.stringify({
+                  away: { team: box.teams?.away?.team?.abbreviation, ...fmt(box.teams?.away) },
+                  home: { team: box.teams?.home?.team?.abbreviation, ...fmt(box.teams?.home) },
+                  innings,
+                  score: { away: line.teams?.away?.runs, home: line.teams?.home?.runs },
+                })
+              } else {
+                // Schedule mode
+                let dateStr = input.date || 'today'
+                if (dateStr === 'today') dateStr = new Date().toISOString().slice(0, 10)
+                else if (dateStr === 'yesterday') {
+                  const d = new Date(); d.setDate(d.getDate() - 1)
+                  dateStr = d.toISOString().slice(0, 10)
+                }
+                const data = await mlbFetch(`${MLB_API}/schedule?date=${dateStr}&sportId=1&hydrate=team,linescore,probablePitcher`)
+                const games = (data.dates?.[0]?.games || []).map((g: any) => ({
+                  gamePk: g.gamePk,
+                  state: g.status?.detailedState,
+                  away: g.teams?.away?.team?.abbreviation,
+                  home: g.teams?.home?.team?.abbreviation,
+                  awayScore: g.teams?.away?.score,
+                  homeScore: g.teams?.home?.score,
+                  awayProbable: g.teams?.away?.probablePitcher?.fullName || null,
+                  homeProbable: g.teams?.home?.probablePitcher?.fullName || null,
+                  inning: g.linescore?.currentInningOrdinal || null,
+                  inningState: g.linescore?.inningHalf || null,
+                }))
+                result = JSON.stringify({ date: dateStr, games, gameCount: games.length })
+              }
+            } catch (e: any) {
+              result = JSON.stringify({ error: e.message })
+            }
+          } else if (block.name === 'get_standings') {
+            const input = block.input as { season?: number; type?: string }
+            try {
+              const season = input.season || new Date().getFullYear()
+              const standingsType = input.type === 'spring' ? 'springTraining' : 'regularSeason'
+              const data = await mlbFetch(`${MLB_API}/standings?leagueId=103,104&season=${season}&standingsTypes=${standingsType}&hydrate=team`)
+              const divisions = (data.records || []).map((div: any) => ({
+                division: div.division?.name,
+                teams: (div.teamRecords || []).map((t: any) => ({
+                  team: t.team?.abbreviation,
+                  w: t.wins, l: t.losses,
+                  pct: t.winningPercentage,
+                  gb: t.gamesBack,
+                  streak: t.streak?.streakCode,
+                  l10: `${t.records?.splitRecords?.find((r: any) => r.type === 'lastTen')?.wins || '-'}-${t.records?.splitRecords?.find((r: any) => r.type === 'lastTen')?.losses || '-'}`,
+                  runDiff: t.runDifferential,
+                }))
+              }))
+              result = JSON.stringify({ season, type: standingsType, divisions })
+            } catch (e: any) {
+              result = JSON.stringify({ error: e.message })
+            }
+          } else if (block.name === 'get_team_roster') {
+            const input = block.input as { team: string; season?: number }
+            try {
+              const abbrev = resolveTeamAbbrev(input.team)
+              if (!abbrev) throw new Error(`Could not resolve team: "${input.team}". Use abbreviation (NYY) or name (Yankees).`)
+              const teamId = TEAM_IDS[abbrev]
+              const season = input.season || new Date().getFullYear()
+              const data = await mlbFetch(`${MLB_API}/teams/${teamId}/roster/active?season=${season}`)
+              const roster = (data.roster || []).map((p: any) => ({
+                name: p.person?.fullName,
+                id: p.person?.id,
+                position: p.position?.abbreviation,
+                number: p.jerseyNumber,
+                bats: p.person?.batSide?.code,
+                throws: p.person?.pitchHand?.code,
+              }))
+              result = JSON.stringify({ team: abbrev, season, roster, count: roster.length })
+            } catch (e: any) {
+              result = JSON.stringify({ error: e.message })
+            }
+          } else if (block.name === 'get_player_info') {
+            const input = block.input as { playerId: number; includeStats?: boolean; statGroup?: string }
+            try {
+              const data = await mlbFetch(`${MLB_API}/people/${input.playerId}`)
+              const person = data.people?.[0]
+              const bio = {
+                name: person?.fullName,
+                id: person?.id,
+                position: person?.primaryPosition?.abbreviation,
+                bats: person?.batSide?.code,
+                throws: person?.pitchHand?.code,
+                birthDate: person?.birthDate,
+                age: person?.currentAge,
+                height: person?.height,
+                weight: person?.weight,
+                debut: person?.mlbDebutDate,
+                team: person?.currentTeam?.name,
+              }
+              let stats = null
+              if (input.includeStats !== false) {
+                const group = input.statGroup || 'pitching'
+                const statsData = await mlbFetch(`${MLB_API}/people/${input.playerId}/stats?stats=yearByYear&group=${group}`)
+                const splits = statsData.stats?.[0]?.splits || []
+                stats = splits.filter((s: any) => s.sport?.id === 1).map((s: any) => ({
+                  season: s.season,
+                  team: s.team?.abbreviation,
+                  ...s.stat,
+                }))
+              }
+              result = JSON.stringify({ bio, stats })
+            } catch (e: any) {
+              result = JSON.stringify({ error: e.message })
+            }
           } else {
             result = JSON.stringify({ error: 'Unknown tool' })
           }
