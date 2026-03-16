@@ -1154,18 +1154,18 @@ export function computeDeceptionScore(zScores: ZScores, fb: boolean): number | n
 // ── PLUS-TO-GRADE CONVERSION ─────────────────────────────────────────────────
 
 export function plusToGrade(plus: number): string {
-  if (plus >= 130) return 'A+'
-  if (plus >= 125) return 'A'
-  if (plus >= 120) return 'A-'
-  if (plus >= 115) return 'B+'
-  if (plus >= 110) return 'B'
+  if (plus >= 120) return 'A+'
+  if (plus >= 117) return 'A'
+  if (plus >= 114) return 'A-'
+  if (plus >= 111) return 'B+'
+  if (plus >= 108) return 'B'
   if (plus >= 105) return 'B-'
-  if (plus >= 100) return 'C+'
-  if (plus >= 95) return 'C'
-  if (plus >= 90) return 'C-'
-  if (plus >= 85) return 'D+'
-  if (plus >= 80) return 'D'
-  if (plus >= 75) return 'D-'
+  if (plus >= 102) return 'C+'
+  if (plus >= 99) return 'C'
+  if (plus >= 95) return 'C-'
+  if (plus >= 90) return 'D+'
+  if (plus >= 85) return 'D'
+  if (plus >= 80) return 'D-'
   return 'F'
 }
 

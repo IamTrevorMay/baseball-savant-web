@@ -19,8 +19,8 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
   const rows: Record<string, any>[] = p.rows || []
   const headerColor = p.headerColor || '#a1a1aa'
   const textColor = p.textColor || '#e4e4e7'
-  const fontSize = p.fontSize || 13
-  const headerFontSize = p.headerFontSize || 11
+  const fontSize = p.fontSize || 16
+  const headerFontSize = p.headerFontSize || 13
   const fontFamily = p.fontFamily || undefined
   const letterSpacing = p.letterSpacing ? `${p.letterSpacing}px` : undefined
   const lineHeight = p.lineHeight || undefined
@@ -38,18 +38,18 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
 
   // Compute dynamic row height and font sizes to fill bounding box
   const titleH = title ? 24 : 0
-  const approxHeaderH = (p.headerFontSize || 13) + 18
+  const approxHeaderH = (p.headerFontSize || 16) + 18
   const availableH = height - titleH - approxHeaderH
   const rowCount = Math.max(rows.length, 1)
   const rowH = Math.max(0, availableH / rowCount)
 
   // Scale font with row height if not explicitly set — fill the space
-  const dynamicFontSize = fontSize !== 13
+  const dynamicFontSize = fontSize !== 16
     ? fontSize
-    : Math.min(28, Math.max(10, Math.floor(rowH * 0.58)))
-  const dynamicHeaderFontSize = headerFontSize !== 11
+    : Math.min(34, Math.max(12, Math.floor(rowH * 0.7)))
+  const dynamicHeaderFontSize = headerFontSize !== 13
     ? headerFontSize
-    : Math.max(9, Math.floor(dynamicFontSize * 0.82))
+    : Math.max(11, Math.floor(dynamicFontSize * 0.82))
   const headerH = dynamicHeaderFontSize + 16 + 1
 
   // Scale horizontal cell padding with column count
@@ -103,7 +103,10 @@ export default function RCTableRenderer({ props: p, width, height }: Props) {
                           style={{ width: dotSize, height: dotSize, background: row._color || getPitchColor(row.pitch_name) }}
                         />
                       )}
-                      <span className={col.key === 'pitch_name' ? 'whitespace-normal break-words' : 'whitespace-nowrap'}>
+                      <span
+                        className={col.key === 'pitch_name' ? 'whitespace-normal break-words' : 'whitespace-nowrap'}
+                        style={col.key !== 'pitch_name' ? { overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', maxWidth: '100%' } : undefined}
+                      >
                         {row[col.key] ?? '--'}
                       </span>
                     </span>

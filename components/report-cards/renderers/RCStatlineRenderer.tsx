@@ -20,7 +20,7 @@ const STAT_LABELS = ['IP', 'H', 'R', 'SO', 'BB', 'W/L', 'ERA']
 
 export default function RCStatlineRenderer({ props: p, width, height }: Props) {
   const statline: Statline = p.statline || { ip: '?', h: 0, r: 0, k: 0, bb: 0, decision: 'ND', era: '--' }
-  const dynFont = Math.max(18, Math.min(36, Math.floor(height * 0.35)))
+  const dynFont = Math.max(22, Math.min(43, Math.floor(height * 0.42)))
   const fontSize = p.fontSize && p.fontSize !== 18 ? p.fontSize : dynFont
   const color = p.color || '#ffffff'
   const headerColor = p.headerColor || '#a1a1aa'
@@ -61,16 +61,16 @@ export default function RCStatlineRenderer({ props: p, width, height }: Props) {
               {i > 0 && (
                 <div className="w-px self-stretch my-1.5" style={{ background: 'rgba(255,255,255,0.1)' }} />
               )}
-              <div className="flex flex-col items-center justify-center px-3">
+              <div className="flex flex-col items-center justify-center overflow-hidden" style={{ flex: '1 1 0', minWidth: 0, padding: '0 4px' }}>
                 <div
-                  className="uppercase tracking-wider font-medium"
+                  className="uppercase tracking-wider font-medium whitespace-nowrap"
                   style={{ fontSize: Math.max(10, fontSize * 0.5), color: headerColor, lineHeight: 1.2 }}
                 >
                   {label}
                 </div>
                 <div
-                  className="font-bold tabular-nums"
-                  style={{ fontSize, color, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}
+                  className="font-bold tabular-nums whitespace-nowrap"
+                  style={{ fontSize: Math.min(fontSize, width / STAT_LABELS.length * 0.55), color, lineHeight: 1.3, fontVariantNumeric: 'tabular-nums' }}
                 >
                   {values[i]}
                 </div>

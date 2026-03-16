@@ -221,8 +221,8 @@ function drawRCTable(ctx: SKRSContext2D, el: SceneElement) {
   const { x, y, width: w, height: h } = el
   const cols: { key: string; label: string }[] = p.columns || []
   const rows: Record<string, any>[] = p.rows || []
-  const fontSize = p.fontSize || 13
-  const headerFontSize = p.headerFontSize || 11
+  const fontSize = p.fontSize || 16
+  const headerFontSize = p.headerFontSize || 13
   const radius = p.borderRadius ?? 12
   const title = p.title || ''
 
@@ -271,15 +271,22 @@ function drawRCTable(ctx: SKRSContext2D, el: SceneElement) {
   const startY = headerY + headerH
   ctx.font = `400 ${fontSize}px ${FONT()}`
 
+  const truncate = (text: string, maxW: number) => {
+    if (ctx.measureText(text).width <= maxW) return text
+    let t = text
+    while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
+    return t + '…'
+  }
+
   for (let r = 0; r < rows.length; r++) {
     const ry = startY + r * rowH
     if (ry + rowH > y + h) break
     for (let c = 0; c < cols.length; c++) {
-      const val = rows[r][cols[c].key] ?? '--'
+      const val = String(rows[r][cols[c].key] ?? '--')
       ctx.fillStyle = cols[c].key === 'pitch_name' ? (rows[r]._color || '#e4e4e7') : '#e4e4e7'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      ctx.fillText(String(val), x + c * colW + 10, ry + rowH / 2)
+      ctx.fillText(truncate(val, colW - 14), x + c * colW + 10, ry + rowH / 2)
     }
   }
   ctx.restore()
@@ -561,7 +568,7 @@ function drawRCStatline(ctx: SKRSContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
   const statline = p.statline || { ip: '?', h: 0, r: 0, k: 0, bb: 0, decision: 'ND', era: '--' }
-  const fontSize = p.fontSize || 18
+  const fontSize = p.fontSize || 22
   const color = p.color || '#ffffff'
   const headerColor = p.headerColor || '#a1a1aa'
   const radius = p.borderRadius ?? 8
@@ -611,7 +618,8 @@ function drawRCStatline(ctx: SKRSContext2D, el: SceneElement) {
     ctx.textBaseline = 'bottom'
     ctx.fillText(labels[i], cx, midY - 2)
 
-    ctx.font = `700 ${fontSize}px ${FONT()}`
+    const maxValFont = Math.min(fontSize, cellW * 0.55)
+    ctx.font = `700 ${maxValFont}px ${FONT()}`
     ctx.fillStyle = color
     ctx.textBaseline = 'top'
     ctx.fillText(values[i], cx, midY + 2)
