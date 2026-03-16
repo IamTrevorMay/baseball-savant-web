@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       `
     }
 
-    const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+    const { data, error } = await supabase.rpc('run_query', { query_text: sql.trim() })
     if (error) return NextResponse.json({ error: error.message, sql }, { status: 500 })
 
     return NextResponse.json({ rows: data || [], type })
