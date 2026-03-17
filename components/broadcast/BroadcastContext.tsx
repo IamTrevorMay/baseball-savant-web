@@ -6,6 +6,7 @@ import { WidgetState, DEFAULT_WIDGET_STATE, ChatMessage, Topic, LowerThirdMessag
 import { useChatConnection } from '@/lib/useChatConnection'
 import { createClient } from '@supabase/supabase-js'
 import { useOBSWebSocket, OBSState } from '@/lib/useOBSWebSocket'
+import { ClipMarker, OBSRecordingState, DEFAULT_RECORDING_STATE, ClipMarkerExport, ClipMarkerExportEntry, formatMarkerTime, getRecordingElapsed } from '@/lib/clipMarkerTypes'
 
 export interface VideoTimeInfo {
   remaining: number
@@ -97,6 +98,16 @@ interface BroadcastContextValue {
   // Lower third actions
   highlightChatMessage: (msg: ChatMessage) => void
   clearLowerThird: () => void
+
+  // Clip markers
+  clipMarkers: ClipMarker[]
+  recordingState: OBSRecordingState
+  getRecordingElapsedSeconds: () => number
+  markClipIn: (clipType: 'short' | 'long') => void
+  markClipOut: (clipType: 'short' | 'long') => void
+  updateClipMarker: (id: string, updates: Partial<ClipMarker>) => void
+  removeClipMarker: (id: string) => void
+  exportClipMarkers: () => ClipMarkerExport | null
 }
 
 const BroadcastCtx = createContext<BroadcastContextValue | null>(null)
@@ -133,6 +144,10 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [widgetPanelMode, setWidgetPanelMode] = useState<'properties' | 'widgets'>('properties')
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Clip marker state
+  const [clipMarkers, setClipMarkers] = useState<ClipMarker[]>([])
+  const [recordingState, setRecordingState] = useState<OBSRecordingState>(DEFAULT_RECORDING_STATE)
+
   // ── OBS WebSocket integration ──────────────────────────────────────────
   const obs = useOBSWebSocket({
     onMediaEnded: (sourceName: string) => {
@@ -144,6 +159,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
     },
     onDisconnected: () => {
+      setRecordingState(DEFAULT_RECORDING_STATE)
       // Send obs:status to overlay so it resumes rendering videos
       if (channelRef.current) {
         channelRef.current.send({
@@ -151,6 +167,25 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
           event: 'obs:status',
           payload: { connected: false, source: 'manager', timestamp: Date.now() },
         })
+      }
+    },
+    onRecordingStateChanged: (rec: OBSRecordingState) => {
+      setRecordingState(rec)
+      // Persist recording timing to session active_state for trigger API
+      if (session) {
+        fetch('/api/broadcast/sessions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: session.id,
+            active_state: {
+              ...session.active_state,
+              recordingStartedAt: rec.recordingStartedAt,
+              recordingTotalPausedMs: rec.totalPausedMs,
+              recordingPausedAt: rec.lastPauseAt,
+            },
+          }),
+        }).catch(console.error)
       }
     },
   })
@@ -617,33 +652,6 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
   }, [switchingSegment, session, activeSegmentId, segments, segmentAssets, sendEvent, persistActiveState, assets, obs, resolveOBSFilePath])
 
-  // Keyboard hotkey listener — assets + segments
-  useEffect(() => {
-    if (!session) return
-    function handleKeyDown(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      const key = e.key.toLowerCase()
-
-      // Check segment hotkeys first
-      const segment = segments.find(s => s.hotkey_key === key)
-      if (segment) {
-        e.preventDefault()
-        switchSegment(segment.id)
-        return
-      }
-
-      // Then asset hotkeys
-      const asset = assets.find(a => a.hotkey_key === key)
-      if (asset) {
-        e.preventDefault()
-        toggleAssetVisibility(asset.id)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [session, assets, segments, toggleAssetVisibility, switchSegment])
-
   const getSlideshowIndex = useCallback((assetId: string): number => {
     return slideshowSlideIndexes.get(assetId) || 0
   }, [slideshowSlideIndexes])
@@ -1026,6 +1034,166 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
   }, [])
 
+  // ── Clip Marker Actions ─────────────────────────────────────────────────
+
+  const getRecordingElapsedSeconds = useCallback(() => {
+    return getRecordingElapsed(recordingState)
+  }, [recordingState])
+
+  const markClipIn = useCallback(async (clipType: 'short' | 'long') => {
+    if (!session || !project) return
+    const elapsed = getRecordingElapsed(recordingState)
+    const sortOrder = clipMarkers.length
+
+    try {
+      const res = await fetch('/api/broadcast/clip-markers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: session.id,
+          project_id: project.id,
+          start_time: elapsed,
+          clip_type: clipType,
+          sort_order: sortOrder,
+        }),
+      })
+      const data = await res.json()
+      if (data.marker) {
+        setClipMarkers(prev => [...prev, data.marker])
+      }
+    } catch (err) {
+      console.error('Failed to create clip marker:', err)
+    }
+  }, [session, project, recordingState, clipMarkers.length])
+
+  const markClipOut = useCallback(async (clipType: 'short' | 'long') => {
+    if (!session) return
+    const elapsed = getRecordingElapsed(recordingState)
+
+    // Find most recent open marker of this type
+    const openMarker = [...clipMarkers].reverse().find(m => m.clip_type === clipType && m.status === 'open')
+    if (!openMarker) return
+
+    try {
+      const res = await fetch('/api/broadcast/clip-markers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: openMarker.id,
+          end_time: elapsed,
+          status: 'closed',
+        }),
+      })
+      const data = await res.json()
+      if (data.marker) {
+        setClipMarkers(prev => prev.map(m => m.id === data.marker.id ? data.marker : m))
+      }
+    } catch (err) {
+      console.error('Failed to close clip marker:', err)
+    }
+  }, [session, recordingState, clipMarkers])
+
+  const updateClipMarker = useCallback(async (id: string, updates: Partial<ClipMarker>) => {
+    try {
+      const res = await fetch('/api/broadcast/clip-markers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      })
+      const data = await res.json()
+      if (data.marker) {
+        setClipMarkers(prev => prev.map(m => m.id === data.marker.id ? data.marker : m))
+      }
+    } catch (err) {
+      console.error('Failed to update clip marker:', err)
+    }
+  }, [])
+
+  const removeClipMarker = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/broadcast/clip-markers?id=${id}`, { method: 'DELETE' })
+      setClipMarkers(prev => prev.filter(m => m.id !== id))
+    } catch (err) {
+      console.error('Failed to remove clip marker:', err)
+    }
+  }, [])
+
+  const exportClipMarkers = useCallback((): ClipMarkerExport | null => {
+    if (!session || !project) return null
+
+    const closedMarkers = clipMarkers.filter(m => m.status === 'closed')
+    const markers: ClipMarkerExportEntry[] = closedMarkers.map(m => ({
+      id: m.id,
+      title: m.title,
+      start_time: formatMarkerTime(m.start_time || 0),
+      end_time: formatMarkerTime(m.end_time || 0),
+      clip_type: m.clip_type,
+      assignee: m.assignee,
+      time_sensitive: m.time_sensitive,
+      post_by_date: m.post_by_date,
+      notes: m.notes,
+    }))
+
+    return {
+      version: 1,
+      session_id: session.id,
+      project_id: project.id,
+      show_date: new Date().toISOString().split('T')[0],
+      recording_filename: recordingState.outputPath?.split('/').pop() || null,
+      markers,
+    }
+  }, [session, project, clipMarkers, recordingState.outputPath])
+
+  // Keyboard hotkey listener — assets + segments + clip markers
+  useEffect(() => {
+    if (!session) return
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      // Clip marker shortcuts: [ ] for short, { } for long
+      if (e.key === '[') {
+        e.preventDefault()
+        markClipIn('short')
+        return
+      }
+      if (e.key === ']') {
+        e.preventDefault()
+        markClipOut('short')
+        return
+      }
+      if (e.key === '{') {
+        e.preventDefault()
+        markClipIn('long')
+        return
+      }
+      if (e.key === '}') {
+        e.preventDefault()
+        markClipOut('long')
+        return
+      }
+
+      const key = e.key.toLowerCase()
+
+      // Check segment hotkeys first
+      const segment = segments.find(s => s.hotkey_key === key)
+      if (segment) {
+        e.preventDefault()
+        switchSegment(segment.id)
+        return
+      }
+
+      // Then asset hotkeys
+      const asset = assets.find(a => a.hotkey_key === key)
+      if (asset) {
+        e.preventDefault()
+        toggleAssetVisibility(asset.id)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [session, assets, segments, toggleAssetVisibility, switchSegment, markClipIn, markClipOut])
+
   const updateProjectSettings = useCallback((updates: Partial<BroadcastProjectSettings>) => {
     if (!project) return
     const newSettings = { ...project.settings, ...updates }
@@ -1053,9 +1221,27 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       if (data.session) {
         setSession(data.session)
 
+        // Fetch any existing clip markers for this session
+        try {
+          const markersRes = await fetch(`/api/broadcast/clip-markers?session_id=${data.session.id}`)
+          const markersData = await markersRes.json()
+          if (markersData.markers) setClipMarkers(markersData.markers)
+        } catch {}
+
         const sessionId = data.session.id
         const channel = supabaseRef.current.channel(channelName)
         channel
+          .on('broadcast', { event: 'clip:marker-update' }, (payload: any) => {
+            // Sync clip markers when trigger API creates/updates them
+            const marker = payload.payload?.marker
+            if (marker) {
+              setClipMarkers(prev => {
+                const idx = prev.findIndex(m => m.id === marker.id)
+                if (idx >= 0) return prev.map(m => m.id === marker.id ? marker : m)
+                return [...prev, marker]
+              })
+            }
+          })
           .on('broadcast', { event: 'ad:ended' }, (payload: any) => {
             const assetId = payload.payload?.assetId
             if (assetId) {
@@ -1131,6 +1317,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       setSession(null)
       setVisibleAssetIds(new Set())
       setActiveSegmentId(null)
+      setClipMarkers([])
     } catch (err) {
       console.error('Failed to end session:', err)
     }
@@ -1154,6 +1341,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       setCountdownTotal, startCountdown, stopCountdown, resetCountdown,
       activateTimerPreset,
       highlightChatMessage, clearLowerThird,
+      clipMarkers, recordingState, getRecordingElapsedSeconds: getRecordingElapsedSeconds,
+      markClipIn, markClipOut, updateClipMarker, removeClipMarker, exportClipMarkers,
     }}>
       {children}
     </BroadcastCtx.Provider>

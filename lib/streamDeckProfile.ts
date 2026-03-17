@@ -33,6 +33,10 @@ export type ButtonEntry =
   | { type: 'segment'; segment: BroadcastSegment }
   | { type: 'slideshow-prev' }
   | { type: 'slideshow-next' }
+  | { type: 'clip-short-in' }
+  | { type: 'clip-short-out' }
+  | { type: 'clip-long-in' }
+  | { type: 'clip-long-out' }
   | { type: 'empty' }
 
 export { DEVICE_DIMS, DEVICE_ICON_SIZES }
@@ -240,6 +244,31 @@ export async function generateStreamDeckProfile(opts: ProfileOptions): Promise<B
       }
       if (sessionId && baseUrl) {
         const url = `${baseUrl}/api/broadcast/trigger?sid=${sessionId}&action=${isNext ? 'slideshow_visible_next' : 'slideshow_visible_prev'}`
+        action.UUID = 'com.elgato.streamdeck.system.website'
+        action.Settings = { openInBrowser: true, url }
+      }
+      actions.push(action)
+      continue
+    }
+
+    if (entry.type === 'clip-short-in' || entry.type === 'clip-short-out' || entry.type === 'clip-long-in' || entry.type === 'clip-long-out') {
+      const clipLabels: Record<string, string> = {
+        'clip-short-in': 'Short In', 'clip-short-out': 'Short Out',
+        'clip-long-in': 'Long In', 'clip-long-out': 'Long Out',
+      }
+      const clipActions: Record<string, string> = {
+        'clip-short-in': 'clip_short_in', 'clip-short-out': 'clip_short_out',
+        'clip-long-in': 'clip_long_in', 'clip-long-out': 'clip_long_out',
+      }
+      const clipColor = entry.type.includes('short') ? '#6366f1' : '#d97706'
+      const clipLabel = clipLabels[entry.type]
+      const image = await generateButtonImage(clipLabel, clipColor)
+      const action: any = {
+        Name: clipLabel,
+        States: [{ Title: clipLabel, Image: image }],
+      }
+      if (sessionId && baseUrl) {
+        const url = `${baseUrl}/api/broadcast/trigger?sid=${sessionId}&action=${clipActions[entry.type]}`
         action.UUID = 'com.elgato.streamdeck.system.website'
         action.Settings = { openInBrowser: true, url }
       }

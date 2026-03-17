@@ -16,6 +16,8 @@ interface StreamDeckCallbacks {
   onSlideshowNext?: () => void
   onSlideshowPrev?: () => void
   onSwitchSegment?: (segmentId: string) => void
+  onClipMarkIn?: (clipType: 'short' | 'long') => void
+  onClipMarkOut?: (clipType: 'short' | 'long') => void
 }
 
 interface UseStreamDeckOptions {
@@ -101,6 +103,18 @@ export function useStreamDeck(options?: UseStreamDeckOptions) {
           case 'slideshow-prev':
             callbacksRef.current?.onSlideshowPrev?.()
             break
+          case 'clip-short-in':
+            callbacksRef.current?.onClipMarkIn?.('short')
+            break
+          case 'clip-short-out':
+            callbacksRef.current?.onClipMarkOut?.('short')
+            break
+          case 'clip-long-in':
+            callbacksRef.current?.onClipMarkIn?.('long')
+            break
+          case 'clip-long-out':
+            callbacksRef.current?.onClipMarkOut?.('long')
+            break
         }
       })
 
@@ -162,6 +176,7 @@ export function useStreamDeck(options?: UseStreamDeckOptions) {
     buttonOrder: ButtonEntry[],
     visibleAssetIds: Set<string>,
     activeSegmentId: string | null,
+    openClipTypes?: Set<string>,
   ) => {
     const device = deviceRef.current
     if (!device) return
@@ -204,6 +219,24 @@ export function useStreamDeck(options?: UseStreamDeckOptions) {
         case 'slideshow-next':
           label = 'Next >'
           color = '#3f3f46'
+          break
+        case 'clip-short-in':
+          label = 'Short In'
+          color = '#6366f1'
+          isActive = !!openClipTypes?.has('short')
+          break
+        case 'clip-short-out':
+          label = 'Short Out'
+          color = '#6366f1'
+          break
+        case 'clip-long-in':
+          label = 'Long In'
+          color = '#d97706'
+          isActive = !!openClipTypes?.has('long')
+          break
+        case 'clip-long-out':
+          label = 'Long Out'
+          color = '#d97706'
           break
         default:
           continue

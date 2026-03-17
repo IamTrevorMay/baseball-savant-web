@@ -167,6 +167,9 @@ export interface ActiveState {
   visibleAssets: string[] // asset IDs currently shown
   slideshowIndexes?: Record<string, number> // assetId → current slide index
   activeSegmentId?: string | null
+  recordingStartedAt?: number | null     // Date.now() when OBS recording started
+  recordingTotalPausedMs?: number
+  recordingPausedAt?: number | null
 }
 
 export interface BroadcastSession {

@@ -9,6 +9,7 @@ import TriggerBar from '@/components/broadcast/TriggerBar'
 import StreamDeckGrid from '@/components/broadcast/StreamDeckGrid'
 import LivePreview from '@/components/broadcast/LivePreview'
 import LiveControlGrid, { SlideshowControlStrip } from '@/components/broadcast/LiveControlGrid'
+import ClipMarkerPanel from '@/components/broadcast/ClipMarkerPanel'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
 import OBSSettings from '@/components/broadcast/OBSSettings'
@@ -22,6 +23,7 @@ function BroadcastManagerInner() {
     loading, project, session, updateProjectSettings, isOBSConnected,
     assets, visibleAssetIds, activeSegmentId, segments,
     toggleAssetVisibility, slideshowNext, slideshowPrev, switchSegment,
+    markClipIn, markClipOut, clipMarkers,
   } = useBroadcast()
   const [viewMode, setViewMode] = useState<ViewMode>('canvas')
   const [showRefImage, setShowRefImage] = useState(true)
@@ -57,6 +59,8 @@ function BroadcastManagerInner() {
       onSlideshowNext: () => (sdSlideNextRef.current || defaultSlideshowNext)(),
       onSlideshowPrev: () => (sdSlidePrevRef.current || defaultSlideshowPrev)(),
       onSwitchSegment: switchSegment,
+      onClipMarkIn: markClipIn,
+      onClipMarkOut: markClipOut,
     },
   })
 
@@ -74,15 +78,28 @@ function BroadcastManagerInner() {
     }
     entries.push({ type: 'slideshow-prev' })
     entries.push({ type: 'slideshow-next' })
+    entries.push({ type: 'clip-short-in' })
+    entries.push({ type: 'clip-short-out' })
+    entries.push({ type: 'clip-long-in' })
+    entries.push({ type: 'clip-long-out' })
     setSdButtonOrder(entries)
   }, [assets, segments])
+
+  // Compute open clip types for StreamDeck button active state
+  const openClipTypes = useMemo(() => {
+    const types = new Set<string>()
+    for (const m of clipMarkers) {
+      if (m.status === 'open') types.add(m.clip_type)
+    }
+    return types
+  }, [clipMarkers])
 
   // Reactively push button state to physical device (canvas mode only — test mode handles its own)
   useEffect(() => {
     if (viewMode !== 'streamdeck' && streamDeck.isConnected && sdButtonOrder.length > 0) {
-      streamDeck.updateButtons(sdButtonOrder, visibleAssetIds, activeSegmentId)
+      streamDeck.updateButtons(sdButtonOrder, visibleAssetIds, activeSegmentId, openClipTypes)
     }
-  }, [viewMode, streamDeck.isConnected, sdButtonOrder, visibleAssetIds, activeSegmentId])
+  }, [viewMode, streamDeck.isConnected, sdButtonOrder, visibleAssetIds, activeSegmentId, openClipTypes])
 
   if (loading) {
     return (
@@ -228,12 +245,13 @@ function BroadcastManagerInner() {
         {viewMode === 'canvas' ? (
           isLive ? (
             <>
-              {/* Left column: Asset Library + Control Grid */}
+              {/* Left column: Asset Library + Control Grid + Clip Markers */}
               <div className="w-64 shrink-0 flex flex-col border-r border-zinc-800">
                 <div className="flex-1 overflow-hidden">
                   <AssetLibrary />
                 </div>
                 <LiveControlGrid />
+                <ClipMarkerPanel />
               </div>
               {/* Center column: Live Preview + Studio View */}
               <div className="flex-1 flex flex-col min-w-0">

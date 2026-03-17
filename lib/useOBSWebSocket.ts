@@ -3,17 +3,20 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import OBSWebSocket from 'obs-websocket-js'
 import { OBSConnectionConfig } from './broadcastTypes'
+import { OBSRecordingState, DEFAULT_RECORDING_STATE } from './clipMarkerTypes'
 
 export interface OBSState {
   status: 'disconnected' | 'connecting' | 'connected' | 'error'
   error: string | null
   currentScene: string | null
   obsVersion: string | null
+  recording: OBSRecordingState
 }
 
 interface UseOBSWebSocketOptions {
   onMediaEnded?: (sourceName: string) => void
   onDisconnected?: () => void
+  onRecordingStateChanged?: (recording: OBSRecordingState) => void
 }
 
 interface TrackedSource {
@@ -27,7 +30,10 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     error: null,
     currentScene: null,
     obsVersion: null,
+    recording: DEFAULT_RECORDING_STATE,
   })
+
+  const recordingRef = useRef<OBSRecordingState>(DEFAULT_RECORDING_STATE)
 
   const obsRef = useRef<OBSWebSocket | null>(null)
   const sceneNameRef = useRef<string | null>(null)
@@ -62,13 +68,77 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
         }
       })
 
+      // Get initial recording status
+      try {
+        const recStatus = await obs.call('GetRecordStatus')
+        const isRecording = recStatus.outputActive
+        const isPaused = recStatus.outputPaused
+        const initRec: OBSRecordingState = {
+          isRecording,
+          isPaused,
+          recordingStartedAt: isRecording ? Date.now() - (recStatus.outputDuration || 0) : null,
+          totalPausedMs: 0,
+          lastPauseAt: isPaused ? Date.now() : null,
+          outputPath: null,
+        }
+        recordingRef.current = initRec
+        setState(prev => ({ ...prev, recording: initRec }))
+        optionsRef.current?.onRecordingStateChanged?.(initRec)
+      } catch {}
+
+      // Listen for recording state changes
+      obs.on('RecordStateChanged' as any, (data: any) => {
+        const outputState = data?.outputState as string
+        const outputPath = data?.outputPath as string | undefined
+        const prev = recordingRef.current
+
+        let next: OBSRecordingState
+
+        switch (outputState) {
+          case 'OBS_WEBSOCKET_OUTPUT_STARTED':
+            next = {
+              isRecording: true,
+              isPaused: false,
+              recordingStartedAt: Date.now(),
+              totalPausedMs: 0,
+              lastPauseAt: null,
+              outputPath: outputPath || null,
+            }
+            break
+          case 'OBS_WEBSOCKET_OUTPUT_STOPPED':
+            next = { ...DEFAULT_RECORDING_STATE, outputPath: outputPath || prev.outputPath }
+            break
+          case 'OBS_WEBSOCKET_OUTPUT_PAUSED':
+            next = { ...prev, isPaused: true, lastPauseAt: Date.now() }
+            break
+          case 'OBS_WEBSOCKET_OUTPUT_RESUMED': {
+            const additionalPaused = prev.lastPauseAt ? Date.now() - prev.lastPauseAt : 0
+            next = {
+              ...prev,
+              isPaused: false,
+              totalPausedMs: prev.totalPausedMs + additionalPaused,
+              lastPauseAt: null,
+            }
+            break
+          }
+          default:
+            return
+        }
+
+        recordingRef.current = next
+        setState(s => ({ ...s, recording: next }))
+        optionsRef.current?.onRecordingStateChanged?.(next)
+      })
+
       // Listen for disconnect
       obs.on('ConnectionClosed' as any, () => {
+        recordingRef.current = DEFAULT_RECORDING_STATE
         setState({
           status: 'disconnected',
           error: null,
           currentScene: null,
           obsVersion: null,
+          recording: DEFAULT_RECORDING_STATE,
         })
         obsRef.current = null
         sceneNameRef.current = null
@@ -86,18 +156,20 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
 
       obsRef.current = obs
 
-      setState({
+      setState(prev => ({
+        ...prev,
         status: 'connected',
         error: null,
         currentScene: currentProgramSceneName,
         obsVersion: obsWebSocketVersion || null,
-      })
+      }))
     } catch (err: any) {
       setState({
         status: 'error',
         error: err?.message || 'Failed to connect',
         currentScene: null,
         obsVersion: null,
+        recording: DEFAULT_RECORDING_STATE,
       })
     }
   }, [])
@@ -112,11 +184,13 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
     }
     sceneNameRef.current = null
     sourceMapRef.current.clear()
+    recordingRef.current = DEFAULT_RECORDING_STATE
     setState({
       status: 'disconnected',
       error: null,
       currentScene: null,
       obsVersion: null,
+      recording: DEFAULT_RECORDING_STATE,
     })
   }, [])
 

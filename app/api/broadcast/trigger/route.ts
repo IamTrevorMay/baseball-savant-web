@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { BroadcastSession } from '@/lib/broadcastTypes'
 
-const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear'] as const
+const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out'] as const
 type TriggerAction = typeof VALID_ACTIONS[number]
 
 export async function GET(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const aid = req.nextUrl.searchParams.get('aid')
     const action = req.nextUrl.searchParams.get('action') as TriggerAction | null
 
-    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear']
+    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out']
     if (!sid || !action) {
       return NextResponse.json({ error: 'sid and action are required' }, { status: 400 })
     }
@@ -122,6 +122,95 @@ export async function GET(req: NextRequest) {
       supabaseAdmin.removeChannel(channel)
 
       return NextResponse.json({ ok: true, action, preset: { label: preset.label, seconds: preset.seconds } })
+    }
+
+    // ── Clip marker actions ────────────────────────────────────────────────
+    if (action === 'clip_short_in' || action === 'clip_short_out' || action === 'clip_long_in' || action === 'clip_long_out') {
+      const clipType = action.includes('short') ? 'short' : 'long'
+      const isIn = action.endsWith('_in')
+
+      // Compute elapsed time from recording timing in active_state
+      const recStarted = activeState.recordingStartedAt
+      if (!recStarted) {
+        return NextResponse.json({ error: 'OBS recording not active' }, { status: 409 })
+      }
+      const pausedMs = activeState.recordingTotalPausedMs || 0
+      const pausedAt = activeState.recordingPausedAt
+      let totalPaused = pausedMs
+      if (pausedAt) totalPaused += Date.now() - pausedAt
+      const elapsed = Math.floor((Date.now() - recStarted - totalPaused) / 1000)
+
+      const channel = supabaseAdmin.channel(sess.channel_name)
+      await channel.subscribe()
+
+      if (isIn) {
+        // Count existing markers for sort_order
+        const { count } = await supabaseAdmin
+          .from('broadcast_clip_markers')
+          .select('*', { count: 'exact', head: true })
+          .eq('session_id', sid)
+
+        const { data: marker, error: insertErr } = await supabaseAdmin
+          .from('broadcast_clip_markers')
+          .insert({
+            session_id: sid,
+            project_id: sess.project_id,
+            start_time: elapsed,
+            clip_type: clipType,
+            sort_order: count || 0,
+            status: 'open',
+          })
+          .select()
+          .single()
+
+        if (insertErr) {
+          supabaseAdmin.removeChannel(channel)
+          return NextResponse.json({ error: insertErr.message }, { status: 500 })
+        }
+
+        await channel.send({
+          type: 'broadcast',
+          event: 'clip:marker-update',
+          payload: { marker, source: 'trigger-api', timestamp: Date.now() },
+        })
+        supabaseAdmin.removeChannel(channel)
+        return NextResponse.json({ ok: true, action, marker })
+      } else {
+        // Find latest open marker of this type
+        const { data: openMarkers } = await supabaseAdmin
+          .from('broadcast_clip_markers')
+          .select('*')
+          .eq('session_id', sid)
+          .eq('clip_type', clipType)
+          .eq('status', 'open')
+          .order('created_at', { ascending: false })
+          .limit(1)
+
+        if (!openMarkers || openMarkers.length === 0) {
+          supabaseAdmin.removeChannel(channel)
+          return NextResponse.json({ error: `No open ${clipType} marker to close` }, { status: 400 })
+        }
+
+        const { data: marker, error: updateErr } = await supabaseAdmin
+          .from('broadcast_clip_markers')
+          .update({ end_time: elapsed, status: 'closed', updated_at: new Date().toISOString() })
+          .eq('id', openMarkers[0].id)
+          .select()
+          .single()
+
+        if (updateErr) {
+          supabaseAdmin.removeChannel(channel)
+          return NextResponse.json({ error: updateErr.message }, { status: 500 })
+        }
+
+        await channel.send({
+          type: 'broadcast',
+          event: 'clip:marker-update',
+          payload: { marker, source: 'trigger-api', timestamp: Date.now() },
+        })
+        supabaseAdmin.removeChannel(channel)
+        return NextResponse.json({ ok: true, action, marker })
+      }
     }
 
     if (action === 'topic_next' || action === 'topic_prev' || action === 'countdown_start' || action === 'countdown_stop' || action === 'lowerthird_clear') {
