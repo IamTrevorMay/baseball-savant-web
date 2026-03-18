@@ -75,14 +75,20 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   async function exportTile(format: 'png' | 'jpg') {
     if (!tileRef.current) return
     setCtxMenu(null)
-    const { default: html2canvas } = await import('html2canvas-pro')
-    const { downloadBlob } = await import('@/lib/exportUtils')
-    const canvas = await html2canvas(tileRef.current, { backgroundColor: '#18181b', scale: 2 })
-    const baseName = (config.title || config.viz.replace('_', ' ')).replace(/[^a-zA-Z0-9]+/g, '_')
-    if (format === 'png') {
-      canvas.toBlob(blob => { if (blob) downloadBlob(blob, `${baseName}.png`) }, 'image/png')
-    } else {
-      canvas.toBlob(blob => { if (blob) downloadBlob(blob, `${baseName}.jpg`) }, 'image/jpeg', 0.95)
+    try {
+      const { default: html2canvas } = await import('html2canvas-pro')
+      const canvas = await html2canvas(tileRef.current, { backgroundColor: '#18181b', scale: 2 })
+      const baseName = (config.title || config.viz.replace('_', ' ')).replace(/[^a-zA-Z0-9]+/g, '_')
+      const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
+      const dataUrl = canvas.toDataURL(mimeType, format === 'jpg' ? 0.95 : undefined)
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `${baseName}.${format}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch (err) {
+      console.error('Tile export failed:', err)
     }
   }
 
