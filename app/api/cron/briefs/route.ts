@@ -122,15 +122,16 @@ export async function GET(req: NextRequest) {
     }))
 
     const claudePrompt = isOffDay
-      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, aroundBaseball, topPerformances, worstPerformances, injuries }. dayRundown, aroundBaseball, topPerformances, and worstPerformances should be empty strings. For injuries, return "<p style=\\"color:rgba(255,255,255,0.4);font-size:13px\\">No injuries or activations reported for today.</p>".`
-      : `Analyze these ${briefDate} MLB box scores, news headlines, and transaction data. Return JSON with exactly 7 fields:
+      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, aroundBaseball, topPerformances, worstPerformances, injuries, transactions }. dayRundown, aroundBaseball, topPerformances, and worstPerformances should be empty strings. For injuries and transactions, return empty strings.`
+      : `Analyze these ${briefDate} MLB box scores, news headlines, and transaction data. Return JSON with exactly 8 fields:
 - "title": Catchy headline (e.g., "Yankees Cruise, Dodgers Walk Off — March 11 Recap")
 - "summary": 1-2 sentence summary of the day.
 - "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold.
 - "aroundBaseball": If notable non-MLB baseball news appears in the headlines (minor leagues, college, high school, international), write a brief HTML paragraph or two covering it. If no non-MLB baseball news is present, return an empty string.
 - "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Use a styled list with player names, teams, and key stats.
 - "worstPerformances": HTML section of the 4-5 worst individual performances. Same format.
-- "injuries": HTML section covering IL placements, IL activations, and any possible in-game injuries. Use the transaction data provided and cross-reference with box scores (e.g., a starter with unusually few AB or a pitcher pulled early may indicate injury). Format as a styled list with red accent (#f87171) for IL placements/possible injuries and green accent (#34d399) for activations.
+- "injuries": HTML section for possible in-game injuries — players who may have left games early based on box score anomalies (starter with unusually few AB, pitcher pulled early). Use color:#fbbf24 accent. If none detected, return an empty string.
+- "transactions": HTML section for IL placements and IL activations from the transaction data. Use red accent (#f87171) for placements and green accent (#34d399) for activations. If no transaction data, return an empty string.
 
 Box score data:\n${JSON.stringify(performanceData)}
 
@@ -144,7 +145,7 @@ IL/Transaction data:\n${JSON.stringify(transactions)}`
       messages: [{ role: 'user', content: claudePrompt }],
       system: `You are a baseball analyst writing a daily brief for a professional scouting platform.
 
-Return JSON with exactly these fields: title, summary, dayRundown, aroundBaseball, topPerformances, worstPerformances, injuries.
+Return JSON with exactly these fields: title, summary, dayRundown, aroundBaseball, topPerformances, worstPerformances, injuries, transactions.
 
 For dayRundown, write a narrative recap of the day under 500 words. Use HTML with inline styles. Format as 3-5 paragraphs wrapped in <p> tags with style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;". Bold player names using <strong style="color:#f0f0f0">Player Name</strong>. Tell the story of the day like a sportswriter — weave together the biggest moments, comebacks, dominant performances, and storylines.
 
@@ -167,11 +168,12 @@ For worst performances, use color:#f87171 on the stats td instead of the default
 For top performances, highlight dominant pitching (lots of K, low ER, deep outings) and big offensive games (multi-hit, HR, high RBI).
 For worst performances, highlight blown starts (short outings, high ER), 0-for with multiple K, etc.
 
-For injuries, generate HTML using the same table format. Group into three categories:
+For injuries, generate HTML using the same table format for possible in-game injuries only — players who may have left games early based on box score anomalies (early exit, unusually low AB for a starter, pitcher pulled after few pitches). Use color:#fbbf24 for these entries. Each entry: player name (bold), team abbreviation, and description. If no possible injuries detected, return an empty string.
+
+For transactions, generate HTML using the same table format for IL moves:
 1. "IL Placements" — players placed on the injured list (use color:#f87171 for the status label)
 2. "Activated" — players activated from the injured list (use color:#34d399 for the status label)
-3. "Possible Injuries" — players who may have been injured based on box score anomalies (early exit, unusually low AB for a starter, pitcher pulled after few pitches). Use color:#fbbf24 for these.
-Each entry: player name (bold), team abbreviation, and description. If no injury/transaction data exists, return a message: "No injuries or activations reported for today." styled as a paragraph with color:rgba(255,255,255,0.4) and font-size:13px. ALWAYS return content for injuries — never return an empty string.
+Each entry: player name (bold), team abbreviation, and description. If no transaction data exists, return an empty string.
 
 Return ONLY valid JSON, no markdown fences.`,
     })
@@ -181,7 +183,7 @@ Return ONLY valid JSON, no markdown fences.`,
       .map(b => b.text)
       .join('')
 
-    let parsed: { title: string; summary: string; dayRundown: string; aroundBaseball: string; topPerformances: string; worstPerformances: string; injuries: string }
+    let parsed: { title: string; summary: string; dayRundown: string; aroundBaseball: string; topPerformances: string; worstPerformances: string; injuries: string; transactions: string }
     try {
       const jsonMatch = textContent.match(/\{[\s\S]*\}/)
       const cleaned = jsonMatch ? jsonMatch[0] : textContent.trim()
@@ -198,6 +200,7 @@ Return ONLY valid JSON, no markdown fences.`,
       topPerformances: parsed.topPerformances,
       worstPerformances: parsed.worstPerformances,
       injuries: parsed.injuries,
+      transactions: parsed.transactions,
       newsHtml,
       isOffDay,
       playerNameToId: playerNameToIdEarly,
@@ -291,18 +294,27 @@ function assembleBriefHtml(parts: {
   topPerformances: string
   worstPerformances: string
   injuries: string
+  transactions: string
   newsHtml: string
   isOffDay: boolean
   playerNameToId: Record<string, number>
 }) {
   const sections: string[] = []
+  const halfGrid = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;'
+  const noData = '<p style="color:rgba(255,255,255,0.4);font-size:13px">Nothing to report today.</p>'
 
-  // Day Rundown — narrative story of the day (first section)
-  if (parts.dayRundown) {
+  // The Day in Baseball — narrative + Around Baseball ("In Other News...") inside
+  if (parts.dayRundown || parts.aroundBaseball) {
+    const aroundBlock = parts.aroundBaseball
+      ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.5);margin-bottom:10px;font-style:italic;">In Other News...</div>
+          ${parts.aroundBaseball}
+        </div>`
+      : ''
     sections.push(`
 <div style="${S.section}">
   <div style="${S.sectionTitle}">The Day in Baseball</div>
-  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.dayRundown, parts.playerNameToId)}</div>
+  <div style="${S.perfWrap}">${parts.dayRundown ? linkifyPlayerNames(parts.dayRundown, parts.playerNameToId) : ''}${aroundBlock}</div>
 </div>`)
   }
 
@@ -314,32 +326,36 @@ function assembleBriefHtml(parts: {
 </div>`)
   }
 
-  if (parts.topPerformances) {
+  // Top Performances + Rough Outings side by side
+  if (parts.topPerformances || parts.worstPerformances) {
     sections.push(`
 <div style="${S.section}">
-  <div style="${S.sectionTitle}">Top Performances</div>
-  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.topPerformances, parts.playerNameToId)}</div>
+  <div style="${halfGrid}">
+    <div>
+      <div style="${S.sectionTitle}">Top Performances</div>
+      <div style="${S.perfWrap}">${parts.topPerformances ? linkifyPlayerNames(parts.topPerformances, parts.playerNameToId) : noData}</div>
+    </div>
+    <div>
+      <div style="${S.sectionTitle}">Rough Outings</div>
+      <div style="${S.perfWrap}">${parts.worstPerformances ? linkifyPlayerNames(parts.worstPerformances, parts.playerNameToId) : noData}</div>
+    </div>
+  </div>
 </div>`)
   }
 
-  if (parts.worstPerformances) {
-    sections.push(`
-<div style="${S.section}">
-  <div style="${S.sectionTitle}">Rough Outings</div>
-  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.worstPerformances, parts.playerNameToId)}</div>
-</div>`)
-  }
-
+  // Injuries + Transactions side by side
   sections.push(`
 <div style="${S.section}">
-  <div style="${S.sectionTitle}">Injuries & Transactions</div>
-  <div style="${S.perfWrap}">${parts.injuries ? linkifyPlayerNames(parts.injuries, parts.playerNameToId) : '<p style="color:rgba(255,255,255,0.4);font-size:13px">No injuries or activations reported for today.</p>'}</div>
-</div>`)
-
-  sections.push(`
-<div style="${S.section}">
-  <div style="${S.sectionTitle}">Around Baseball</div>
-  <div style="${S.perfWrap}">${parts.aroundBaseball || '<p style="color:rgba(255,255,255,0.4);font-size:13px">No notable non-MLB baseball news today.</p>'}</div>
+  <div style="${halfGrid}">
+    <div>
+      <div style="${S.sectionTitle}">Injuries</div>
+      <div style="${S.perfWrap}">${parts.injuries ? linkifyPlayerNames(parts.injuries, parts.playerNameToId) : noData}</div>
+    </div>
+    <div>
+      <div style="${S.sectionTitle}">Transactions</div>
+      <div style="${S.perfWrap}">${parts.transactions ? linkifyPlayerNames(parts.transactions, parts.playerNameToId) : noData}</div>
+    </div>
+  </div>
 </div>`)
 
   if (parts.newsHtml) {
