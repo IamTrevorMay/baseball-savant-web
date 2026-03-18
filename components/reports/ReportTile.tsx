@@ -51,15 +51,40 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   const [showTileFilters, setShowTileFilters] = useState(false)
   const [showColPicker, setShowColPicker] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const colPickerRef = useRef<HTMLDivElement>(null)
+  const tileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) setShowColPicker(false)
+      setCtxMenu(null)
     }
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') setCtxMenu(null) }
+    function handleScroll() { setCtxMenu(null) }
     document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    document.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+      document.removeEventListener('scroll', handleScroll, true)
+    }
   }, [])
+
+  async function exportTile(format: 'png' | 'jpg') {
+    if (!tileRef.current) return
+    setCtxMenu(null)
+    const { default: html2canvas } = await import('html2canvas-pro')
+    const { downloadBlob } = await import('@/lib/exportUtils')
+    const canvas = await html2canvas(tileRef.current, { backgroundColor: '#18181b', scale: 2 })
+    const baseName = (config.title || config.viz.replace('_', ' ')).replace(/[^a-zA-Z0-9]+/g, '_')
+    if (format === 'png') {
+      canvas.toBlob(blob => { if (blob) downloadBlob(blob, `${baseName}.png`) }, 'image/png')
+    } else {
+      canvas.toBlob(blob => { if (blob) downloadBlob(blob, `${baseName}.jpg`) }, 'image/jpeg', 0.95)
+    }
+  }
 
   // Apply tile-level filters
   const filtered = config.filters.length > 0 ? applyFiltersToData(data, config.filters) : data
@@ -100,7 +125,22 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col h-full min-h-[200px] overflow-hidden relative group/tile">
+    <div ref={tileRef} onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }) }}
+      className="bg-zinc-900 border border-zinc-800 rounded-lg flex flex-col h-full min-h-[200px] overflow-hidden relative group/tile">
+      {/* Right-click Export Menu */}
+      {ctxMenu && (
+        <div className="fixed z-[100] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+          <button onClick={() => exportTile('png')}
+            className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+            Export as PNG
+          </button>
+          <button onClick={() => exportTile('jpg')}
+            className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+            Export as JPG
+          </button>
+        </div>
+      )}
       {/* Delete Confirmation Overlay */}
       {showDeleteConfirm && (
         <div className="absolute inset-0 bg-zinc-950/80 z-50 flex flex-col items-center justify-center rounded-lg backdrop-blur-sm">
