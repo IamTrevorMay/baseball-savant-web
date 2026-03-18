@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createClient } from '@supabase/supabase-js'
 
 export const maxDuration = 300
 
@@ -11,13 +12,10 @@ const rssParser = new Parser({
   headers: { 'User-Agent': 'Triton Baseball News Aggregator' },
 })
 
-const FEEDS = [
-  { name: 'The Athletic', url: 'https://theathletic.com/feeds/rss/news/?sport=baseball' },
-  { name: 'FanGraphs', url: 'https://blogs.fangraphs.com/feed/' },
-  { name: 'ESPN', url: 'https://www.espn.com/espn/rss/mlb/news' },
-  { name: 'Yahoo Sports', url: 'https://sports.yahoo.com/mlb/rss.xml' },
-  { name: 'MLB.com', url: 'https://www.mlb.com/feeds/news/rss.xml' },
-]
+const maydaySupabase = createClient(
+  process.env.MAYDAY_SUPABASE_URL!,
+  process.env.MAYDAY_SUPABASE_ANON_KEY!
+)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,10 +66,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch games and news in parallel
-    const [gamesData, newsItems] = await Promise.all([
+    // Fetch games, news, and transactions in parallel
+    const [gamesData, newsItems, transactions] = await Promise.all([
       fetchGamesWithLinescores(briefDate),
       fetchNews(),
+      fetchTransactions(briefDate),
     ])
 
     // Fetch full box scores for finished games (batched)
@@ -107,7 +106,10 @@ export async function GET(req: NextRequest) {
     const topNews = newsItems.slice(0, 10)
     const newsHtml = buildNewsHtml(topNews)
 
-    // Ask Claude only for: title, summary, top performances, worst performances
+    // Build news headlines for Claude context
+    const newsHeadlines = newsItems.slice(0, 20).map(a => `${a.title} [${a.source}]`).join('\n')
+
+    // Ask Claude for: title, summary, day rundown, performances, injuries
     const performanceData = boxScores.map(bs => ({
       away: bs.away.team.abbrev,
       home: bs.home.team.abbrev,
@@ -120,15 +122,20 @@ export async function GET(req: NextRequest) {
     }))
 
     const claudePrompt = isOffDay
-      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, topPerformances, worstPerformances }. dayRundown, topPerformances and worstPerformances should be empty strings.`
-      : `Analyze these ${briefDate} MLB box scores and return JSON with exactly 5 fields:
+      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, topPerformances, worstPerformances, injuries }. dayRundown, topPerformances, worstPerformances, and injuries should be empty strings.`
+      : `Analyze these ${briefDate} MLB box scores, news headlines, and transaction data. Return JSON with exactly 6 fields:
 - "title": Catchy headline (e.g., "Yankees Cruise, Dodgers Walk Off — March 11 Recap")
-- "summary": 1-2 sentence summary of the day
-- "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold.
+- "summary": 1-2 sentence summary of the day. Mention significant non-MLB baseball news if present in the headlines.
+- "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold. If notable non-MLB baseball news appears in the headlines (minor leagues, college, high school, international), add a brief "Around Baseball" paragraph at the end of the rundown covering it.
 - "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Use a styled list with player names, teams, and key stats.
 - "worstPerformances": HTML section of the 4-5 worst individual performances. Same format.
+- "injuries": HTML section covering IL placements, IL activations, and any possible in-game injuries. Use the transaction data provided and cross-reference with box scores (e.g., a starter with unusually few AB or a pitcher pulled early may indicate injury). Format as a styled list with red accent (#f87171) for IL placements/possible injuries and green accent (#34d399) for activations.
 
-Box score data:\n${JSON.stringify(performanceData)}`
+Box score data:\n${JSON.stringify(performanceData)}
+
+News headlines:\n${newsHeadlines}
+
+IL/Transaction data:\n${JSON.stringify(transactions)}`
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
@@ -136,7 +143,7 @@ Box score data:\n${JSON.stringify(performanceData)}`
       messages: [{ role: 'user', content: claudePrompt }],
       system: `You are a baseball analyst writing a daily brief for a professional scouting platform.
 
-Return JSON with exactly these fields: title, summary, dayRundown, topPerformances, worstPerformances.
+Return JSON with exactly these fields: title, summary, dayRundown, topPerformances, worstPerformances, injuries.
 
 For dayRundown, write a narrative recap of the day under 500 words. Use HTML with inline styles. Format as 3-5 paragraphs wrapped in <p> tags with style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;". Bold player names using <strong style="color:#f0f0f0">Player Name</strong>. Tell the story of the day like a sportswriter — weave together the biggest moments, comebacks, dominant performances, and storylines.
 
@@ -159,6 +166,12 @@ For worst performances, use color:#f87171 on the stats td instead of the default
 For top performances, highlight dominant pitching (lots of K, low ER, deep outings) and big offensive games (multi-hit, HR, high RBI).
 For worst performances, highlight blown starts (short outings, high ER), 0-for with multiple K, etc.
 
+For injuries, generate HTML using the same table format. Group into three categories:
+1. "IL Placements" — players placed on the injured list (use color:#f87171 for the status label)
+2. "Activated" — players activated from the injured list (use color:#34d399 for the status label)
+3. "Possible Injuries" — players who may have been injured based on box score anomalies (early exit, unusually low AB for a starter, pitcher pulled after few pitches). Use color:#fbbf24 for these.
+Each entry: player name (bold), team abbreviation, and description. If no injury/transaction data exists, return an empty string.
+
 Return ONLY valid JSON, no markdown fences.`,
     })
 
@@ -167,7 +180,7 @@ Return ONLY valid JSON, no markdown fences.`,
       .map(b => b.text)
       .join('')
 
-    let parsed: { title: string; summary: string; dayRundown: string; topPerformances: string; worstPerformances: string }
+    let parsed: { title: string; summary: string; dayRundown: string; topPerformances: string; worstPerformances: string; injuries: string }
     try {
       const jsonMatch = textContent.match(/\{[\s\S]*\}/)
       const cleaned = jsonMatch ? jsonMatch[0] : textContent.trim()
@@ -182,6 +195,7 @@ Return ONLY valid JSON, no markdown fences.`,
       boxScoresHtml,
       topPerformances: parsed.topPerformances,
       worstPerformances: parsed.worstPerformances,
+      injuries: parsed.injuries,
       newsHtml,
       isOffDay,
       playerNameToId: playerNameToIdEarly,
@@ -273,6 +287,7 @@ function assembleBriefHtml(parts: {
   boxScoresHtml: string
   topPerformances: string
   worstPerformances: string
+  injuries: string
   newsHtml: string
   isOffDay: boolean
   playerNameToId: Record<string, number>
@@ -309,6 +324,14 @@ function assembleBriefHtml(parts: {
 <div style="${S.section}">
   <div style="${S.sectionTitle}">Rough Outings</div>
   <div style="${S.perfWrap}">${linkifyPlayerNames(parts.worstPerformances, parts.playerNameToId)}</div>
+</div>`)
+  }
+
+  if (parts.injuries) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Injuries & Transactions</div>
+  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.injuries, parts.playerNameToId)}</div>
 </div>`)
   }
 
@@ -606,9 +629,21 @@ async function fetchFullBoxScore(gamePk: number) {
   }
 }
 
+async function fetchFeedUrls(): Promise<{ name: string; url: string }[]> {
+  const { data } = await maydaySupabase
+    .from('research_feeds')
+    .select('name, url')
+    .eq('enabled', true)
+  const feeds = (data || []).map((f: any) => ({ name: f.name, url: f.url }))
+  // Always include The Athletic (paywalled, not in research_feeds)
+  feeds.push({ name: 'The Athletic', url: 'https://theathletic.com/feeds/rss/news/?sport=baseball' })
+  return feeds
+}
+
 async function fetchNews() {
+  const feeds = await fetchFeedUrls()
   const results = await Promise.allSettled(
-    FEEDS.map(async (source) => {
+    feeds.map(async (source) => {
       const feed = await rssParser.parseURL(source.url)
       return (feed.items || []).slice(0, 4).map(item => ({
         title: item.title || '',
@@ -622,4 +657,37 @@ async function fetchNews() {
     .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
     .filter(item => item.title && item.link)
+}
+
+async function fetchTransactions(date: string) {
+  const d = new Date(date)
+  const formatted = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`
+  const url = `https://statsapi.mlb.com/api/v1/transactions?startDate=${formatted}&endDate=${formatted}&sportId=1`
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return { ilPlacements: [], ilActivations: [] }
+    const data = await resp.json()
+    const txns = data?.transactions || []
+
+    const ilPlacements: { player: string; team: string; description: string }[] = []
+    const ilActivations: { player: string; team: string; description: string }[] = []
+
+    for (const tx of txns) {
+      if (tx.typeCode !== 'SC') continue
+      const desc: string = tx.description || ''
+      const descLower = desc.toLowerCase()
+      const player = tx.person?.fullName || ''
+      const team = tx.toTeam?.name || tx.fromTeam?.name || ''
+
+      if (descLower.includes('placed on') && descLower.includes('injured list')) {
+        ilPlacements.push({ player, team, description: desc })
+      } else if (descLower.includes('activated') && descLower.includes('injured list')) {
+        ilActivations.push({ player, team, description: desc })
+      }
+    }
+
+    return { ilPlacements, ilActivations }
+  } catch {
+    return { ilPlacements: [], ilActivations: [] }
+  }
 }
