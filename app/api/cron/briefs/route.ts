@@ -366,12 +366,12 @@ function linkifyPlayerNames(html: string, nameToId: Record<string, number>): str
     // Replace name inside <strong> tags: <strong>Name</strong> → <strong><a>Name</a></strong>
     result = result.replace(
       new RegExp(`(<strong[^>]*>)(${escapedName})(</strong>)`, 'g'),
-      `$1<a href="/player/${id}" target="_blank" rel="noopener" style="${linkStyle}">$2</a>$3`
+      `$1<a href="https://www.tritonapex.io/player/${id}" target="_blank" rel="noopener" style="${linkStyle}">$2</a>$3`
     )
     // Replace name inside <span> with font-weight:600 (performance tables): <span style="...">Name</span>
     result = result.replace(
       new RegExp(`(<span[^>]*font-weight:600[^>]*>)(${escapedName})(</span>)`, 'g'),
-      `$1<a href="/player/${id}" target="_blank" rel="noopener" style="${linkStyle}">$2</a>$3`
+      `$1<a href="https://www.tritonapex.io/player/${id}" target="_blank" rel="noopener" style="${linkStyle}">$2</a>$3`
     )
   }
   return result
@@ -380,7 +380,7 @@ function linkifyPlayerNames(html: string, nameToId: Record<string, number>): str
 function playerLink(name: string, id: number | undefined): string {
   if (!id) return escapeHtml(name)
   const style = 'color:inherit;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.2);text-underline-offset:2px;'
-  return `<a href="/player/${id}" target="_blank" rel="noopener" style="${style}">${escapeHtml(name)}</a>`
+  return `<a href="https://www.tritonapex.io/player/${id}" target="_blank" rel="noopener" style="${style}">${escapeHtml(name)}</a>`
 }
 
 function buildBoxScoresHtml(boxScores: any[], nameToId: Record<string, number>): string {
