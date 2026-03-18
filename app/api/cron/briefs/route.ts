@@ -122,11 +122,12 @@ export async function GET(req: NextRequest) {
     }))
 
     const claudePrompt = isOffDay
-      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, topPerformances, worstPerformances, injuries }. dayRundown, topPerformances, worstPerformances, and injuries should be empty strings.`
-      : `Analyze these ${briefDate} MLB box scores, news headlines, and transaction data. Return JSON with exactly 6 fields:
+      ? `Generate a brief MLB daily recap for ${briefDate} (off-day / no games). Return JSON with { title, summary, dayRundown, aroundBaseball, topPerformances, worstPerformances, injuries }. dayRundown, aroundBaseball, topPerformances, and worstPerformances should be empty strings. For injuries, return "<p style=\\"color:rgba(255,255,255,0.4);font-size:13px\\">No injuries or activations reported for today.</p>".`
+      : `Analyze these ${briefDate} MLB box scores, news headlines, and transaction data. Return JSON with exactly 7 fields:
 - "title": Catchy headline (e.g., "Yankees Cruise, Dodgers Walk Off — March 11 Recap")
-- "summary": 1-2 sentence summary of the day. Mention significant non-MLB baseball news if present in the headlines.
-- "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold. If notable non-MLB baseball news appears in the headlines (minor leagues, college, high school, international), add a brief "Around Baseball" paragraph at the end of the rundown covering it.
+- "summary": 1-2 sentence summary of the day.
+- "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold.
+- "aroundBaseball": If notable non-MLB baseball news appears in the headlines (minor leagues, college, high school, international), write a brief HTML paragraph or two covering it. If no non-MLB baseball news is present, return an empty string.
 - "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Use a styled list with player names, teams, and key stats.
 - "worstPerformances": HTML section of the 4-5 worst individual performances. Same format.
 - "injuries": HTML section covering IL placements, IL activations, and any possible in-game injuries. Use the transaction data provided and cross-reference with box scores (e.g., a starter with unusually few AB or a pitcher pulled early may indicate injury). Format as a styled list with red accent (#f87171) for IL placements/possible injuries and green accent (#34d399) for activations.
@@ -143,7 +144,7 @@ IL/Transaction data:\n${JSON.stringify(transactions)}`
       messages: [{ role: 'user', content: claudePrompt }],
       system: `You are a baseball analyst writing a daily brief for a professional scouting platform.
 
-Return JSON with exactly these fields: title, summary, dayRundown, topPerformances, worstPerformances, injuries.
+Return JSON with exactly these fields: title, summary, dayRundown, aroundBaseball, topPerformances, worstPerformances, injuries.
 
 For dayRundown, write a narrative recap of the day under 500 words. Use HTML with inline styles. Format as 3-5 paragraphs wrapped in <p> tags with style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;". Bold player names using <strong style="color:#f0f0f0">Player Name</strong>. Tell the story of the day like a sportswriter — weave together the biggest moments, comebacks, dominant performances, and storylines.
 
@@ -170,7 +171,7 @@ For injuries, generate HTML using the same table format. Group into three catego
 1. "IL Placements" — players placed on the injured list (use color:#f87171 for the status label)
 2. "Activated" — players activated from the injured list (use color:#34d399 for the status label)
 3. "Possible Injuries" — players who may have been injured based on box score anomalies (early exit, unusually low AB for a starter, pitcher pulled after few pitches). Use color:#fbbf24 for these.
-Each entry: player name (bold), team abbreviation, and description. If no injury/transaction data exists, return an empty string.
+Each entry: player name (bold), team abbreviation, and description. If no injury/transaction data exists, return a message: "No injuries or activations reported for today." styled as a paragraph with color:rgba(255,255,255,0.4) and font-size:13px. ALWAYS return content for injuries — never return an empty string.
 
 Return ONLY valid JSON, no markdown fences.`,
     })
@@ -180,7 +181,7 @@ Return ONLY valid JSON, no markdown fences.`,
       .map(b => b.text)
       .join('')
 
-    let parsed: { title: string; summary: string; dayRundown: string; topPerformances: string; worstPerformances: string; injuries: string }
+    let parsed: { title: string; summary: string; dayRundown: string; aroundBaseball: string; topPerformances: string; worstPerformances: string; injuries: string }
     try {
       const jsonMatch = textContent.match(/\{[\s\S]*\}/)
       const cleaned = jsonMatch ? jsonMatch[0] : textContent.trim()
@@ -192,6 +193,7 @@ Return ONLY valid JSON, no markdown fences.`,
     // Assemble final HTML
     const finalHtml = assembleBriefHtml({
       dayRundown: parsed.dayRundown,
+      aroundBaseball: parsed.aroundBaseball,
       boxScoresHtml,
       topPerformances: parsed.topPerformances,
       worstPerformances: parsed.worstPerformances,
@@ -284,6 +286,7 @@ const S = {
 
 function assembleBriefHtml(parts: {
   dayRundown: string
+  aroundBaseball: string
   boxScoresHtml: string
   topPerformances: string
   worstPerformances: string
@@ -327,11 +330,17 @@ function assembleBriefHtml(parts: {
 </div>`)
   }
 
-  if (parts.injuries) {
-    sections.push(`
+  sections.push(`
 <div style="${S.section}">
   <div style="${S.sectionTitle}">Injuries & Transactions</div>
-  <div style="${S.perfWrap}">${linkifyPlayerNames(parts.injuries, parts.playerNameToId)}</div>
+  <div style="${S.perfWrap}">${parts.injuries ? linkifyPlayerNames(parts.injuries, parts.playerNameToId) : '<p style="color:rgba(255,255,255,0.4);font-size:13px">No injuries or activations reported for today.</p>'}</div>
+</div>`)
+
+  if (parts.aroundBaseball) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Around Baseball</div>
+  <div style="${S.perfWrap}">${parts.aroundBaseball}</div>
 </div>`)
   }
 
@@ -640,12 +649,14 @@ async function fetchFeedUrls(): Promise<{ name: string; url: string }[]> {
   return feeds
 }
 
+const BASEBALL_KEYWORDS = /\b(mlb|baseball|pitcher|batting|homer|home run|strikeout|innings?|bullpen|roster|free agent|trade|minor league|spring training|world series|playoffs|postseason|mound|dugout|umpire|outfield|infield|shortstop|catcher|lineup|standings|wild card|no-hitter|perfect game|grand slam|double play|triple play|farm system|draft|arbitration|injured list|disabled list|designated hitter|pinch hit|relief pitcher|closer|starter|rotation|pitch clock|milb|college baseball|ncaa baseball|little league|wbc|world baseball)\b/i
+
 async function fetchNews() {
   const feeds = await fetchFeedUrls()
   const results = await Promise.allSettled(
     feeds.map(async (source) => {
       const feed = await rssParser.parseURL(source.url)
-      return (feed.items || []).slice(0, 4).map(item => ({
+      return (feed.items || []).slice(0, 8).map(item => ({
         title: item.title || '',
         link: item.link || '',
         source: source.name,
@@ -657,6 +668,7 @@ async function fetchNews() {
     .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
     .filter(item => item.title && item.link)
+    .filter(item => BASEBALL_KEYWORDS.test(item.title) || BASEBALL_KEYWORDS.test(item.description))
 }
 
 async function fetchTransactions(date: string) {
