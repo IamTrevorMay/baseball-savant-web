@@ -336,13 +336,11 @@ function assembleBriefHtml(parts: {
   <div style="${S.perfWrap}">${parts.injuries ? linkifyPlayerNames(parts.injuries, parts.playerNameToId) : '<p style="color:rgba(255,255,255,0.4);font-size:13px">No injuries or activations reported for today.</p>'}</div>
 </div>`)
 
-  if (parts.aroundBaseball) {
-    sections.push(`
+  sections.push(`
 <div style="${S.section}">
   <div style="${S.sectionTitle}">Around Baseball</div>
-  <div style="${S.perfWrap}">${parts.aroundBaseball}</div>
+  <div style="${S.perfWrap}">${parts.aroundBaseball || '<p style="color:rgba(255,255,255,0.4);font-size:13px">No notable non-MLB baseball news today.</p>'}</div>
 </div>`)
-  }
 
   if (parts.newsHtml) {
     sections.push(`
@@ -661,6 +659,7 @@ async function fetchNews() {
         link: item.link || '',
         source: source.name,
         description: (item.contentSnippet || '').slice(0, 150).replace(/<[^>]*>/g, ''),
+        isGeneralFeed: source.name === 'The Athletic',
       }))
     })
   )
@@ -668,7 +667,9 @@ async function fetchNews() {
     .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
     .filter(item => item.title && item.link)
-    .filter(item => BASEBALL_KEYWORDS.test(item.title) || BASEBALL_KEYWORDS.test(item.description))
+    // Only filter general feeds (The Athletic) for baseball keywords;
+    // baseball-specific feeds (ESPN MLB, FanGraphs, etc.) pass through
+    .filter(item => !item.isGeneralFeed || BASEBALL_KEYWORDS.test(item.title) || BASEBALL_KEYWORDS.test(item.description))
 }
 
 async function fetchTransactions(date: string) {
