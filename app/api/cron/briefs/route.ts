@@ -103,7 +103,8 @@ export async function GET(req: NextRequest) {
     const boxScoresHtml = buildBoxScoresHtml(boxScores, playerNameToIdEarly)
 
     // Build news HTML (deterministic)
-    const topNews = newsItems.slice(0, 10)
+    // Ensure at least 8 headlines; show up to 12
+    const topNews = newsItems.slice(0, Math.max(8, Math.min(newsItems.length, 12)))
     const newsHtml = buildNewsHtml(topNews)
 
     // Build news headlines for Claude context
@@ -658,8 +659,8 @@ async function fetchFeedUrls(): Promise<{ name: string; url: string }[]> {
     .select('name, url')
     .eq('enabled', true)
   const feeds = (data || []).map((f: any) => ({ name: f.name, url: f.url }))
-  // Always include The Athletic (paywalled, not in research_feeds)
-  feeds.push({ name: 'The Athletic', url: 'https://theathletic.com/feeds/rss/news/?sport=baseball' })
+  // Always include NYT Baseball (not in research_feeds)
+  feeds.push({ name: 'NYT Baseball', url: 'https://rss.nytimes.com/services/xml/rss/nyt/Baseball.xml' })
   return feeds
 }
 
@@ -675,7 +676,7 @@ async function fetchNews() {
         link: item.link || '',
         source: source.name,
         description: (item.contentSnippet || '').slice(0, 150).replace(/<[^>]*>/g, ''),
-        isGeneralFeed: source.name === 'The Athletic',
+        isGeneralFeed: source.name === 'NYT Baseball',
       }))
     })
   )
@@ -683,7 +684,7 @@ async function fetchNews() {
     .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
     .flatMap(r => r.value)
     .filter(item => item.title && item.link)
-    // Only filter general feeds (The Athletic) for baseball keywords;
+    // Only filter general feeds (NYT Baseball) for baseball keywords;
     // baseball-specific feeds (ESPN MLB, FanGraphs, etc.) pass through
     .filter(item => !item.isGeneralFeed || BASEBALL_KEYWORDS.test(item.title) || BASEBALL_KEYWORDS.test(item.description))
 }
