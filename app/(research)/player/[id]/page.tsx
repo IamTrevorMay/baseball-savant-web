@@ -67,6 +67,7 @@ export default function PlayerDashboard() {
   const [allData, setAllData] = useState<any[]>([])
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
+  const [seasonType, setSeasonType] = useState<'regular'|'spring'|'postseason'|'all'>('regular')
 
   // Model tabs
   const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
@@ -86,11 +87,23 @@ export default function PlayerDashboard() {
     setModelTabs(getDashboardModels(models, 'pitcher'))
   }
 
+  // Partition by season type before user filters
+  const seasonFilteredData = useMemo(() => {
+    if (seasonType === 'all') return allData
+    return allData.filter((r: any) => {
+      const gt = r.game_type
+      if (seasonType === 'regular') return gt === 'R'
+      if (seasonType === 'spring') return gt === 'S' || gt === 'E'
+      if (seasonType === 'postseason') return ['P','F','D','L','W'].includes(gt)
+      return true
+    })
+  }, [allData, seasonType])
+
   // Client-side filtered data
   const filteredData = useMemo(() => {
-    if (activeFilters.length === 0) return allData
-    return applyFiltersToData(allData, activeFilters)
-  }, [allData, activeFilters])
+    if (activeFilters.length === 0) return seasonFilteredData
+    return applyFiltersToData(seasonFilteredData, activeFilters)
+  }, [seasonFilteredData, activeFilters])
 
   // Debounced filter application
   useEffect(() => {
@@ -291,9 +304,16 @@ export default function PlayerDashboard() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">{info.player_name}</h1>
-              <div className="flex gap-4 text-sm text-zinc-400 mt-1">
-                <span>{info.total_pitches.toLocaleString()} pitches</span>
-                <span>{info.games.toLocaleString()} games</span>
+              <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
+                <select value={seasonType} onChange={e => setSeasonType(e.target.value as any)}
+                  className="bg-zinc-800 border border-zinc-700 text-white text-xs rounded px-2 py-1 focus:border-emerald-600 focus:outline-none">
+                  <option value="regular">Regular Season</option>
+                  <option value="spring">Spring Training</option>
+                  <option value="postseason">Postseason</option>
+                  <option value="all">All Games</option>
+                </select>
+                <span>{seasonFilteredData.length.toLocaleString()} pitches</span>
+                <span>{new Set(seasonFilteredData.map((r: any) => r.game_pk)).size.toLocaleString()} games</span>
                 <span>{info.first_date} — {info.last_date}</span>
                 {lahmanData?.player?.debut && <span>Debut: {lahmanData.player.debut}</span>}
               </div>
