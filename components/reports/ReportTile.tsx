@@ -138,12 +138,12 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
         <div className="fixed z-[100] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
           onMouseDown={e => e.stopPropagation()}>
-          <button onClick={() => exportTile('png')}
-            className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+          <button onMouseDown={() => exportTile('png')}
+            className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition cursor-pointer">
             Export as PNG
           </button>
-          <button onClick={() => exportTile('jpg')}
-            className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition">
+          <button onMouseDown={() => exportTile('jpg')}
+            className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition cursor-pointer">
             Export as JPG
           </button>
         </div>
