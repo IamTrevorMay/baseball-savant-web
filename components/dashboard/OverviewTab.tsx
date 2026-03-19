@@ -12,7 +12,7 @@ import {
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 import Tip from '@/components/Tip'
 
-interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[] }
+interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[]; sosScores?: Record<number, { sos: number }> }
 
 type StatsMode = 'traditional' | 'advanced' | 'arsenal'
 
@@ -233,7 +233,7 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","stuffPlus","commandPlus","rpcomPlus"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","stuffPlus","commandPlus","rpcomPlus","sos"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
@@ -258,7 +258,7 @@ function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any
   return totals
 }
 
-export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching = [] }: Props) {
+export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching = [], sosScores = {} }: Props) {
   const [mode, setMode] = useState<StatsMode>('traditional')
 
   const tradRows = calcTraditionalByYear(data)
@@ -305,11 +305,13 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
   const mergedAdvRows = advRows.map(r => {
     const mlb = mlbStats.find((s: any) => Number(s.year) === r.year)
     const lahman = lahmanPitching.find(s => s.year === r.year)
+    const sos = sosScores[r.year]
     return {
       ...r,
       k9: mlb?.k9 ?? (lahman?.k9 != null ? lahman.k9.toFixed(1) : "—"),
       bb9: mlb?.bb9 ?? (lahman?.bb9 != null ? lahman.bb9.toFixed(1) : "—"),
       hr9: mlb?.hr9 ?? (lahman?.hr9 != null ? lahman.hr9.toFixed(1) : "—"),
+      sos: sos?.sos != null ? sos.sos.toFixed(1) : '—',
     }
   })
 
@@ -336,6 +338,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:"k9", l:"K/9" }, { k:"bb9", l:"BB/9" }, { k:"hr9", l:"HR/9" },
     { k:"totalRE", l:"RE24" },
     { k:"commandPlus", l:"Cmd+" }, { k:"rpcomPlus", l:"RPCom+" },
+    { k:"sos", l:"SOS" },
   ]
   const arsenalCols = [
     { k:'name', l:'Pitch' }, { k:'count', l:'#' }, { k:'usagePct', l:'Usage%' },
@@ -366,6 +369,11 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
     if (k === 'brink') return 'text-teal-400'
     if (k === 'cluster') return 'text-teal-400'
+    if (k === 'sos') {
+      const n = Number(v)
+      if (isNaN(n)) return 'text-zinc-400'
+      return n > 105 ? 'text-emerald-400' : n < 95 ? 'text-orange-400' : 'text-zinc-300'
+    }
     if (k === 'brinkPlus' || k === 'clusterPlus' || k === 'stuffPlus' || k === 'commandPlus' || k === 'rpcomPlus') {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'

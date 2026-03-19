@@ -115,12 +115,19 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     console.error('Stuff+ computation failed:', stuffResult.error)
   }
 
+  // Recompute SOS for affected years
+  const sosResult = await computeSOSForYears(supabase as any, start_date, end_date)
+  if (!sosResult.ok) {
+    console.error('SOS computation failed:', sosResult.error)
+  }
+
   return {
     fetched: rows.length,
     inserted,
     errors,
     message: `Fetched ${rows.length} pitches, ${inserted} processed`,
     stuff_plus: stuffResult,
+    sos: sosResult,
   }
 }
 
@@ -197,6 +204,172 @@ async function computeStuffPlusForDateRange(
     return { ok: true, years }
   } catch (err: any) {
     console.error('computeStuffPlusForDateRange error:', err)
+    return { ok: false, error: err.message }
+  }
+}
+
+const SOS_REGRESSION_K = 60
+
+export async function computeSOSForYears(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  startDate: string,
+  endDate: string
+) {
+  try {
+    const q = async (sql: string) => {
+      const res = await sb.rpc('run_query_long', { query_text: sql.trim() })
+      if (res.error) throw new Error(`run_query_long failed: ${res.error.message}`)
+      return res.data || []
+    }
+    const m = async (sql: string) => {
+      const res = await sb.rpc('run_mutation', { query_text: sql.trim() })
+      if (res.error) throw new Error(`run_mutation failed: ${res.error.message}`)
+      return res
+    }
+
+    const startYear = parseInt(startDate.slice(0, 4), 10)
+    const endYear = parseInt(endDate.slice(0, 4), 10)
+    const years: number[] = []
+    for (let y = startYear; y <= endYear; y++) years.push(y)
+
+    let totalUpserted = 0
+
+    for (const year of years) {
+      const yStart = `${year}-01-01`
+      const yEnd = `${year}-12-31`
+      const f = `game_date BETWEEN '${yStart}' AND '${yEnd}' AND events IS NOT NULL AND game_type = 'R' AND pitch_type NOT IN ('PO','IN')`
+
+      // ── Hitter SOS ──────────────────────────────────────────────────
+      const hitterRows = await q(`
+        WITH all_pitcher_stats AS (
+          SELECT pitcher, COUNT(*) AS total_pa,
+            SUM(COALESCE(estimated_woba_using_speedangle, woba_value)) AS total_xwoba_sum
+          FROM pitches WHERE ${f} GROUP BY pitcher
+        ),
+        league AS (
+          SELECT AVG(total_xwoba_sum / NULLIF(total_pa, 0)) AS lg_avg,
+                 STDDEV(total_xwoba_sum / NULLIF(total_pa, 0)) AS lg_std
+          FROM all_pitcher_stats WHERE total_pa >= 10
+        ),
+        matchup_stats AS (
+          SELECT batter, pitcher, COUNT(*) AS mu_pa,
+            SUM(COALESCE(estimated_woba_using_speedangle, woba_value)) AS mu_xwoba_sum
+          FROM pitches WHERE ${f} GROUP BY batter, pitcher
+        ),
+        loo AS (
+          SELECT m.batter, m.pitcher, m.mu_pa AS pas_vs,
+            (a.total_pa - m.mu_pa) AS loo_n,
+            CASE WHEN (a.total_pa - m.mu_pa) > 0
+              THEN (a.total_xwoba_sum - COALESCE(m.mu_xwoba_sum, 0)) / (a.total_pa - m.mu_pa)
+            END AS loo_xwoba
+          FROM matchup_stats m
+          JOIN all_pitcher_stats a ON m.pitcher = a.pitcher
+        ),
+        regressed AS (
+          SELECT batter, pitcher, pas_vs,
+            (loo_n * loo_xwoba + ${SOS_REGRESSION_K} * l.lg_avg) / (loo_n + ${SOS_REGRESSION_K}) AS reg_xwoba
+          FROM loo CROSS JOIN league l WHERE loo_xwoba IS NOT NULL
+        )
+        SELECT
+          r.batter AS player_id,
+          SUM(r.reg_xwoba * r.pas_vs) / NULLIF(SUM(r.pas_vs), 0) AS raw_sos,
+          l.lg_avg, l.lg_std,
+          100 + ((l.lg_avg - SUM(r.reg_xwoba * r.pas_vs) / NULLIF(SUM(r.pas_vs), 0)) / NULLIF(l.lg_std, 0)) * 10 AS sos,
+          COUNT(DISTINCT r.pitcher) AS opp_count,
+          SUM(r.pas_vs) AS total_pa
+        FROM regressed r CROSS JOIN league l
+        GROUP BY r.batter, l.lg_avg, l.lg_std
+        HAVING SUM(r.pas_vs) >= 10
+      `)
+
+      if (hitterRows.length > 0) {
+        const values = hitterRows.map((r: any) =>
+          `(${r.player_id}, ${year}, 'hitter', ${r.sos != null ? Math.round(r.sos * 10) / 10 : 'NULL'}, ${r.raw_sos != null ? Math.round(r.raw_sos * 10000) / 10000 : 'NULL'}, ${r.lg_avg != null ? Math.round(r.lg_avg * 10000) / 10000 : 'NULL'}, ${r.lg_std != null ? Math.round(r.lg_std * 10000) / 10000 : 'NULL'}, ${r.opp_count}, ${r.total_pa}, NOW())`
+        ).join(',\n')
+
+        await m(`
+          INSERT INTO sos_scores (player_id, game_year, role, sos, raw_opponent_xwoba, league_avg_xwoba, league_std_xwoba, opponents_faced, total_pa, updated_at)
+          VALUES ${values}
+          ON CONFLICT (player_id, game_year, role) DO UPDATE SET
+            sos = EXCLUDED.sos,
+            raw_opponent_xwoba = EXCLUDED.raw_opponent_xwoba,
+            league_avg_xwoba = EXCLUDED.league_avg_xwoba,
+            league_std_xwoba = EXCLUDED.league_std_xwoba,
+            opponents_faced = EXCLUDED.opponents_faced,
+            total_pa = EXCLUDED.total_pa,
+            updated_at = NOW()
+        `)
+        totalUpserted += hitterRows.length
+      }
+
+      // ── Pitcher SOS ─────────────────────────────────────────────────
+      const pitcherRows = await q(`
+        WITH all_batter_stats AS (
+          SELECT batter, COUNT(*) AS total_pa,
+            SUM(COALESCE(estimated_woba_using_speedangle, woba_value)) AS total_xwoba_sum
+          FROM pitches WHERE ${f} GROUP BY batter
+        ),
+        league AS (
+          SELECT AVG(total_xwoba_sum / NULLIF(total_pa, 0)) AS lg_avg,
+                 STDDEV(total_xwoba_sum / NULLIF(total_pa, 0)) AS lg_std
+          FROM all_batter_stats WHERE total_pa >= 10
+        ),
+        matchup_stats AS (
+          SELECT pitcher, batter, COUNT(*) AS mu_pa,
+            SUM(COALESCE(estimated_woba_using_speedangle, woba_value)) AS mu_xwoba_sum
+          FROM pitches WHERE ${f} GROUP BY pitcher, batter
+        ),
+        loo AS (
+          SELECT m.pitcher, m.batter, m.mu_pa AS pas_vs,
+            (a.total_pa - m.mu_pa) AS loo_n,
+            CASE WHEN (a.total_pa - m.mu_pa) > 0
+              THEN (a.total_xwoba_sum - COALESCE(m.mu_xwoba_sum, 0)) / (a.total_pa - m.mu_pa)
+            END AS loo_xwoba
+          FROM matchup_stats m
+          JOIN all_batter_stats a ON m.batter = a.batter
+        ),
+        regressed AS (
+          SELECT pitcher, batter, pas_vs,
+            (loo_n * loo_xwoba + ${SOS_REGRESSION_K} * l.lg_avg) / (loo_n + ${SOS_REGRESSION_K}) AS reg_xwoba
+          FROM loo CROSS JOIN league l WHERE loo_xwoba IS NOT NULL
+        )
+        SELECT
+          r.pitcher AS player_id,
+          SUM(r.reg_xwoba * r.pas_vs) / NULLIF(SUM(r.pas_vs), 0) AS raw_sos,
+          l.lg_avg, l.lg_std,
+          100 + ((SUM(r.reg_xwoba * r.pas_vs) / NULLIF(SUM(r.pas_vs), 0) - l.lg_avg) / NULLIF(l.lg_std, 0)) * 10 AS sos,
+          COUNT(DISTINCT r.batter) AS opp_count,
+          SUM(r.pas_vs) AS total_pa
+        FROM regressed r CROSS JOIN league l
+        GROUP BY r.pitcher, l.lg_avg, l.lg_std
+        HAVING SUM(r.pas_vs) >= 10
+      `)
+
+      if (pitcherRows.length > 0) {
+        const values = pitcherRows.map((r: any) =>
+          `(${r.player_id}, ${year}, 'pitcher', ${r.sos != null ? Math.round(r.sos * 10) / 10 : 'NULL'}, ${r.raw_sos != null ? Math.round(r.raw_sos * 10000) / 10000 : 'NULL'}, ${r.lg_avg != null ? Math.round(r.lg_avg * 10000) / 10000 : 'NULL'}, ${r.lg_std != null ? Math.round(r.lg_std * 10000) / 10000 : 'NULL'}, ${r.opp_count}, ${r.total_pa}, NOW())`
+        ).join(',\n')
+
+        await m(`
+          INSERT INTO sos_scores (player_id, game_year, role, sos, raw_opponent_xwoba, league_avg_xwoba, league_std_xwoba, opponents_faced, total_pa, updated_at)
+          VALUES ${values}
+          ON CONFLICT (player_id, game_year, role) DO UPDATE SET
+            sos = EXCLUDED.sos,
+            raw_opponent_xwoba = EXCLUDED.raw_opponent_xwoba,
+            league_avg_xwoba = EXCLUDED.league_avg_xwoba,
+            league_std_xwoba = EXCLUDED.league_std_xwoba,
+            opponents_faced = EXCLUDED.opponents_faced,
+            total_pa = EXCLUDED.total_pa,
+            updated_at = NOW()
+        `)
+        totalUpserted += pitcherRows.length
+      }
+    }
+
+    return { ok: true, years, upserted: totalUpserted }
+  } catch (err: any) {
+    console.error('computeSOSForYears error:', err)
     return { ok: false, error: err.message }
   }
 }

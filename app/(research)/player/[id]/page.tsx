@@ -72,6 +72,9 @@ export default function PlayerDashboard() {
   // Model tabs
   const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
 
+  // SOS scores per year
+  const [sosScores, setSosScores] = useState<Record<number, { sos: number }>>({})
+
   // Lahman historical data
   const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
 
@@ -126,17 +129,23 @@ export default function PlayerDashboard() {
     // Load pitches
     await fetchData()
 
-    // Fetch MLB official stats and Lahman data in parallel
+    // Fetch MLB official stats, Lahman data, and SOS scores in parallel
     try {
-      const [mlbRes, lahmanRes] = await Promise.all([
+      const [mlbRes, lahmanRes, sosRes] = await Promise.all([
         fetch(`/api/mlbstats?pitcher=${pitcherId}`),
         fetch(`/api/lahman/player?mlb_id=${pitcherId}`),
+        supabase.from('sos_scores').select('game_year, sos').eq('player_id', pitcherId).eq('role', 'pitcher'),
       ])
       const mlbData = await mlbRes.json()
       if (mlbData.seasons) setMlbStats(mlbData.seasons)
       if (lahmanRes.ok) {
         const ld = await lahmanRes.json()
         if (ld.player) setLahmanData(ld)
+      }
+      if (sosRes.data) {
+        const map: Record<number, { sos: number }> = {}
+        sosRes.data.forEach((r: any) => { map[r.game_year] = { sos: Number(r.sos) } })
+        setSosScores(map)
       }
     } catch (e) { console.error("Stats fetch failed:", e) }
     setLoading(false)
@@ -349,7 +358,7 @@ export default function PlayerDashboard() {
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} lahmanPitching={lahmanData?.pitching} />}
+          {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} lahmanPitching={lahmanData?.pitching} sosScores={sosScores} />}
           {tab === 'movement' && <MovementTab data={data} />}
           {tab === 'viz' && <LocationTab data={data} />}
           {tab === 'velocity' && <VelocityTab data={data} />}

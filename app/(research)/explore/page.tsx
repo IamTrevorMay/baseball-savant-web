@@ -179,6 +179,30 @@ export default function ExplorePage() {
 
         let fetchedRows = data.rows || []
 
+        // Enrich with SOS scores from precomputed table
+        if ((view === 'pitching' || view === 'hitting') && (statSet === 'advanced') && fetchedRows.length > 0) {
+          const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
+          const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
+          const role = view === 'pitching' ? 'pitcher' : 'hitter'
+          const playerIds = fetchedRows.map((r: any) => view === 'pitching' ? r.pitcher : r.batter).filter(Boolean)
+          if (playerIds.length > 0) {
+            const { data: sosData } = await supabase
+              .from('sos_scores')
+              .select('player_id, sos')
+              .in('player_id', playerIds)
+              .eq('game_year', gameYear)
+              .eq('role', role)
+            if (sosData) {
+              const sosMap: Record<number, number> = {}
+              sosData.forEach((r: any) => { sosMap[r.player_id] = Number(r.sos) })
+              fetchedRows = fetchedRows.map((r: any) => ({
+                ...r,
+                _sos: sosMap[view === 'pitching' ? r.pitcher : r.batter] ?? null,
+              }))
+            }
+          }
+        }
+
         // For hitting view, resolve batter names
         if (view === 'hitting' && fetchedRows.length > 0) {
           const ids = [...new Set(fetchedRows.map((r: any) => r.batter).filter(Boolean))] as number[]

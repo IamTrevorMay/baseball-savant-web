@@ -118,6 +118,7 @@ const whiffPct: ColumnDef = { key: 'whiff_pct', label: 'Whiff%', colorClass: 'te
 const swstrPct: ColumnDef = { key: 'swstr_pct', label: 'SwStr%', colorClass: 'text-emerald-400', format: 'dec1' }
 const cswPct: ColumnDef = { key: 'csw_pct', label: 'CSW%', colorClass: 'text-emerald-400', format: 'dec1' }
 const re24: ColumnDef = { key: 'total_re24', label: 'RE24', colorClass: 'text-zinc-400', format: 'dec1', conditionalColor: re24Color }
+const sos: ColumnDef = { key: '_sos', label: 'SOS', colorClass: '', format: 'dec1', conditionalColor: (v) => plusColor(v) }
 
 // Expected
 const xba: ColumnDef = { key: 'avg_xba', label: 'xBA', colorClass: 'text-rose-400', format: 'dec3' }
@@ -146,6 +147,12 @@ const ldPct: ColumnDef = { key: 'ld_pct', label: 'LD%', colorClass: 'text-orange
 const puPct: ColumnDef = { key: 'pu_pct', label: 'PU%', colorClass: 'text-orange-400', format: 'dec1' }
 const batSpeed: ColumnDef = { key: 'avg_bat_speed', label: 'Bat Speed', colorClass: 'text-orange-400', format: 'dec1' }
 const swingLen: ColumnDef = { key: 'avg_swing_length', label: 'Swing Len', colorClass: 'text-orange-400', format: 'dec2' }
+const attackAngle: ColumnDef = { key: 'avg_attack_angle', label: 'Atk Angle', colorClass: 'text-orange-400', format: 'dec1' }
+const swingPathTilt: ColumnDef = { key: 'avg_swing_path_tilt', label: 'Swing Tilt', colorClass: 'text-orange-400', format: 'dec1' }
+const fastSwingRate: ColumnDef = { key: 'fast_swing_rate', label: 'Fast Sw%', colorClass: 'text-orange-400', format: 'dec1' }
+const squaredUpRate: ColumnDef = { key: 'squared_up_rate', label: 'Sq Up%', colorClass: 'text-orange-400', format: 'dec1' }
+const blastRate: ColumnDef = { key: 'blast_rate', label: 'Blast%', colorClass: 'text-orange-400', format: 'dec1' }
+const idealAARate: ColumnDef = { key: 'ideal_attack_angle_rate', label: 'Ideal AA%', colorClass: 'text-orange-400', format: 'dec1' }
 
 // Discipline
 const zonePct: ColumnDef = { key: 'zone_pct', label: 'Zone%', colorClass: 'text-sky-400', format: 'dec1' }
@@ -158,7 +165,7 @@ const oContactPct: ColumnDef = { key: 'o_contact_pct', label: 'O-Contact%', colo
 export const COLUMNS: Record<string, ColumnDef[]> = {
   // ── PITCHING ───────────────────────────────────────────────────
   'pitching:traditional': [pitcherName, pitcherId, games, pa, pitches, h, doubles, triples, hr, bb, k, hbp, ba, obp, slg, ops, kPct, bbPct, re24],
-  'pitching:advanced': [pitcherName, pitcherId, pitches, kPct, bbPct, kMinusBb, whiffPct, swstrPct, cswPct, xba, xwoba, xslg, woba, re24],
+  'pitching:advanced': [pitcherName, pitcherId, pitches, kPct, bbPct, kMinusBb, whiffPct, swstrPct, cswPct, xba, xwoba, xslg, woba, re24, sos],
   'pitching:stuff': [pitcherName, pitcherId, pitches, velo, maxVelo, spin, hBreak, ivb, ext, armAngle, whiffPct, cswPct],
   'pitching:battedball': [pitcherName, pitcherId, pitches, avgEv, maxEv, avgLa, hardHit, barrel, gbPct, fbPct, ldPct, puPct],
   'pitching:discipline': [pitcherName, pitcherId, pitches, zonePct, chasePct, whiffPct, swstrPct, cswPct, contactPct, zSwingPct, oContactPct],
@@ -167,8 +174,8 @@ export const COLUMNS: Record<string, ColumnDef[]> = {
   'hitting:traditional': [batterName, batterId, games, pa, h, doubles, triples, hr, bb, k, ba, obp, slg, ops],
   'hitting:advanced': [batterName, batterId, pa, kPct,
     { ...bbPct, colorClass: 'text-emerald-400' }, // flipped polarity for hitting
-    woba, xba, xwoba, xslg, re24],
-  'hitting:battedball': [batterName, batterId, pa, avgEv, maxEv, avgLa, hardHit, barrel, gbPct, fbPct, ldPct, batSpeed, swingLen],
+    woba, xba, xwoba, xslg, re24, sos],
+  'hitting:battedball': [batterName, batterId, pa, avgEv, maxEv, avgLa, hardHit, barrel, gbPct, fbPct, ldPct, batSpeed, swingLen, attackAngle, swingPathTilt, fastSwingRate, squaredUpRate, blastRate, idealAARate],
   'hitting:discipline': [batterName, batterId, pitches, zonePct, chasePct, whiffPct, contactPct, zSwingPct, oContactPct],
 
   // ── TEAM (pitching perspective — grouped by pitch_team) ────────
