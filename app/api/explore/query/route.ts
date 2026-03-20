@@ -71,6 +71,7 @@ PERFORMANCE — the pitches table has 7.4M+ rows and queries time out at 120s:
 - Prefer pitcher_season_command or player_summary for pre-aggregated data
 - Keep JOINs simple — avoid self-joins on pitches
 - If a question spans all years, aggregate per year first, then combine
+- ROUND() requires numeric type — always cast: ROUND(value::numeric, 2), not ROUND(value, 2)
 
 You MUST respond with a JSON object (no markdown fences, pure JSON) with these fields:
 {
