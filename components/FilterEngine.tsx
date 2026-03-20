@@ -57,6 +57,9 @@ export const FILTER_CATALOG: FilterDef[] = [
   // Swing
   { key: 'bat_speed', label: 'Bat Speed', category: 'Swing', type: 'range' },
   { key: 'swing_length', label: 'Swing Length', category: 'Swing', type: 'range' },
+  { key: 'attack_angle', label: 'Attack Angle', category: 'Swing', type: 'range' },
+  { key: 'attack_direction', label: 'Attack Direction', category: 'Swing', type: 'range' },
+  { key: 'swing_path_tilt', label: 'Swing Path Tilt', category: 'Swing', type: 'range' },
   // Expected
   { key: 'estimated_ba_using_speedangle', label: 'xBA', category: 'Expected', type: 'range' },
   { key: 'estimated_woba_using_speedangle', label: 'xwOBA', category: 'Expected', type: 'range' },
@@ -78,6 +81,8 @@ export const FILTER_CATALOG: FilterDef[] = [
   { key: "vs_team", label: "vs Team", category: "Matchup", type: "multi" },
   { key: "brink", label: "Brink (edge dist, in)", category: "Location", type: "range" },
   { key: "cluster", label: "Cluster (loc spread, in)", category: "Location", type: "range" },
+  { key: "cluster_r", label: "ClusterR (vs RHB, in)", category: "Location", type: "range" },
+  { key: "cluster_l", label: "ClusterL (vs LHB, in)", category: "Location", type: "range" },
   { key: "hdev", label: "HDev (horiz deviation, in)", category: "Location", type: "range" },
   { key: "vdev", label: "VDev (vert deviation, in)", category: "Location", type: "range" },
 ]

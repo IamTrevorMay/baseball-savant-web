@@ -85,6 +85,19 @@ const TOOLS = [
     ),
     available: true,
   },
+  {
+    id: 'design',
+    name: 'Design',
+    description: 'Natural language data exploration and visualization',
+    href: '/design',
+    color: 'rose',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /><path d="m15 5 3 3" />
+      </svg>
+    ),
+    available: true,
+  },
 ]
 
 const COLOR_MAP: Record<string, { bg: string; text: string; border: string; iconBg: string }> = {
@@ -94,6 +107,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string; icon
   amber:   { bg: 'hover:bg-amber-500/5',   text: 'text-amber-400',   border: 'hover:border-amber-500/40',   iconBg: 'bg-amber-500/15' },
   cyan:    { bg: 'hover:bg-cyan-500/5',   text: 'text-cyan-400',   border: 'hover:border-cyan-500/40',   iconBg: 'bg-cyan-500/15' },
   red:     { bg: 'hover:bg-red-500/5',    text: 'text-red-400',    border: 'hover:border-red-500/40',    iconBg: 'bg-red-500/15' },
+  rose:    { bg: 'hover:bg-rose-500/5',   text: 'text-rose-400',   border: 'hover:border-rose-500/40',   iconBg: 'bg-rose-500/15' },
 }
 
 const ADMIN_TOOL = {

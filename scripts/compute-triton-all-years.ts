@@ -8,6 +8,8 @@ import { createClient } from '@supabase/supabase-js'
 import {
   BRINK_LEAGUE_BY_YEAR,
   CLUSTER_LEAGUE_BY_YEAR,
+  CLUSTER_R_LEAGUE_BY_YEAR,
+  CLUSTER_L_LEAGUE_BY_YEAR,
   HDEV_LEAGUE_BY_YEAR,
   VDEV_LEAGUE_BY_YEAR,
   MISSFIRE_LEAGUE_BY_YEAR,
@@ -19,13 +21,13 @@ import { readFileSync } from 'fs'
 // Load .env.local manually
 const envContent = readFileSync('.env.local', 'utf8')
 for (const line of envContent.split('\n')) {
-  const match = line.match(/^([A-Z_]+)=(.*)$/)
+  const match = line.match(/^([A-Z_]+)=["']?([^"'\n]*)["']?$/)
   if (match) process.env[match[1]] = match[2]
 }
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 function computePlus(avg: number, mean: number, stddev: number): number {
@@ -39,7 +41,54 @@ function invertPlus(avg: number, mean: number, stddev: number): number {
 async function computeYear(year: number) {
   console.log(`\n=== Computing year ${year} ===`)
 
-  const sql = `SELECT pitcher, player_name, pitch_name, game_year, COUNT(*) as pitches, AVG(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12) as avg_brink, AVG(SQRT(POWER(plate_x - cx, 2) + POWER(plate_z - cz, 2)) * 12) as avg_cluster, AVG(ABS(plate_x - cx) * 12) as avg_hdev, AVG(ABS(plate_z - cz) * 12) as avg_vdev, AVG(ABS(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z)) * 12) FILTER (WHERE zone > 9) as avg_missfire, 100.0 * COUNT(*) FILTER (WHERE zone > 9 AND LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 > -2) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0) as close_pct, 100.0 * COUNT(*) FILTER (WHERE LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 < -10) / NULLIF(COUNT(*), 0) as waste_pct FROM (SELECT p.*, c.cx, c.cz FROM pitches p JOIN (SELECT pitch_name, AVG(plate_x) as cx, AVG(plate_z) as cz FROM pitches WHERE game_year = ${year} AND pitch_name IS NOT NULL AND plate_x IS NOT NULL AND plate_z IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') GROUP BY pitch_name) c ON c.pitch_name = p.pitch_name WHERE p.game_year = ${year} AND p.pitch_name IS NOT NULL AND p.plate_x IS NOT NULL AND p.plate_z IS NOT NULL AND p.sz_top IS NOT NULL AND p.sz_bot IS NOT NULL AND p.pitch_type NOT IN ('PO', 'IN')) sub GROUP BY pitcher, player_name, pitch_name, game_year HAVING COUNT(*) >= 50`
+  const noSwing = `description NOT IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt')`
+
+  // Step 1: Fetch centroids (overall, R, L) separately to avoid triple-JOIN timeout
+  const centroidSql = `SELECT pitch_name, stand,
+    AVG(plate_x) as cx, AVG(plate_z) as cz
+    FROM pitches WHERE game_year = ${year}
+    AND pitch_name IS NOT NULL AND plate_x IS NOT NULL AND plate_z IS NOT NULL
+    AND pitch_type NOT IN ('PO', 'IN')
+    GROUP BY pitch_name, stand
+    UNION ALL
+    SELECT pitch_name, 'ALL' as stand,
+    AVG(plate_x) as cx, AVG(plate_z) as cz
+    FROM pitches WHERE game_year = ${year}
+    AND pitch_name IS NOT NULL AND plate_x IS NOT NULL AND plate_z IS NOT NULL
+    AND pitch_type NOT IN ('PO', 'IN')
+    GROUP BY pitch_name`
+  const { data: centroidRows, error: cErr } = await supabase.rpc('run_query', { query_text: centroidSql })
+  if (cErr) { console.error(`  Error fetching centroids for ${year}:`, cErr.message); return }
+
+  // Build centroid maps
+  const cAll: Record<string, {cx:number,cz:number}> = {}
+  const cR: Record<string, {cx:number,cz:number}> = {}
+  const cL: Record<string, {cx:number,cz:number}> = {}
+  for (const r of (centroidRows || [])) {
+    const entry = { cx: Number(r.cx), cz: Number(r.cz) }
+    if (r.stand === 'ALL') cAll[r.pitch_name] = entry
+    else if (r.stand === 'R') cR[r.pitch_name] = entry
+    else if (r.stand === 'L') cL[r.pitch_name] = entry
+  }
+
+  // Step 2: Build centroid CASE expressions for SQL
+  const caseExpr = (map: Record<string,{cx:number,cz:number}>, axis: 'cx'|'cz') =>
+    `CASE pitch_name ${Object.entries(map).map(([pn, v]) => `WHEN '${pn}' THEN ${v[axis]}`).join(' ')} END`
+
+  const sql = `SELECT pitcher, MAX(player_name) as player_name, pitch_name, game_year, COUNT(*) as pitches,
+    AVG(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12) as avg_brink,
+    AVG(SQRT(POWER(plate_x - (${caseExpr(cAll,'cx')}), 2) + POWER(plate_z - (${caseExpr(cAll,'cz')}), 2)) * 12) as avg_cluster,
+    AVG(SQRT(POWER(plate_x - (${caseExpr(cR,'cx')}), 2) + POWER(plate_z - (${caseExpr(cR,'cz')}), 2)) * 12) FILTER (WHERE stand = 'R') as avg_cluster_r,
+    AVG(SQRT(POWER(plate_x - (${caseExpr(cL,'cx')}), 2) + POWER(plate_z - (${caseExpr(cL,'cz')}), 2)) * 12) FILTER (WHERE stand = 'L') as avg_cluster_l,
+    AVG(ABS(plate_x - (${caseExpr(cAll,'cx')})) * 12) as avg_hdev,
+    AVG(ABS(plate_z - (${caseExpr(cAll,'cz')})) * 12) as avg_vdev,
+    AVG(ABS(LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z)) * 12) FILTER (WHERE zone > 9 AND ${noSwing}) as avg_missfire,
+    100.0 * COUNT(*) FILTER (WHERE zone > 9 AND ${noSwing} AND LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 > -2) / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND ${noSwing}), 0) as close_pct,
+    100.0 * COUNT(*) FILTER (WHERE LEAST(plate_x + 0.83, 0.83 - plate_x, plate_z - sz_bot, sz_top - plate_z) * 12 < -10) / NULLIF(COUNT(*), 0) as waste_pct
+  FROM pitches
+  WHERE game_year = ${year} AND pitch_name IS NOT NULL AND plate_x IS NOT NULL AND plate_z IS NOT NULL
+    AND sz_top IS NOT NULL AND sz_bot IS NOT NULL AND pitch_type NOT IN ('PO', 'IN')
+  GROUP BY pitcher, pitch_name, game_year HAVING COUNT(*) >= 50`
 
   const { data: rows, error } = await supabase.rpc('run_query', { query_text: sql })
   if (error) {
@@ -55,6 +104,8 @@ async function computeYear(year: number) {
 
   const brinkBl = BRINK_LEAGUE_BY_YEAR[year] || {}
   const clusterBl = CLUSTER_LEAGUE_BY_YEAR[year] || {}
+  const clusterRBl = CLUSTER_R_LEAGUE_BY_YEAR[year] || {}
+  const clusterLBl = CLUSTER_L_LEAGUE_BY_YEAR[year] || {}
   const hdevBl = HDEV_LEAGUE_BY_YEAR[year] || {}
   const vdevBl = VDEV_LEAGUE_BY_YEAR[year] || {}
   const missfireBl = MISSFIRE_LEAGUE_BY_YEAR[year] || {}
@@ -71,6 +122,12 @@ async function computeYear(year: number) {
       : null
     const clusterPlus = r.avg_cluster != null && clusterBl[pn]
       ? invertPlus(r.avg_cluster, clusterBl[pn].mean, clusterBl[pn].stddev)
+      : null
+    const clusterRPlus = r.avg_cluster_r != null && clusterRBl[pn]
+      ? invertPlus(parseFloat(r.avg_cluster_r), clusterRBl[pn].mean, clusterRBl[pn].stddev)
+      : null
+    const clusterLPlus = r.avg_cluster_l != null && clusterLBl[pn]
+      ? invertPlus(parseFloat(r.avg_cluster_l), clusterLBl[pn].mean, clusterLBl[pn].stddev)
       : null
     const hdevPlus = r.avg_hdev != null && hdevBl[pn]
       ? invertPlus(r.avg_hdev, hdevBl[pn].mean, hdevBl[pn].stddev)
@@ -111,12 +168,16 @@ async function computeYear(year: number) {
       pitches: parseInt(r.pitches),
       avg_brink: r.avg_brink != null ? +parseFloat(r.avg_brink).toFixed(2) : null,
       avg_cluster: r.avg_cluster != null ? +parseFloat(r.avg_cluster).toFixed(2) : null,
+      avg_cluster_r: r.avg_cluster_r != null ? +parseFloat(r.avg_cluster_r).toFixed(2) : null,
+      avg_cluster_l: r.avg_cluster_l != null ? +parseFloat(r.avg_cluster_l).toFixed(2) : null,
       avg_hdev: r.avg_hdev != null ? +parseFloat(r.avg_hdev).toFixed(2) : null,
       avg_vdev: r.avg_vdev != null ? +parseFloat(r.avg_vdev).toFixed(2) : null,
       avg_missfire: r.avg_missfire != null ? +parseFloat(r.avg_missfire).toFixed(2) : null,
       close_pct: r.close_pct != null ? +parseFloat(r.close_pct).toFixed(2) : null,
       brink_plus: brinkPlus != null ? +brinkPlus.toFixed(1) : null,
       cluster_plus: clusterPlus != null ? +clusterPlus.toFixed(1) : null,
+      cluster_r_plus: clusterRPlus != null ? +clusterRPlus.toFixed(1) : null,
+      cluster_l_plus: clusterLPlus != null ? +clusterLPlus.toFixed(1) : null,
       hdev_plus: hdevPlus != null ? +hdevPlus.toFixed(1) : null,
       vdev_plus: vdevPlus != null ? +vdevPlus.toFixed(1) : null,
       missfire_plus: missfirePlus != null ? +missfirePlus.toFixed(1) : null,

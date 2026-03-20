@@ -351,6 +351,8 @@ export async function GET(req: NextRequest) {
         sz_bot: p.sz_bot,
         zone: p.zone,
         game_year: p.game_year,
+        description: p.description || '',
+        stand: p.stand || '',
       }))
     const cmd = computeOutingCommand(cmdPitchRows)
 

@@ -172,12 +172,15 @@ export const METRIC_DEFAULT_FORMAT: Record<string, FormatType> = {
   avg_velo: '1f', max_velo: '1f', avg_ev: '1f', max_ev: '1f',
   avg_la: '1f', avg_hbreak_in: '1f', avg_ivb_in: '1f',
   avg_arm_angle: '1f', avg_bat_speed: '1f', total_re24: '1f',
+  avg_attack_angle: '1f', avg_attack_direction: '1f', avg_swing_path_tilt: '1f',
   // Rates (x.x%)
   whiff_pct: 'percent', k_pct: 'percent', bb_pct: 'percent',
   k_minus_bb: 'percent', csw_pct: 'percent', swstr_pct: 'percent',
   zone_pct: 'percent', chase_pct: 'percent', contact_pct: 'percent',
   z_swing_pct: 'percent', o_contact_pct: 'percent',
   hard_hit_pct: 'percent', barrel_pct: 'percent',
+  fast_swing_rate: 'percent', squared_up_rate: 'percent',
+  blast_rate: 'percent', ideal_attack_angle_rate: 'percent',
   gb_pct: 'percent', fb_pct: 'percent', ld_pct: 'percent', pu_pct: 'percent',
   usage_pct: 'percent', close_pct: 'percent', waste_pct: 'percent',
   // Counting (integers)
@@ -187,10 +190,12 @@ export const METRIC_DEFAULT_FORMAT: Record<string, FormatType> = {
   avg_spin: 'integer', avg_dist: 'integer',
   // Triton+ (integers)
   cmd_plus: 'integer', rpcom_plus: 'integer', brink_plus: 'integer',
-  cluster_plus: 'integer', hdev_plus: 'integer', vdev_plus: 'integer',
+  cluster_plus: 'integer', cluster_r_plus: 'integer', cluster_l_plus: 'integer',
+  hdev_plus: 'integer', vdev_plus: 'integer',
   missfire_plus: 'integer', close_pct_plus: 'integer',
   // Triton raw (x.x)
-  avg_brink: '1f', avg_cluster: '1f', avg_hdev: '1f', avg_vdev: '1f', avg_missfire: '1f',
+  avg_brink: '1f', avg_cluster: '1f', avg_cluster_r: '1f', avg_cluster_l: '1f',
+  avg_hdev: '1f', avg_vdev: '1f', avg_missfire: '1f',
   // Game scores (integers)
   away_score: 'integer', home_score: 'integer', outs: 'integer',
   // String fields (raw)

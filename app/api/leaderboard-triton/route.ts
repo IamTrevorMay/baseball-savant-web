@@ -33,8 +33,10 @@ export async function POST(req: NextRequest) {
     // Fetch all rows (one per pitcher × pitch type) for the year
     const sql = `
       SELECT pitcher, player_name, pitch_name, pitches,
-        avg_brink, avg_cluster, avg_hdev, avg_vdev, avg_missfire, close_pct, waste_pct,
-        brink_plus, cluster_plus, hdev_plus, vdev_plus, missfire_plus, close_pct_plus,
+        avg_brink, avg_cluster, avg_cluster_r, avg_cluster_l,
+        avg_hdev, avg_vdev, avg_missfire, close_pct, waste_pct,
+        brink_plus, cluster_plus, cluster_r_plus, cluster_l_plus,
+        hdev_plus, vdev_plus, missfire_plus, close_pct_plus,
         cmd_plus, rpcom_plus
       FROM pitcher_season_command
       WHERE game_year = ${safeYear}
@@ -84,6 +86,8 @@ export async function POST(req: NextRequest) {
       if (mode === 'raw') {
         p[`${pt}_brink`] = row.avg_brink != null ? Number(row.avg_brink) : null
         p[`${pt}_cluster`] = row.avg_cluster != null ? Number(row.avg_cluster) : null
+        p[`${pt}_cluster_r`] = row.avg_cluster_r != null ? Number(row.avg_cluster_r) : null
+        p[`${pt}_cluster_l`] = row.avg_cluster_l != null ? Number(row.avg_cluster_l) : null
         p[`${pt}_hdev`] = row.avg_hdev != null ? Number(row.avg_hdev) : null
         p[`${pt}_vdev`] = row.avg_vdev != null ? Number(row.avg_vdev) : null
         p[`${pt}_missfire`] = row.avg_missfire != null ? Number(row.avg_missfire) : null
@@ -92,6 +96,8 @@ export async function POST(req: NextRequest) {
       } else {
         p[`${pt}_brink_plus`] = row.brink_plus != null ? Number(row.brink_plus) : null
         p[`${pt}_cluster_plus`] = row.cluster_plus != null ? Number(row.cluster_plus) : null
+        p[`${pt}_cluster_r_plus`] = row.cluster_r_plus != null ? Number(row.cluster_r_plus) : null
+        p[`${pt}_cluster_l_plus`] = row.cluster_l_plus != null ? Number(row.cluster_l_plus) : null
         p[`${pt}_hdev_plus`] = row.hdev_plus != null ? Number(row.hdev_plus) : null
         p[`${pt}_vdev_plus`] = row.vdev_plus != null ? Number(row.vdev_plus) : null
         p[`${pt}_missfire_plus`] = row.missfire_plus != null ? Number(row.missfire_plus) : null

@@ -6,8 +6,10 @@ import { METRICS } from '@/lib/reportMetrics'
 
 export const TRITON_COLUMNS = [
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus',
+  'cluster_r_plus', 'cluster_l_plus',
   'hdev_plus', 'vdev_plus', 'missfire_plus', 'close_pct_plus',
-  'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev',
+  'avg_brink', 'avg_cluster', 'avg_cluster_r', 'avg_cluster_l',
+  'avg_hdev', 'avg_vdev',
   'avg_missfire', 'close_pct', 'waste_pct',
 ] as const
 

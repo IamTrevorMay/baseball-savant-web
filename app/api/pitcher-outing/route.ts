@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
 
       // 3. Pitch locations + zone data for command computation
       q(`
-        SELECT plate_x, plate_z, pitch_name, sz_top, sz_bot, zone, game_year
+        SELECT plate_x, plate_z, pitch_name, sz_top, sz_bot, zone, game_year, description, stand
         FROM pitches
         WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
           AND plate_x IS NOT NULL AND plate_z IS NOT NULL
@@ -159,6 +159,8 @@ export async function GET(req: NextRequest) {
       sz_bot: Number(r.sz_bot),
       zone: Number(r.zone),
       game_year: Number(r.game_year),
+      description: r.description || '',
+      stand: r.stand || '',
     }))
 
     const cmd = computeOutingCommand(pitchRows)

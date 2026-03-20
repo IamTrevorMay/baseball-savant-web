@@ -20,9 +20,14 @@ export function enrichData(
 ): any[] {
   // ------------------------------------------------------------------
   // Pre-pass: compute year-partitioned pitch-type centroids for Cluster/HDev/VDev
+  // Also compute R/L centroids for ClusterR/ClusterL
   // ------------------------------------------------------------------
   const centroids: Record<string, { cx: number; cz: number }> = {}
   const buckets: Record<string, { sx: number; sz: number; n: number }> = {}
+  const bucketsR: Record<string, { sx: number; sz: number; n: number }> = {}
+  const bucketsL: Record<string, { sx: number; sz: number; n: number }> = {}
+  const centroidsR: Record<string, { cx: number; cz: number }> = {}
+  const centroidsL: Record<string, { cx: number; cz: number }> = {}
   rows.forEach((p: any) => {
     if (p.pitch_name && p.plate_x != null && p.plate_z != null) {
       const key = p.game_year != null ? `${p.game_year}::${p.pitch_name}` : p.pitch_name
@@ -30,11 +35,27 @@ export function enrichData(
       buckets[key].sx += p.plate_x
       buckets[key].sz += p.plate_z
       buckets[key].n++
+      // R/L buckets
+      if (p.stand === 'R') {
+        if (!bucketsR[key]) bucketsR[key] = { sx: 0, sz: 0, n: 0 }
+        bucketsR[key].sx += p.plate_x; bucketsR[key].sz += p.plate_z; bucketsR[key].n++
+      } else if (p.stand === 'L') {
+        if (!bucketsL[key]) bucketsL[key] = { sx: 0, sz: 0, n: 0 }
+        bucketsL[key].sx += p.plate_x; bucketsL[key].sz += p.plate_z; bucketsL[key].n++
+      }
     }
   })
   for (const name in buckets) {
     const b = buckets[name]
     centroids[name] = { cx: b.sx / b.n, cz: b.sz / b.n }
+  }
+  for (const name in bucketsR) {
+    const b = bucketsR[name]
+    centroidsR[name] = { cx: b.sx / b.n, cz: b.sz / b.n }
+  }
+  for (const name in bucketsL) {
+    const b = bucketsL[name]
+    centroidsL[name] = { cx: b.sx / b.n, cz: b.sz / b.n }
   }
 
   rows.forEach((p: any) => {
@@ -103,6 +124,14 @@ export function enrichData(
         p.cluster = +(Math.sqrt((p.plate_x - c.cx) ** 2 + (p.plate_z - c.cz) ** 2) * 12).toFixed(1)
         p.hdev = +((c.cx - p.plate_x) * 12).toFixed(1)
         p.vdev = +((p.plate_z - c.cz) * 12).toFixed(1)
+      }
+      // ClusterR / ClusterL — distance from handedness-specific centroid
+      if (p.stand === 'R' && centroidsR[key]) {
+        const cr = centroidsR[key]
+        p.cluster_r = +(Math.sqrt((p.plate_x - cr.cx) ** 2 + (p.plate_z - cr.cz) ** 2) * 12).toFixed(1)
+      } else if (p.stand === 'L' && centroidsL[key]) {
+        const cl = centroidsL[key]
+        p.cluster_l = +(Math.sqrt((p.plate_x - cl.cx) ** 2 + (p.plate_z - cl.cz) ** 2) * 12).toFixed(1)
       }
     }
 

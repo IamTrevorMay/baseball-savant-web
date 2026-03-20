@@ -4,7 +4,7 @@
 
 type LeagueEntry = { mean: number; stddev: number }
 type YearLeague = Record<number, Record<string, LeagueEntry>>
-type MetricName = 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'stuff' | 'close_pct'
+type MetricName = 'brink' | 'cluster' | 'cluster_r' | 'cluster_l' | 'hdev' | 'vdev' | 'missfire' | 'stuff' | 'close_pct'
 
 // ── BRINK ────────────────────────────────────────────────────────────────────
 export const BRINK_LEAGUE_BY_YEAR: YearLeague = {
@@ -161,6 +161,164 @@ export const CLUSTER_LEAGUE_BY_YEAR: YearLeague = {
     'Curveball': { mean: 13.30, stddev: 1.49 }, 'Cutter': { mean: 11.44, stddev: 0.96 },
     'Sweeper': { mean: 12.70, stddev: 1.11 }, 'Split-Finger': { mean: 12.57, stddev: 1.51 },
     'Knuckle Curve': { mean: 13.16, stddev: 1.50 }, 'Slurve': { mean: 13.15, stddev: 1.26 },
+  },
+}
+
+// ── CLUSTER R (vs RHB) ──────────────────────────────────────────────────────
+export const CLUSTER_R_LEAGUE_BY_YEAR: YearLeague = {
+  2015: {
+    '4-Seam Fastball': { mean: 12.43, stddev: 1.02 }, 'Slider': { mean: 13.17, stddev: 1.96 },
+    'Sinker': { mean: 12.69, stddev: 1.08 }, 'Changeup': { mean: 13.16, stddev: 1.59 },
+    'Curveball': { mean: 14.32, stddev: 1.89 }, 'Cutter': { mean: 12.79, stddev: 1.62 },
+    'Split-Finger': { mean: 12.85, stddev: 1.56 }, 'Knuckle Curve': { mean: 14.24, stddev: 1.68 },
+  },
+  2016: {
+    '4-Seam Fastball': { mean: 12.49, stddev: 0.97 }, 'Slider': { mean: 13.09, stddev: 1.83 },
+    'Sinker': { mean: 12.80, stddev: 1.13 }, 'Changeup': { mean: 13.03, stddev: 1.55 },
+    'Curveball': { mean: 14.38, stddev: 1.68 }, 'Cutter': { mean: 12.96, stddev: 1.69 },
+    'Split-Finger': { mean: 13.61, stddev: 2.06 }, 'Knuckle Curve': { mean: 14.05, stddev: 1.37 },
+  },
+  2017: {
+    '4-Seam Fastball': { mean: 12.39, stddev: 0.99 }, 'Slider': { mean: 13.12, stddev: 1.93 },
+    'Sinker': { mean: 12.62, stddev: 1.15 }, 'Changeup': { mean: 12.76, stddev: 1.50 },
+    'Curveball': { mean: 14.01, stddev: 1.76 }, 'Cutter': { mean: 13.08, stddev: 1.94 },
+    'Sweeper': { mean: 13.16, stddev: 1.50 }, 'Split-Finger': { mean: 13.22, stddev: 1.65 },
+    'Knuckle Curve': { mean: 13.96, stddev: 1.41 },
+  },
+  2018: {
+    '4-Seam Fastball': { mean: 12.38, stddev: 1.01 }, 'Slider': { mean: 13.12, stddev: 1.89 },
+    'Sinker': { mean: 12.61, stddev: 1.12 }, 'Changeup': { mean: 12.80, stddev: 1.52 },
+    'Curveball': { mean: 14.05, stddev: 1.81 }, 'Cutter': { mean: 13.06, stddev: 1.87 },
+    'Sweeper': { mean: 13.22, stddev: 1.48 }, 'Split-Finger': { mean: 13.21, stddev: 1.68 },
+    'Knuckle Curve': { mean: 14.10, stddev: 1.55 },
+  },
+  2019: {
+    '4-Seam Fastball': { mean: 12.37, stddev: 1.02 }, 'Slider': { mean: 13.11, stddev: 1.84 },
+    'Sinker': { mean: 12.59, stddev: 1.16 }, 'Changeup': { mean: 12.83, stddev: 1.53 },
+    'Curveball': { mean: 14.08, stddev: 1.85 }, 'Cutter': { mean: 13.04, stddev: 1.79 },
+    'Sweeper': { mean: 13.27, stddev: 1.45 }, 'Split-Finger': { mean: 13.20, stddev: 1.70 },
+    'Knuckle Curve': { mean: 14.23, stddev: 2.00 },
+  },
+  2020: {
+    '4-Seam Fastball': { mean: 12.29, stddev: 1.16 }, 'Slider': { mean: 13.29, stddev: 2.06 },
+    'Sinker': { mean: 12.30, stddev: 1.18 }, 'Changeup': { mean: 12.66, stddev: 1.74 },
+    'Curveball': { mean: 14.20, stddev: 1.94 }, 'Cutter': { mean: 13.22, stddev: 1.80 },
+    'Sweeper': { mean: 13.54, stddev: 1.72 }, 'Split-Finger': { mean: 12.54, stddev: 2.12 },
+    'Knuckle Curve': { mean: 13.94, stddev: 1.72 },
+  },
+  2021: {
+    '4-Seam Fastball': { mean: 12.21, stddev: 1.10 }, 'Slider': { mean: 13.24, stddev: 1.90 },
+    'Sinker': { mean: 12.13, stddev: 1.14 }, 'Changeup': { mean: 12.78, stddev: 1.71 },
+    'Curveball': { mean: 14.15, stddev: 1.84 }, 'Cutter': { mean: 12.98, stddev: 1.77 },
+    'Sweeper': { mean: 13.39, stddev: 1.63 }, 'Split-Finger': { mean: 12.84, stddev: 2.03 },
+    'Knuckle Curve': { mean: 13.90, stddev: 1.61 },
+  },
+  2022: {
+    '4-Seam Fastball': { mean: 12.12, stddev: 1.04 }, 'Slider': { mean: 13.18, stddev: 1.73 },
+    'Sinker': { mean: 11.96, stddev: 1.09 }, 'Changeup': { mean: 12.89, stddev: 1.67 },
+    'Curveball': { mean: 14.10, stddev: 1.73 }, 'Cutter': { mean: 12.73, stddev: 1.74 },
+    'Sweeper': { mean: 13.23, stddev: 1.53 }, 'Split-Finger': { mean: 13.14, stddev: 1.93 },
+    'Knuckle Curve': { mean: 13.85, stddev: 1.50 },
+  },
+  2023: {
+    '4-Seam Fastball': { mean: 12.01, stddev: 1.03 }, 'Slider': { mean: 13.09, stddev: 1.75 },
+    'Sinker': { mean: 11.86, stddev: 1.04 }, 'Changeup': { mean: 12.71, stddev: 1.60 },
+    'Curveball': { mean: 13.96, stddev: 1.73 }, 'Cutter': { mean: 12.66, stddev: 1.78 },
+    'Sweeper': { mean: 13.34, stddev: 1.66 }, 'Split-Finger': { mean: 12.98, stddev: 1.73 },
+    'Knuckle Curve': { mean: 13.88, stddev: 1.58 }, 'Slurve': { mean: 13.52, stddev: 1.77 },
+  },
+  2024: {
+    '4-Seam Fastball': { mean: 11.90, stddev: 1.01 }, 'Slider': { mean: 12.99, stddev: 1.76 },
+    'Sinker': { mean: 11.75, stddev: 0.99 }, 'Changeup': { mean: 12.53, stddev: 1.53 },
+    'Curveball': { mean: 13.81, stddev: 1.72 }, 'Cutter': { mean: 12.59, stddev: 1.82 },
+    'Sweeper': { mean: 13.44, stddev: 1.78 }, 'Split-Finger': { mean: 12.81, stddev: 1.52 },
+    'Knuckle Curve': { mean: 14.03, stddev: 2.00 }, 'Slurve': { mean: 13.69, stddev: 1.88 },
+  },
+  2025: {
+    '4-Seam Fastball': { mean: 11.79, stddev: 1.12 }, 'Slider': { mean: 12.86, stddev: 1.64 },
+    'Sinker': { mean: 11.67, stddev: 1.09 }, 'Changeup': { mean: 12.73, stddev: 1.50 },
+    'Curveball': { mean: 13.98, stddev: 1.74 }, 'Cutter': { mean: 12.45, stddev: 1.68 },
+    'Sweeper': { mean: 13.25, stddev: 1.66 }, 'Split-Finger': { mean: 13.32, stddev: 1.74 },
+    'Knuckle Curve': { mean: 13.87, stddev: 2.13 }, 'Slurve': { mean: 14.13, stddev: 1.60 },
+  },
+}
+
+// ── CLUSTER L (vs LHB) ──────────────────────────────────────────────────────
+export const CLUSTER_L_LEAGUE_BY_YEAR: YearLeague = {
+  2015: {
+    '4-Seam Fastball': { mean: 12.52, stddev: 0.99 }, 'Slider': { mean: 13.62, stddev: 1.47 },
+    'Sinker': { mean: 12.52, stddev: 1.22 }, 'Changeup': { mean: 12.51, stddev: 1.55 },
+    'Curveball': { mean: 13.97, stddev: 1.79 }, 'Cutter': { mean: 13.35, stddev: 1.31 },
+    'Split-Finger': { mean: 12.79, stddev: 2.18 }, 'Knuckle Curve': { mean: 13.69, stddev: 1.56 },
+  },
+  2016: {
+    '4-Seam Fastball': { mean: 12.60, stddev: 1.01 }, 'Slider': { mean: 13.58, stddev: 1.49 },
+    'Sinker': { mean: 12.41, stddev: 1.17 }, 'Changeup': { mean: 12.62, stddev: 1.68 },
+    'Curveball': { mean: 13.98, stddev: 1.61 }, 'Cutter': { mean: 13.52, stddev: 1.55 },
+    'Split-Finger': { mean: 12.96, stddev: 1.63 }, 'Knuckle Curve': { mean: 13.72, stddev: 1.37 },
+  },
+  2017: {
+    '4-Seam Fastball': { mean: 12.49, stddev: 1.05 }, 'Slider': { mean: 13.72, stddev: 1.50 },
+    'Sinker': { mean: 12.44, stddev: 1.26 }, 'Changeup': { mean: 12.35, stddev: 1.55 },
+    'Curveball': { mean: 13.72, stddev: 1.59 }, 'Cutter': { mean: 13.59, stddev: 1.45 },
+    'Sweeper': { mean: 14.27, stddev: 2.26 }, 'Split-Finger': { mean: 12.75, stddev: 1.72 },
+    'Knuckle Curve': { mean: 13.94, stddev: 1.82 },
+  },
+  2018: {
+    '4-Seam Fastball': { mean: 12.45, stddev: 1.04 }, 'Slider': { mean: 13.60, stddev: 1.49 },
+    'Sinker': { mean: 12.34, stddev: 1.25 }, 'Changeup': { mean: 12.38, stddev: 1.59 },
+    'Curveball': { mean: 13.92, stddev: 1.80 }, 'Cutter': { mean: 13.47, stddev: 1.48 },
+    'Sweeper': { mean: 14.02, stddev: 2.04 }, 'Split-Finger': { mean: 12.82, stddev: 1.65 },
+    'Knuckle Curve': { mean: 13.88, stddev: 1.72 },
+  },
+  2019: {
+    '4-Seam Fastball': { mean: 12.41, stddev: 1.06 }, 'Slider': { mean: 13.47, stddev: 1.48 },
+    'Sinker': { mean: 12.24, stddev: 1.24 }, 'Changeup': { mean: 12.40, stddev: 1.62 },
+    'Curveball': { mean: 14.11, stddev: 1.98 }, 'Cutter': { mean: 13.41, stddev: 1.55 },
+    'Sweeper': { mean: 13.77, stddev: 1.82 }, 'Split-Finger': { mean: 12.88, stddev: 1.57 },
+    'Knuckle Curve': { mean: 13.84, stddev: 1.62 },
+  },
+  2020: {
+    '4-Seam Fastball': { mean: 12.17, stddev: 1.09 }, 'Slider': { mean: 13.43, stddev: 1.59 },
+    'Sinker': { mean: 12.35, stddev: 1.30 }, 'Changeup': { mean: 12.14, stddev: 1.63 },
+    'Curveball': { mean: 14.13, stddev: 1.96 }, 'Cutter': { mean: 12.95, stddev: 1.55 },
+    'Sweeper': { mean: 13.36, stddev: 1.74 }, 'Split-Finger': { mean: 13.30, stddev: 1.89 },
+    'Knuckle Curve': { mean: 13.94, stddev: 1.85 },
+  },
+  2021: {
+    '4-Seam Fastball': { mean: 12.10, stddev: 1.06 }, 'Slider': { mean: 13.33, stddev: 1.49 },
+    'Sinker': { mean: 12.17, stddev: 1.25 }, 'Changeup': { mean: 12.26, stddev: 1.66 },
+    'Curveball': { mean: 13.92, stddev: 1.81 }, 'Cutter': { mean: 12.94, stddev: 1.52 },
+    'Sweeper': { mean: 13.40, stddev: 1.61 }, 'Split-Finger': { mean: 13.02, stddev: 1.73 },
+    'Knuckle Curve': { mean: 13.88, stddev: 1.65 },
+  },
+  2022: {
+    '4-Seam Fastball': { mean: 12.02, stddev: 1.02 }, 'Slider': { mean: 13.23, stddev: 1.38 },
+    'Sinker': { mean: 11.98, stddev: 1.20 }, 'Changeup': { mean: 12.38, stddev: 1.68 },
+    'Curveball': { mean: 13.71, stddev: 1.66 }, 'Cutter': { mean: 12.93, stddev: 1.48 },
+    'Sweeper': { mean: 13.44, stddev: 1.48 }, 'Split-Finger': { mean: 12.74, stddev: 1.56 },
+    'Knuckle Curve': { mean: 13.81, stddev: 1.44 },
+  },
+  2023: {
+    '4-Seam Fastball': { mean: 11.91, stddev: 1.01 }, 'Slider': { mean: 13.17, stddev: 1.49 },
+    'Sinker': { mean: 11.87, stddev: 1.17 }, 'Changeup': { mean: 12.36, stddev: 1.64 },
+    'Curveball': { mean: 13.61, stddev: 1.65 }, 'Cutter': { mean: 12.82, stddev: 1.45 },
+    'Sweeper': { mean: 13.30, stddev: 1.50 }, 'Split-Finger': { mean: 12.67, stddev: 1.50 },
+    'Knuckle Curve': { mean: 13.82, stddev: 1.55 }, 'Slurve': { mean: 13.31, stddev: 1.80 },
+  },
+  2024: {
+    '4-Seam Fastball': { mean: 11.80, stddev: 0.99 }, 'Slider': { mean: 13.11, stddev: 1.59 },
+    'Sinker': { mean: 11.76, stddev: 1.13 }, 'Changeup': { mean: 12.34, stddev: 1.59 },
+    'Curveball': { mean: 13.51, stddev: 1.63 }, 'Cutter': { mean: 12.70, stddev: 1.41 },
+    'Sweeper': { mean: 13.16, stddev: 1.52 }, 'Split-Finger': { mean: 12.60, stddev: 1.44 },
+    'Knuckle Curve': { mean: 14.02, stddev: 1.89 },
+  },
+  2025: {
+    '4-Seam Fastball': { mean: 11.74, stddev: 0.99 }, 'Slider': { mean: 12.97, stddev: 1.47 },
+    'Sinker': { mean: 11.74, stddev: 1.18 }, 'Changeup': { mean: 12.34, stddev: 1.60 },
+    'Curveball': { mean: 13.62, stddev: 1.73 }, 'Cutter': { mean: 12.47, stddev: 1.48 },
+    'Sweeper': { mean: 13.13, stddev: 1.61 }, 'Split-Finger': { mean: 12.75, stddev: 1.71 },
+    'Knuckle Curve': { mean: 13.44, stddev: 1.76 }, 'Slurve': { mean: 13.31, stddev: 1.80 },
   },
 }
 
@@ -322,161 +480,161 @@ export const VDEV_LEAGUE_BY_YEAR: YearLeague = {
   },
 }
 
-// ── MISSFIRE (avg miss distance in inches for outside-zone pitches) ──────────
+// ── MISSFIRE (avg miss distance in inches for outside-zone, non-swing pitches) ──
 export const MISSFIRE_LEAGUE_BY_YEAR: YearLeague = {
   2015: {
-    '4-Seam Fastball': { mean: 6.06, stddev: 0.67 }, 'Slider': { mean: 7.78, stddev: 1.35 },
-    'Sinker': { mean: 6.25, stddev: 0.78 }, 'Changeup': { mean: 7.70, stddev: 1.24 },
-    'Curveball': { mean: 8.66, stddev: 1.52 }, 'Cutter': { mean: 6.41, stddev: 1.07 },
-    'Split-Finger': { mean: 8.46, stddev: 1.68 }, 'Knuckle Curve': { mean: 8.76, stddev: 1.74 },
+    '4-Seam Fastball': { mean: 6.89, stddev: 0.77 }, 'Slider': { mean: 9.05, stddev: 1.55 },
+    'Sinker': { mean: 7.15, stddev: 0.92 }, 'Changeup': { mean: 9.28, stddev: 1.49 },
+    'Curveball': { mean: 9.75, stddev: 1.76 }, 'Cutter': { mean: 7.60, stddev: 1.32 },
+    'Split-Finger': { mean: 10.13, stddev: 1.52 }, 'Knuckle Curve': { mean: 9.64, stddev: 1.99 },
   },
   2016: {
-    '4-Seam Fastball': { mean: 6.13, stddev: 0.76 }, 'Slider': { mean: 7.74, stddev: 1.35 },
-    'Sinker': { mean: 6.26, stddev: 0.83 }, 'Changeup': { mean: 7.75, stddev: 1.31 },
-    'Curveball': { mean: 8.80, stddev: 1.64 }, 'Cutter': { mean: 6.62, stddev: 1.27 },
-    'Split-Finger': { mean: 8.96, stddev: 3.51 }, 'Knuckle Curve': { mean: 8.83, stddev: 1.46 },
+    '4-Seam Fastball': { mean: 6.93, stddev: 0.85 }, 'Slider': { mean: 8.94, stddev: 1.62 },
+    'Sinker': { mean: 7.17, stddev: 0.92 }, 'Changeup': { mean: 9.19, stddev: 1.50 },
+    'Curveball': { mean: 9.75, stddev: 1.89 }, 'Cutter': { mean: 7.63, stddev: 1.38 },
+    'Split-Finger': { mean: 10.14, stddev: 1.16 }, 'Knuckle Curve': { mean: 9.67, stddev: 1.67 },
   },
   2017: {
-    '4-Seam Fastball': { mean: 6.16, stddev: 0.78 }, 'Slider': { mean: 7.79, stddev: 1.25 },
-    'Sinker': { mean: 6.15, stddev: 0.75 }, 'Changeup': { mean: 7.69, stddev: 1.28 },
-    'Curveball': { mean: 8.61, stddev: 1.60 }, 'Cutter': { mean: 6.80, stddev: 1.07 },
-    'Sweeper': { mean: 8.45, stddev: 1.46 }, 'Split-Finger': { mean: 8.60, stddev: 1.31 },
-    'Knuckle Curve': { mean: 8.74, stddev: 1.45 },
+    '4-Seam Fastball': { mean: 6.93, stddev: 0.91 }, 'Slider': { mean: 9.13, stddev: 1.59 },
+    'Sinker': { mean: 7.01, stddev: 0.92 }, 'Changeup': { mean: 9.12, stddev: 1.46 },
+    'Curveball': { mean: 9.63, stddev: 1.82 }, 'Cutter': { mean: 8.03, stddev: 1.30 },
+    'Sweeper': { mean: 9.60, stddev: 1.82 }, 'Split-Finger': { mean: 10.40, stddev: 1.77 },
+    'Knuckle Curve': { mean: 9.84, stddev: 1.70 },
   },
   2018: {
-    '4-Seam Fastball': { mean: 6.25, stddev: 0.80 }, 'Slider': { mean: 7.97, stddev: 1.34 },
-    'Sinker': { mean: 6.16, stddev: 0.79 }, 'Changeup': { mean: 7.68, stddev: 1.32 },
-    'Curveball': { mean: 8.48, stddev: 1.49 }, 'Cutter': { mean: 6.68, stddev: 1.08 },
-    'Sweeper': { mean: 8.14, stddev: 1.46 }, 'Split-Finger': { mean: 9.02, stddev: 1.61 },
-    'Knuckle Curve': { mean: 8.90, stddev: 1.26 },
+    '4-Seam Fastball': { mean: 7.01, stddev: 0.91 }, 'Slider': { mean: 9.20, stddev: 1.61 },
+    'Sinker': { mean: 7.02, stddev: 0.93 }, 'Changeup': { mean: 9.10, stddev: 1.41 },
+    'Curveball': { mean: 9.52, stddev: 1.75 }, 'Cutter': { mean: 7.95, stddev: 1.36 },
+    'Sweeper': { mean: 9.27, stddev: 1.86 }, 'Split-Finger': { mean: 11.01, stddev: 1.92 },
+    'Knuckle Curve': { mean: 9.95, stddev: 1.51 },
   },
   2019: {
-    '4-Seam Fastball': { mean: 6.31, stddev: 0.82 }, 'Slider': { mean: 7.97, stddev: 1.36 },
-    'Sinker': { mean: 6.09, stddev: 0.77 }, 'Changeup': { mean: 7.71, stddev: 1.28 },
-    'Curveball': { mean: 8.80, stddev: 1.75 }, 'Cutter': { mean: 6.63, stddev: 1.13 },
-    'Sweeper': { mean: 8.39, stddev: 1.10 }, 'Split-Finger': { mean: 8.87, stddev: 1.54 },
-    'Knuckle Curve': { mean: 9.28, stddev: 1.52 },
+    '4-Seam Fastball': { mean: 7.10, stddev: 0.94 }, 'Slider': { mean: 9.21, stddev: 1.53 },
+    'Sinker': { mean: 6.98, stddev: 0.92 }, 'Changeup': { mean: 9.21, stddev: 1.49 },
+    'Curveball': { mean: 9.73, stddev: 1.87 }, 'Cutter': { mean: 7.81, stddev: 1.40 },
+    'Sweeper': { mean: 9.55, stddev: 1.16 }, 'Split-Finger': { mean: 10.72, stddev: 1.86 },
+    'Knuckle Curve': { mean: 10.27, stddev: 1.83 },
   },
   2020: {
-    '4-Seam Fastball': { mean: 6.30, stddev: 0.93 }, 'Slider': { mean: 8.13, stddev: 1.42 },
-    'Sinker': { mean: 5.99, stddev: 0.87 }, 'Changeup': { mean: 7.53, stddev: 1.45 },
-    'Curveball': { mean: 9.07, stddev: 1.84 }, 'Cutter': { mean: 6.73, stddev: 1.30 },
-    'Sweeper': { mean: 8.31, stddev: 1.29 }, 'Split-Finger': { mean: 8.45, stddev: 1.46 },
-    'Knuckle Curve': { mean: 9.24, stddev: 1.58 },
+    '4-Seam Fastball': { mean: 7.06, stddev: 1.00 }, 'Slider': { mean: 9.41, stddev: 1.70 },
+    'Sinker': { mean: 6.73, stddev: 1.01 }, 'Changeup': { mean: 8.83, stddev: 1.59 },
+    'Curveball': { mean: 10.04, stddev: 1.94 }, 'Cutter': { mean: 7.79, stddev: 1.61 },
+    'Sweeper': { mean: 9.51, stddev: 1.45 }, 'Split-Finger': { mean: 10.17, stddev: 1.78 },
+    'Knuckle Curve': { mean: 10.23, stddev: 1.96 },
   },
   2021: {
-    '4-Seam Fastball': { mean: 6.40, stddev: 0.84 }, 'Slider': { mean: 8.07, stddev: 1.30 },
-    'Sinker': { mean: 5.99, stddev: 0.86 }, 'Changeup': { mean: 7.69, stddev: 1.30 },
-    'Curveball': { mean: 9.19, stddev: 1.84 }, 'Cutter': { mean: 6.53, stddev: 1.14 },
-    'Sweeper': { mean: 8.05, stddev: 1.43 }, 'Split-Finger': { mean: 9.07, stddev: 1.56 },
-    'Knuckle Curve': { mean: 9.51, stddev: 1.81 },
+    '4-Seam Fastball': { mean: 7.23, stddev: 0.96 }, 'Slider': { mean: 9.27, stddev: 1.50 },
+    'Sinker': { mean: 6.80, stddev: 0.95 }, 'Changeup': { mean: 9.13, stddev: 1.48 },
+    'Curveball': { mean: 10.16, stddev: 2.02 }, 'Cutter': { mean: 7.52, stddev: 1.26 },
+    'Sweeper': { mean: 9.27, stddev: 1.52 }, 'Split-Finger': { mean: 10.73, stddev: 1.73 },
+    'Knuckle Curve': { mean: 10.60, stddev: 1.84 },
   },
   2022: {
-    '4-Seam Fastball': { mean: 6.32, stddev: 0.87 }, 'Slider': { mean: 7.84, stddev: 1.17 },
-    'Sinker': { mean: 5.71, stddev: 0.74 }, 'Changeup': { mean: 7.65, stddev: 1.31 },
-    'Curveball': { mean: 8.66, stddev: 1.73 }, 'Cutter': { mean: 6.34, stddev: 1.01 },
-    'Sweeper': { mean: 7.84, stddev: 1.17 }, 'Split-Finger': { mean: 8.30, stddev: 1.34 },
-    'Knuckle Curve': { mean: 8.98, stddev: 1.35 },
+    '4-Seam Fastball': { mean: 7.10, stddev: 0.98 }, 'Slider': { mean: 9.06, stddev: 1.37 },
+    'Sinker': { mean: 6.58, stddev: 0.85 }, 'Changeup': { mean: 9.13, stddev: 1.51 },
+    'Curveball': { mean: 9.60, stddev: 1.86 }, 'Cutter': { mean: 7.33, stddev: 1.14 },
+    'Sweeper': { mean: 9.03, stddev: 1.33 }, 'Split-Finger': { mean: 10.16, stddev: 1.56 },
+    'Knuckle Curve': { mean: 10.00, stddev: 1.70 },
   },
   2023: {
-    '4-Seam Fastball': { mean: 6.29, stddev: 0.91 }, 'Slider': { mean: 7.76, stddev: 1.23 },
-    'Sinker': { mean: 5.72, stddev: 0.79 }, 'Changeup': { mean: 7.75, stddev: 1.47 },
-    'Curveball': { mean: 8.70, stddev: 1.74 }, 'Cutter': { mean: 6.25, stddev: 1.01 },
-    'Sweeper': { mean: 7.91, stddev: 1.31 }, 'Split-Finger': { mean: 8.64, stddev: 1.57 },
-    'Knuckle Curve': { mean: 9.08, stddev: 1.58 }, 'Slurve': { mean: 7.78, stddev: 1.18 },
+    '4-Seam Fastball': { mean: 7.05, stddev: 1.00 }, 'Slider': { mean: 8.91, stddev: 1.50 },
+    'Sinker': { mean: 6.54, stddev: 0.93 }, 'Changeup': { mean: 9.08, stddev: 1.49 },
+    'Curveball': { mean: 9.60, stddev: 1.84 }, 'Cutter': { mean: 7.25, stddev: 1.25 },
+    'Sweeper': { mean: 9.10, stddev: 1.60 }, 'Split-Finger': { mean: 10.22, stddev: 1.75 },
+    'Knuckle Curve': { mean: 10.22, stddev: 2.02 }, 'Slurve': { mean: 8.72, stddev: 1.25 },
   },
   2024: {
-    '4-Seam Fastball': { mean: 6.26, stddev: 0.91 }, 'Slider': { mean: 7.79, stddev: 1.31 },
-    'Sinker': { mean: 5.65, stddev: 0.77 }, 'Changeup': { mean: 7.61, stddev: 1.29 },
-    'Curveball': { mean: 8.66, stddev: 1.66 }, 'Cutter': { mean: 6.26, stddev: 0.98 },
-    'Sweeper': { mean: 7.93, stddev: 1.24 }, 'Split-Finger': { mean: 8.15, stddev: 1.15 },
-    'Knuckle Curve': { mean: 9.35, stddev: 1.80 }, 'Slurve': { mean: 8.16, stddev: 1.22 },
+    '4-Seam Fastball': { mean: 7.10, stddev: 1.06 }, 'Slider': { mean: 8.88, stddev: 1.45 },
+    'Sinker': { mean: 6.43, stddev: 0.92 }, 'Changeup': { mean: 8.99, stddev: 1.44 },
+    'Curveball': { mean: 9.66, stddev: 1.98 }, 'Cutter': { mean: 7.22, stddev: 1.16 },
+    'Sweeper': { mean: 9.11, stddev: 1.28 }, 'Split-Finger': { mean: 9.89, stddev: 1.56 },
+    'Knuckle Curve': { mean: 10.42, stddev: 1.76 }, 'Slurve': { mean: 9.07, stddev: 1.29 },
   },
   2025: {
-    '4-Seam Fastball': { mean: 6.13, stddev: 0.91 }, 'Slider': { mean: 7.58, stddev: 1.28 },
-    'Sinker': { mean: 5.60, stddev: 0.82 }, 'Changeup': { mean: 7.70, stddev: 1.30 },
-    'Curveball': { mean: 8.57, stddev: 1.61 }, 'Cutter': { mean: 6.21, stddev: 1.09 },
-    'Sweeper': { mean: 7.80, stddev: 1.19 }, 'Split-Finger': { mean: 8.30, stddev: 1.29 },
-    'Knuckle Curve': { mean: 8.88, stddev: 1.49 }, 'Slurve': { mean: 8.29, stddev: 1.99 },
+    '4-Seam Fastball': { mean: 7.01, stddev: 1.03 }, 'Slider': { mean: 8.74, stddev: 1.43 },
+    'Sinker': { mean: 6.41, stddev: 1.03 }, 'Changeup': { mean: 9.13, stddev: 1.37 },
+    'Curveball': { mean: 9.54, stddev: 1.83 }, 'Cutter': { mean: 7.13, stddev: 1.22 },
+    'Sweeper': { mean: 8.92, stddev: 1.43 }, 'Split-Finger': { mean: 9.98, stddev: 1.52 },
+    'Knuckle Curve': { mean: 10.22, stddev: 1.74 }, 'Slurve': { mean: 9.55, stddev: 1.00 },
   },
 }
 
-// ── CLOSE% (% of zone misses within 2" of edge) ────────────────────────────
+// ── CLOSE% (% of non-swing zone misses within 2" of edge) ──────────────────
 export const CLOSE_PCT_LEAGUE_BY_YEAR: YearLeague = {
   2015: {
-    '4-Seam Fastball': { mean: 18.44, stddev: 4.33 }, 'Slider': { mean: 12.86, stddev: 4.80 },
-    'Sinker': { mean: 17.10, stddev: 5.03 }, 'Changeup': { mean: 12.46, stddev: 4.93 },
-    'Curveball': { mean: 11.27, stddev: 5.00 }, 'Cutter': { mean: 17.01, stddev: 4.68 },
-    'Split-Finger': { mean: 11.83, stddev: 2.79 }, 'Knuckle Curve': { mean: 11.55, stddev: 4.37 },
+    '4-Seam Fastball': { mean: 13.55, stddev: 4.48 }, 'Slider': { mean: 9.22, stddev: 4.36 },
+    'Sinker': { mean: 11.90, stddev: 4.57 }, 'Changeup': { mean: 7.38, stddev: 4.50 },
+    'Curveball': { mean: 9.41, stddev: 4.55 }, 'Cutter': { mean: 11.38, stddev: 4.58 },
+    'Split-Finger': { mean: 7.31, stddev: 3.55 }, 'Knuckle Curve': { mean: 9.82, stddev: 3.84 },
   },
   2016: {
-    '4-Seam Fastball': { mean: 18.32, stddev: 4.66 }, 'Slider': { mean: 13.40, stddev: 4.95 },
-    'Sinker': { mean: 17.31, stddev: 5.26 }, 'Changeup': { mean: 12.46, stddev: 4.80 },
-    'Curveball': { mean: 11.62, stddev: 4.65 }, 'Cutter': { mean: 16.66, stddev: 5.08 },
-    'Split-Finger': { mean: 10.48, stddev: 2.98 }, 'Knuckle Curve': { mean: 11.58, stddev: 4.15 },
+    '4-Seam Fastball': { mean: 13.61, stddev: 4.15 }, 'Slider': { mean: 9.67, stddev: 4.72 },
+    'Sinker': { mean: 12.28, stddev: 4.82 }, 'Changeup': { mean: 7.25, stddev: 4.31 },
+    'Curveball': { mean: 9.67, stddev: 4.73 }, 'Cutter': { mean: 11.12, stddev: 4.50 },
+    'Split-Finger': { mean: 6.85, stddev: 2.76 }, 'Knuckle Curve': { mean: 9.86, stddev: 4.59 },
   },
   2017: {
-    '4-Seam Fastball': { mean: 17.37, stddev: 4.25 }, 'Slider': { mean: 13.52, stddev: 4.59 },
-    'Sinker': { mean: 17.31, stddev: 4.96 }, 'Changeup': { mean: 12.81, stddev: 5.02 },
-    'Curveball': { mean: 12.14, stddev: 4.69 }, 'Cutter': { mean: 16.08, stddev: 4.49 },
-    'Sweeper': { mean: 12.08, stddev: 3.88 }, 'Split-Finger': { mean: 10.66, stddev: 3.28 },
-    'Knuckle Curve': { mean: 11.58, stddev: 3.32 },
+    '4-Seam Fastball': { mean: 12.75, stddev: 4.17 }, 'Slider': { mean: 8.97, stddev: 4.30 },
+    'Sinker': { mean: 11.94, stddev: 4.26 }, 'Changeup': { mean: 7.36, stddev: 4.16 },
+    'Curveball': { mean: 9.50, stddev: 4.34 }, 'Cutter': { mean: 10.12, stddev: 3.97 },
+    'Sweeper': { mean: 9.57, stddev: 2.19 }, 'Split-Finger': { mean: 6.71, stddev: 3.45 },
+    'Knuckle Curve': { mean: 9.05, stddev: 3.59 },
   },
   2018: {
-    '4-Seam Fastball': { mean: 17.42, stddev: 4.67 }, 'Slider': { mean: 12.94, stddev: 4.95 },
-    'Sinker': { mean: 17.49, stddev: 4.94 }, 'Changeup': { mean: 12.89, stddev: 4.72 },
-    'Curveball': { mean: 12.41, stddev: 4.82 }, 'Cutter': { mean: 16.32, stddev: 5.03 },
-    'Sweeper': { mean: 13.54, stddev: 3.69 }, 'Split-Finger': { mean: 10.11, stddev: 3.90 },
-    'Knuckle Curve': { mean: 11.55, stddev: 4.02 },
+    '4-Seam Fastball': { mean: 13.18, stddev: 4.37 }, 'Slider': { mean: 9.32, stddev: 4.66 },
+    'Sinker': { mean: 12.06, stddev: 4.90 }, 'Changeup': { mean: 7.08, stddev: 3.92 },
+    'Curveball': { mean: 9.78, stddev: 4.65 }, 'Cutter': { mean: 10.01, stddev: 4.38 },
+    'Sweeper': { mean: 9.82, stddev: 4.53 }, 'Split-Finger': { mean: 5.23, stddev: 3.51 },
+    'Knuckle Curve': { mean: 9.58, stddev: 3.11 },
   },
   2019: {
-    '4-Seam Fastball': { mean: 17.30, stddev: 4.53 }, 'Slider': { mean: 12.74, stddev: 4.76 },
-    'Sinker': { mean: 17.43, stddev: 4.89 }, 'Changeup': { mean: 12.30, stddev: 4.82 },
-    'Curveball': { mean: 11.54, stddev: 4.64 }, 'Cutter': { mean: 15.67, stddev: 4.81 },
-    'Sweeper': { mean: 11.74, stddev: 3.84 }, 'Split-Finger': { mean: 10.18, stddev: 5.04 },
-    'Knuckle Curve': { mean: 10.55, stddev: 4.11 },
+    '4-Seam Fastball': { mean: 13.19, stddev: 4.35 }, 'Slider': { mean: 9.07, stddev: 4.09 },
+    'Sinker': { mean: 12.11, stddev: 4.78 }, 'Changeup': { mean: 7.03, stddev: 3.90 },
+    'Curveball': { mean: 9.25, stddev: 4.91 }, 'Cutter': { mean: 10.26, stddev: 4.18 },
+    'Sweeper': { mean: 8.46, stddev: 3.15 }, 'Split-Finger': { mean: 5.51, stddev: 3.89 },
+    'Knuckle Curve': { mean: 8.82, stddev: 4.07 },
   },
   2020: {
-    '4-Seam Fastball': { mean: 17.59, stddev: 5.64 }, 'Slider': { mean: 12.18, stddev: 5.35 },
-    'Sinker': { mean: 18.32, stddev: 5.58 }, 'Changeup': { mean: 12.60, stddev: 5.60 },
-    'Curveball': { mean: 11.03, stddev: 5.58 }, 'Cutter': { mean: 15.86, stddev: 6.30 },
-    'Sweeper': { mean: 13.16, stddev: 5.58 }, 'Split-Finger': { mean: 11.07, stddev: 4.68 },
-    'Knuckle Curve': { mean: 9.69, stddev: 4.31 },
+    '4-Seam Fastball': { mean: 13.25, stddev: 5.15 }, 'Slider': { mean: 8.69, stddev: 4.83 },
+    'Sinker': { mean: 13.27, stddev: 5.61 }, 'Changeup': { mean: 7.56, stddev: 4.81 },
+    'Curveball': { mean: 9.25, stddev: 5.19 }, 'Cutter': { mean: 10.51, stddev: 6.03 },
+    'Sweeper': { mean: 8.26, stddev: 4.69 }, 'Split-Finger': { mean: 5.90, stddev: 3.63 },
+    'Knuckle Curve': { mean: 8.52, stddev: 4.12 },
   },
   2021: {
-    '4-Seam Fastball': { mean: 17.22, stddev: 4.69 }, 'Slider': { mean: 12.57, stddev: 4.47 },
-    'Sinker': { mean: 18.16, stddev: 4.98 }, 'Changeup': { mean: 12.34, stddev: 4.72 },
-    'Curveball': { mean: 10.85, stddev: 4.50 }, 'Cutter': { mean: 16.50, stddev: 5.35 },
-    'Sweeper': { mean: 12.69, stddev: 4.91 }, 'Split-Finger': { mean: 11.04, stddev: 3.93 },
-    'Knuckle Curve': { mean: 11.21, stddev: 4.65 },
+    '4-Seam Fastball': { mean: 12.66, stddev: 4.46 }, 'Slider': { mean: 8.85, stddev: 4.22 },
+    'Sinker': { mean: 13.28, stddev: 5.08 }, 'Changeup': { mean: 7.07, stddev: 3.93 },
+    'Curveball': { mean: 8.93, stddev: 4.63 }, 'Cutter': { mean: 10.65, stddev: 4.97 },
+    'Sweeper': { mean: 8.73, stddev: 4.27 }, 'Split-Finger': { mean: 7.13, stddev: 3.06 },
+    'Knuckle Curve': { mean: 8.88, stddev: 3.71 },
   },
   2022: {
-    '4-Seam Fastball': { mean: 16.94, stddev: 4.29 }, 'Slider': { mean: 12.65, stddev: 4.13 },
-    'Sinker': { mean: 18.94, stddev: 4.95 }, 'Changeup': { mean: 12.29, stddev: 4.84 },
-    'Curveball': { mean: 11.96, stddev: 4.55 }, 'Cutter': { mean: 17.20, stddev: 5.50 },
-    'Sweeper': { mean: 14.06, stddev: 4.50 }, 'Split-Finger': { mean: 11.02, stddev: 4.83 },
-    'Knuckle Curve': { mean: 10.75, stddev: 4.12 },
+    '4-Seam Fastball': { mean: 13.06, stddev: 4.19 }, 'Slider': { mean: 8.89, stddev: 3.92 },
+    'Sinker': { mean: 13.43, stddev: 5.02 }, 'Changeup': { mean: 7.24, stddev: 4.17 },
+    'Curveball': { mean: 9.55, stddev: 4.33 }, 'Cutter': { mean: 11.36, stddev: 5.16 },
+    'Sweeper': { mean: 9.67, stddev: 4.07 }, 'Split-Finger': { mean: 6.37, stddev: 4.12 },
+    'Knuckle Curve': { mean: 8.94, stddev: 4.02 },
   },
   2023: {
-    '4-Seam Fastball': { mean: 17.05, stddev: 4.72 }, 'Slider': { mean: 12.67, stddev: 4.64 },
-    'Sinker': { mean: 19.40, stddev: 5.43 }, 'Changeup': { mean: 12.24, stddev: 4.89 },
-    'Curveball': { mean: 11.09, stddev: 5.01 }, 'Cutter': { mean: 17.28, stddev: 4.99 },
-    'Sweeper': { mean: 13.23, stddev: 4.61 }, 'Split-Finger': { mean: 10.12, stddev: 4.25 },
-    'Knuckle Curve': { mean: 11.00, stddev: 4.13 }, 'Slurve': { mean: 13.00, stddev: 6.05 },
+    '4-Seam Fastball': { mean: 13.48, stddev: 4.58 }, 'Slider': { mean: 9.10, stddev: 4.02 },
+    'Sinker': { mean: 14.05, stddev: 5.41 }, 'Changeup': { mean: 7.30, stddev: 4.04 },
+    'Curveball': { mean: 9.19, stddev: 4.49 }, 'Cutter': { mean: 11.87, stddev: 4.72 },
+    'Sweeper': { mean: 9.17, stddev: 4.96 }, 'Split-Finger': { mean: 6.45, stddev: 3.74 },
+    'Knuckle Curve': { mean: 8.46, stddev: 4.45 }, 'Slurve': { mean: 9.13, stddev: 6.22 },
   },
   2024: {
-    '4-Seam Fastball': { mean: 17.24, stddev: 4.70 }, 'Slider': { mean: 12.80, stddev: 4.50 },
-    'Sinker': { mean: 19.95, stddev: 5.42 }, 'Changeup': { mean: 12.36, stddev: 5.18 },
-    'Curveball': { mean: 11.32, stddev: 4.40 }, 'Cutter': { mean: 17.24, stddev: 5.52 },
-    'Sweeper': { mean: 13.49, stddev: 5.13 }, 'Split-Finger': { mean: 11.29, stddev: 3.96 },
-    'Knuckle Curve': { mean: 9.45, stddev: 3.78 }, 'Slurve': { mean: 11.35, stddev: 6.61 },
+    '4-Seam Fastball': { mean: 13.03, stddev: 4.74 }, 'Slider': { mean: 9.37, stddev: 4.44 },
+    'Sinker': { mean: 14.73, stddev: 5.34 }, 'Changeup': { mean: 7.68, stddev: 4.53 },
+    'Curveball': { mean: 9.50, stddev: 4.53 }, 'Cutter': { mean: 11.76, stddev: 4.80 },
+    'Sweeper': { mean: 9.09, stddev: 4.22 }, 'Split-Finger': { mean: 7.31, stddev: 3.75 },
+    'Knuckle Curve': { mean: 7.89, stddev: 3.52 }, 'Slurve': { mean: 10.19, stddev: 6.72 },
   },
   2025: {
-    '4-Seam Fastball': { mean: 17.82, stddev: 4.89 }, 'Slider': { mean: 13.78, stddev: 5.50 },
-    'Sinker': { mean: 20.05, stddev: 5.36 }, 'Changeup': { mean: 12.14, stddev: 4.50 },
-    'Curveball': { mean: 11.44, stddev: 4.54 }, 'Cutter': { mean: 17.48, stddev: 6.20 },
-    'Sweeper': { mean: 13.59, stddev: 5.12 }, 'Split-Finger': { mean: 11.11, stddev: 4.86 },
-    'Knuckle Curve': { mean: 11.00, stddev: 4.08 }, 'Slurve': { mean: 12.17, stddev: 7.23 },
+    '4-Seam Fastball': { mean: 13.17, stddev: 4.69 }, 'Slider': { mean: 9.86, stddev: 4.93 },
+    'Sinker': { mean: 14.69, stddev: 5.36 }, 'Changeup': { mean: 7.19, stddev: 3.76 },
+    'Curveball': { mean: 9.79, stddev: 4.64 }, 'Cutter': { mean: 12.46, stddev: 5.45 },
+    'Sweeper': { mean: 9.76, stddev: 5.03 }, 'Split-Finger': { mean: 6.52, stddev: 3.73 },
+    'Knuckle Curve': { mean: 8.91, stddev: 3.34 }, 'Slurve': { mean: 9.03, stddev: 3.01 },
   },
 }
 
@@ -569,19 +727,181 @@ export const CENTROIDS_BY_YEAR: YearCentroids = {
 /**
  * Get league-wide centroid for a pitch type in a given year.
  * Falls back to nearest year if exact year missing.
+ * Optional `stand` parameter to get handedness-specific centroid.
  */
-export function getLeagueCentroid(pitchName: string, year: number): CentroidEntry | undefined {
-  const exact = CENTROIDS_BY_YEAR[year]?.[pitchName]
+export function getLeagueCentroid(pitchName: string, year: number, stand?: 'R' | 'L'): CentroidEntry | undefined {
+  const table = stand === 'R' ? CENTROIDS_R_BY_YEAR
+    : stand === 'L' ? CENTROIDS_L_BY_YEAR
+    : CENTROIDS_BY_YEAR
+  const exact = table[year]?.[pitchName]
   if (exact) return exact
   let bestYear: number | undefined
   let bestDist = Infinity
   for (const y of AVAILABLE_YEARS) {
-    if (CENTROIDS_BY_YEAR[y]?.[pitchName] && Math.abs(y - year) < bestDist) {
+    if (table[y]?.[pitchName] && Math.abs(y - year) < bestDist) {
       bestDist = Math.abs(y - year)
       bestYear = y
     }
   }
-  return bestYear != null ? CENTROIDS_BY_YEAR[bestYear]![pitchName] : undefined
+  return bestYear != null ? table[bestYear]![pitchName] : undefined
+}
+
+export const CENTROIDS_R_BY_YEAR: YearCentroids = {
+  2015: {
+    '4-Seam Fastball': { cx: 0.105, cz: 2.5481 }, 'Slider': { cx: 0.3614, cz: 1.8745 },
+    'Sinker': { cx: -0.0171, cz: 2.3073 }, 'Changeup': { cx: 0.2353, cz: 1.8498 },
+    'Curveball': { cx: 0.1972, cz: 1.8424 }, 'Cutter': { cx: 0.2538, cz: 2.234 },
+    'Split-Finger': { cx: 0.0299, cz: 1.6543 }, 'Knuckle Curve': { cx: 0.2879, cz: 1.7635 },
+  },
+  2016: {
+    '4-Seam Fastball': { cx: 0.0635, cz: 2.5645 }, 'Slider': { cx: 0.3501, cz: 1.8804 },
+    'Sinker': { cx: -0.0464, cz: 2.3351 }, 'Changeup': { cx: 0.1809, cz: 1.8708 },
+    'Curveball': { cx: 0.2018, cz: 1.8618 }, 'Cutter': { cx: 0.2638, cz: 2.2257 },
+    'Split-Finger': { cx: -0.0348, cz: 1.6961 }, 'Knuckle Curve': { cx: 0.1873, cz: 1.7925 },
+    'Sweeper': { cx: 0.2902, cz: 1.9016 },
+  },
+  2017: {
+    '4-Seam Fastball': { cx: 0.1474, cz: 2.6166 }, 'Slider': { cx: 0.4215, cz: 1.8815 },
+    'Sinker': { cx: 0.0361, cz: 2.3233 }, 'Changeup': { cx: 0.2898, cz: 1.8629 },
+    'Curveball': { cx: 0.2939, cz: 1.8522 }, 'Cutter': { cx: 0.3381, cz: 2.1794 },
+    'Split-Finger': { cx: 0.0391, cz: 1.6432 }, 'Knuckle Curve': { cx: 0.2122, cz: 1.845 },
+    'Sweeper': { cx: 0.4151, cz: 1.9454 }, 'Slurve': { cx: 0.5293, cz: 1.7505 },
+  },
+  2018: {
+    '4-Seam Fastball': { cx: 0.15, cz: 2.6347 }, 'Slider': { cx: 0.4008, cz: 1.8388 },
+    'Sinker': { cx: -0.0042, cz: 2.2953 }, 'Changeup': { cx: 0.3091, cz: 1.8439 },
+    'Curveball': { cx: 0.2513, cz: 1.8641 }, 'Cutter': { cx: 0.236, cz: 2.2229 },
+    'Split-Finger': { cx: -0.0165, cz: 1.5721 }, 'Knuckle Curve': { cx: 0.2134, cz: 1.7979 },
+    'Sweeper': { cx: 0.5359, cz: 1.9395 }, 'Slurve': { cx: 0.5557, cz: 1.7781 },
+  },
+  2019: {
+    '4-Seam Fastball': { cx: 0.1139, cz: 2.686 }, 'Slider': { cx: 0.411, cz: 1.8191 },
+    'Sinker': { cx: -0.0561, cz: 2.2874 }, 'Changeup': { cx: 0.2885, cz: 1.8151 },
+    'Curveball': { cx: 0.2505, cz: 1.8393 }, 'Cutter': { cx: 0.2283, cz: 2.1906 },
+    'Split-Finger': { cx: -0.0409, cz: 1.5662 }, 'Knuckle Curve': { cx: 0.2422, cz: 1.7313 },
+    'Sweeper': { cx: 0.5469, cz: 1.888 }, 'Slurve': { cx: 0.498, cz: 1.7523 },
+  },
+  2020: {
+    '4-Seam Fastball': { cx: 0.1137, cz: 2.6973 }, 'Slider': { cx: 0.4046, cz: 1.7977 },
+    'Sinker': { cx: -0.0857, cz: 2.289 }, 'Changeup': { cx: 0.2601, cz: 1.8175 },
+    'Curveball': { cx: 0.2343, cz: 1.7604 }, 'Cutter': { cx: 0.2434, cz: 2.2465 },
+    'Split-Finger': { cx: -0.0263, cz: 1.6526 }, 'Knuckle Curve': { cx: 0.2013, cz: 1.7413 },
+    'Sweeper': { cx: 0.4306, cz: 1.8994 },
+  },
+  2021: {
+    '4-Seam Fastball': { cx: 0.1142, cz: 2.7241 }, 'Slider': { cx: 0.3696, cz: 1.8625 },
+    'Sinker': { cx: -0.0412, cz: 2.3143 }, 'Changeup': { cx: 0.2951, cz: 1.837 },
+    'Curveball': { cx: 0.2325, cz: 1.8174 }, 'Cutter': { cx: 0.2178, cz: 2.2761 },
+    'Split-Finger': { cx: 0.0023, cz: 1.6518 }, 'Knuckle Curve': { cx: 0.1839, cz: 1.7541 },
+    'Sweeper': { cx: 0.4618, cz: 1.9306 }, 'Slurve': { cx: 0.2881, cz: 1.8114 },
+  },
+  2022: {
+    '4-Seam Fastball': { cx: 0.1051, cz: 2.7952 }, 'Slider': { cx: 0.3674, cz: 1.8537 },
+    'Sinker': { cx: -0.1184, cz: 2.3404 }, 'Changeup': { cx: 0.2633, cz: 1.8292 },
+    'Curveball': { cx: 0.2017, cz: 1.8497 }, 'Cutter': { cx: 0.2841, cz: 2.2592 },
+    'Split-Finger': { cx: -0.1463, cz: 1.6389 }, 'Knuckle Curve': { cx: 0.2323, cz: 1.7835 },
+    'Sweeper': { cx: 0.5142, cz: 1.9793 }, 'Slurve': { cx: 0.1886, cz: 1.8463 },
+  },
+  2023: {
+    '4-Seam Fastball': { cx: 0.0931, cz: 2.8033 }, 'Slider': { cx: 0.3407, cz: 1.8691 },
+    'Sinker': { cx: -0.1157, cz: 2.3521 }, 'Changeup': { cx: 0.2546, cz: 1.8156 },
+    'Curveball': { cx: 0.1756, cz: 1.8281 }, 'Cutter': { cx: 0.2435, cz: 2.2677 },
+    'Split-Finger': { cx: -0.0748, cz: 1.6744 }, 'Knuckle Curve': { cx: 0.2663, cz: 1.7168 },
+    'Sweeper': { cx: 0.5062, cz: 1.9588 }, 'Slurve': { cx: 0.3289, cz: 1.8483 },
+  },
+  2024: {
+    '4-Seam Fastball': { cx: 0.1178, cz: 2.8452 }, 'Slider': { cx: 0.4088, cz: 1.8872 },
+    'Sinker': { cx: -0.077, cz: 2.3587 }, 'Changeup': { cx: 0.3045, cz: 1.8104 },
+    'Curveball': { cx: 0.2058, cz: 1.8061 }, 'Cutter': { cx: 0.2681, cz: 2.3155 },
+    'Split-Finger': { cx: 0.0728, cz: 1.6596 }, 'Knuckle Curve': { cx: 0.2465, cz: 1.6439 },
+    'Sweeper': { cx: 0.5529, cz: 1.9931 }, 'Slurve': { cx: 0.5505, cz: 1.8253 },
+  },
+  2025: {
+    '4-Seam Fastball': { cx: 0.1179, cz: 2.8491 }, 'Slider': { cx: 0.3674, cz: 1.9119 },
+    'Sinker': { cx: -0.1025, cz: 2.3735 }, 'Changeup': { cx: 0.2895, cz: 1.8147 },
+    'Curveball': { cx: 0.1916, cz: 1.8378 }, 'Cutter': { cx: 0.241, cz: 2.4136 },
+    'Split-Finger': { cx: 0.0333, cz: 1.7108 }, 'Knuckle Curve': { cx: 0.2681, cz: 1.6646 },
+    'Sweeper': { cx: 0.5093, cz: 1.9908 }, 'Slurve': { cx: 0.4301, cz: 1.8428 },
+  },
+}
+
+export const CENTROIDS_L_BY_YEAR: YearCentroids = {
+  2015: {
+    '4-Seam Fastball': { cx: -0.2401, cz: 2.5871 }, 'Slider': { cx: -0.1815, cz: 1.9163 },
+    'Sinker': { cx: -0.3486, cz: 2.3408 }, 'Changeup': { cx: -0.5285, cz: 1.8777 },
+    'Curveball': { cx: -0.2753, cz: 1.894 }, 'Cutter': { cx: -0.0608, cz: 2.4068 },
+    'Split-Finger': { cx: -0.422, cz: 1.7825 }, 'Knuckle Curve': { cx: -0.1514, cz: 1.8428 },
+  },
+  2016: {
+    '4-Seam Fastball': { cx: -0.1978, cz: 2.6057 }, 'Slider': { cx: -0.0962, cz: 1.9231 },
+    'Sinker': { cx: -0.3215, cz: 2.3539 }, 'Changeup': { cx: -0.5026, cz: 1.8884 },
+    'Curveball': { cx: -0.2305, cz: 1.8939 }, 'Cutter': { cx: -0.0074, cz: 2.3661 },
+    'Split-Finger': { cx: -0.4465, cz: 1.7633 }, 'Knuckle Curve': { cx: -0.0822, cz: 1.8186 },
+    'Sweeper': { cx: -0.1621, cz: 1.8092 },
+  },
+  2017: {
+    '4-Seam Fastball': { cx: -0.1272, cz: 2.6575 }, 'Slider': { cx: -0.0685, cz: 1.9321 },
+    'Sinker': { cx: -0.2439, cz: 2.3784 }, 'Changeup': { cx: -0.454, cz: 1.8809 },
+    'Curveball': { cx: -0.1599, cz: 1.9208 }, 'Cutter': { cx: 0.119, cz: 2.298 },
+    'Split-Finger': { cx: -0.3787, cz: 1.7617 }, 'Knuckle Curve': { cx: -0.0846, cz: 1.8814 },
+    'Sweeper': { cx: -0.1811, cz: 1.9462 }, 'Slurve': { cx: 0.0743, cz: 1.7845 },
+  },
+  2018: {
+    '4-Seam Fastball': { cx: -0.1546, cz: 2.6668 }, 'Slider': { cx: -0.0822, cz: 1.8873 },
+    'Sinker': { cx: -0.2388, cz: 2.3152 }, 'Changeup': { cx: -0.47, cz: 1.8596 },
+    'Curveball': { cx: -0.159, cz: 1.8913 }, 'Cutter': { cx: 0.0662, cz: 2.3071 },
+    'Split-Finger': { cx: -0.4053, cz: 1.6931 }, 'Knuckle Curve': { cx: -0.037, cz: 1.8256 },
+    'Sweeper': { cx: -0.1774, cz: 1.9686 }, 'Slurve': { cx: 0.0548, cz: 1.886 },
+  },
+  2019: {
+    '4-Seam Fastball': { cx: -0.135, cz: 2.7194 }, 'Slider': { cx: -0.062, cz: 1.8446 },
+    'Sinker': { cx: -0.2265, cz: 2.2999 }, 'Changeup': { cx: -0.4199, cz: 1.8488 },
+    'Curveball': { cx: -0.1208, cz: 1.8721 }, 'Cutter': { cx: 0.0077, cz: 2.3038 },
+    'Split-Finger': { cx: -0.3347, cz: 1.6792 }, 'Knuckle Curve': { cx: -0.0046, cz: 1.7808 },
+    'Sweeper': { cx: -0.0889, cz: 1.9311 }, 'Slurve': { cx: -0.0927, cz: 1.8686 },
+  },
+  2020: {
+    '4-Seam Fastball': { cx: -0.1257, cz: 2.7386 }, 'Slider': { cx: 0.0231, cz: 1.8522 },
+    'Sinker': { cx: -0.1543, cz: 2.3207 }, 'Changeup': { cx: -0.3983, cz: 1.8494 },
+    'Curveball': { cx: -0.0558, cz: 1.7901 }, 'Cutter': { cx: 0.0986, cz: 2.385 },
+    'Split-Finger': { cx: -0.3291, cz: 1.7376 }, 'Knuckle Curve': { cx: 0.0427, cz: 1.7714 },
+    'Sweeper': { cx: -0.1534, cz: 1.8974 },
+  },
+  2021: {
+    '4-Seam Fastball': { cx: -0.1486, cz: 2.7632 }, 'Slider': { cx: -0.0799, cz: 1.9154 },
+    'Sinker': { cx: -0.133, cz: 2.3511 }, 'Changeup': { cx: -0.4189, cz: 1.8622 },
+    'Curveball': { cx: -0.0806, cz: 1.8522 }, 'Cutter': { cx: 0.096, cz: 2.3826 },
+    'Split-Finger': { cx: -0.3537, cz: 1.7342 }, 'Knuckle Curve': { cx: -0.0358, cz: 1.8221 },
+    'Sweeper': { cx: -0.2458, cz: 2.0102 }, 'Slurve': { cx: -0.1705, cz: 1.7202 },
+  },
+  2022: {
+    '4-Seam Fastball': { cx: -0.1625, cz: 2.8243 }, 'Slider': { cx: -0.0666, cz: 1.8973 },
+    'Sinker': { cx: -0.1344, cz: 2.3735 }, 'Changeup': { cx: -0.4296, cz: 1.8483 },
+    'Curveball': { cx: -0.0835, cz: 1.8777 }, 'Cutter': { cx: 0.1278, cz: 2.4831 },
+    'Split-Finger': { cx: -0.3454, cz: 1.7147 }, 'Knuckle Curve': { cx: -0.0007, cz: 1.8143 },
+    'Sweeper': { cx: -0.1518, cz: 1.9987 }, 'Slurve': { cx: -0.2706, cz: 1.8774 },
+  },
+  2023: {
+    '4-Seam Fastball': { cx: -0.1545, cz: 2.8223 }, 'Slider': { cx: -0.0477, cz: 1.8897 },
+    'Sinker': { cx: -0.0915, cz: 2.3779 }, 'Changeup': { cx: -0.4234, cz: 1.8239 },
+    'Curveball': { cx: -0.1013, cz: 1.8645 }, 'Cutter': { cx: 0.1125, cz: 2.483 },
+    'Split-Finger': { cx: -0.3734, cz: 1.7674 }, 'Knuckle Curve': { cx: -0.0091, cz: 1.7543 },
+    'Sweeper': { cx: -0.1841, cz: 2.0219 }, 'Slurve': { cx: -0.2296, cz: 1.8873 },
+  },
+  2024: {
+    '4-Seam Fastball': { cx: -0.1572, cz: 2.8445 }, 'Slider': { cx: -0.0611, cz: 1.9097 },
+    'Sinker': { cx: -0.073, cz: 2.3915 }, 'Changeup': { cx: -0.4077, cz: 1.8213 },
+    'Curveball': { cx: -0.0959, cz: 1.8508 }, 'Cutter': { cx: 0.0612, cz: 2.5553 },
+    'Split-Finger': { cx: -0.3379, cz: 1.7487 }, 'Knuckle Curve': { cx: -0.047, cz: 1.7292 },
+    'Sweeper': { cx: -0.1827, cz: 2.0277 }, 'Slurve': { cx: -0.2642, cz: 1.8838 },
+  },
+  2025: {
+    '4-Seam Fastball': { cx: -0.1436, cz: 2.8537 }, 'Slider': { cx: -0.0612, cz: 1.9418 },
+    'Sinker': { cx: -0.046, cz: 2.4198 }, 'Changeup': { cx: -0.4074, cz: 1.8276 },
+    'Curveball': { cx: -0.0983, cz: 1.8569 }, 'Cutter': { cx: 0.0994, cz: 2.5853 },
+    'Split-Finger': { cx: -0.3575, cz: 1.7789 }, 'Knuckle Curve': { cx: -0.0308, cz: 1.6905 },
+    'Sweeper': { cx: -0.2099, cz: 2.0164 }, 'Slurve': { cx: -0.1744, cz: 1.9065 },
+  },
 }
 
 // ── STUFF (Stuff+ model — XGBoost-predicted run value, pitcher-level aggregated) ──
@@ -873,6 +1193,8 @@ export function computeStuffRV(p: any): number | null {
 const METRIC_TABLES: Record<MetricName, YearLeague> = {
   brink: BRINK_LEAGUE_BY_YEAR,
   cluster: CLUSTER_LEAGUE_BY_YEAR,
+  cluster_r: CLUSTER_R_LEAGUE_BY_YEAR,
+  cluster_l: CLUSTER_L_LEAGUE_BY_YEAR,
   hdev: HDEV_LEAGUE_BY_YEAR,
   vdev: VDEV_LEAGUE_BY_YEAR,
   missfire: MISSFIRE_LEAGUE_BY_YEAR,
@@ -1030,7 +1352,7 @@ export function plusToPercentile(plus: number): number {
 
 // Command+ weights — theory-weighted, 3 non-redundant components
 // (Cluster+ subsumes HDev+/VDev+ so they are dropped)
-export const COMMAND_WEIGHTS = { brinkPlus: 0.40, clusterPlus: 0.30, missfirePlus: 0.30 }
+export const COMMAND_WEIGHTS = { brinkPlus: 0.60, clusterPlus: 0.17, missfirePlus: 0.23 }
 
 // RPCom+ weights — outcome-weighted from |corr| with xwOBA-against
 // (pitcher×pitch_type level, 2020–2025, min 50 pitches, n=5680)

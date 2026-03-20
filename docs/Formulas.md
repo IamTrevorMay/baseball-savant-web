@@ -154,7 +154,25 @@ A **lower** cluster value means the pitcher repeats their location consistently.
 
 Centroids are computed per pitch type per game year. League-wide centroids are stored as baselines in `lib/leagueStats.ts`.
 
-> Files: `lib/enrichData.ts` lines 99-107, `lib/outingCommand.ts` lines 66-69
+### ClusterR / ClusterL (Handedness-Split Cluster)
+
+Pitchers target different locations against right-handed and left-handed batters. ClusterR and ClusterL use **separate centroids** computed from only pitches thrown to that batter hand:
+
+```
+centroid_R = (avg plate_x, avg plate_z)   for that pitch type, year, vs RHB only
+centroid_L = (avg plate_x, avg plate_z)   for that pitch type, year, vs LHB only
+
+ClusterR = sqrt((plate_x - centroid_R_x)^2 + (plate_z - centroid_R_z)^2) * 12   [vs RHB pitches only]
+ClusterL = sqrt((plate_x - centroid_L_x)^2 + (plate_z - centroid_L_z)^2) * 12   [vs LHB pitches only]
+```
+
+For outing-level Cmd+, ClusterR+ and ClusterL+ are blended by the actual R/L ratio the pitcher faced:
+
+```
+Cluster+ (blended) = (ClusterR+ * pitches_vs_R + ClusterL+ * pitches_vs_L) / total_pitches
+```
+
+> Files: `lib/enrichData.ts` lines 99-107, `lib/outingCommand.ts` lines 66-100
 
 ### Horizontal Deviation (HDev) and Vertical Deviation (VDev)
 
@@ -169,33 +187,36 @@ VDev = (plate_z - centroid_z) * 12   [inches, positive = above centroid]
 
 ### Missfire (Average Miss Distance)
 
-How far, on average, outside-zone pitches miss the strike zone. Only pitches outside the zone are included in the calculation. The distance is measured from the closest zone edge.
+How far, on average, outside-zone pitches miss the strike zone — excluding pitches the batter swung at. Swung-at pitches outside the zone are chases (a positive outcome for the pitcher), not command misses, so they are excluded. The distance is measured from the closest zone edge.
 
 ```
 is_outside_zone = zone > 9
-miss_distance   = abs(brink)   [for outside-zone pitches only]
+did_swing       = description IN (swinging_strike, foul, hit_into_play, ...)
+
+miss_distance   = abs(brink)   [for outside-zone, non-swing pitches only]
 
 Missfire = avg(miss_distance)   [inches]
 ```
 
-A **lower** missfire value is better — it means when the pitcher does miss the zone, the misses stay close to the edge rather than sailing wide.
+A **lower** missfire value is better — it means when the pitcher does miss the zone (and the batter takes), the misses stay close to the edge rather than sailing wide.
 
-> File: `lib/outingCommand.ts` lines 73-78
+> File: `lib/outingCommand.ts` lines 73-84
 
 ### Close% (Close Miss Percentage)
 
-The percentage of zone misses that land within 2 inches of the strike zone edge. Only pitches outside the zone are included in both the numerator and denominator.
+The percentage of zone misses that land within 2 inches of the strike zone edge. Only non-swing pitches outside the zone are included (same filter as Missfire).
 
 ```
 is_outside_zone = zone > 9
-is_close_miss   = is_outside_zone AND abs(brink) < 2 inches
+did_swing       = description IN (swinging_strike, foul, hit_into_play, ...)
+is_close_miss   = is_outside_zone AND NOT did_swing AND abs(brink) < 2 inches
 
-Close% = close_miss_count / outside_zone_count * 100
+Close% = close_miss_count / outside_zone_non_swing_count * 100
 ```
 
-A **higher** Close% is better — it means a greater proportion of the pitcher's misses stay near the zone edge, suggesting good command even on missed locations.
+A **higher** Close% is better — it means a greater proportion of the pitcher's taken misses stay near the zone edge, suggesting good command even on missed locations.
 
-> File: `lib/outingCommand.ts` lines 73-78
+> File: `lib/outingCommand.ts` lines 73-84
 
 ### Waste Rate
 
@@ -218,14 +239,14 @@ Raw command numbers are hard to compare because different pitch types naturally 
 A composite grade for overall pitch command, combining three components with these weights:
 
 ```
-Cmd+ = 0.40 * Brink+ + 0.30 * Cluster+ + 0.30 * Missfire+
+Cmd+ = 0.60 * Brink+ + 0.17 * Cluster+ + 0.23 * Missfire+
 ```
 
 | Component | Weight | What it measures |
 |-----------|--------|-----------------|
-| Brink+ | 40% | Edge-painting ability |
-| Cluster+ | 30% | Location repeatability |
-| Missfire+ | 30% | Tight misses (lower avg miss distance = higher plus) |
+| Brink+ | 60% | Edge-painting ability |
+| Cluster+ | 17% | Location repeatability (R/L blended by batter hand faced) |
+| Missfire+ | 23% | Tight misses (non-swing pitches only, lower avg miss distance = higher plus) |
 
 > File: `lib/leagueStats.ts` lines 840-846
 

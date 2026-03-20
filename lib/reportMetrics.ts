@@ -65,6 +65,13 @@ export const METRICS: Record<string, string> = {
   // Swing
   avg_bat_speed: 'ROUND(AVG(bat_speed)::numeric, 1)',
   avg_swing_length: 'ROUND(AVG(swing_length)::numeric, 2)',
+  avg_attack_angle: 'ROUND(AVG(attack_angle)::numeric, 1)',
+  avg_attack_direction: 'ROUND(AVG(attack_direction)::numeric, 1)',
+  avg_swing_path_tilt: 'ROUND(AVG(swing_path_tilt)::numeric, 1)',
+  fast_swing_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE bat_speed >= 75) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL), 0), 1)",
+  squared_up_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed IS NOT NULL AND launch_speed IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND launch_speed IS NOT NULL), 0), 1)",
+  blast_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed >= 75 AND bat_speed IS NOT NULL AND launch_speed IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND launch_speed IS NOT NULL), 0), 1)",
+  ideal_attack_angle_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE attack_angle BETWEEN 5 AND 20) / NULLIF(COUNT(*) FILTER (WHERE attack_angle IS NOT NULL), 0), 1)",
 }
 
 /** MLB team primary colors for themed bindings */
@@ -161,6 +168,13 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   // Swing
   { value: 'avg_bat_speed', label: 'Bat Speed', group: 'Swing' },
   { value: 'avg_swing_length', label: 'Swing Length', group: 'Swing' },
+  { value: 'avg_attack_angle', label: 'Attack Angle', group: 'Swing' },
+  { value: 'avg_attack_direction', label: 'Attack Direction', group: 'Swing' },
+  { value: 'avg_swing_path_tilt', label: 'Swing Path Tilt', group: 'Swing' },
+  { value: 'fast_swing_rate', label: 'Fast Swing %', group: 'Swing' },
+  { value: 'squared_up_rate', label: 'Squared Up %', group: 'Swing' },
+  { value: 'blast_rate', label: 'Blast %', group: 'Swing' },
+  { value: 'ideal_attack_angle_rate', label: 'Ideal AA %', group: 'Swing' },
   // Counting
   { value: 'pitches', label: 'Pitch Count', group: 'Counting' },
   { value: 'pa', label: 'PA', group: 'Counting' },
@@ -176,6 +190,8 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   // Triton (Raw Command)
   { value: 'avg_brink', label: 'Brink', group: 'Triton' },
   { value: 'avg_cluster', label: 'Cluster', group: 'Triton' },
+  { value: 'avg_cluster_r', label: 'ClusterR', group: 'Triton' },
+  { value: 'avg_cluster_l', label: 'ClusterL', group: 'Triton' },
   { value: 'avg_hdev', label: 'HDev', group: 'Triton' },
   { value: 'avg_vdev', label: 'VDev', group: 'Triton' },
   { value: 'avg_missfire', label: 'Missfire', group: 'Triton' },
@@ -186,6 +202,8 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'rpcom_plus', label: 'RPCom+', group: 'Triton+' },
   { value: 'brink_plus', label: 'Brink+', group: 'Triton+' },
   { value: 'cluster_plus', label: 'Cluster+', group: 'Triton+' },
+  { value: 'cluster_r_plus', label: 'ClusterR+', group: 'Triton+' },
+  { value: 'cluster_l_plus', label: 'ClusterL+', group: 'Triton+' },
   { value: 'hdev_plus', label: 'HDev+', group: 'Triton+' },
   { value: 'vdev_plus', label: 'VDev+', group: 'Triton+' },
   { value: 'missfire_plus', label: 'Missfire+', group: 'Triton+' },
@@ -202,8 +220,10 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
 
 /** Set of metrics that come from pre-computed tables instead of pitches aggregation */
 export const TRITON_PLUS_METRIC_KEYS = new Set([
-  'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'hdev_plus', 'vdev_plus', 'missfire_plus', 'close_pct_plus',
-  'avg_brink', 'avg_cluster', 'avg_hdev', 'avg_vdev', 'avg_missfire', 'close_pct', 'waste_pct',
+  'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus', 'cluster_r_plus', 'cluster_l_plus',
+  'hdev_plus', 'vdev_plus', 'missfire_plus', 'close_pct_plus',
+  'avg_brink', 'avg_cluster', 'avg_cluster_r', 'avg_cluster_l',
+  'avg_hdev', 'avg_vdev', 'avg_missfire', 'close_pct', 'waste_pct',
 ])
 export const DECEPTION_METRIC_KEYS = new Set(['deception_score', 'unique_score', 'xdeception_score'])
 export const ERA_METRIC_KEYS = new Set(['era', 'fip', 'xera'])

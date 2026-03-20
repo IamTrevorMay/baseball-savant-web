@@ -298,6 +298,8 @@ export const TRITON_PITCH_TYPES = [
 const RAW_METRICS = [
   { suffix: 'brink', label: 'Brink' },
   { suffix: 'cluster', label: 'Cluster' },
+  { suffix: 'cluster_r', label: 'ClusterR' },
+  { suffix: 'cluster_l', label: 'ClusterL' },
   { suffix: 'hdev', label: 'HDev' },
   { suffix: 'vdev', label: 'VDev' },
   { suffix: 'missfire', label: 'Missfire' },
@@ -311,6 +313,8 @@ const PLUS_METRICS = [
   { suffix: 'stuff_plus', label: 'Stuff+', hasPlus: true },
   { suffix: 'brink_plus', label: 'Brink+', hasPlus: true },
   { suffix: 'cluster_plus', label: 'Cluster+', hasPlus: true },
+  { suffix: 'cluster_r_plus', label: 'ClusterR+', hasPlus: true },
+  { suffix: 'cluster_l_plus', label: 'ClusterL+', hasPlus: true },
   { suffix: 'hdev_plus', label: 'HDev+', hasPlus: true },
   { suffix: 'vdev_plus', label: 'VDev+', hasPlus: true },
   { suffix: 'missfire_plus', label: 'Missfire+', hasPlus: true },

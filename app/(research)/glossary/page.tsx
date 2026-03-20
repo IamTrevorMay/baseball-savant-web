@@ -100,7 +100,7 @@ const CATEGORIES: Category[] = [
       { name: 'VDev+', description: 'Normalized vertical deviation on a plus scale. Mean 100, stddev 10. Higher is better.', formula: '100 + (league_mean - raw) / stddev × 10' },
       { name: 'Missfire+', description: 'Normalized Missfire score on a plus scale. Mean 100, stddev 10. Inverted so higher = better (lower avg miss distance). Used in Cmd+ and RPCom+ composites.', formula: '100 - ((raw - league_mean) / stddev × 10)' },
       { name: 'Close+', description: 'Normalized Close% on a plus scale. Mean 100, stddev 10. Higher is better (more misses near the zone edge). Display-only — not included in Cmd+ or RPCom+ composites.', formula: '100 + (raw - league_mean) / stddev × 10' },
-      { name: 'Cmd+', description: 'Composite command score: 40% Brink+ + 30% Cluster+ + 30% Missfire+. Higher is better.', formula: '0.40 × Brink+ + 0.30 × Cluster+ + 0.30 × Missfire+' },
+      { name: 'Cmd+', description: 'Composite command score: 60% Brink+ + 17% Cluster+ + 23% Missfire+. Cluster+ is R/L-blended by batter hand faced. Higher is better.', formula: '0.60 × Brink+ + 0.17 × Cluster+ + 0.23 × Missfire+' },
       { name: 'RPCom+', description: 'Run-prevention command — a composite plus metric that blends Cmd+ with outcome-based metrics to estimate a pitcher\'s overall command contribution to run prevention. Mean 100, stddev 10.' },
     ],
   },
