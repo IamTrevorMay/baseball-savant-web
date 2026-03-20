@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { supabaseAdminLong } from '@/lib/supabase-admin'
 import { NextRequest, NextResponse } from 'next/server'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -64,6 +64,14 @@ QUERY RULES:
 - Exclude pitch_type IN ('PO','IN') for valid pitch analysis
 - For pitch movement, multiply pfx_x/pfx_z by 12 for inches
 
+PERFORMANCE — the pitches table has 7.4M+ rows and queries time out at 120s:
+- ALWAYS filter by game_year (indexed) — never scan all years unless asked
+- Use pitcher (indexed) or game_date (indexed) in WHERE clauses
+- For aggregations, GROUP BY with COUNT/AVG is fast; avoid window functions on large sets
+- Prefer pitcher_season_command or player_summary for pre-aggregated data
+- Keep JOINs simple — avoid self-joins on pitches
+- If a question spans all years, aggregate per year first, then combine
+
 You MUST respond with a JSON object (no markdown fences, pure JSON) with these fields:
 {
   "query_plan": "Plain English description of what you'll query and why",
@@ -92,7 +100,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Only SELECT queries are allowed.' }, { status: 400 })
       }
 
-      const { data, error } = await supabaseAdmin.rpc('run_query', { query_text: confirmedSql })
+      const { data, error } = await supabaseAdminLong.rpc('run_query', { query_text: confirmedSql })
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
