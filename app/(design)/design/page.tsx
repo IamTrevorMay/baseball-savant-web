@@ -107,7 +107,7 @@ export default function DesignPage() {
       })
       const data = await res.json()
       if (data.error) {
-        updateEntry(id, { status: 'error', error: data.error })
+        updateEntry(id, { status: 'error', error: `${data.error}${data.sql ? '\n\nSQL: ' + data.sql : ''}` })
         return
       }
       updateEntry(id, { status: 'loaded', rows: data.rows })

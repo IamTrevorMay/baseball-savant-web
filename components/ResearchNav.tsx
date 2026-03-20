@@ -4,26 +4,25 @@ import TridentLogo from '@/components/TridentLogo'
 
 const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
-  { href: '/briefs', label: 'Briefs' },
   { href: '/explore', label: 'Explore' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
-  { href: '/leaders', label: 'Leaders' },
-  { href: '/reports', label: 'Reports' },
+  { href: '/leaders', label: 'Historical' },
   { href: '/teams', label: 'Teams' },
 ]
 
 const ADVANCED_LINKS = [
+  { href: '/reports', label: 'Reports' },
   { href: '/abs', label: 'ABS' },
   { href: '/umpire', label: 'Umpires' },
   { href: '/matchups', label: 'Matchups' },
   { href: '/sequencing', label: 'Sequencing' },
   { href: '/trends', label: 'Trends' },
   { href: '/park-adjusted', label: 'Park Adj' },
-  { href: '/analyst', label: 'Analyst' },
 ]
 
 const MORE_LINKS = [
+  { href: '/briefs', label: 'Briefs' },
   { href: '/wbc', label: 'WBC' },
   { href: '/glossary', label: 'Glossary' },
 ]

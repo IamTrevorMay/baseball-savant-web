@@ -64,14 +64,17 @@ QUERY RULES:
 - Exclude pitch_type IN ('PO','IN') for valid pitch analysis
 - For pitch movement, multiply pfx_x/pfx_z by 12 for inches
 
-PERFORMANCE — the pitches table has 7.4M+ rows and queries time out at 120s:
-- ALWAYS filter by game_year (indexed) — never scan all years unless asked
+PERFORMANCE — the pitches table has 7.4M+ rows. Queries WILL time out if not careful:
+- DEFAULT TO game_year = 2025 (current season) unless the user explicitly asks for other years
+- If multi-year is needed, use game_year = SPECIFIC_YEAR (not >=), or query one year at a time
+- NEVER use game_year >= or BETWEEN on more than 2 years — it scans too many rows
 - Use pitcher (indexed) or game_date (indexed) in WHERE clauses
 - For aggregations, GROUP BY with COUNT/AVG is fast; avoid window functions on large sets
-- Prefer pitcher_season_command or player_summary for pre-aggregated data
+- Prefer pitcher_season_command or player_summary for pre-aggregated data when possible
 - Keep JOINs simple — avoid self-joins on pitches
-- If a question spans all years, aggregate per year first, then combine
 - ROUND() requires numeric type — always cast: ROUND(value::numeric, 2), not ROUND(value, 2)
+- Every non-aggregated column in SELECT must appear in GROUP BY — no exceptions
+- When grouping, wrap value columns in AVG(), COUNT(), SUM(), etc. — never SELECT a raw column that isn't in GROUP BY
 
 You MUST respond with a JSON object (no markdown fences, pure JSON) with these fields:
 {
@@ -101,9 +104,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Only SELECT queries are allowed.' }, { status: 400 })
       }
 
-      const { data, error } = await supabaseAdminLong.rpc('run_query', { query_text: confirmedSql })
+      console.log('[explore] Executing SQL:', confirmedSql.slice(0, 500))
+      const { data, error } = await supabaseAdminLong.rpc('run_query_long', { query_text: confirmedSql })
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        console.error('[explore] SQL error:', error.message)
+        return NextResponse.json({ error: error.message, sql: confirmedSql }, { status: 500 })
       }
 
       const rows = (data || []).slice(0, 5000)
