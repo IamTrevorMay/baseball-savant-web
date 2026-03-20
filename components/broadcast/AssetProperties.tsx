@@ -450,7 +450,7 @@ function AssetPropertiesPanel() {
 
         {/* Edit links */}
         {asset.asset_type === 'scene' && asset.template_id && (
-          <Link href={`/visualize/template-builder?edit=${asset.template_id}`} target="_blank" className="block text-center px-3 py-2 text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition">
+          <Link href={`/design/template-builder?edit=${asset.template_id}`} target="_blank" className="block text-center px-3 py-2 text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition">
             Edit Template
           </Link>
         )}

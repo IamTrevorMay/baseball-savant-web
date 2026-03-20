@@ -743,7 +743,7 @@ export default function TemplateBuilderPage() {
         if (data.id) {
           setSaveId(data.id)
           // Update URL without full navigation
-          window.history.replaceState(null, '', `/visualize/template-builder?edit=${data.id}`)
+          window.history.replaceState(null, '', `/design/template-builder?edit=${data.id}`)
         }
       }
     } catch (err) {
@@ -814,7 +814,7 @@ export default function TemplateBuilderPage() {
     setSelectedId(null)
     setSelectedIds(new Set())
     setSaveId(null)
-    window.history.replaceState(null, '', '/visualize/template-builder')
+    window.history.replaceState(null, '', '/design/template-builder')
   }
 
   function loadDataDrivenIntoBuilder(template: DataDrivenTemplate) {
@@ -845,7 +845,7 @@ export default function TemplateBuilderPage() {
     setSelectedId(null)
     setSelectedIds(new Set())
     // Update URL
-    window.history.replaceState(null, '', `/visualize/template-builder?edit=${template.id}`)
+    window.history.replaceState(null, '', `/design/template-builder?edit=${template.id}`)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

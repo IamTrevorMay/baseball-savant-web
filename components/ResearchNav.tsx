@@ -19,6 +19,7 @@ const ADVANCED_LINKS = [
   { href: '/sequencing', label: 'Sequencing' },
   { href: '/trends', label: 'Trends' },
   { href: '/park-adjusted', label: 'Park Adj' },
+  { href: '/data-export', label: 'Data Export' },
 ]
 
 const MORE_LINKS = [

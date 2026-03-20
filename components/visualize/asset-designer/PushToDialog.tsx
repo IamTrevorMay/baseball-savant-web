@@ -74,7 +74,7 @@ export default function PushToDialog({ scene, onClose }: Props) {
       }
 
       // Navigate to target
-      const path = target === 'scene-composer' ? '/visualize/scene-composer' : '/visualize/template-builder'
+      const path = target === 'scene-composer' ? '/design/scene-composer' : '/design/template-builder'
       window.location.href = path
     } catch (err) {
       console.error('Push failed:', err)

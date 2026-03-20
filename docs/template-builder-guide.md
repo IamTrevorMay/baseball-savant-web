@@ -10,10 +10,10 @@ The Template Builder lets you design reusable graphic layouts that automatically
 
 ### Opening the Template Builder
 
-- From the Visualize landing page (`/visualize`), click the **"Template Builder"** card.
-- Direct URL: `/visualize/template-builder`
-- To edit an existing template: `/visualize/template-builder?edit=<template-id>`
-- To fork a built-in template: `/visualize/template-builder?fork=top-5-leaderboard`
+- From the Design landing page (`/design`), click the **"Template Builder"** card.
+- Direct URL: `/design/template-builder`
+- To edit an existing template: `/design/template-builder?edit=<template-id>`
+- To fork a built-in template: `/design/template-builder?fork=top-5-leaderboard`
 
 ---
 
@@ -193,17 +193,17 @@ Click the **"Preview"** button in the top bar to see your template filled with s
 
 ### Editing an Existing Template
 
-Navigate to `/visualize/template-builder?edit=<template-id>` to load and modify a previously saved template. All changes save back to the same record.
+Navigate to `/design/template-builder?edit=<template-id>` to load and modify a previously saved template. All changes save back to the same record.
 
 ### Forking a Built-in Template
 
-Navigate to `/visualize/template-builder?fork=top-5-leaderboard` (or another built-in template ID) to load a copy of that template for customization. Saving creates a new custom template.
+Navigate to `/design/template-builder?fork=top-5-leaderboard` (or another built-in template ID) to load a copy of that template for customization. Saving creates a new custom template.
 
 ---
 
 ## Using Custom Templates in Scene Composer
 
-1. Open the Scene Composer (`/visualize/scene-composer`).
+1. Open the Scene Composer (`/design/scene-composer`).
 2. Click the **"Templates"** tab in the left Element Library panel.
 3. Expand the **"Custom"** section (cyan-colored, appears above the built-in categories).
 4. Click your custom template to load it into the composer.
