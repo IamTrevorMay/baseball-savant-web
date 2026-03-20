@@ -19,7 +19,6 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "@vercel/analytics": "^1.6.1",
-    "@visx/visx": "^3.12.0",
     "html2canvas-pro": "^2.0.0",
     "jspdf": "^4.2.0",
     "jszip": "^3.10.1",
