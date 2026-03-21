@@ -172,8 +172,14 @@ export default function TemplateDataPanel({ asset }: Props) {
       const primarySection = sections[0]
       const primaryData = sectionData[primarySection?.id] || {}
 
-      // Determine effective globalInputType: section data override > template definition
-      const effectiveType = primaryData.globalInputType || primarySection?.globalInputType
+      // Determine effective globalInputType: prefer globalFilter.type, fall back to section
+      const gf = latestTemplate.globalFilter
+      const effectiveType = gf?.type === 'single-player' ? 'player'
+        : gf?.type === 'live-game' ? 'live-game'
+        : gf?.type === 'leaderboard' ? 'leaderboard'
+        : gf?.type === 'team' ? 'team'
+        : gf?.type === 'matchup' ? 'player'
+        : primaryData.globalInputType || primarySection?.globalInputType
 
       // Derive gameYear from dateRange (globalInputType stores year in dateRange, not gameYear)
       const dr = primaryData.dateRange || primarySection?.dateRange

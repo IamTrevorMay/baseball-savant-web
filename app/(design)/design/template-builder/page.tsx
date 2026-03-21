@@ -5,23 +5,26 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Scene, SceneElement, ElementType, DataSchemaType, DataBinding, DynamicSlot,
   RepeaterConfig, TemplateBinding, CustomTemplateRecord, InputSection, SectionBinding,
+  GlobalFilter, GlobalFilterType, ElementBinding,
   createElement, SCENE_PRESETS,
 } from '@/lib/sceneTypes'
 import { SCENE_METRICS, MLB_TEAM_COLORS } from '@/lib/reportMetrics'
 import { useSceneHistory } from '@/lib/useSceneHistory'
 import { getSampleData } from '@/lib/templateBindingSchemas'
-import { createCustomRebuild } from '@/lib/customTemplateRebuild'
+import { createCustomRebuild, migrateTemplate } from '@/lib/customTemplateRebuild'
 import { DATA_DRIVEN_TEMPLATES, type DataDrivenTemplate } from '@/lib/sceneTemplates'
+import { getSampleDataForFilter, fieldType as getFieldType } from '@/lib/filterFieldSchemas'
+import { STARTER_TEMPLATES, type StarterTemplate, type StarterElementDef } from '@/lib/starterTemplates'
 import SceneCanvas from '@/components/visualize/scene-composer/SceneCanvas'
 import ElementLibrary from '@/components/visualize/scene-composer/ElementLibrary'
 import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPanel'
 import DynamicSlotsPanel from '@/components/visualize/scene-composer/DynamicSlotsPanel'
-import DataSchemaSelector from '@/components/visualize/template-builder/DataSchemaSelector'
-import TemplateBindingSection from '@/components/visualize/template-builder/TemplateBindingSection'
-import RepeaterPanel from '@/components/visualize/template-builder/RepeaterPanel'
-import InputSectionsPanel from '@/components/visualize/template-builder/InputSectionsPanel'
+import GlobalFilterPanel from '@/components/visualize/template-builder/GlobalFilterPanel'
+import DataFieldsPanel from '@/components/visualize/template-builder/DataFieldsPanel'
+import StarterTemplatePicker from '@/components/visualize/template-builder/StarterTemplatePicker'
 import ThemePickerPanel from '@/components/visualize/scene-composer/ThemePickerPanel'
 import { THEME_PRESETS, applyThemeToScene, ensureThemeFontsLoaded } from '@/lib/themePresets'
+import { getMetricFormat, formatValue, type FormatType } from '@/lib/templateBindingSchemas'
 
 function defaultScene(): Scene {
   return {
@@ -38,14 +41,6 @@ function defaultScene(): Scene {
 
 const ZOOM_STEPS = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0]
 
-/** Ensure loaded sections have enabledInputs (backwards compat) */
-function normalizeSections(sections: InputSection[]): InputSection[] {
-  return sections.map(s => ({
-    ...s,
-    enabledInputs: s.enabledInputs ?? [],
-  }))
-}
-
 export default function TemplateBuilderPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -57,18 +52,26 @@ export default function TemplateBuilderPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
   const [zoom, setZoom] = useState(0.5)
+
+  // New: Global Filter replaces schemaType + inputSections + repeater
+  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>({ type: 'single-player', playerType: 'pitcher' })
+
+  // Legacy state kept for backward compat during transition
   const [schemaType, setSchemaType] = useState<DataSchemaType>('leaderboard')
   const [repeater, setRepeater] = useState<RepeaterConfig | null>(null)
   const [inputSections, setInputSections] = useState<InputSection[]>([])
-  const [sectionFetchLoading, setSectionFetchLoading] = useState<string | null>(null)
+
   const [saving, setSaving] = useState(false)
   const [saveId, setSaveId] = useState<string | null>(editId)
   const [loaded, setLoaded] = useState(false)
   const [previewing, setPreviewing] = useState(false)
+  const [dataLoaded, setDataLoaded] = useState(false)
+  const [fetchLoading, setFetchLoading] = useState(false)
+  const [showStarterPicker, setShowStarterPicker] = useState(!editId && !forkId)
 
   // Theme state
   const [activeThemeId, setActiveThemeId] = useState('')
-  const [leftTab, setLeftTab] = useState<'elements' | 'themes'>('elements')
+  const [leftTab, setLeftTab] = useState<'objects' | 'themes'>('objects')
 
   const canvasRef = useRef<HTMLDivElement>(null)
 
@@ -93,10 +96,19 @@ export default function TemplateBuilderPage() {
               duration: 5,
               fps: 30,
             })
-            setSchemaType(t.schemaType)
-            setRepeater(t.repeater)
-            setInputSections(normalizeSections(t.inputSections || []))
+            // Load new globalFilter or fall back to old format
+            if (t.globalFilter) {
+              setGlobalFilter(t.globalFilter)
+            } else {
+              setSchemaType(t.schemaType)
+              setRepeater(t.repeater)
+              setInputSections(t.inputSections || [])
+              // Auto-migrate for display
+              const migrated = migrateTemplate(t)
+              if (migrated.globalFilter) setGlobalFilter(migrated.globalFilter)
+            }
             setSaveId(t.id)
+            setShowStarterPicker(false)
           }
         })
         .catch(console.error)
@@ -108,8 +120,9 @@ export default function TemplateBuilderPage() {
         const sample = getSampleData('leaderboard')
         const forked = builtin.rebuild(config, sample)
         setScene({ ...forked, name: `${builtin.name} (Custom)` })
-        setSchemaType('leaderboard')
+        setGlobalFilter({ type: 'leaderboard', playerType: 'pitcher', count: 5, repeaterDirection: 'vertical', repeaterOffset: 160 })
       }
+      setShowStarterPicker(false)
       setLoaded(true)
     } else {
       setLoaded(true)
@@ -171,72 +184,104 @@ export default function TemplateBuilderPage() {
     }))
   }, [])
 
-  function formatStatValue(val: any, format?: string): string {
-    if (val == null) return '—'
-    const n = Number(val)
-    if (isNaN(n)) return String(val)
-    switch (format) {
-      case '1f': return n.toFixed(1)
-      case 'integer': return Math.round(n).toString()
-      case 'percent': return `${n.toFixed(1)}%`
-      case '3f': return n.toFixed(3)
-      default: return String(val)
-    }
-  }
+  // ── Drop field onto canvas: create or bind ────────────────────────────────
 
-  function applyStatToElement(elId: string, elType: ElementType, metric: string, val: any, playerName: string, sublabel: string, format?: string) {
-    const formatted = formatStatValue(val, format)
-    if (elType === 'stat-card') {
-      updateElementProps(elId, { value: formatted, label: metric.replace(/_/g, ' ').toUpperCase(), sublabel })
-    } else if (elType === 'comparison-bar') {
-      updateElementProps(elId, { value: val != null ? Number(val) : 0, label: `${playerName} - ${metric.replace(/_/g, ' ')}` })
-    } else if (elType === 'text') {
-      updateElementProps(elId, { text: formatted })
-    } else {
-      updateElementProps(elId, { value: formatted })
-    }
-  }
-
-  const fetchBinding = useCallback(async (id: string) => {
-    const el = scene.elements.find(e => e.id === id)
-    if (!el?.dataBinding) return
-    const b = el.dataBinding
-
-    setBindingLoading(true)
-    try {
-      if (b.source === 'dynamic') {
-        const slot = scene.dynamicSlots?.find(s => s.id === b.dynamicSlot)
-        if (!slot?.playerId) return
-        const params = new URLSearchParams({
-          playerId: String(slot.playerId),
-          metrics: b.metric,
-          gameYear: String(slot.gameYear),
-        })
-        if (slot.pitchType) params.set('pitchType', slot.pitchType)
-        const res = await fetch(`/api/scene-stats?${params}`)
-        const data = await res.json()
-        const val = data.stats?.[b.metric]
-        applyStatToElement(id, el.type, b.metric, val, slot.playerName || '', `${slot.playerName || ''} ${slot.gameYear}`.trim())
-      } else if (b.source === 'statcast') {
-        const params = new URLSearchParams({
-          playerId: String(b.playerId),
-          metrics: b.metric,
-          ...(b.gameYear && { gameYear: String(b.gameYear) }),
-        })
-        if (b.pitchType) params.set('pitchType', b.pitchType)
-        const res = await fetch(`/api/scene-stats?${params}`)
-        const data = await res.json()
-        const val = data.stats?.[b.metric]
-        applyStatToElement(id, el.type, b.metric, val, b.playerName, `${b.playerName} ${b.gameYear || ''}`.trim())
+  const handleDropField = useCallback((field: string, fieldType: string, x: number, y: number, targetElementId?: string) => {
+    if (targetElementId) {
+      // Bind to existing element
+      updateElement(targetElementId, { binding: { field } })
+      // Apply placeholder text
+      const el = scene.elements.find(e => e.id === targetElementId)
+      if (el) {
+        applyBindingPlaceholder(targetElementId, el.type, field)
       }
-    } catch (err) {
-      console.error('Binding fetch error:', err)
-    } finally {
-      setBindingLoading(false)
+    } else {
+      // Create new element at drop position
+      const type: ElementType = fieldType === 'player_id' ? 'player-image'
+        : fieldType === 'number' ? 'stat-card'
+        : 'text'
+      const el = createElement(type, x, y)
+      el.binding = { field }
+      // Set placeholder props
+      if (type === 'stat-card') {
+        el.props.label = field.replace(/_/g, ' ').toUpperCase()
+        el.props.value = `{${field}}`
+      } else if (type === 'text') {
+        el.props.text = `{${field}}`
+      } else if (type === 'player-image') {
+        el.props.playerName = `{${field}}`
+      }
+      addDirectElement(el)
     }
-  }, [scene.elements, scene.dynamicSlots, updateElementProps])
+  }, [scene.elements, updateElement, addDirectElement])
 
-  // ── Dynamic Slots ─────────────────────────────────────────────────────────
+  const handleFieldClick = useCallback((field: string, fieldType: string) => {
+    if (selectedIds.size === 0) return
+    for (const id of selectedIds) {
+      updateElement(id, { binding: { field } })
+      const el = scene.elements.find(e => e.id === id)
+      if (el) applyBindingPlaceholder(id, el.type, field)
+    }
+  }, [selectedIds, scene.elements, updateElement])
+
+  function applyBindingPlaceholder(elId: string, elType: ElementType, field: string) {
+    if (elType === 'stat-card') {
+      updateElementProps(elId, { label: field.replace(/_/g, ' ').toUpperCase(), value: `{${field}}` })
+    } else if (elType === 'text') {
+      updateElementProps(elId, { text: `{${field}}` })
+    } else if (elType === 'player-image') {
+      updateElementProps(elId, { playerName: `{${field}}` })
+    } else if (elType === 'comparison-bar') {
+      updateElementProps(elId, { label: field.replace(/_/g, ' '), value: 0 })
+    }
+  }
+
+  // ── Fetch data for current global filter ────────────────────────────────
+
+  const handleFetchData = useCallback(async () => {
+    setFetchLoading(true)
+    try {
+      const sampleData = getSampleDataForFilter(globalFilter.type, globalFilter.playerType)
+      // For now, use sample data. Real fetch will come from API integration.
+      // TODO: Replace with actual API calls based on globalFilter config
+      const dataRows = Array.isArray(sampleData) ? sampleData : [sampleData]
+      const row = dataRows[0] || {}
+
+      // Apply data to bound elements
+      setScene(prev => ({
+        ...prev,
+        elements: prev.elements.map(el => {
+          if (!el.binding) return el
+          const { field, format: explicitFormat, targetProp: targetOverride } = el.binding
+          const newProps = { ...el.props }
+
+          if (field === '__player__' || field === 'player_id' || el.type === 'player-image') {
+            newProps.playerId = row.player_id || row.pitcher_id || null
+            newProps.playerName = row.player_name || row.pitcher_name || ''
+            return { ...el, props: newProps }
+          }
+
+          const rawValue = row[field]
+          const format = getMetricFormat(field, explicitFormat as FormatType | undefined)
+          const formatted = formatValue(rawValue, format)
+          const target = targetOverride || autoTarget(el.type)
+          newProps[target] = formatted
+
+          if (el.type === 'stat-card' && !targetOverride) {
+            newProps.label = field.replace(/_/g, ' ').toUpperCase()
+          }
+          return { ...el, props: newProps }
+        }),
+      }))
+      setDataLoaded(true)
+    } catch (err) {
+      console.error('Fetch error:', err)
+    } finally {
+      setFetchLoading(false)
+    }
+  }, [globalFilter])
+
+  // ── Dynamic Slots (kept for backward compat) ──────────────────────────────
 
   const addDynamicSlot = useCallback((): string => {
     const id = Math.random().toString(36).slice(2, 10)
@@ -249,287 +294,7 @@ export default function TemplateBuilderPage() {
     return id
   }, [])
 
-  const updateDynamicSlot = useCallback((id: string, updates: Partial<DynamicSlot>) => {
-    setScene(prev => ({
-      ...prev,
-      dynamicSlots: (prev.dynamicSlots || []).map(s => s.id === id ? { ...s, ...updates } : s),
-    }))
-  }, [])
-
-  const removeDynamicSlot = useCallback((id: string) => {
-    setScene(prev => ({
-      ...prev,
-      dynamicSlots: (prev.dynamicSlots || []).filter(s => s.id !== id),
-      elements: prev.elements.map(e =>
-        e.dataBinding?.dynamicSlot === id ? { ...e, dataBinding: undefined } : e
-      ),
-    }))
-  }, [])
-
-  const [dynamicFetchLoading, setDynamicFetchLoading] = useState(false)
-
-  const fetchAllDynamic = useCallback(async () => {
-    const slots = scene.dynamicSlots
-    if (!slots?.length) return
-
-    const slotElements = new Map<string, { metrics: Set<string>; elements: SceneElement[] }>()
-    for (const el of scene.elements) {
-      if (el.dataBinding?.source !== 'dynamic' || !el.dataBinding.dynamicSlot) continue
-      const slotId = el.dataBinding.dynamicSlot
-      if (!slotElements.has(slotId)) slotElements.set(slotId, { metrics: new Set(), elements: [] })
-      const entry = slotElements.get(slotId)!
-      entry.metrics.add(el.dataBinding.metric)
-      entry.elements.push(el)
-    }
-
-    if (slotElements.size === 0) return
-    setDynamicFetchLoading(true)
-
-    try {
-      const fetches = Array.from(slotElements.entries()).map(async ([slotId, { metrics, elements }]) => {
-        const slot = slots.find(s => s.id === slotId)
-        if (!slot?.playerId) return
-
-        const params = new URLSearchParams({
-          playerId: String(slot.playerId),
-          metrics: Array.from(metrics).join(','),
-          gameYear: String(slot.gameYear),
-        })
-        if (slot.pitchType) params.set('pitchType', slot.pitchType)
-
-        const res = await fetch(`/api/scene-stats?${params}`)
-        const data = await res.json()
-        const stats = data.stats || {}
-
-        for (const el of elements) {
-          const metric = el.dataBinding!.metric
-          const val = stats[metric]
-          applyStatToElement(el.id, el.type, metric, val, slot.playerName || '', `${slot.playerName || ''} ${slot.gameYear}`.trim())
-        }
-      })
-
-      await Promise.all(fetches)
-    } catch (err) {
-      console.error('Fetch all dynamic error:', err)
-    } finally {
-      setDynamicFetchLoading(false)
-    }
-  }, [scene.elements, scene.dynamicSlots, updateElementProps])
-
-  // ── Input Sections ─────────────────────────────────────────────────────
-
-  const addInputSection = useCallback((name: string, elementIds: string[]) => {
-    const sectionId = Math.random().toString(36).slice(2, 10)
-    const section: InputSection = {
-      id: sectionId,
-      label: name,
-      elementIds,
-      enabledInputs: [],
-      playerType: 'pitcher',
-      gameYear: 2025,
-    }
-    setInputSections(prev => [...prev, section])
-    // Set sectionBinding on each element
-    setScene(prev => ({
-      ...prev,
-      elements: prev.elements.map(e => {
-        if (!elementIds.includes(e.id)) return e
-        const binding: SectionBinding = e.type === 'player-image'
-          ? { sectionId, metric: '__player__' }
-          : { sectionId, metric: 'avg_velo', format: '1f' }
-        return { ...e, sectionBinding: binding }
-      }),
-    }))
-  }, [])
-
-  const updateInputSection = useCallback((id: string, updates: Partial<InputSection>) => {
-    setInputSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
-  }, [])
-
-  const addElementsToSection = useCallback((sectionId: string, elementIds: string[]) => {
-    setInputSections(prev => prev.map(s =>
-      s.id === sectionId ? { ...s, elementIds: [...s.elementIds, ...elementIds] } : s
-    ))
-    setScene(prev => ({
-      ...prev,
-      elements: prev.elements.map(e => {
-        if (!elementIds.includes(e.id)) return e
-        const binding: SectionBinding = e.type === 'player-image'
-          ? { sectionId, metric: '__player__' }
-          : { sectionId, metric: 'avg_velo', format: '1f' }
-        return { ...e, sectionBinding: binding }
-      }),
-    }))
-  }, [])
-
-  const removeInputSection = useCallback((id: string) => {
-    setInputSections(prev => prev.filter(s => s.id !== id))
-    // Clear sectionBinding from elements that belong to this section
-    setScene(prev => ({
-      ...prev,
-      elements: prev.elements.map(e =>
-        e.sectionBinding?.sectionId === id ? { ...e, sectionBinding: undefined } : e
-      ),
-    }))
-  }, [])
-
-  const fetchInputSection = useCallback(async (sectionId: string) => {
-    const section = inputSections.find(s => s.id === sectionId)
-    if (!section) return
-
-    const sectionElements = scene.elements.filter(e =>
-      e.sectionBinding?.sectionId === sectionId
-    )
-    if (sectionElements.length === 0) return
-
-    setSectionFetchLoading(sectionId)
-    try {
-      // ── Live Game branch ──
-      if (section.globalInputType === 'live-game' && section.gamePk) {
-        const res = await fetch(`/api/scores?date=${section.gameDate || ''}`)
-        const data = await res.json()
-        const games = data.games || []
-        const game = games.find((g: any) => g.gamePk === section.gamePk)
-        if (!game) { setSectionFetchLoading(null); return }
-
-        const half = game.inningHalf === 'Top' ? 'TOP' : game.inningHalf === 'Bottom' ? 'BOT' : ''
-        const awayAbbrev = game.away.abbrev || ''
-        const homeAbbrev = game.home.abbrev || ''
-        const outsNum = game.outs ?? 0
-
-        const stats: Record<string, string> = {
-          away_abbrev: awayAbbrev,
-          home_abbrev: homeAbbrev,
-          away_name: game.away.name || '',
-          home_name: game.home.name || '',
-          // Themed variants (text value only — color applied separately)
-          away_abbrev_themed: awayAbbrev,
-          home_abbrev_themed: homeAbbrev,
-          matchup_themed: `${awayAbbrev} - ${homeAbbrev}`,
-          // Scores as integers
-          away_score: String(Math.round(game.away.score ?? 0)),
-          home_score: String(Math.round(game.home.score ?? 0)),
-          inning_display: game.inningHalf && game.inningOrdinal ? `${game.inningHalf} ${game.inningOrdinal}` : '',
-          inning_half: game.inningHalf || '',
-          inning_ordinal: game.inningOrdinal || '',
-          outs: `${outsNum} ${outsNum === 1 ? 'out' : 'outs'}`,
-          game_state: game.state || '',
-          detailed_state: game.detailedState || '',
-          state_line: game.inningOrdinal ? `${half} ${game.inningOrdinal} \u00b7 ${outsNum} OUT` : game.detailedState || '',
-          on_first: game.onFirst ? '\u25c9' : '\u25cb',
-          on_second: game.onSecond ? '\u25c9' : '\u25cb',
-          on_third: game.onThird ? '\u25c9' : '\u25cb',
-          pitcher_name: game.pitcher?.name || '',
-          batter_name: game.batter?.name || '',
-          probable_away: game.probableAway?.name || '',
-          probable_home: game.probableHome?.name || '',
-        }
-
-        // Resolve team colors for themed metrics
-        const awayColor = MLB_TEAM_COLORS[awayAbbrev] || '#ffffff'
-        const homeColor = MLB_TEAM_COLORS[homeAbbrev] || '#ffffff'
-        const themedColors: Record<string, string> = {
-          away_abbrev_themed: awayColor,
-          home_abbrev_themed: homeColor,
-          matchup_themed: awayColor,
-        }
-
-        for (const el of sectionElements) {
-          if (!el.sectionBinding) continue
-          const { metric } = el.sectionBinding
-          const val = stats[metric] ?? ''
-          // Skip format — game values are pre-formatted strings
-          applyStatToElement(el.id, el.type, metric, val, '', '')
-          // Apply team color for themed metrics
-          if (themedColors[metric]) {
-            updateElementProps(el.id, { color: themedColors[metric] })
-          }
-        }
-        setSectionFetchLoading(null)
-        return
-      }
-
-      // ── Player / standard branch ──
-      if (!section.playerId) { setSectionFetchLoading(null); return }
-
-      // Collect metrics (excluding __player__)
-      const metrics = new Set<string>()
-      for (const el of sectionElements) {
-        if (el.sectionBinding && el.sectionBinding.metric !== '__player__') {
-          metrics.add(el.sectionBinding.metric)
-        }
-      }
-
-      let stats: Record<string, any> = {}
-      if (metrics.size > 0) {
-        const params = new URLSearchParams({
-          playerId: String(section.playerId),
-          playerType: section.playerType,
-          metrics: Array.from(metrics).join(','),
-          gameYear: String(section.gameYear),
-        })
-        if (section.pitchType) params.set('pitchType', section.pitchType)
-        const res = await fetch(`/api/scene-stats?${params}`)
-        const data = await res.json()
-        stats = data.stats || {}
-      }
-
-      // Apply stats to elements
-      for (const el of sectionElements) {
-        if (!el.sectionBinding) continue
-        const { metric, format } = el.sectionBinding
-
-        if (metric === '__player__') {
-          // Player-image: set playerId and playerName
-          updateElementProps(el.id, { playerId: section.playerId, playerName: section.playerName || '' })
-        } else {
-          const val = stats[metric]
-          const sublabel = `${section.playerName || ''} ${section.gameYear}`.trim()
-          applyStatToElement(el.id, el.type, metric, val, section.playerName || '', sublabel, format)
-        }
-      }
-    } catch (err) {
-      console.error('Section fetch error:', err)
-    } finally {
-      setSectionFetchLoading(null)
-    }
-  }, [inputSections, scene.elements, updateElementProps])
-
-  // ── Live game auto-refresh polling ────────────────────────────────────────
-  const liveGameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    // Clear previous interval
-    if (liveGameIntervalRef.current) {
-      clearInterval(liveGameIntervalRef.current)
-      liveGameIntervalRef.current = null
-    }
-
-    // Find live-game sections with a gamePk set
-    const liveGameSections = inputSections.filter(
-      s => s.globalInputType === 'live-game' && s.gamePk
-    )
-    if (liveGameSections.length === 0) return
-
-    liveGameIntervalRef.current = setInterval(() => {
-      for (const section of liveGameSections) {
-        fetchInputSection(section.id)
-      }
-    }, 30_000)
-
-    return () => {
-      if (liveGameIntervalRef.current) {
-        clearInterval(liveGameIntervalRef.current)
-        liveGameIntervalRef.current = null
-      }
-    }
-  }, [inputSections, fetchInputSection])
-
-  const highlightSectionElements = useCallback((ids: string[]) => {
-    if (ids.length === 0) return
-    setSelectedIds(new Set(ids))
-    setSelectedId(ids[0])
-  }, [])
+  // ── Section Binding (legacy, kept for PropertiesPanel) ────────────────────
 
   const updateSectionBinding = useCallback((id: string, binding: SectionBinding | undefined) => {
     setScene(prev => ({
@@ -542,21 +307,6 @@ export default function TemplateBuilderPage() {
     (id: string) => {
       setScene(prev => ({ ...prev, elements: prev.elements.filter(e => e.id !== id) }))
       if (selectedId === id) setSelectedId(null)
-      // Also remove from repeater if needed
-      setRepeater(prev => {
-        if (!prev) return prev
-        const newIds = prev.elementIds.filter(eid => eid !== id)
-        if (newIds.length === 0) return null
-        return { ...prev, elementIds: newIds }
-      })
-      // Also remove from input sections; remove section if empty
-      setInputSections(prev => {
-        const updated = prev.map(s => ({
-          ...s,
-          elementIds: s.elementIds.filter(eid => eid !== id),
-        }))
-        return updated.filter(s => s.elementIds.length > 0)
-      })
     },
     [selectedId]
   )
@@ -572,6 +322,7 @@ export default function TemplateBuilderPage() {
         y: src.y + 30,
         zIndex: Math.max(...scene.elements.map(e => e.zIndex), 0) + 1,
         props: { ...src.props },
+        binding: src.binding ? { ...src.binding } : undefined,
       }
       setScene(prev => ({ ...prev, elements: [...prev.elements, dup] }))
       setSelectedId(dup.id)
@@ -604,7 +355,7 @@ export default function TemplateBuilderPage() {
     setSelectedId(ids[0])
   }, [])
 
-  // ── Template Binding ──────────────────────────────────────────────────────
+  // ── Template Binding (legacy) ─────────────────────────────────────────────
 
   const updateTemplateBinding = useCallback((id: string, binding: TemplateBinding | undefined) => {
     setScene(prev => ({
@@ -612,7 +363,6 @@ export default function TemplateBuilderPage() {
       elements: prev.elements.map(e => {
         if (e.id !== id) return e
         const updated = { ...e, templateBinding: binding }
-        // Update display text to show placeholder
         if (binding) {
           const newProps = { ...e.props }
           const target = binding.targetProp || autoTarget(e.type)
@@ -628,24 +378,7 @@ export default function TemplateBuilderPage() {
     }))
   }, [])
 
-  // ── Repeater ──────────────────────────────────────────────────────────────
-
-  function createRepeater() {
-    if (selectedIds.size === 0) return
-    setRepeater({
-      enabled: true,
-      elementIds: Array.from(selectedIds),
-      direction: 'vertical',
-      offset: 160,
-      count: 5,
-    })
-  }
-
-  function clearRepeater() {
-    setRepeater(null)
-  }
-
-  // ── Preview ───────────────────────────────────────────────────────────────
+  // ── Preview ─────────────────────────────────────────────────────────────
 
   function togglePreview() {
     setPreviewing(p => !p)
@@ -667,31 +400,35 @@ export default function TemplateBuilderPage() {
       elements: scene.elements,
       schemaType,
       repeater,
+      globalFilter,
       created_at: '',
       updated_at: '',
     }
 
     const rebuild = createCustomRebuild(template)
-    const sampleData = getSampleData(schemaType)
-    const config = { templateId: 'preview', playerType: 'pitcher' as const, primaryStat: 'avg_velo', dateRange: { type: 'season' as const, year: 2025 } }
+    const sampleData = getSampleDataForFilter(globalFilter.type, globalFilter.playerType)
+    const config = { templateId: 'preview', playerType: (globalFilter.playerType || 'pitcher') as 'pitcher' | 'batter', primaryStat: 'avg_velo', dateRange: { type: 'season' as const, year: 2025 } }
     return rebuild(config, sampleData)
   })()
 
-  // ── Ghost elements for repeater preview on canvas ─────────────────────────
+  // ── Ghost elements for leaderboard repeater preview ──────────────────────
 
   const displayScene = (() => {
     if (previewing) return previewScene
-    if (!repeater?.enabled) return scene
+    if (globalFilter.type !== 'leaderboard') return scene
 
-    // Add ghost copies at 30% opacity
-    const repeaterIds = new Set(repeater.elementIds)
-    const templateEls = scene.elements.filter(el => repeaterIds.has(el.id))
+    // Show ghost copies for leaderboard repeater
+    const count = globalFilter.count || 5
+    const direction = globalFilter.repeaterDirection || 'vertical'
+    const offset = globalFilter.repeaterOffset || 140
+    const boundEls = scene.elements.filter(el => el.binding)
+    if (boundEls.length === 0) return scene
+
     const ghosts: SceneElement[] = []
-
-    for (let i = 1; i < repeater.count; i++) {
-      for (const tmplEl of templateEls) {
-        const dx = repeater.direction === 'horizontal' ? repeater.offset * i : 0
-        const dy = repeater.direction === 'vertical' ? repeater.offset * i : 0
+    for (let i = 1; i < count; i++) {
+      for (const tmplEl of boundEls) {
+        const dx = direction === 'horizontal' ? offset * i : 0
+        const dy = direction === 'vertical' ? offset * i : 0
         ghosts.push({
           ...tmplEl,
           id: `ghost_${tmplEl.id}_${i}`,
@@ -707,7 +444,7 @@ export default function TemplateBuilderPage() {
     return { ...scene, elements: [...scene.elements, ...ghosts] }
   })()
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     setSaving(true)
@@ -724,6 +461,7 @@ export default function TemplateBuilderPage() {
         schemaType,
         repeater,
         inputSections,
+        globalFilter,
         base_template_id: forkId || undefined,
       }
 
@@ -742,7 +480,6 @@ export default function TemplateBuilderPage() {
         const data = await res.json()
         if (data.id) {
           setSaveId(data.id)
-          // Update URL without full navigation
           window.history.replaceState(null, '', `/design/template-builder?edit=${data.id}`)
         }
       }
@@ -753,7 +490,7 @@ export default function TemplateBuilderPage() {
     }
   }
 
-  // ── Zoom ──────────────────────────────────────────────────────────────────
+  // ── Zoom ────────────────────────────────────────────────────────────────
 
   function zoomIn() {
     setZoom(z => {
@@ -773,7 +510,7 @@ export default function TemplateBuilderPage() {
     setScene(prev => ({ ...prev, width: w, height: h }))
   }
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -807,6 +544,34 @@ export default function TemplateBuilderPage() {
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
+  // ── Starter Template instantiation ────────────────────────────────────────
+
+  function instantiateStarter(starter: StarterTemplate) {
+    const elements: SceneElement[] = starter.elements.map(def => {
+      const el = createElement(def.type, def.x + def.width / 2, def.y + def.height / 2)
+      el.width = def.width
+      el.height = def.height
+      el.x = def.x
+      el.y = def.y
+      if (def.props) el.props = { ...el.props, ...def.props }
+      if (def.bindingField) el.binding = { field: def.bindingField }
+      return el
+    })
+
+    setScene({
+      id: Math.random().toString(36).slice(2, 10),
+      name: starter.name,
+      width: starter.canvasWidth,
+      height: starter.canvasHeight,
+      background: starter.background,
+      elements,
+      duration: 5,
+      fps: 30,
+    })
+    setGlobalFilter(starter.defaultFilter)
+    setShowStarterPicker(false)
+  }
+
   // ── Template Loading ──────────────────────────────────────────────────────
 
   function loadSceneTemplate(loaded: Scene) {
@@ -822,7 +587,7 @@ export default function TemplateBuilderPage() {
     const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
     const built = template.rebuild(config, sampleData)
     setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
-    setSchemaType('leaderboard')
+    setGlobalFilter({ type: 'leaderboard', playerType: 'pitcher', count: 5, repeaterDirection: 'vertical', repeaterOffset: 160 })
     setSelectedId(null)
     setSelectedIds(new Set())
   }
@@ -838,22 +603,36 @@ export default function TemplateBuilderPage() {
       duration: 5,
       fps: 30,
     })
+    if (template.globalFilter) {
+      setGlobalFilter(template.globalFilter)
+    } else {
+      const migrated = migrateTemplate(template)
+      if (migrated.globalFilter) setGlobalFilter(migrated.globalFilter)
+    }
     setSchemaType(template.schemaType)
     setRepeater(template.repeater)
-    setInputSections(normalizeSections(template.inputSections || []))
+    setInputSections(template.inputSections || [])
     setSaveId(template.id)
     setSelectedId(null)
     setSelectedIds(new Set())
-    // Update URL
     window.history.replaceState(null, '', `/design/template-builder?edit=${template.id}`)
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────
 
-  const boundCount = scene.elements.filter(e => e.templateBinding).length
+  const boundCount = scene.elements.filter(e => e.binding).length
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
+      {/* Starter Template Picker modal */}
+      {showStarterPicker && (
+        <StarterTemplatePicker
+          onSelect={instantiateStarter}
+          onBlank={() => setShowStarterPicker(false)}
+          onClose={() => setShowStarterPicker(false)}
+        />
+      )}
+
       {/* Top bar */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center gap-3 shrink-0">
         {/* Back */}
@@ -875,14 +654,6 @@ export default function TemplateBuilderPage() {
         <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
           Template Builder
         </span>
-
-        <div className="w-px h-5 bg-zinc-800" />
-
-        {/* Schema selector */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-zinc-500">Schema</span>
-          <DataSchemaSelector value={schemaType} onChange={setSchemaType} />
-        </div>
 
         <div className="w-px h-5 bg-zinc-800" />
 
@@ -962,11 +733,35 @@ export default function TemplateBuilderPage() {
 
       {/* Main workspace */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Element Library + Themes */}
+        {/* Left panel: Global Filter + Data Fields + Objects/Themes */}
         {!previewing && (
-          <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 flex flex-col">
+          <div className="w-56 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 flex flex-col">
+            {/* Global Filter */}
+            <GlobalFilterPanel
+              globalFilter={globalFilter}
+              onChange={gf => { setGlobalFilter(gf); setDataLoaded(false) }}
+              onFetchData={handleFetchData}
+              dataLoaded={dataLoaded}
+              fetchLoading={fetchLoading}
+            />
+
+            <div className="h-px bg-zinc-800 shrink-0" />
+
+            {/* Data Fields */}
+            <div className="shrink-0 max-h-[300px] overflow-y-auto">
+              <DataFieldsPanel
+                filterType={globalFilter.type}
+                playerType={globalFilter.playerType}
+                selectedIds={selectedIds}
+                onFieldClick={handleFieldClick}
+              />
+            </div>
+
+            <div className="h-px bg-zinc-800 shrink-0" />
+
+            {/* Objects / Themes tabs */}
             <div className="flex border-b border-zinc-800 shrink-0">
-              {(['elements', 'themes'] as const).map(tab => (
+              {(['objects', 'themes'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setLeftTab(tab)}
@@ -981,7 +776,7 @@ export default function TemplateBuilderPage() {
               ))}
             </div>
             <div className="flex-1 overflow-y-auto">
-              {leftTab === 'elements'
+              {leftTab === 'objects'
                 ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadSceneTemplate} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
                 : <ThemePickerPanel selectedThemeId={activeThemeId} onApply={handleApplyTheme} />
               }
@@ -1001,10 +796,12 @@ export default function TemplateBuilderPage() {
             onSelectMany={previewing ? () => {} : handleSelectMany}
             onUpdateElement={previewing ? () => {} : updateElement}
             canvasRef={canvasRef}
+            onDropField={previewing ? undefined : handleDropField}
+            showBindingTags={!previewing}
           />
         </div>
 
-        {/* Right: Properties Panel or Repeater Panel */}
+        {/* Right: Properties Panel */}
         {!previewing && (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             {selectedElement && selectedIds.size <= 1 ? (
@@ -1014,7 +811,7 @@ export default function TemplateBuilderPage() {
                   onUpdate={updates => updateElement(selectedElement.id, updates)}
                   onUpdateProps={propUpdates => updateElementProps(selectedElement.id, propUpdates)}
                   onUpdateBinding={binding => updateBinding(selectedElement.id, binding)}
-                  onFetchBinding={() => fetchBinding(selectedElement.id)}
+                  onFetchBinding={() => {}}
                   onDelete={() => deleteElement(selectedElement.id)}
                   onDuplicate={() => duplicateElement(selectedElement.id)}
                   bindingLoading={bindingLoading}
@@ -1023,47 +820,35 @@ export default function TemplateBuilderPage() {
                   inputSections={inputSections}
                   onUpdateSectionBinding={binding => updateSectionBinding(selectedElement.id, binding)}
                 />
-                {/* Template binding section */}
-                <div className="px-3 pb-3">
-                  <TemplateBindingSection
-                    element={selectedElement}
-                    schemaType={schemaType}
-                    onUpdateBinding={binding => updateTemplateBinding(selectedElement.id, binding)}
-                  />
-                </div>
+                {/* Binding display */}
+                {selectedElement.binding && (
+                  <div className="px-3 pb-3">
+                    <div className="bg-zinc-800/50 rounded-lg p-2.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Binding</span>
+                        <button
+                          onClick={() => updateElement(selectedElement.id, { binding: undefined })}
+                          className="text-[10px] text-red-400 hover:text-red-300 transition"
+                        >
+                          Unbind
+                        </button>
+                      </div>
+                      <div className="text-xs text-emerald-400 font-mono">{selectedElement.binding.field}</div>
+                      {selectedElement.binding.format && (
+                        <div className="text-[10px] text-zinc-500">Format: {selectedElement.binding.format}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="p-3 space-y-4">
-                <InputSectionsPanel
-                  sections={inputSections}
-                  selectedIds={selectedIds}
-                  elements={scene.elements}
-                  onAddSection={addInputSection}
-                  onUpdateSection={updateInputSection}
-                  onRemoveSection={removeInputSection}
-                  onFetchSection={fetchInputSection}
-                  onSelectElements={highlightSectionElements}
-                  onAddElementsToSection={addElementsToSection}
-                  onUpdateElementBinding={(elId, binding) => updateSectionBinding(elId, binding)}
-                  onHoverElement={(id) => setHighlightedIds(id ? new Set([id]) : new Set())}
-                  fetchLoading={sectionFetchLoading}
-                />
-                <div className="h-px bg-zinc-800" />
-                <DynamicSlotsPanel
-                  slots={scene.dynamicSlots || []}
-                  onUpdateSlot={updateDynamicSlot}
-                  onAddSlot={addDynamicSlot}
-                  onRemoveSlot={removeDynamicSlot}
-                  onFetchAll={fetchAllDynamic}
-                  fetchLoading={dynamicFetchLoading}
-                />
-                <RepeaterPanel
-                  repeater={repeater}
-                  selectedIds={selectedIds}
-                  onCreateRepeater={createRepeater}
-                  onUpdateRepeater={setRepeater}
-                  onClearRepeater={clearRepeater}
-                />
+              <div className="p-3 space-y-3">
+                <div className="text-[11px] text-zinc-500">
+                  {selectedIds.size > 1
+                    ? `${selectedIds.size} elements selected — click a Data Field to bind all`
+                    : 'Select an element to edit properties, or drag a Data Field onto the canvas'
+                  }
+                </div>
               </div>
             )}
           </div>
@@ -1079,21 +864,16 @@ export default function TemplateBuilderPage() {
           {scene.width}&times;{scene.height}
         </span>
         <span className="text-[10px] text-emerald-600">
-          Schema: {schemaType}
+          Filter: {globalFilter.type}
         </span>
         {boundCount > 0 && (
           <span className="text-[10px] text-emerald-500">
             {boundCount} bound
           </span>
         )}
-        {inputSections.length > 0 && (
+        {globalFilter.type === 'leaderboard' && (
           <span className="text-[10px] text-emerald-500">
-            {inputSections.length} section{inputSections.length !== 1 ? 's' : ''}
-          </span>
-        )}
-        {repeater?.enabled && (
-          <span className="text-[10px] text-emerald-500">
-            Repeater: {repeater.count} rows, {repeater.offset}px {repeater.direction}
+            Repeater: {globalFilter.count || 5} rows, {globalFilter.repeaterOffset || 140}px {globalFilter.repeaterDirection || 'vertical'}
           </span>
         )}
         {saveId && (

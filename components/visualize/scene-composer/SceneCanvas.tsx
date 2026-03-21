@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useState, useRef, useEffect } from 'react'
-import { Scene, SceneElement, Guide, Effect } from '@/lib/sceneTypes'
+import { Scene, SceneElement, Guide, Effect, ElementBinding } from '@/lib/sceneTypes'
+import { fieldColor, fieldShortLabel } from '@/lib/filterFieldSchemas'
 import renderElementContent from './ElementRenderer'
 
 // ── Snap Guides ──────────────────────────────────────────────────────────────
@@ -190,9 +191,11 @@ interface Props {
   showRulers?: boolean
   penToolActive?: boolean
   enteredGroupId?: string | null
+  onDropField?: (field: string, fieldType: string, x: number, y: number, targetElementId?: string) => void
+  showBindingTags?: boolean
 }
 
-export default function SceneCanvas({ scene, selectedId, selectedIds, highlightedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef, showGrid = true, showGuides = true, snapToElements = true, snapToGuides = true, customGuides, enteredGroupId }: Props) {
+export default function SceneCanvas({ scene, selectedId, selectedIds, highlightedIds, zoom, onSelect, onSelectMany, onUpdateElement, canvasRef, showGrid = true, showGuides = true, snapToElements = true, snapToGuides = true, customGuides, enteredGroupId, onDropField, showBindingTags }: Props) {
   const [drag, _setDrag] = useState<DragState>(null)
   const dragRef = useRef<DragState>(null)
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([])
@@ -387,6 +390,35 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
   const multiSelected = allSelected.size > 1
   const groupBBox = multiSelected ? getGroupBBox(allSelected, scene.elements) : null
 
+  // ── Drag-to-bind handlers ─────────────────────────────────────────────────
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!onDropField) return
+    if (e.dataTransfer.types.includes('application/x-triton-field')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }, [onDropField])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    if (!onDropField) return
+    const raw = e.dataTransfer.getData('application/x-triton-field')
+    if (!raw) return
+    e.preventDefault()
+    const { field, fieldType } = JSON.parse(raw)
+    // Convert page coords to scene coords (accounting for zoom + canvas offset)
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const x = (e.clientX - rect.left) / zoom
+    const y = (e.clientY - rect.top) / zoom
+    // Hit-test: find the topmost element under the drop point
+    const sortedByZ = [...scene.elements].sort((a, b) => b.zIndex - a.zIndex)
+    const target = sortedByZ.find(el =>
+      x >= el.x && x <= el.x + el.width &&
+      y >= el.y && y <= el.y + el.height
+    )
+    onDropField(field, fieldType, x, y, target?.id)
+  }, [onDropField, zoom, scene.elements, canvasRef])
+
   return (
     <div
       className="w-full h-full overflow-auto flex items-center justify-center"
@@ -409,6 +441,8 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
           transformOrigin: 'center center',
         }}
         onMouseDown={handleCanvasMouseDown}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
         {/* Grid overlay */}
         {showGrid && (
@@ -596,6 +630,16 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
               onMouseDown={e => handleMouseDown(e, el.id)}
             >
               {renderElementContent(el)}
+
+              {/* Binding tag */}
+              {showBindingTags && el.binding?.field && (
+                <div
+                  className="absolute -top-4 right-0 px-1.5 py-0.5 rounded-full text-[8px] font-bold text-white pointer-events-none whitespace-nowrap"
+                  style={{ background: fieldColor(el.binding.field), zIndex: 9999 }}
+                >
+                  {fieldShortLabel(el.binding.field)}
+                </div>
+              )}
 
               {/* Resize handles — single selection only */}
               {showHandles &&

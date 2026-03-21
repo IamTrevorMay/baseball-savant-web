@@ -32,6 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       elements: data.elements || [],
       schemaType: data.input_fields?.schemaType || 'generic',
       inputSections: data.input_fields?.inputSections || [],
+      globalFilter: data.input_fields?.globalFilter || undefined,
       repeater: data.data_query || null,
       base_template_id: data.base_template_id,
       created_at: data.created_at,
@@ -58,10 +59,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.height !== undefined) updates.height = body.height
     if (body.background !== undefined) updates.background = body.background
     if (body.elements !== undefined) updates.elements = body.elements
-    if (body.schemaType !== undefined || body.inputSections !== undefined) {
+    if (body.schemaType !== undefined || body.inputSections !== undefined || body.globalFilter !== undefined) {
       updates.input_fields = {
         schemaType: body.schemaType ?? 'generic',
         inputSections: body.inputSections || [],
+        globalFilter: body.globalFilter || undefined,
       }
     }
     if (body.repeater !== undefined) updates.data_query = body.repeater

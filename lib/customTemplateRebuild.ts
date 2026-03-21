@@ -3,7 +3,7 @@
  * Resolves bindings and expands repeaters to produce a Scene.
  */
 
-import { Scene, SceneElement, CustomTemplateRecord, TemplateBinding, RepeaterConfig, TemplateConfig } from './sceneTypes'
+import { Scene, SceneElement, CustomTemplateRecord, TemplateBinding, RepeaterConfig, TemplateConfig, GlobalFilter, GlobalFilterType, ElementBinding } from './sceneTypes'
 import { formatValue, getMetricFormat, type FormatType } from './templateBindingSchemas'
 import { SCENE_METRICS, GAME_METRICS } from './reportMetrics'
 
@@ -32,6 +32,13 @@ function resolvePlayerFromRow(row: any): { playerId: any; playerName: string } {
 // ── Resolve a single element's binding against one data row ─────────────────
 
 function resolveBinding(element: SceneElement, row: any): SceneElement {
+  // New binding system: check element.binding first
+  const eBinding = element.binding
+  if (eBinding) {
+    return resolveElementBinding(element, eBinding, row)
+  }
+
+  // Fall back to old binding types
   const binding = element.templateBinding
   const sBinding = element.sectionBinding
 
@@ -100,6 +107,55 @@ function resolveBinding(element: SceneElement, row: any): SceneElement {
   return { ...element, props: newProps }
 }
 
+// ── New binding resolver for ElementBinding ─────────────────────────────────
+
+function resolveElementBinding(element: SceneElement, binding: ElementBinding, row: any): SceneElement {
+  const { field, format: explicitFormat, targetProp: targetOverride } = binding
+
+  // Player binding
+  if (field === '__player__' || field === 'player_id') {
+    if (element.type === 'player-image') {
+      const { playerId, playerName } = resolvePlayerFromRow(row)
+      return { ...element, props: { ...element.props, playerId, playerName } }
+    }
+  }
+
+  // Player-image auto-resolves to headshot regardless of field
+  if (element.type === 'player-image') {
+    const { playerId, playerName } = resolvePlayerFromRow(row)
+    return { ...element, props: { ...element.props, playerId, playerName } }
+  }
+
+  const rawValue = getNestedValue(row, field)
+  const format = getMetricFormat(field, explicitFormat as FormatType | undefined)
+  const formatted = formatValue(rawValue, format)
+
+  const targetProp = targetOverride || autoDetectTarget(element)
+  const newProps = { ...element.props }
+
+  if (targetProp === 'playerId') {
+    newProps.playerId = rawValue
+    newProps.playerName = row.player_name || row.pitcher_name || ''
+  } else {
+    newProps[targetProp] = formatted
+  }
+
+  // Stat-card label auto-fill
+  if (element.type === 'stat-card' && !targetOverride) {
+    const label = METRIC_LABELS[field]
+    if (label) newProps.label = label
+  }
+
+  // Comparison-bar label auto-fill
+  if (element.type === 'comparison-bar' && !targetOverride) {
+    const playerName = row.player_name || row.pitcher_name || ''
+    const label = METRIC_LABELS[field] || field.replace(/_/g, ' ')
+    newProps.label = playerName ? `${playerName} - ${label}` : label
+  }
+
+  return { ...element, props: newProps }
+}
+
 function autoDetectTarget(element: SceneElement): string {
   switch (element.type) {
     case 'text': return 'text'
@@ -148,16 +204,66 @@ function expandRepeater(
   return result
 }
 
+// ── Expand repeater from globalFilter (embedded repeater config) ────────────
+
+function expandGlobalFilterRepeater(
+  elements: SceneElement[],
+  globalFilter: GlobalFilter,
+  data: Record<string, any>[]
+): SceneElement[] {
+  const count = Math.min(globalFilter.count || 5, data.length)
+  const direction = globalFilter.repeaterDirection || 'vertical'
+  const offset = globalFilter.repeaterOffset || 140
+
+  // All bound elements are repeater elements in leaderboard mode
+  const boundEls = elements.filter(el => el.binding)
+  const unboundEls = elements.filter(el => !el.binding)
+
+  if (boundEls.length === 0) return elements
+
+  const result: SceneElement[] = [...unboundEls]
+
+  for (let i = 0; i < count; i++) {
+    const row = data[i]
+    for (const tmplEl of boundEls) {
+      const dx = direction === 'horizontal' ? offset * i : 0
+      const dy = direction === 'vertical' ? offset * i : 0
+
+      let cloned: SceneElement = {
+        ...tmplEl,
+        id: `${tmplEl.id}_r${i}`,
+        x: tmplEl.x + dx,
+        y: tmplEl.y + dy,
+        props: { ...tmplEl.props },
+      }
+
+      cloned = resolveBinding(cloned, row)
+      result.push(cloned)
+    }
+  }
+
+  return result
+}
+
 // ── Main entry: create a rebuild function from a custom template ────────────
 
 export function createCustomRebuild(template: CustomTemplateRecord) {
   return function rebuild(_config: TemplateConfig, data: any): Scene {
     let elements = template.elements.map(el => ({ ...el, props: { ...el.props } }))
 
-    // If data is an array and we have a repeater, expand it
     const dataRows = Array.isArray(data) ? data : data ? [data] : []
 
-    if (template.repeater?.enabled && dataRows.length > 0) {
+    // New path: globalFilter with embedded repeater
+    if (template.globalFilter) {
+      if (template.globalFilter.type === 'leaderboard' && dataRows.length > 1) {
+        elements = expandGlobalFilterRepeater(elements, template.globalFilter, dataRows)
+      } else {
+        const row = dataRows[0] || {}
+        elements = elements.map(el => resolveBinding(el, row))
+      }
+    }
+    // Old path: explicit repeater config
+    else if (template.repeater?.enabled && dataRows.length > 0) {
       elements = expandRepeater(elements, template.repeater, dataRows)
     } else {
       // No repeater — resolve bindings against first data row
@@ -176,4 +282,77 @@ export function createCustomRebuild(template: CustomTemplateRecord) {
       fps: 30,
     }
   }
+}
+
+// ── Migration: convert old template format to new globalFilter format ───────
+
+export function migrateTemplate(record: CustomTemplateRecord): CustomTemplateRecord {
+  // Already migrated
+  if (record.globalFilter) return record
+
+  const migrated = { ...record }
+
+  // Derive globalFilter from schemaType + inputSections
+  const sections = record.inputSections || []
+  const firstSection = sections[0]
+
+  if (firstSection?.globalInputType === 'live-game') {
+    migrated.globalFilter = {
+      type: 'live-game',
+      gameDate: firstSection.gameDate,
+      gamePk: firstSection.gamePk,
+    }
+  } else if (firstSection?.globalInputType === 'leaderboard') {
+    migrated.globalFilter = {
+      type: 'leaderboard',
+      playerType: firstSection.playerType,
+      rankStat: firstSection.primaryStat,
+      count: record.repeater?.count || 5,
+      sortDir: firstSection.sortDir,
+      minSample: firstSection.minSample,
+      repeaterDirection: record.repeater?.direction || 'vertical',
+      repeaterOffset: record.repeater?.offset || 140,
+      dateRange: firstSection.dateRange || { type: 'season', year: firstSection.gameYear },
+    }
+  } else if (firstSection?.globalInputType === 'team') {
+    migrated.globalFilter = {
+      type: 'team',
+      playerType: firstSection.playerType,
+      dateRange: firstSection.dateRange || { type: 'season', year: firstSection.gameYear },
+    }
+  } else if (record.schemaType === 'leaderboard') {
+    migrated.globalFilter = {
+      type: 'leaderboard',
+      playerType: 'pitcher',
+      count: record.repeater?.count || 5,
+      repeaterDirection: record.repeater?.direction || 'vertical',
+      repeaterOffset: record.repeater?.offset || 140,
+    }
+  } else {
+    // Default to single-player
+    migrated.globalFilter = {
+      type: 'single-player',
+      playerType: firstSection?.playerType || 'pitcher',
+      playerId: firstSection?.playerId,
+      playerName: firstSection?.playerName,
+      dateRange: firstSection?.dateRange || (firstSection ? { type: 'season', year: firstSection.gameYear } : undefined),
+      pitchType: firstSection?.pitchType,
+    }
+  }
+
+  // Convert sectionBindings to element.binding on elements
+  migrated.elements = record.elements.map(el => {
+    if (el.binding) return el  // already has new binding
+    const sB = el.sectionBinding
+    const tB = el.templateBinding
+    if (sB) {
+      return { ...el, binding: { field: sB.metric, format: sB.format, targetProp: sB.targetProp } as any }
+    }
+    if (tB) {
+      return { ...el, binding: { field: tB.fieldPath, format: tB.format, targetProp: tB.targetProp } as any }
+    }
+    return el
+  })
+
+  return migrated
 }

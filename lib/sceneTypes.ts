@@ -144,9 +144,48 @@ export interface CustomTemplateRecord {
   schemaType: DataSchemaType
   repeater: RepeaterConfig | null
   inputSections?: InputSection[]
+  globalFilter?: GlobalFilter
   base_template_id?: string
   created_at: string
   updated_at: string
+}
+
+// ── Element Binding (new simplified binding) ─────────────────────────────
+
+export interface ElementBinding {
+  field: string        // 'avg_velo', 'player_name', '__player__', etc.
+  format?: FormatType  // auto-detected from METRIC_DEFAULT_FORMAT if omitted
+  targetProp?: string  // auto-detected from element type if omitted
+}
+
+export type FormatType = 'raw' | '1f' | '2f' | 'integer' | 'percent' | '3f'
+
+// ── Global Filter ──────────────────────────────────────────────────────
+
+export type GlobalFilterType = 'single-player' | 'team' | 'leaderboard' | 'live-game' | 'matchup'
+
+export interface GlobalFilter {
+  type: GlobalFilterType
+  playerType?: 'pitcher' | 'batter'
+  playerId?: number
+  playerName?: string
+  teamAbbrev?: string
+  dateRange?: { type: 'season'; year: number } | { type: 'custom'; from: string; to: string }
+  pitchType?: string
+  // Leaderboard-specific
+  rankStat?: string
+  count?: number
+  minSample?: number
+  sortDir?: 'asc' | 'desc'
+  // Leaderboard repeater (embedded)
+  repeaterDirection?: 'vertical' | 'horizontal'
+  repeaterOffset?: number
+  // Live Game
+  gameDate?: string
+  gamePk?: number
+  // Matchup
+  playerA?: { id: number; name: string; type: 'pitcher' | 'batter' }
+  playerB?: { id: number; name: string; type: 'pitcher' | 'batter' }
 }
 
 // ── Scene Element ───────────────────────────────────────────────────────────
@@ -165,6 +204,7 @@ export interface SceneElement {
   props: Record<string, any>
   dataBinding?: DataBinding
   templateBinding?: TemplateBinding
+  binding?: ElementBinding
   sectionBinding?: SectionBinding
   reportCardBinding?: ReportCardBinding
   enterFrame?: number

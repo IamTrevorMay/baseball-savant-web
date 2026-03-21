@@ -31,6 +31,7 @@ export async function GET() {
       elements: row.elements || [],
       schemaType: row.input_fields?.schemaType || 'generic',
       inputSections: row.input_fields?.inputSections || [],
+      globalFilter: row.input_fields?.globalFilter || undefined,
       repeater: row.data_query || null,
       base_template_id: row.base_template_id,
       created_at: row.created_at,
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
         height: body.height || 1080,
         background: body.background || '#09090b',
         elements: body.elements || [],
-        input_fields: { schemaType: body.schemaType || 'generic', inputSections: body.inputSections || [] },
+        input_fields: { schemaType: body.schemaType || 'generic', inputSections: body.inputSections || [], globalFilter: body.globalFilter || undefined },
         data_query: body.repeater || null,
         base_template_id: body.base_template_id || null,
       })
