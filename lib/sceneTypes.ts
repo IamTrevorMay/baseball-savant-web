@@ -446,15 +446,15 @@ const DEFAULTS: Record<ElementType, { w: number; h: number; props: Record<string
   },
   'rc-heatmap': {
     w: 300, h: 340,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, metric: 'count', binsX: 5, binsY: 5, colorLow: '#18181b', colorHigh: '#ef4444', showZone: true, locations: [], title: '' },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, metric: 'count', binsX: 5, binsY: 5, colorLow: '#18181b', colorHigh: '#ef4444', showZone: true, locations: [], title: '', fontSize: 12 },
   },
   'rc-zone-plot': {
     w: 300, h: 340,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, dotSize: 8, dotOpacity: 0.85, showZone: true, zoneColor: '#52525b', colorBy: 'pitch_type', pitches: [], title: '' },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, dotSize: 8, dotOpacity: 0.85, showZone: true, zoneColor: '#52525b', colorBy: 'pitch_type', pitches: [], title: '', fontSize: 12 },
   },
   'rc-movement-plot': {
     w: 340, h: 320,
-    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, dotSize: 10, dotOpacity: 0.85, maxRange: 24, showSeasonShapes: true, pitches: [], seasonShapes: [] },
+    props: { ...UNIVERSAL_STYLE, bgColor: '#09090b', borderRadius: 8, dotSize: 10, dotOpacity: 0.85, maxRange: 24, showSeasonShapes: true, pitches: [], seasonShapes: [], fontSize: 10 },
   },
   'rc-bar-chart': {
     w: 400, h: 250,

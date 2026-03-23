@@ -139,7 +139,7 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
   }
 
   // Check if this element type supports font controls
-  const supportsFonts = element.type === 'text' || element.type === 'rc-stat-box' || element.type === 'rc-table'
+  const supportsFonts = element.type === 'text' || element.type.startsWith('rc-')
 
   return (
     <div className="w-64 shrink-0 bg-zinc-900 border-l border-zinc-800 overflow-y-auto">
@@ -220,30 +220,38 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
 
           {/* Table: column picker */}
           {element.type === 'rc-table' && (
-            <div className="space-y-1">
-              <p className="text-[10px] text-zinc-500">Columns (toggle to include):</p>
-              {RC_TABLE_COLUMNS.map(col => {
-                const currentCols: { key: string; label: string; format?: string }[] = binding?.columns || element.props.columns || []
-                const active = currentCols.some(c => c.key === col.key)
-                return (
-                  <label key={col.key} className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer hover:text-zinc-200">
-                    <input
-                      type="checkbox"
-                      checked={active}
-                      onChange={() => {
-                        const newCols = active
-                          ? currentCols.filter(c => c.key !== col.key)
-                          : [...currentCols, col]
-                        updateBinding({ columns: newCols })
-                        updateProp('columns', newCols)
-                      }}
-                      className="accent-cyan-500"
-                    />
-                    {col.label}
-                  </label>
-                )
-              })}
-            </div>
+            <>
+              <div className="space-y-1">
+                <p className="text-[10px] text-zinc-500">Columns (toggle to include):</p>
+                {RC_TABLE_COLUMNS.map(col => {
+                  const currentCols: { key: string; label: string; format?: string }[] = binding?.columns || element.props.columns || []
+                  const active = currentCols.some(c => c.key === col.key)
+                  return (
+                    <label key={col.key} className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer hover:text-zinc-200">
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        onChange={() => {
+                          const newCols = active
+                            ? currentCols.filter(c => c.key !== col.key)
+                            : [...currentCols, col]
+                          updateBinding({ columns: newCols })
+                          updateProp('columns', newCols)
+                        }}
+                        className="accent-cyan-500"
+                      />
+                      {col.label}
+                    </label>
+                  )
+                })}
+              </div>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 13} onChange={v => updateProp('fontSize', v)} min={8} max={48} />
+              </LabeledInput>
+              <LabeledInput label="Hdr Size">
+                <NumberInput value={element.props.headerFontSize || 11} onChange={v => updateProp('headerFontSize', v)} min={8} max={36} />
+              </LabeledInput>
+            </>
           )}
 
           {/* Bar Chart: metric picker */}
@@ -269,21 +277,29 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
                   ]}
                 />
               </LabeledInput>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 12} onChange={v => updateProp('fontSize', v)} min={8} max={36} />
+              </LabeledInput>
             </>
           )}
 
           {/* Zone Plot: color mode */}
           {element.type === 'rc-zone-plot' && (
-            <LabeledInput label="Color">
-              <SelectInput
-                value={binding?.colorBy || 'pitch_type'}
-                onChange={v => updateBinding({ colorBy: v as 'pitch_type' | 'metric' })}
-                options={[
-                  { value: 'pitch_type', label: 'By Pitch Type' },
-                  { value: 'metric', label: 'By Metric' },
-                ]}
-              />
-            </LabeledInput>
+            <>
+              <LabeledInput label="Color">
+                <SelectInput
+                  value={binding?.colorBy || 'pitch_type'}
+                  onChange={v => updateBinding({ colorBy: v as 'pitch_type' | 'metric' })}
+                  options={[
+                    { value: 'pitch_type', label: 'By Pitch Type' },
+                    { value: 'metric', label: 'By Metric' },
+                  ]}
+                />
+              </LabeledInput>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 12} onChange={v => updateProp('fontSize', v)} min={8} max={36} />
+              </LabeledInput>
+            </>
           )}
 
           {/* Heatmap */}
@@ -301,6 +317,9 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
               <LabeledInput label="High">
                 <input type="color" value={element.props.colorHigh || '#ef4444'} onChange={e => updateProp('colorHigh', e.target.value)} className="w-8 h-6 cursor-pointer bg-transparent border-0" />
               </LabeledInput>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 12} onChange={v => updateProp('fontSize', v)} min={8} max={36} />
+              </LabeledInput>
             </>
           )}
 
@@ -314,6 +333,24 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
                 <input type="checkbox" checked={element.props.showLabels !== false} onChange={e => updateProp('showLabels', e.target.checked)} className="accent-cyan-500" />
                 Show labels
               </label>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 12} onChange={v => updateProp('fontSize', v)} min={8} max={36} />
+              </LabeledInput>
+            </>
+          )}
+
+          {/* Statline */}
+          {element.type === 'rc-statline' && (
+            <>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 18} onChange={v => updateProp('fontSize', v)} min={10} max={80} />
+              </LabeledInput>
+              <LabeledInput label="Color">
+                <input type="color" value={element.props.color || '#ffffff'} onChange={e => updateProp('color', e.target.value)} className="w-8 h-6 cursor-pointer bg-transparent border-0" />
+              </LabeledInput>
+              <LabeledInput label="Hdr Color">
+                <input type="color" value={element.props.headerColor || '#a1a1aa'} onChange={e => updateProp('headerColor', e.target.value)} className="w-8 h-6 cursor-pointer bg-transparent border-0" />
+              </LabeledInput>
             </>
           )}
 
@@ -340,6 +377,9 @@ export default function RCPropertiesPanel({ element, onUpdate, teamTheme, onTeam
                 <input type="checkbox" checked={element.props.showSeasonShapes !== false} onChange={e => updateProp('showSeasonShapes', e.target.checked)} className="accent-cyan-500" />
                 Season shapes
               </label>
+              <LabeledInput label="Size">
+                <NumberInput value={element.props.fontSize || 10} onChange={v => updateProp('fontSize', v)} min={6} max={30} />
+              </LabeledInput>
             </>
           )}
         </div>

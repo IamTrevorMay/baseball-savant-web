@@ -32,6 +32,7 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
   const dotOpacity = p.dotOpacity ?? 0.85
   const showSeasonShapes = p.showSeasonShapes !== false
   const maxRange = p.maxRange || 24
+  const fontSize = p.fontSize || 10
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -89,9 +90,13 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
     ctx.lineTo(cx, height - pad)
     ctx.stroke()
 
+    // Dynamic font sizing, overridden by explicit fontSize
+    const dynFont = Math.max(9, Math.min(16, Math.floor(Math.min(width, height) * 0.035)))
+    const effectiveFont = fontSize !== 10 ? fontSize : dynFont
+
     // Tick marks at 12" and 24" with numeric labels
     ctx.fillStyle = '#71717a'
-    ctx.font = '9px Inter, system-ui, sans-serif'
+    ctx.font = `${Math.max(7, effectiveFont - 1)}px Inter, system-ui, sans-serif`
     ctx.strokeStyle = '#52525b'
     // Horizontal axis ticks + labels
     ctx.textAlign = 'center'
@@ -118,7 +123,7 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
 
     // Axis labels
     ctx.fillStyle = '#71717a'
-    ctx.font = '10px Inter, system-ui, sans-serif'
+    ctx.font = `${effectiveFont}px Inter, system-ui, sans-serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'bottom'
     ctx.fillText('Rise', cx, pad - 4)
@@ -171,7 +176,7 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
       ctx.stroke()
     }
     ctx.globalAlpha = 1
-  }, [pitches, seasonShapes, width, height, bgColor, dotSize, dotOpacity, showSeasonShapes, maxRange])
+  }, [pitches, seasonShapes, width, height, bgColor, dotSize, dotOpacity, showSeasonShapes, maxRange, fontSize])
 
   return (
     <canvas

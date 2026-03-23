@@ -43,6 +43,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
   const showZone = p.showZone !== false
   const bgColor = p.bgColor || '#09090b'
   const title = p.title || ''
+  const fontSize = p.fontSize || 12
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -55,12 +56,13 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
     canvas.height = height * dpr
     ctx.scale(dpr, dpr)
 
-    // Dynamic font sizing based on container
+    // Dynamic font sizing based on container, overridden by explicit fontSize
     const dynFont = Math.max(12, Math.min(20, Math.floor(Math.min(width, height) * 0.055)))
+    const effectiveFont = fontSize !== 12 ? fontSize : dynFont
 
     let titleOffset = 0
     if (title) {
-      titleOffset = dynFont + 12
+      titleOffset = effectiveFont + 12
     }
     const pad = 25
     const plotW = width - pad * 2
@@ -78,7 +80,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
 
     if (title) {
       ctx.fillStyle = '#a1a1aa'
-      ctx.font = `600 ${dynFont}px Inter, system-ui, sans-serif`
+      ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(title, width / 2, 6)
@@ -113,7 +115,8 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
         if (count > 0) {
           ctx.globalAlpha = 0.9
           ctx.fillStyle = t > 0.5 ? '#ffffff' : '#a1a1aa'
-          const cellFont = Math.max(10, Math.min(18, Math.floor(Math.min(cellW, cellH) * 0.4)))
+          const dynCellFont = Math.max(10, Math.min(18, Math.floor(Math.min(cellW, cellH) * 0.4)))
+          const cellFont = fontSize !== 12 ? Math.max(8, fontSize - 2) : dynCellFont
           ctx.font = `${cellFont}px Inter, system-ui, sans-serif`
           ctx.textAlign = 'center'
           ctx.textBaseline = 'middle'
@@ -134,7 +137,7 @@ export default function RCHeatmapRenderer({ props: p, width, height }: Props) {
       ctx.lineWidth = 2
       ctx.strokeRect(zx1, zy1, zx2 - zx1, zy2 - zy1)
     }
-  }, [locations, width, height, binsX, binsY, colorLow, colorHigh, showZone, bgColor, title])
+  }, [locations, width, height, binsX, binsY, colorLow, colorHigh, showZone, bgColor, title, fontSize])
 
   return (
     <canvas

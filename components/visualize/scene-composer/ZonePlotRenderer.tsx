@@ -38,6 +38,7 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
   const zoneColor = p.zoneColor || '#52525b'
   const zoneLineWidth = p.zoneLineWidth || 2
   const title = p.title || ''
+  const fontSize = p.fontSize || 12
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -50,9 +51,13 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
     canvas.height = height * dpr
     ctx.scale(dpr, dpr)
 
+    // Dynamic font sizing, overridden by explicit fontSize
+    const dynFont = Math.max(11, Math.min(20, Math.floor(Math.min(width, height) * 0.05)))
+    const effectiveFont = fontSize !== 12 ? fontSize : dynFont
+
     let titleOffset = 0
     if (title) {
-      titleOffset = 24
+      titleOffset = effectiveFont + 12
     }
 
     // Padding for key at bottom
@@ -79,7 +84,7 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
     // Title
     if (title) {
       ctx.fillStyle = '#a1a1aa'
-      ctx.font = '600 12px Inter, system-ui, sans-serif'
+      ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(title, width / 2, 6)
@@ -157,7 +162,7 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
       const entryW = Math.min(120, (width - 20) / Math.max(uniqueTypes.length, 1))
       const startX = (width - entryW * uniqueTypes.length) / 2
 
-      ctx.font = '11px Inter, system-ui, sans-serif'
+      ctx.font = `${Math.max(9, effectiveFont - 1)}px Inter, system-ui, sans-serif`
       ctx.textBaseline = 'middle'
 
       for (let i = 0; i < uniqueTypes.length; i++) {
@@ -177,7 +182,7 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
         ctx.fillText(type, ex + 15, ey)
       }
     }
-  }, [pitches, width, height, showZone, dotSize, dotOpacity, bgColor, showKey, zoneColor, zoneLineWidth, title])
+  }, [pitches, width, height, showZone, dotSize, dotOpacity, bgColor, showKey, zoneColor, zoneLineWidth, title, fontSize])
 
   return (
     <canvas
