@@ -81,7 +81,19 @@ IMPORTANT:
 - When the user says "export", "build it", "generate", "download", or similar, use the build_csv tool
 - Use the preview_query tool to show a small sample (10 rows) so the user can verify columns/format before full export
 - Always ROUND numeric aggregations to reasonable precision (2-3 decimal places)
-- player_name format is "Last, First" — suggest aliasing to cleaner format if aggregating`
+- player_name format is "Last, First" — suggest aliasing to cleaner format if aggregating
+
+MLB STATS API:
+You also have access to the live MLB Stats API (statsapi.mlb.com) via the mlb_stats_api tool. Use it when the user asks about:
+- Current rosters, player bios, jersey numbers, positions
+- Season/career stats from MLB official records (W/L, ERA, batting average, etc.)
+- Today's schedule, scores, or game results
+- Boxscores for specific games
+- League leaders in any stat category
+- Recent transactions (trades, signings, DFA, etc.)
+- Standings (regular season or spring training)
+You can combine MLB Stats API data with Statcast/Lahman data in exports. For example, fetch a roster via the API, then query Statcast data for those players.
+MLB team IDs: 108=LAA, 109=ARI, 110=BAL, 111=BOS, 112=CHC, 113=CIN, 114=CLE, 115=COL, 116=DET, 117=HOU, 118=KC, 119=LAD, 120=WSH, 121=NYM, 133=OAK, 134=PIT, 135=SD, 136=SEA, 137=SF, 138=STL, 139=TB, 140=TEX, 141=TOR, 142=MIN, 143=PHI, 144=ATL, 145=CWS, 146=MIA, 147=NYY, 158=MIL`
 
 const tools: Anthropic.Tool[] = [
   {
@@ -118,6 +130,40 @@ const tools: Anthropic.Tool[] = [
         name: { type: 'string', description: 'Player name or partial name.' },
       },
       required: ['name'],
+    },
+  },
+  {
+    name: 'mlb_stats_api',
+    description: `Fetch live data from the MLB Stats API (statsapi.mlb.com). Available actions:
+- player_info: Get player bio/metadata by MLB ID
+- player_stats: Get a player's season or career stats (pitching or batting)
+- roster: Get a team's active roster
+- standings: Get MLB standings
+- schedule: Get games for a specific date
+- boxscore: Get boxscore for a specific game
+- leaders: Get stat leaderboard (e.g. ERA, strikeouts)
+- transactions: Get player transactions (trades, signings, etc.) for a date range`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['player_info', 'player_stats', 'roster', 'standings', 'schedule', 'boxscore', 'leaders', 'transactions'],
+          description: 'Which MLB Stats API endpoint to call.',
+        },
+        player_id: { type: 'number', description: 'MLB player ID (for player_info, player_stats).' },
+        team_id: { type: 'number', description: 'MLB team ID (for roster). E.g. 147=Yankees, 111=Red Sox, 119=Dodgers.' },
+        season: { type: 'number', description: 'Season year (for roster, standings, player_stats, leaders). Defaults to current year.' },
+        date: { type: 'string', description: 'Date in YYYY-MM-DD format (for schedule).' },
+        game_pk: { type: 'number', description: 'Game PK ID (for boxscore).' },
+        stat_group: { type: 'string', enum: ['pitching', 'batting', 'fielding'], description: 'Stat group (for player_stats, leaders). Defaults to pitching.' },
+        stat_type: { type: 'string', enum: ['season', 'yearByYear', 'career'], description: 'Stat type (for player_stats). Defaults to yearByYear.' },
+        leader_category: { type: 'string', description: 'Leader category (for leaders). E.g. earnedRunAverage, strikeouts, wins, homeRuns, battingAverage.' },
+        start_date: { type: 'string', description: 'Start date MM/DD/YYYY (for transactions).' },
+        end_date: { type: 'string', description: 'End date MM/DD/YYYY (for transactions).' },
+        limit: { type: 'number', description: 'Result limit (for leaders). Defaults to 50.' },
+      },
+      required: ['action'],
     },
   },
 ]
@@ -182,6 +228,62 @@ async function executeTool(block: any, userId: string): Promise<{ result: string
     const input = block.input as { name: string }
     const { data, error } = await supabase.rpc('search_players', { search_term: input.name, result_limit: 5 })
     result = JSON.stringify(error ? { error: error.message } : { players: data })
+  } else if (block.name === 'mlb_stats_api') {
+    const input = block.input as {
+      action: string; player_id?: number; team_id?: number; season?: number;
+      date?: string; game_pk?: number; stat_group?: string; stat_type?: string;
+      leader_category?: string; start_date?: string; end_date?: string; limit?: number;
+    }
+    const currentYear = new Date().getFullYear()
+    const season = input.season || currentYear
+    let url = ''
+
+    switch (input.action) {
+      case 'player_info':
+        url = `https://statsapi.mlb.com/api/v1/people/${input.player_id}`
+        break
+      case 'player_stats':
+        url = `https://statsapi.mlb.com/api/v1/people/${input.player_id}/stats?stats=${input.stat_type || 'yearByYear'}&group=${input.stat_group || 'pitching'}&season=${season}`
+        break
+      case 'roster':
+        url = `https://statsapi.mlb.com/api/v1/teams/${input.team_id}/roster/active?season=${season}`
+        break
+      case 'standings':
+        url = `https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason&hydrate=team`
+        break
+      case 'schedule':
+        url = `https://statsapi.mlb.com/api/v1/schedule?date=${input.date}&sportId=1&hydrate=team,linescore,probablePitcher`
+        break
+      case 'boxscore':
+        url = `https://statsapi.mlb.com/api/v1/game/${input.game_pk}/boxscore`
+        break
+      case 'leaders':
+        url = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${input.leader_category || 'earnedRunAverage'}&season=${season}&statGroup=${input.stat_group || 'pitching'}&limit=${input.limit || 50}`
+        break
+      case 'transactions':
+        url = `https://statsapi.mlb.com/api/v1/transactions?startDate=${input.start_date}&endDate=${input.end_date}`
+        break
+      default:
+        url = ''
+    }
+
+    if (!url) {
+      result = JSON.stringify({ error: `Unknown action: ${input.action}` })
+    } else {
+      try {
+        const resp = await fetch(url)
+        if (!resp.ok) {
+          result = JSON.stringify({ error: `MLB API returned ${resp.status}` })
+        } else {
+          const data = await resp.json()
+          // Trim large responses to avoid token limits
+          const json = JSON.stringify(data)
+          result = json.length > 30000 ? json.slice(0, 30000) + '... (truncated)' : json
+        }
+      } catch (e: any) {
+        result = JSON.stringify({ error: `MLB API fetch failed: ${e.message}` })
+      }
+    }
   } else {
     result = JSON.stringify({ error: `Unknown tool: ${block.name}` })
   }
@@ -231,7 +333,7 @@ export async function POST(req: NextRequest) {
             for (const block of finalMessage.content) {
               if (block.type !== 'tool_use') continue
 
-              const label = block.name === 'build_csv' ? 'export query' : block.name === 'preview_query' ? 'preview' : 'search'
+              const label = block.name === 'build_csv' ? 'export query' : block.name === 'preview_query' ? 'preview' : block.name === 'mlb_stats_api' ? 'MLB Stats API' : 'search'
               send({ type: 'status', status: `Running ${label}...` })
 
               const { result, csvExport } = await executeTool(block, user.id)
