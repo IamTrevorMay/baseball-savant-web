@@ -260,6 +260,7 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
     case 'matchup':
       return MATCHUP_FIELDS
     case 'depth-chart':
+    default:
       return PITCHER_FIELDS
   }
 }

@@ -23,7 +23,7 @@ export default function DataFieldsPanel({
   onFieldClick,
 }: Props) {
   const categories = useMemo(
-    () => getFilterFields(filterType, playerType),
+    () => getFilterFields(filterType, playerType) || [],
     [filterType, playerType],
   )
 

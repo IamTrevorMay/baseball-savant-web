@@ -68,6 +68,9 @@ export default function TemplateBuilderPage() {
   const [dataLoaded, setDataLoaded] = useState(false)
   const [fetchLoading, setFetchLoading] = useState(false)
   const [showStarterPicker, setShowStarterPicker] = useState(!editId && !forkId)
+  const [showSaveAsDialog, setShowSaveAsDialog] = useState(false)
+  const [saveAsName, setSaveAsName] = useState('')
+  const [customTemplateVersion, setCustomTemplateVersion] = useState(0)
 
   // Theme state
   const [activeThemeId, setActiveThemeId] = useState('')
@@ -468,48 +471,69 @@ export default function TemplateBuilderPage() {
 
   // ── Save ────────────────────────────────────────────────────────────────
 
-  async function handleSave() {
+  function buildPayload(nameOverride?: string) {
+    return {
+      name: nameOverride || scene.name,
+      description: '',
+      category: 'custom',
+      icon: '',
+      width: scene.width,
+      height: scene.height,
+      background: scene.background,
+      elements: scene.elements,
+      schemaType,
+      repeater,
+      inputSections,
+      globalFilter,
+      base_template_id: forkId || undefined,
+    }
+  }
+
+  // Update existing template in place
+  async function handleUpdate() {
+    if (!saveId) return
     setSaving(true)
     try {
-      const payload = {
-        name: scene.name,
-        description: '',
-        category: 'custom',
-        icon: '',
-        width: scene.width,
-        height: scene.height,
-        background: scene.background,
-        elements: scene.elements,
-        schemaType,
-        repeater,
-        inputSections,
-        globalFilter,
-        base_template_id: forkId || undefined,
-      }
+      await fetch(`/api/custom-templates/${saveId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload()),
+      })
+      setCustomTemplateVersion(v => v + 1)
+    } catch (err) {
+      console.error('Update error:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
 
-      if (saveId) {
-        await fetch(`/api/custom-templates/${saveId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-      } else {
-        const res = await fetch('/api/custom-templates', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        const data = await res.json()
-        if (data.id) {
-          setSaveId(data.id)
-          window.history.replaceState(null, '', `/design/template-builder?edit=${data.id}`)
-        }
+  // Save as new template (always creates a new copy)
+  async function handleSaveNew(name: string) {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/custom-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload(name)),
+      })
+      const data = await res.json()
+      if (data.id) {
+        setSaveId(data.id)
+        setScene(prev => ({ ...prev, name }))
+        window.history.replaceState(null, '', `/design/template-builder?edit=${data.id}`)
+        setCustomTemplateVersion(v => v + 1)
       }
     } catch (err) {
       console.error('Save error:', err)
     } finally {
       setSaving(false)
     }
+  }
+
+  // Open the naming dialog for Save New
+  function promptSaveNew() {
+    setSaveAsName(scene.name === 'Untitled Template' ? '' : scene.name)
+    setShowSaveAsDialog(true)
   }
 
   // ── Zoom ────────────────────────────────────────────────────────────────
@@ -546,7 +570,7 @@ export default function TemplateBuilderPage() {
         e.preventDefault(); redo()
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault(); handleSave()
+        e.preventDefault(); saveId ? handleUpdate() : promptSaveNew()
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedId) deleteElement(selectedId)
@@ -661,6 +685,50 @@ export default function TemplateBuilderPage() {
         />
       )}
 
+      {/* Save As naming dialog */}
+      {showSaveAsDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-[360px] p-5">
+            <h3 className="text-sm font-semibold text-white mb-3">Save Template As</h3>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Template name..."
+              value={saveAsName}
+              onChange={e => setSaveAsName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && saveAsName.trim()) {
+                  setShowSaveAsDialog(false)
+                  handleSaveNew(saveAsName.trim())
+                }
+                if (e.key === 'Escape') setShowSaveAsDialog(false)
+              }}
+              className="w-full bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-emerald-500 transition"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowSaveAsDialog(false)}
+                className="px-3 py-1.5 rounded text-xs font-medium text-zinc-400 hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (saveAsName.trim()) {
+                    setShowSaveAsDialog(false)
+                    handleSaveNew(saveAsName.trim())
+                  }
+                }}
+                disabled={!saveAsName.trim()}
+                className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center gap-3 shrink-0">
         {/* Back */}
@@ -749,13 +817,22 @@ export default function TemplateBuilderPage() {
           {previewing ? 'Edit' : 'Preview'}
         </button>
 
-        {/* Save */}
+        {/* Save buttons */}
+        {saveId && (
+          <button
+            onClick={handleUpdate}
+            disabled={saving}
+            className="px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-medium transition disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Update'}
+          </button>
+        )}
         <button
-          onClick={handleSave}
+          onClick={promptSaveNew}
           disabled={saving}
           className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition disabled:opacity-50"
         >
-          {saving ? 'Saving...' : saveId ? 'Save' : 'Save New'}
+          Save New
         </button>
       </div>
 
@@ -805,7 +882,7 @@ export default function TemplateBuilderPage() {
             </div>
             <div className="flex-1 overflow-y-auto">
               {leftTab === 'objects'
-                ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadSceneTemplate} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} />
+                ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadSceneTemplate} onLoadDataDriven={loadDataDrivenIntoBuilder} onLoadCustomTemplate={loadCustomIntoBuilder} refreshKey={customTemplateVersion} />
                 : <ThemePickerPanel selectedThemeId={activeThemeId} onApply={handleApplyTheme} />
               }
             </div>

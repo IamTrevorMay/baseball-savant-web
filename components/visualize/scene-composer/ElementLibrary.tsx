@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ElementType, SceneElement, Scene, ELEMENT_CATALOG, CustomTemplateRecord } from '@/lib/sceneTypes'
 import { SCENE_TEMPLATES, DATA_DRIVEN_TEMPLATES, TEXT_PRESETS, loadElementPresets, deleteElementPreset, instantiatePreset, type SceneTemplate, type DataDrivenTemplate, type SavedElementPreset } from '@/lib/sceneTemplates'
 
 type Tab = 'elements' | 'templates' | 'presets'
+type ContextMenu = { x: number; y: number; template: CustomTemplateRecord } | null
 
 const CATEGORY_META: { key: string; label: string; icon: string }[] = [
   { key: 'pitcher', label: 'Pitcher', icon: '\u26be' },
@@ -16,16 +17,33 @@ const CATEGORY_META: { key: string; label: string; icon: string }[] = [
   { key: 'advanced', label: 'Advanced', icon: '\u2605' },
 ]
 
-function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate }: { onLoad: (t: SceneTemplate) => void; onLoadDataDriven?: (t: DataDrivenTemplate) => void; onLoadCustomTemplate?: (t: CustomTemplateRecord) => void }) {
+function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate, refreshKey }: { onLoad: (t: SceneTemplate) => void; onLoadDataDriven?: (t: DataDrivenTemplate) => void; onLoadCustomTemplate?: (t: CustomTemplateRecord) => void; refreshKey?: number }) {
   const [openCats, setOpenCats] = useState<Set<string>>(new Set(['data-driven', 'custom', 'pitcher']))
   const [customTemplates, setCustomTemplates] = useState<CustomTemplateRecord[]>([])
+  const [ctxMenu, setCtxMenu] = useState<ContextMenu>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch('/api/custom-templates')
       .then(r => r.json())
       .then(json => setCustomTemplates(json.templates || []))
       .catch(() => {})
-  }, [])
+  }, [refreshKey])
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = () => setCtxMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [ctxMenu])
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renaming) renameRef.current?.focus()
+  }, [renaming])
 
   function toggleCat(key: string) {
     setOpenCats(prev => {
@@ -34,6 +52,22 @@ function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate }: { onLo
       else next.add(key)
       return next
     })
+  }
+
+  async function handleRename(id: string, newName: string) {
+    if (!newName.trim()) { setRenaming(null); return }
+    await fetch(`/api/custom-templates/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName.trim() }),
+    })
+    setCustomTemplates(prev => prev.map(t => t.id === id ? { ...t, name: newName.trim() } : t))
+    setRenaming(null)
+  }
+
+  async function handleDelete(id: string) {
+    await fetch(`/api/custom-templates/${id}`, { method: 'DELETE' })
+    setCustomTemplates(prev => prev.filter(t => t.id !== id))
   }
 
   const grouped = CATEGORY_META.map(cat => ({
@@ -110,6 +144,10 @@ function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate }: { onLo
                   <button
                     key={template.id}
                     onClick={() => onLoadCustomTemplate?.(template)}
+                    onContextMenu={e => {
+                      e.preventDefault()
+                      setCtxMenu({ x: e.clientX, y: e.clientY, template })
+                    }}
                     className="w-full text-left px-2.5 py-2 rounded-lg bg-cyan-900/10 border border-cyan-800/30 hover:border-cyan-500/50 hover:bg-cyan-900/20 transition group"
                   >
                     <div className="flex items-center gap-2">
@@ -117,11 +155,28 @@ function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate }: { onLo
                         {template.icon || '\u2726'}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-medium text-zinc-200 group-hover:text-white transition leading-tight">{template.name}</span>
-                          <span className="text-[8px] font-semibold uppercase px-1 py-0.5 rounded bg-cyan-600/20 text-cyan-400 border border-cyan-600/30 leading-none">Custom</span>
-                        </div>
-                        <div className="text-[9px] text-zinc-600 leading-tight mt-0.5">{template.schemaType} &middot; {template.width}&times;{template.height}</div>
+                        {renaming === template.id ? (
+                          <input
+                            ref={renameRef}
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleRename(template.id, renameValue)
+                              if (e.key === 'Escape') setRenaming(null)
+                            }}
+                            onBlur={() => handleRename(template.id, renameValue)}
+                            onClick={e => e.stopPropagation()}
+                            className="w-full bg-zinc-800 border border-cyan-500 rounded px-1.5 py-0.5 text-[11px] text-white outline-none"
+                          />
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-medium text-zinc-200 group-hover:text-white transition leading-tight">{template.name}</span>
+                              <span className="text-[8px] font-semibold uppercase px-1 py-0.5 rounded bg-cyan-600/20 text-cyan-400 border border-cyan-600/30 leading-none">Custom</span>
+                            </div>
+                            <div className="text-[9px] text-zinc-600 leading-tight mt-0.5">{template.schemaType} &middot; {template.width}&times;{template.height}</div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -170,6 +225,37 @@ function TemplatesTab({ onLoad, onLoadDataDriven, onLoadCustomTemplate }: { onLo
           </div>
         ))}
       </div>
+
+      {/* Right-click context menu */}
+      {ctxMenu && (
+        <div
+          className="fixed z-[100] bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[120px]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-700 transition"
+            onClick={() => {
+              setRenameValue(ctxMenu.template.name)
+              setRenaming(ctxMenu.template.id)
+              setCtxMenu(null)
+            }}
+          >
+            Rename
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-zinc-700 transition"
+            onClick={() => {
+              if (confirm(`Delete "${ctxMenu.template.name}"?`)) {
+                handleDelete(ctxMenu.template.id)
+              }
+              setCtxMenu(null)
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </>
   )
 }
@@ -180,9 +266,10 @@ interface Props {
   onLoadScene?: (scene: Scene) => void
   onLoadDataDriven?: (template: DataDrivenTemplate) => void
   onLoadCustomTemplate?: (template: CustomTemplateRecord) => void
+  refreshKey?: number
 }
 
-export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoadDataDriven, onLoadCustomTemplate }: Props) {
+export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoadDataDriven, onLoadCustomTemplate, refreshKey }: Props) {
   const [tab, setTab] = useState<Tab>('elements')
   const [elementPresets, setElementPresets] = useState<SavedElementPreset[]>(() => loadElementPresets())
 
@@ -277,7 +364,7 @@ export default function ElementLibrary({ onAdd, onAddElement, onLoadScene, onLoa
 
         {/* ── Templates Tab ─────────────────────────────────────────────── */}
         {tab === 'templates' && (
-          <TemplatesTab onLoad={handleLoadTemplate} onLoadDataDriven={onLoadDataDriven} onLoadCustomTemplate={onLoadCustomTemplate} />
+          <TemplatesTab onLoad={handleLoadTemplate} onLoadDataDriven={onLoadDataDriven} onLoadCustomTemplate={onLoadCustomTemplate} refreshKey={refreshKey} />
         )}
 
         {/* ── Presets Tab ───────────────────────────────────────────────── */}
