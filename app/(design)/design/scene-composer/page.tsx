@@ -898,6 +898,19 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── Bullpen Depth Chart ─────────────────────────────────────────
+      if (config.templateId === 'bullpen-depth-chart') {
+        const team = config.teamAbbrev || 'NYY'
+        const year = config.dateRange.type === 'season' ? config.dateRange.year : new Date().getFullYear()
+        const res = await fetch(`/api/scene-stats?depthChart=true&bullpenChart=true&team=${team}&gameYear=${year}`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.bullpenChart || {})
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Default leaderboard logic ──────────────────────────────────────
       const params = new URLSearchParams({
         leaderboard: 'true',
@@ -1507,7 +1520,7 @@ export default function SceneComposerPage() {
                 onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
                 loading={templateLoading}
               />
-            ) : scene.templateConfig.templateId === 'rotation-depth-chart' ? (
+            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart') ? (
               <DepthChartConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}

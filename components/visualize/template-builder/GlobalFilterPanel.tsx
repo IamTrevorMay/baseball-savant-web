@@ -12,6 +12,7 @@ const FILTER_TYPES: { value: GlobalFilterType; label: string }[] = [
   { value: 'team', label: 'Team' },
   { value: 'leaderboard', label: 'Leaderboard' },
   { value: 'depth-chart', label: 'Depth Chart' },
+  { value: 'bullpen-depth-chart', label: 'Bullpen' },
   { value: 'live-game', label: 'Live Game' },
   { value: 'matchup', label: 'Matchup' },
 ]
@@ -341,6 +342,7 @@ export default function GlobalFilterPanel({
     team: renderTeam,
     leaderboard: renderLeaderboard,
     'depth-chart': renderDepthChart,
+    'bullpen-depth-chart': renderDepthChart,
     'live-game': renderLiveGame,
     matchup: renderMatchup,
   }

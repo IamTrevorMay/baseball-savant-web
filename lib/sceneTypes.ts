@@ -162,7 +162,7 @@ export type FormatType = 'raw' | '1f' | '2f' | 'integer' | 'percent' | '3f'
 
 // ── Global Filter ──────────────────────────────────────────────────────
 
-export type GlobalFilterType = 'single-player' | 'team' | 'leaderboard' | 'live-game' | 'matchup' | 'depth-chart'
+export type GlobalFilterType = 'single-player' | 'team' | 'leaderboard' | 'live-game' | 'matchup' | 'depth-chart' | 'bullpen-depth-chart'
 
 export interface GlobalFilter {
   type: GlobalFilterType

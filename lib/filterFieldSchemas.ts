@@ -260,6 +260,7 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
     case 'matchup':
       return MATCHUP_FIELDS
     case 'depth-chart':
+    case 'bullpen-depth-chart':
     default:
       return PITCHER_FIELDS
   }
@@ -385,6 +386,16 @@ export function getSampleDataForFilter(type: GlobalFilterType, playerType?: 'pit
           { player_id: 608331, player_name: 'Fried, Max', jersey_number: '32', order: 2 },
         ],
         depth: [],
+      }
+    case 'bullpen-depth-chart':
+      return {
+        teamName: 'New York Yankees', teamAbbrev: 'NYY',
+        closer: [{ player_id: 677951, player_name: 'Bednar, David', jersey_number: '51', order: 1 }],
+        setup: [
+          { player_id: 642585, player_name: 'Doval, Camilo', jersey_number: '75', order: 1 },
+          { player_id: 673540, player_name: 'Cruz, Fernando', jersey_number: '47', order: 2 },
+        ],
+        relief: [],
       }
   }
 }

@@ -60,6 +60,28 @@ export async function GET(req: NextRequest) {
           order: i + 1,
         }))
 
+      // Bullpen depth chart mode — return closer/setup/relief from roster
+      if (sp.get('bullpenChart') === 'true') {
+        const relievers = (data.roster || [])
+          .filter((p: any) => p.position?.code === 'R')
+          .map((p: any, i: number) => ({
+            player_id: p.person?.id,
+            player_name: p.person?.fullName || '',
+            jersey_number: p.jerseyNumber || '',
+            order: i + 1,
+          }))
+
+        return NextResponse.json({
+          bullpenChart: {
+            teamAbbrev: team,
+            teamName: TEAM_NAMES[team] || team,
+            closer: relievers.slice(0, 1),
+            setup: relievers.slice(1, 3),
+            relief: relievers.slice(3, 8),
+          },
+        })
+      }
+
       return NextResponse.json({
         depthChart: {
           teamAbbrev: team,

@@ -2289,4 +2289,145 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }
     },
   },
+
+  // ── Bullpen Depth Chart ────────────────────────────────────────────────
+  {
+    id: 'bullpen-depth-chart',
+    name: 'Bullpen Depth Chart',
+    category: 'team',
+    description: 'MLB team bullpen with closer, setup, and middle relief tiers',
+    icon: '\u{1f525}',
+    width: 1920,
+    height: 1080,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+      teamAbbrev: 'NYY',
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const dc = data || {}
+      const teamName = dc.teamName || 'Select a Team'
+      const closer: any[] = dc.closer || []
+      const setup: any[] = dc.setup || []
+      const relief: any[] = dc.relief || []
+
+      // ── Background accent bar
+      elements.push(el('shape', 0, 0, 1920, 120, {
+        shape: 'rect', fill: 'rgba(16,185,129,0.08)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // ── Header
+      elements.push(el('text', 60, 28, 1200, 60, {
+        text: teamName, fontSize: 48, fontWeight: 800, color: '#ffffff', textAlign: 'left',
+      }))
+      elements.push(el('text', 60, 85, 400, 28, {
+        text: 'BULLPEN DEPTH CHART', fontSize: 18, fontWeight: 600, color: '#10b981', textAlign: 'left', letterSpacing: 3,
+      }))
+      elements.push(el('text', 1500, 40, 360, 36, {
+        text: String(_config?.dateRange?.type === 'season' ? _config.dateRange.year : new Date().getFullYear()),
+        fontSize: 28, fontWeight: 600, color: '#52525b', textAlign: 'right',
+      }))
+
+      const cx = 960
+
+      // ── CLOSER section (large, centered)
+      elements.push(el('text', cx - 50, 140, 100, 28, {
+        text: 'CLOSER', fontSize: 14, fontWeight: 700, color: '#10b981', textAlign: 'center',
+        bgColor: 'rgba(16,185,129,0.12)', borderRadius: 4,
+      }))
+
+      const closerImgW = 200, closerImgH = 260
+      const closerP = closer[0]
+      elements.push(el('player-image', cx - closerImgW / 2, 180, closerImgW, closerImgH, {
+        playerId: closerP?.player_id || null,
+        playerName: closerP?.player_name || '',
+        borderColor: '#27272a', borderWidth: 2, borderRadius: 12,
+        showLabel: false, bgColor: 'transparent',
+      }))
+      elements.push(el('text', cx - 140, 450, 280, 32, {
+        text: closerP?.player_name || '—', fontSize: 22, fontWeight: 700, color: '#ffffff', textAlign: 'center',
+      }))
+      if (closerP?.jersey_number) {
+        elements.push(el('text', cx - 50, 484, 100, 22, {
+          text: `#${closerP.jersey_number}`, fontSize: 16, fontWeight: 500, color: '#71717a', textAlign: 'center',
+        }))
+      }
+
+      // ── SETUP section (2 medium cards)
+      elements.push(el('text', cx - 45, 520, 90, 28, {
+        text: 'SETUP', fontSize: 14, fontWeight: 700, color: '#10b981', textAlign: 'center',
+        bgColor: 'rgba(16,185,129,0.12)', borderRadius: 4,
+      }))
+
+      const suImgW = 165, suImgH = 210, suGap = 60
+      const suCount = Math.max(2, setup.length)
+      const suTotalW = suCount * suImgW + (suCount - 1) * suGap
+      const suStartX = cx - suTotalW / 2
+
+      for (let i = 0; i < suCount; i++) {
+        const p = setup[i]
+        const scx = suStartX + i * (suImgW + suGap) + suImgW / 2
+
+        elements.push(el('player-image', scx - suImgW / 2, 560, suImgW, suImgH, {
+          playerId: p?.player_id || null,
+          playerName: p?.player_name || '',
+          borderColor: '#27272a', borderWidth: 2, borderRadius: 10,
+          showLabel: false, bgColor: 'transparent',
+        }))
+        elements.push(el('text', scx - 120, 778, 240, 28, {
+          text: p?.player_name || '—', fontSize: 18, fontWeight: 600, color: '#a1a1aa', textAlign: 'center',
+        }))
+        if (p?.jersey_number) {
+          elements.push(el('text', scx - 40, 806, 80, 22, {
+            text: `#${p.jersey_number}`, fontSize: 14, fontWeight: 500, color: '#52525b', textAlign: 'center',
+          }))
+        }
+      }
+
+      // ── Divider
+      elements.push(el('shape', 120, 840, 1680, 1, {
+        shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // ── MIDDLE RELIEF section (up to 5 small cards)
+      elements.push(el('text', cx - 70, 858, 140, 24, {
+        text: 'MIDDLE RELIEF', fontSize: 12, fontWeight: 600, color: '#52525b', textAlign: 'center', letterSpacing: 2,
+      }))
+
+      const rpImgW = 130, rpImgH = 162, rpGap = 24
+      const rpCount = Math.max(1, Math.min(5, relief.length))
+      const rpTotalW = rpCount * rpImgW + (rpCount - 1) * rpGap
+      const rpStartX = cx - rpTotalW / 2
+
+      for (let j = 0; j < rpCount; j++) {
+        const p = relief[j]
+        const rcx = rpStartX + j * (rpImgW + rpGap) + rpImgW / 2
+
+        elements.push(el('player-image', rcx - rpImgW / 2, 892, rpImgW, rpImgH, {
+          playerId: p?.player_id || null,
+          playerName: p?.player_name || '',
+          borderColor: '#27272a', borderWidth: 2, borderRadius: 8,
+          showLabel: false, bgColor: 'transparent',
+        }))
+        elements.push(el('text', rcx - 100, 1058, 200, 22, {
+          text: p?.player_name || '—', fontSize: 14, fontWeight: 500, color: '#71717a', textAlign: 'center',
+        }))
+      }
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: `${teamName} — Bullpen`,
+        width: 1920,
+        height: 1080,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
 ]

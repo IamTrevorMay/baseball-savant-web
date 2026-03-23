@@ -276,6 +276,50 @@ const rotationDepthChart: StarterTemplate = {
   ],
 }
 
+/* ── 9  Bullpen Depth Chart ───────────────────────────────────────────── */
+
+const bullpenDepthChart: StarterTemplate = {
+  id: 'bullpen-depth-chart',
+  name: 'Bullpen Depth Chart',
+  description: 'Team bullpen with closer, setup, and middle relief tiers.',
+  filterType: 'bullpen-depth-chart',
+  defaultFilter: {
+    type: 'bullpen-depth-chart',
+    teamAbbrev: 'NYY',
+    dateRange: { type: 'season', year: new Date().getFullYear() },
+  },
+  canvasWidth: 1920,
+  canvasHeight: 1080,
+  background: '#09090b',
+  elements: [
+    // Header
+    { type: 'text', x: 60, y: 28, width: 1200, height: 60, bindingField: 'teamName', props: { text: 'Team Name', fontSize: 48, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT } },
+    { type: 'text', x: 60, y: 85, width: 500, height: 28, props: { text: 'BULLPEN DEPTH CHART', fontSize: 18, fontWeight: 600, color: EMERALD, bgColor: TRANSPARENT, letterSpacing: 3 } },
+    // Closer label + card
+    { type: 'text', x: 910, y: 140, width: 100, height: 28, props: { text: 'CLOSER', fontSize: 14, fontWeight: 700, color: EMERALD, textAlign: 'center', bgColor: 'rgba(16,185,129,0.12)', borderRadius: 4 } },
+    { type: 'player-image', x: 860, y: 180, width: 200, height: 260, bindingField: 'closer[0].playerImage', props: { playerId: null, playerName: '', borderColor: '#27272a', showLabel: false, bgColor: TRANSPARENT } },
+    { type: 'text', x: 820, y: 450, width: 280, height: 32, bindingField: 'closer[0].playerName', props: { text: '—', fontSize: 22, fontWeight: 700, color: WHITE, textAlign: 'center', bgColor: TRANSPARENT } },
+    // Setup label + 2 cards
+    { type: 'text', x: 915, y: 500, width: 90, height: 28, props: { text: 'SETUP', fontSize: 14, fontWeight: 700, color: EMERALD, textAlign: 'center', bgColor: 'rgba(16,185,129,0.12)', borderRadius: 4 } },
+    ...Array.from({ length: 2 }, (_, i) => {
+      const cx = 830 + i * 205
+      return [
+        { type: 'player-image' as ElementType, x: cx - 82, y: 540, width: 165, height: 210, bindingField: `setup[${i}].playerImage`, props: { playerId: null, playerName: '', borderColor: '#27272a', showLabel: false, bgColor: TRANSPARENT } },
+        { type: 'text' as ElementType, x: cx - 120, y: 758, width: 240, height: 28, bindingField: `setup[${i}].playerName`, props: { text: '—', fontSize: 18, fontWeight: 600, color: DIM, textAlign: 'center', bgColor: TRANSPARENT } },
+      ]
+    }).flat(),
+    // Middle relief label + up to 5 cards
+    { type: 'text', x: 890, y: 800, width: 140, height: 24, props: { text: 'MIDDLE RELIEF', fontSize: 12, fontWeight: 600, color: '#52525b', textAlign: 'center', letterSpacing: 2, bgColor: TRANSPARENT } },
+    ...Array.from({ length: 5 }, (_, j) => {
+      const cx = 653 + j * 154
+      return [
+        { type: 'player-image' as ElementType, x: cx - 65, y: 835, width: 130, height: 162, bindingField: `relief[${j}].playerImage`, props: { playerId: null, playerName: '', borderColor: '#27272a', showLabel: false, bgColor: TRANSPARENT } },
+        { type: 'text' as ElementType, x: cx - 100, y: 1002, width: 200, height: 22, bindingField: `relief[${j}].playerName`, props: { text: '—', fontSize: 14, fontWeight: 500, color: '#71717a', textAlign: 'center', bgColor: TRANSPARENT } },
+      ]
+    }).flat(),
+  ],
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   top5Leaderboard,
   playerSpotlight,
@@ -285,4 +329,5 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   teamOverview,
   headToHead,
   rotationDepthChart,
+  bullpenDepthChart,
 ]

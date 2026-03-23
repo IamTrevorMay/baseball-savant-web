@@ -17,6 +17,7 @@ const FILTER_LABELS: Record<GlobalFilterType, string> = {
   'live-game': 'Live Game',
   matchup: 'Matchup',
   'depth-chart': 'Depth Chart',
+  'bullpen-depth-chart': 'Depth Chart',
 }
 
 const BADGE_COLORS: Record<GlobalFilterType, string> = {
@@ -26,6 +27,7 @@ const BADGE_COLORS: Record<GlobalFilterType, string> = {
   'live-game': 'bg-rose-500/20 text-rose-400',
   matchup: 'bg-violet-500/20 text-violet-400',
   'depth-chart': 'bg-cyan-500/20 text-cyan-400',
+  'bullpen-depth-chart': 'bg-cyan-500/20 text-cyan-400',
 }
 
 /* Group templates by filter type, preserving order */
@@ -33,8 +35,10 @@ function grouped(): { label: string; type: GlobalFilterType; templates: StarterT
   const order: GlobalFilterType[] = ['single-player', 'leaderboard', 'team', 'depth-chart', 'live-game', 'matchup']
   const map = new Map<GlobalFilterType, StarterTemplate[]>()
   for (const t of STARTER_TEMPLATES) {
-    if (!map.has(t.filterType)) map.set(t.filterType, [])
-    map.get(t.filterType)!.push(t)
+    // Group bullpen under depth-chart heading
+    const group = t.filterType === 'bullpen-depth-chart' ? 'depth-chart' as GlobalFilterType : t.filterType
+    if (!map.has(group)) map.set(group, [])
+    map.get(group)!.push(t)
   }
   return order
     .filter((ft) => map.has(ft))

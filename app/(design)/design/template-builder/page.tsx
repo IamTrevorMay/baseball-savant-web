@@ -124,6 +124,10 @@ export default function TemplateBuilderPage() {
           const forked = builtin.rebuild(config, {})
           setScene({ ...forked, name: `${builtin.name} (Custom)` })
           setGlobalFilter({ type: 'depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
+        } else if (builtin.id === 'bullpen-depth-chart') {
+          const forked = builtin.rebuild(config, {})
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'bullpen-depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
         } else {
           const sample = getSampleData('leaderboard')
           const forked = builtin.rebuild(config, sample)
@@ -261,6 +265,24 @@ export default function TemplateBuilderPage() {
         if (builtin) {
           const config = { templateId: builtin.id, ...builtin.defaultConfig, teamAbbrev: team, dateRange: { type: 'season' as const, year } }
           const rebuilt = builtin.rebuild(config, dc)
+          setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
+        }
+        setDataLoaded(true)
+        setFetchLoading(false)
+        return
+      }
+
+      // Bullpen depth chart: fetch live data and rebuild
+      if (globalFilter.type === 'bullpen-depth-chart') {
+        const team = globalFilter.teamAbbrev || 'NYY'
+        const year = globalFilter.dateRange?.type === 'season' ? globalFilter.dateRange.year : new Date().getFullYear()
+        const res = await fetch(`/api/scene-stats?depthChart=true&bullpenChart=true&team=${team}&gameYear=${year}`)
+        const json = await res.json()
+        const bc = json.bullpenChart || {}
+        const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'bullpen-depth-chart')
+        if (builtin) {
+          const config = { templateId: builtin.id, ...builtin.defaultConfig, teamAbbrev: team, dateRange: { type: 'season' as const, year } }
+          const rebuilt = builtin.rebuild(config, bc)
           setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
         }
         setDataLoaded(true)
@@ -634,6 +656,10 @@ export default function TemplateBuilderPage() {
       const built = template.rebuild(config, {})
       setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
       setGlobalFilter({ type: 'depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
+    } else if (template.id === 'bullpen-depth-chart') {
+      const built = template.rebuild(config, {})
+      setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+      setGlobalFilter({ type: 'bullpen-depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
     } else {
       const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
       const built = template.rebuild(config, sampleData)
