@@ -117,10 +117,16 @@ export default function TemplateBuilderPage() {
       const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === forkId)
       if (builtin) {
         const config = { templateId: builtin.id, ...builtin.defaultConfig }
-        const sample = getSampleData('leaderboard')
-        const forked = builtin.rebuild(config, sample)
-        setScene({ ...forked, name: `${builtin.name} (Custom)` })
-        setGlobalFilter({ type: 'leaderboard', playerType: 'pitcher', count: 5, repeaterDirection: 'vertical', repeaterOffset: 160 })
+        if (builtin.id === 'rotation-depth-chart') {
+          const forked = builtin.rebuild(config, {})
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
+        } else {
+          const sample = getSampleData('leaderboard')
+          const forked = builtin.rebuild(config, sample)
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'leaderboard', playerType: 'pitcher', count: 5, repeaterDirection: 'vertical', repeaterOffset: 160 })
+        }
       }
       setShowStarterPicker(false)
       setLoaded(true)
@@ -241,9 +247,25 @@ export default function TemplateBuilderPage() {
   const handleFetchData = useCallback(async () => {
     setFetchLoading(true)
     try {
+      // Depth chart: fetch live data and rebuild the entire scene
+      if (globalFilter.type === 'depth-chart') {
+        const team = globalFilter.teamAbbrev || 'NYY'
+        const year = globalFilter.dateRange?.type === 'season' ? globalFilter.dateRange.year : new Date().getFullYear()
+        const res = await fetch(`/api/scene-stats?depthChart=true&team=${team}&gameYear=${year}`)
+        const json = await res.json()
+        const dc = json.depthChart || {}
+        const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'rotation-depth-chart')
+        if (builtin) {
+          const config = { templateId: builtin.id, ...builtin.defaultConfig, teamAbbrev: team, dateRange: { type: 'season' as const, year } }
+          const rebuilt = builtin.rebuild(config, dc)
+          setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
+        }
+        setDataLoaded(true)
+        setFetchLoading(false)
+        return
+      }
+
       const sampleData = getSampleDataForFilter(globalFilter.type, globalFilter.playerType)
-      // For now, use sample data. Real fetch will come from API integration.
-      // TODO: Replace with actual API calls based on globalFilter config
       const dataRows = Array.isArray(sampleData) ? sampleData : [sampleData]
       const row = dataRows[0] || {}
 
@@ -584,10 +606,16 @@ export default function TemplateBuilderPage() {
 
   function loadDataDrivenIntoBuilder(template: DataDrivenTemplate) {
     const config = { templateId: template.id, ...template.defaultConfig }
-    const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
-    const built = template.rebuild(config, sampleData)
-    setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
-    setGlobalFilter({ type: 'leaderboard', playerType: 'pitcher', count: 5, repeaterDirection: 'vertical', repeaterOffset: 160 })
+    if (template.id === 'rotation-depth-chart') {
+      const built = template.rebuild(config, {})
+      setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+      setGlobalFilter({ type: 'depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
+    } else {
+      const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
+      const built = template.rebuild(config, sampleData)
+      setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+      setGlobalFilter({ type: 'leaderboard', playerType: 'pitcher', count: 5, repeaterDirection: 'vertical', repeaterOffset: 160 })
+    }
     setSelectedId(null)
     setSelectedIds(new Set())
   }

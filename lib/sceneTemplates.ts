@@ -2169,6 +2169,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
       dateRange: { type: 'season', year: 2025 },
+      teamAbbrev: 'NYY',
     },
     rebuild: (_config: TemplateConfig, data: any): Scene => {
       _z = 100

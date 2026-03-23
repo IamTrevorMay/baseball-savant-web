@@ -237,6 +237,8 @@ export interface TemplateConfig {
   playerName?: string
   gamePk?: number
   gameLabel?: string
+  // Depth chart / team fields
+  teamAbbrev?: string
 }
 
 export interface TemplateDataRow {

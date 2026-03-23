@@ -15,6 +15,7 @@ import PropertiesPanel from '@/components/visualize/scene-composer/PropertiesPan
 import TemplateConfigPanel from '@/components/visualize/scene-composer/TemplateConfigPanel'
 import OutingConfigPanel from '@/components/visualize/scene-composer/OutingConfigPanel'
 import PercentileConfigPanel from '@/components/visualize/scene-composer/PercentileConfigPanel'
+import DepthChartConfigPanel from '@/components/visualize/scene-composer/DepthChartConfigPanel'
 import Timeline from '@/components/visualize/scene-composer/Timeline'
 import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
 import ThemePickerPanel from '@/components/visualize/scene-composer/ThemePickerPanel'
@@ -884,6 +885,19 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── Rotation Depth Chart ─────────────────────────────────────────
+      if (config.templateId === 'rotation-depth-chart') {
+        const team = config.teamAbbrev || 'NYY'
+        const year = config.dateRange.type === 'season' ? config.dateRange.year : new Date().getFullYear()
+        const res = await fetch(`/api/scene-stats?depthChart=true&team=${team}&gameYear=${year}`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.depthChart || {})
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Default leaderboard logic ──────────────────────────────────────
       const params = new URLSearchParams({
         leaderboard: 'true',
@@ -1488,6 +1502,13 @@ export default function SceneComposerPage() {
               />
             ) : scene.templateConfig.templateId === 'percentile-rankings' ? (
               <PercentileConfigPanel
+                config={scene.templateConfig}
+                onUpdateConfig={updateTemplateConfig}
+                onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
+                loading={templateLoading}
+              />
+            ) : scene.templateConfig.templateId === 'rotation-depth-chart' ? (
+              <DepthChartConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}
                 onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
