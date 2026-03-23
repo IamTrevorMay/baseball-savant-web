@@ -259,6 +259,8 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
       return LIVE_GAME_FIELDS
     case 'matchup':
       return MATCHUP_FIELDS
+    case 'depth-chart':
+      return PITCHER_FIELDS
   }
 }
 
@@ -373,6 +375,15 @@ export function getSampleDataForFilter(type: GlobalFilterType, playerType?: 'pit
         a_whiff_pct: 34.1, a_avg_ev: 86.2, a_ba: 0.201, a_ops: 0.582,
         b_avg_velo: 0, b_k_pct: 25.1, b_bb_pct: 11.4, b_era: 0,
         b_whiff_pct: 0, b_avg_ev: 93.4, b_ba: 0.304, b_ops: 1.011,
+      }
+    case 'depth-chart':
+      return {
+        teamName: 'New York Yankees', teamAbbrev: 'NYY',
+        rotation: [
+          { player_id: 543037, player_name: 'Cole, Gerrit', jersey_number: '45', order: 1 },
+          { player_id: 608331, player_name: 'Fried, Max', jersey_number: '32', order: 2 },
+        ],
+        depth: [],
       }
   }
 }
