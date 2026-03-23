@@ -11,6 +11,7 @@ const FILTER_TYPES: { value: GlobalFilterType; label: string }[] = [
   { value: 'single-player', label: 'Player' },
   { value: 'team', label: 'Team' },
   { value: 'leaderboard', label: 'Leaderboard' },
+  { value: 'depth-chart', label: 'Depth Chart' },
   { value: 'live-game', label: 'Live Game' },
   { value: 'matchup', label: 'Matchup' },
 ]
@@ -281,6 +282,21 @@ export default function GlobalFilterPanel({
     </div>
   )
 
+  const renderDepthChart = () => (
+    <div className="space-y-2.5">
+      <div>
+        <span className={labelCls}>Team</span>
+        <select className={selectCls} value={gf.teamAbbrev ?? ''} onChange={(e) => patch({ teamAbbrev: e.target.value })}>
+          <option value="">Select team...</option>
+          {MLB_TEAMS.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+      </div>
+      <SeasonSelect />
+    </div>
+  )
+
   const renderMatchup = () => (
     <div className="space-y-3">
       {/* Player A */}
@@ -324,6 +340,7 @@ export default function GlobalFilterPanel({
     'single-player': renderSinglePlayer,
     team: renderTeam,
     leaderboard: renderLeaderboard,
+    'depth-chart': renderDepthChart,
     'live-game': renderLiveGame,
     matchup: renderMatchup,
   }

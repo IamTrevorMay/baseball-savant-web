@@ -179,6 +179,7 @@ export default function TemplateDataPanel({ asset }: Props) {
         : gf?.type === 'leaderboard' ? 'leaderboard'
         : gf?.type === 'team' ? 'team'
         : gf?.type === 'matchup' ? 'player'
+        : gf?.type === 'depth-chart' ? 'depth-chart'
         : primaryData.globalInputType || primarySection?.globalInputType
 
       // Derive gameYear from dateRange (globalInputType stores year in dateRange, not gameYear)
@@ -188,7 +189,13 @@ export default function TemplateDataPanel({ asset }: Props) {
         || primarySection?.gameYear
         || 2025
 
-      if (effectiveType === 'live-game') {
+      if (effectiveType === 'depth-chart') {
+        // Depth chart mode: fetch rotation from MLB Stats API via scene-stats
+        const team = gf?.teamAbbrev || 'NYY'
+        const res = await fetch(`/api/scene-stats?depthChart=true&team=${team}&gameYear=${resolvedGameYear}`)
+        const dcData = await res.json()
+        resolvedData = dcData.depthChart || {}
+      } else if (effectiveType === 'live-game') {
         // Live game mode: fetch from live-game API
         if (primaryData.gamePk) {
           const res = await fetch(`/api/live-game?gamePk=${primaryData.gamePk}`)

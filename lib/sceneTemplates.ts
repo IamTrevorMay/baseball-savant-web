@@ -2155,4 +2155,137 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }
     },
   },
+
+  // ── Rotation Depth Chart ─────────────────────────────────────────────────
+  {
+    id: 'rotation-depth-chart',
+    name: 'Rotation Depth Chart',
+    category: 'team',
+    description: 'MLB team starting rotation with player headshots and depth pitchers',
+    icon: '\u{1f3af}',
+    width: 1920,
+    height: 1080,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: 2025 },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const dc = data || {}
+      const teamName = dc.teamName || 'Select a Team'
+      const rotation: any[] = dc.rotation || []
+      const depth: any[] = dc.depth || []
+
+      // ── Background accent bar ────────────────────────────────────────────
+      elements.push(el('shape', 0, 0, 1920, 120, {
+        shape: 'rect', fill: 'rgba(16,185,129,0.08)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+      }))
+
+      // ── Header ───────────────────────────────────────────────────────────
+      elements.push(el('text', 60, 28, 1200, 60, {
+        text: teamName, fontSize: 48, fontWeight: 800, color: '#ffffff', textAlign: 'left',
+      }))
+      elements.push(el('text', 60, 85, 400, 28, {
+        text: 'STARTING ROTATION', fontSize: 18, fontWeight: 600, color: '#10b981', textAlign: 'left', letterSpacing: 3,
+      }))
+      elements.push(el('text', 1500, 40, 360, 36, {
+        text: String(_config?.dateRange?.type === 'season' ? _config.dateRange.year : new Date().getFullYear()),
+        fontSize: 28, fontWeight: 600, color: '#52525b', textAlign: 'right',
+      }))
+
+      // ── Rotation tier (5 pitchers) ───────────────────────────────────────
+      const rotCount = Math.min(5, rotation.length)
+      const colW = 320
+      const totalW = rotCount * colW
+      const startX = Math.round((1920 - totalW) / 2)
+      const imgW = 180
+      const imgH = 225
+
+      for (let i = 0; i < 5; i++) {
+        const p = rotation[i]
+        const cx = startX + i * colW + colW / 2  // column center
+
+        // SP badge
+        elements.push(el('text', cx - 25, 150, 50, 30, {
+          text: `SP${i + 1}`, fontSize: 14, fontWeight: 700, color: '#10b981', textAlign: 'center',
+          bgColor: 'rgba(16,185,129,0.12)', borderRadius: 4,
+        }))
+
+        // Player headshot
+        elements.push(el('player-image', cx - imgW / 2, 190, imgW, imgH, {
+          playerId: p?.player_id || null,
+          playerName: p?.player_name || '',
+          borderColor: '#27272a', borderWidth: 2, borderRadius: 12,
+          showLabel: false, bgColor: 'transparent',
+        }))
+
+        // Player name
+        const displayName = p?.player_name || '—'
+        elements.push(el('text', cx - 140, 425, 280, 32, {
+          text: displayName, fontSize: 22, fontWeight: 700, color: '#ffffff', textAlign: 'center',
+        }))
+
+        // Jersey number
+        if (p?.jersey_number) {
+          elements.push(el('text', cx - 50, 460, 100, 24, {
+            text: `#${p.jersey_number}`, fontSize: 16, fontWeight: 500, color: '#71717a', textAlign: 'center',
+          }))
+        }
+      }
+
+      // ── Divider ──────────────────────────────────────────────────────────
+      if (depth.length > 0) {
+        elements.push(el('shape', 120, 520, 1680, 1, {
+          shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+        }))
+        elements.push(el('text', 60, 545, 200, 24, {
+          text: 'DEPTH', fontSize: 14, fontWeight: 600, color: '#52525b', textAlign: 'left', letterSpacing: 3,
+        }))
+
+        // ── Depth tier (up to 3 pitchers, smaller) ─────────────────────────
+        const depthCount = Math.min(3, depth.length)
+        const dColW = 300
+        const dTotalW = depthCount * dColW
+        const dStartX = Math.round((1920 - dTotalW) / 2)
+        const dImgW = 130
+        const dImgH = 162
+
+        for (let j = 0; j < depthCount; j++) {
+          const p = depth[j]
+          const cx = dStartX + j * dColW + dColW / 2
+
+          elements.push(el('player-image', cx - dImgW / 2, 590, dImgW, dImgH, {
+            playerId: p?.player_id || null,
+            playerName: p?.player_name || '',
+            borderColor: '#27272a', borderWidth: 2, borderRadius: 10,
+            showLabel: false, bgColor: 'transparent',
+          }))
+
+          elements.push(el('text', cx - 120, 760, 240, 28, {
+            text: p?.player_name || '—', fontSize: 18, fontWeight: 600, color: '#a1a1aa', textAlign: 'center',
+          }))
+
+          if (p?.jersey_number) {
+            elements.push(el('text', cx - 40, 790, 80, 22, {
+              text: `#${p.jersey_number}`, fontSize: 14, fontWeight: 500, color: '#52525b', textAlign: 'center',
+            }))
+          }
+        }
+      }
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: `${teamName} — Rotation`,
+        width: 1920,
+        height: 1080,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
 ]

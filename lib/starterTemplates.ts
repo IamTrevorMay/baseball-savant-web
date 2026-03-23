@@ -237,6 +237,45 @@ const headToHead: StarterTemplate = {
 
 /* ── Export ──────────────────────────────────────────────────────────────── */
 
+/* ── 8  Rotation Depth Chart ──────────────────────────────────────────── */
+
+const rotationDepthChart: StarterTemplate = {
+  id: 'rotation-depth-chart',
+  name: 'Rotation Depth Chart',
+  description: 'Team starting rotation with player headshots, plus depth arms below.',
+  filterType: 'depth-chart',
+  defaultFilter: {
+    type: 'depth-chart',
+    teamAbbrev: 'NYY',
+    dateRange: { type: 'season', year: new Date().getFullYear() },
+  },
+  canvasWidth: 1920,
+  canvasHeight: 1080,
+  background: '#09090b',
+  elements: [
+    // Header
+    { type: 'text', x: 60, y: 28, width: 1200, height: 60, bindingField: 'teamName', props: { text: 'Team Name', fontSize: 48, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT } },
+    { type: 'text', x: 60, y: 85, width: 400, height: 28, props: { text: 'STARTING ROTATION', fontSize: 18, fontWeight: 600, color: EMERALD, bgColor: TRANSPARENT, letterSpacing: 3 } },
+    // Rotation placeholders (5)
+    ...Array.from({ length: 5 }, (_, i) => {
+      const cx = 160 + i * 320 + 160
+      return [
+        { type: 'text' as ElementType, x: cx - 25, y: 150, width: 50, height: 30, props: { text: `SP${i + 1}`, fontSize: 14, fontWeight: 700, color: EMERALD, textAlign: 'center', bgColor: 'rgba(16,185,129,0.12)' } },
+        { type: 'player-image' as ElementType, x: cx - 90, y: 190, width: 180, height: 225, bindingField: `rotation[${i}].playerImage`, props: { playerId: null, playerName: '', borderColor: '#27272a', showLabel: false, bgColor: TRANSPARENT } },
+        { type: 'text' as ElementType, x: cx - 140, y: 425, width: 280, height: 32, bindingField: `rotation[${i}].playerName`, props: { text: '—', fontSize: 22, fontWeight: 700, color: WHITE, textAlign: 'center', bgColor: TRANSPARENT } },
+      ]
+    }).flat(),
+    // Depth placeholders (3)
+    ...Array.from({ length: 3 }, (_, j) => {
+      const cx = 460 + j * 300 + 150
+      return [
+        { type: 'player-image' as ElementType, x: cx - 65, y: 590, width: 130, height: 162, bindingField: `depth[${j}].playerImage`, props: { playerId: null, playerName: '', borderColor: '#27272a', showLabel: false, bgColor: TRANSPARENT } },
+        { type: 'text' as ElementType, x: cx - 120, y: 760, width: 240, height: 28, bindingField: `depth[${j}].playerName`, props: { text: '—', fontSize: 18, fontWeight: 600, color: DIM, textAlign: 'center', bgColor: TRANSPARENT } },
+      ]
+    }).flat(),
+  ],
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   top5Leaderboard,
   playerSpotlight,
@@ -245,4 +284,5 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   liveScorebug,
   teamOverview,
   headToHead,
+  rotationDepthChart,
 ]

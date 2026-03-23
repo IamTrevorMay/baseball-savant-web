@@ -22,6 +22,54 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
 
+    // ── Depth Chart mode (MLB Stats API roster) ──────────────────────────
+    if (sp.get('depthChart') === 'true') {
+      const TEAM_IDS: Record<string, number> = {
+        AZ:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CIN:113,CLE:114,COL:115,DET:116,
+        HOU:117,KC:118,LAA:108,LAD:119,MIA:146,MIL:158,MIN:142,NYM:121,NYY:147,OAK:133,
+        PHI:143,PIT:134,SD:135,SF:137,SEA:136,STL:138,TB:139,TEX:140,TOR:141,WSH:120,
+      }
+      const TEAM_NAMES: Record<string, string> = {
+        AZ:'Arizona Diamondbacks',ATL:'Atlanta Braves',BAL:'Baltimore Orioles',BOS:'Boston Red Sox',
+        CHC:'Chicago Cubs',CWS:'Chicago White Sox',CIN:'Cincinnati Reds',CLE:'Cleveland Guardians',
+        COL:'Colorado Rockies',DET:'Detroit Tigers',HOU:'Houston Astros',KC:'Kansas City Royals',
+        LAA:'Los Angeles Angels',LAD:'Los Angeles Dodgers',MIA:'Miami Marlins',MIL:'Milwaukee Brewers',
+        MIN:'Minnesota Twins',NYM:'New York Mets',NYY:'New York Yankees',OAK:'Oakland Athletics',
+        PHI:'Philadelphia Phillies',PIT:'Pittsburgh Pirates',SD:'San Diego Padres',SF:'San Francisco Giants',
+        SEA:'Seattle Mariners',STL:'St. Louis Cardinals',TB:'Tampa Bay Rays',TEX:'Texas Rangers',
+        TOR:'Toronto Blue Jays',WSH:'Washington Nationals',
+      }
+      const team = (sp.get('team') || '').toUpperCase()
+      const teamId = TEAM_IDS[team]
+      if (!teamId) return NextResponse.json({ error: 'Unknown team' }, { status: 400 })
+      const year = sp.get('gameYear') || new Date().getFullYear()
+
+      const res = await fetch(
+        `https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=depthChart&season=${year}`,
+        { next: { revalidate: 3600 } }
+      )
+      if (!res.ok) return NextResponse.json({ error: `MLB API returned ${res.status}` }, { status: 502 })
+      const data = await res.json()
+
+      const starters = (data.roster || [])
+        .filter((p: any) => p.position?.code === 'S')
+        .map((p: any, i: number) => ({
+          player_id: p.person?.id,
+          player_name: p.person?.fullName || '',
+          jersey_number: p.jerseyNumber || '',
+          order: i + 1,
+        }))
+
+      return NextResponse.json({
+        depthChart: {
+          teamAbbrev: team,
+          teamName: TEAM_NAMES[team] || team,
+          rotation: starters.slice(0, 5),
+          depth: starters.slice(5, 8),
+        },
+      })
+    }
+
     // ── Leaderboard mode (for data-driven templates) ─────────────────────
     if (sp.get('leaderboard') === 'true') {
       const metric = sp.get('metric')
