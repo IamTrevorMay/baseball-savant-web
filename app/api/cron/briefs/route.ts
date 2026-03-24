@@ -701,7 +701,8 @@ function buildNewsHtml(articles: any[]): string {
 </a>`).join('')
 }
 
-function escapeHtml(text: string): string {
+function escapeHtml(text: string | null | undefined): string {
+  if (!text) return ''
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -919,7 +920,7 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
 
     const playerMap: Record<number, { name: string; team: string }> = {}
     for (const r of (outingPlayerRes.data || [])) {
-      playerMap[r.player_id] = { name: r.player_name, team: r.team }
+      playerMap[r.player_id] = { name: r.player_name, team: r.team || '??' }
     }
 
     // Group pitches by pitcher+game_pk
@@ -996,7 +997,7 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
         if (ptCmd) cmdData = { avg_brink: ptCmd.avg_brink, avg_cluster: ptCmd.avg_cluster, avg_missfire: ptCmd.avg_missfire, cmd_plus: ptCmd.cmd_plus }
       }
       newPitches.push({
-        player_id: r.player_id, player_name: r.player_name, team: r.team,
+        player_id: r.player_id, player_name: r.player_name, team: r.team || '??',
         pitch_name: r.pitch_name, count: Number(r.count),
         avg_hbreak: r.avg_hbreak != null ? Number(r.avg_hbreak) : null,
         avg_ivb: r.avg_ivb != null ? Number(r.avg_ivb) : null,

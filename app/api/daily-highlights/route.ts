@@ -110,7 +110,7 @@ export async function GET(_req: NextRequest) {
     // Build player lookup
     const playerMap: Record<number, { name: string; team: string }> = {}
     for (const r of (outingPlayerRes.data || [])) {
-      playerMap[r.player_id] = { name: r.player_name, team: r.team }
+      playerMap[r.player_id] = { name: r.player_name, team: r.team || '??' }
     }
 
     // Group pitches by pitcher+game_pk, determine starter vs reliever
@@ -223,7 +223,7 @@ export async function GET(_req: NextRequest) {
       newPitchAlerts.push({
         player_id: r.player_id,
         player_name: r.player_name,
-        team: r.team,
+        team: r.team || '??',
         pitch_name: r.pitch_name,
         count: Number(r.count),
         avg_hbreak: r.avg_hbreak != null ? Number(r.avg_hbreak) : null,
