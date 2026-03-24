@@ -4,6 +4,40 @@ import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
+interface GameLine {
+  ip: string; h: number; r: number; er: number; bb: number; k: number
+  pitches: number; decision: string // W, L, ND, HLD, SV
+}
+
+async function fetchPitcherGameLine(gamePk: number, pitcherId: number): Promise<GameLine | null> {
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`)
+    if (!res.ok) return null
+    const box = await res.json()
+    for (const side of ['home', 'away'] as const) {
+      const pitchers = box?.teams?.[side]?.pitchers || []
+      if (pitchers.includes(pitcherId)) {
+        const p = box?.teams?.[side]?.players?.[`ID${pitcherId}`]
+        const s = p?.stats?.pitching
+        if (!s) return null
+        let decision = 'ND'
+        const note: string = s.note || ''
+        if (s.wins >= 1 || note.includes('W')) decision = 'W'
+        else if (s.losses >= 1 || note.includes('L')) decision = 'L'
+        else if (s.holds >= 1 || note.includes('H')) decision = 'HLD'
+        else if (s.saves >= 1 || note.includes('S')) decision = 'SV'
+        return {
+          ip: s.inningsPitched || '0.0',
+          h: s.hits ?? 0, r: s.runs ?? 0, er: s.earnedRuns ?? 0,
+          bb: s.baseOnBalls ?? 0, k: s.strikeOuts ?? 0,
+          pitches: s.numberOfPitches ?? 0, decision,
+        }
+      }
+    }
+    return null
+  } catch { return null }
+}
+
 export async function GET(_req: NextRequest) {
   try {
     // Determine current season and whether regular season has started
@@ -23,11 +57,9 @@ export async function GET(_req: NextRequest) {
     if (dateRes.error) return NextResponse.json({ error: dateRes.error.message }, { status: 500 })
     const dates = (dateRes.data || []).map((r: any) => r.gd)
     if (dates.length === 0) return NextResponse.json({ error: 'No data' }, { status: 404 })
-    // Use the most recent date as "previous day" (latest data day)
     const prevDay = dates[0]
 
     // ── 1. Best Stuff+ pitch (Starter / Reliever) ───────────────────────
-    // Identify starters: pitchers who threw in inning 1 of each game
     const stuffRes = await q(`
       WITH starters AS (
         SELECT DISTINCT pitcher, game_pk
@@ -36,9 +68,10 @@ export async function GET(_req: NextRequest) {
       ),
       ranked AS (
         SELECT p.pitcher AS player_id, pl.name AS player_name, pl.team,
+               p.game_pk,
                p.pitch_name, p.stuff_plus,
-               ROUND(p.pfx_x * 12, 1) AS hbreak_in,
-               ROUND(p.pfx_z * 12, 1) AS ivb_in,
+               ROUND((p.pfx_x * 12)::numeric, 1) AS hbreak_in,
+               ROUND((p.pfx_z * 12)::numeric, 1) AS ivb_in,
                ROUND(p.release_speed::numeric, 1) AS velo,
                CASE WHEN s.pitcher IS NOT NULL THEN 'starter' ELSE 'reliever' END AS role,
                ROW_NUMBER() OVER (
@@ -109,8 +142,10 @@ export async function GET(_req: NextRequest) {
     // Compute cmd+ per outing, find best starter and reliever
     let bestCmdStarter: any = null
     let bestCmdReliever: any = null
+    let bestCmdStarterGpk = 0
+    let bestCmdRelieverGpk = 0
     for (const outing of Object.values(outingGroups)) {
-      if (outing.pitches.length < 15) continue // skip tiny outings
+      if (outing.pitches.length < 15) continue
       const cmd = computeOutingCommand(outing.pitches)
       const cmdPlus = cmd.overall_cmd_plus
       if (cmdPlus == null) continue
@@ -122,12 +157,19 @@ export async function GET(_req: NextRequest) {
         team: info?.team || '??',
         cmd_plus: +cmdPlus.toFixed(1),
         pitches: outing.pitches.length,
+        game_line: null as GameLine | null,
       }
 
       if (outing.isStarter) {
-        if (!bestCmdStarter || cmdPlus > bestCmdStarter.cmd_plus) bestCmdStarter = entry
+        if (!bestCmdStarter || cmdPlus > bestCmdStarter.cmd_plus) {
+          bestCmdStarter = entry
+          bestCmdStarterGpk = outing.gamePk
+        }
       } else {
-        if (!bestCmdReliever || cmdPlus > bestCmdReliever.cmd_plus) bestCmdReliever = entry
+        if (!bestCmdReliever || cmdPlus > bestCmdReliever.cmd_plus) {
+          bestCmdReliever = entry
+          bestCmdRelieverGpk = outing.gamePk
+        }
       }
     }
 
@@ -161,10 +203,8 @@ export async function GET(_req: NextRequest) {
       ORDER BY t.count DESC
     `)
 
-    // For new pitch alerts, also get brink/cluster/missfire/cmd+ per new pitch
     const newPitchAlerts: any[] = []
     for (const r of (newPitchRes.data || [])) {
-      // Find this pitcher's outing and compute per-pitch command
       const outingKey = Object.keys(outingGroups).find(k => k.startsWith(`${r.player_id}-`))
       let cmdData: any = {}
       if (outingKey) {
@@ -193,32 +233,41 @@ export async function GET(_req: NextRequest) {
       })
     }
 
-    // ── Build response ──────────────────────────────────────────────────
+    // ── Fetch game lines from MLB boxscore API ──────────────────────────
     const stuffStarter = (stuffRes.data || []).find((r: any) => r.role === 'starter') || null
     const stuffReliever = (stuffRes.data || []).find((r: any) => r.role === 'reliever') || null
 
+    // Collect unique gamePk→pitcherId pairs to fetch
+    const lineups: { gamePk: number; pitcherId: number; key: string }[] = []
+    if (stuffStarter) lineups.push({ gamePk: stuffStarter.game_pk, pitcherId: stuffStarter.player_id, key: 'stuffStarter' })
+    if (stuffReliever) lineups.push({ gamePk: stuffReliever.game_pk, pitcherId: stuffReliever.player_id, key: 'stuffReliever' })
+    if (bestCmdStarter) lineups.push({ gamePk: bestCmdStarterGpk, pitcherId: bestCmdStarter.player_id, key: 'cmdStarter' })
+    if (bestCmdReliever) lineups.push({ gamePk: bestCmdRelieverGpk, pitcherId: bestCmdReliever.player_id, key: 'cmdReliever' })
+
+    const gameLines: Record<string, GameLine | null> = {}
+    await Promise.all(lineups.map(async ({ gamePk, pitcherId, key }) => {
+      gameLines[key] = await fetchPitcherGameLine(gamePk, pitcherId)
+    }))
+
+    const mapStuff = (r: any, lineKey: string) => r ? {
+      player_id: r.player_id,
+      player_name: r.player_name,
+      team: r.team,
+      pitch_name: r.pitch_name,
+      stuff_plus: Number(r.stuff_plus),
+      velo: r.velo != null ? Number(r.velo) : null,
+      hbreak_in: r.hbreak_in != null ? Number(r.hbreak_in) : null,
+      ivb_in: r.ivb_in != null ? Number(r.ivb_in) : null,
+      game_line: gameLines[lineKey] || null,
+    } : null
+
+    if (bestCmdStarter) bestCmdStarter.game_line = gameLines['cmdStarter'] || null
+    if (bestCmdReliever) bestCmdReliever.game_line = gameLines['cmdReliever'] || null
+
     return NextResponse.json({
       date: prevDay,
-      stuff_starter: stuffStarter ? {
-        player_id: stuffStarter.player_id,
-        player_name: stuffStarter.player_name,
-        team: stuffStarter.team,
-        pitch_name: stuffStarter.pitch_name,
-        stuff_plus: Number(stuffStarter.stuff_plus),
-        velo: stuffStarter.velo != null ? Number(stuffStarter.velo) : null,
-        hbreak_in: stuffStarter.hbreak_in != null ? Number(stuffStarter.hbreak_in) : null,
-        ivb_in: stuffStarter.ivb_in != null ? Number(stuffStarter.ivb_in) : null,
-      } : null,
-      stuff_reliever: stuffReliever ? {
-        player_id: stuffReliever.player_id,
-        player_name: stuffReliever.player_name,
-        team: stuffReliever.team,
-        pitch_name: stuffReliever.pitch_name,
-        stuff_plus: Number(stuffReliever.stuff_plus),
-        velo: stuffReliever.velo != null ? Number(stuffReliever.velo) : null,
-        hbreak_in: stuffReliever.hbreak_in != null ? Number(stuffReliever.hbreak_in) : null,
-        ivb_in: stuffReliever.ivb_in != null ? Number(stuffReliever.ivb_in) : null,
-      } : null,
+      stuff_starter: mapStuff(stuffStarter, 'stuffStarter'),
+      stuff_reliever: mapStuff(stuffReliever, 'stuffReliever'),
       cmd_starter: bestCmdStarter,
       cmd_reliever: bestCmdReliever,
       new_pitches: newPitchAlerts,

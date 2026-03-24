@@ -291,12 +291,17 @@ const S = {
   newsBadge: 'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);white-space:nowrap;margin-top:1px;',
 }
 
+interface BriefGameLine {
+  ip: string; h: number; r: number; er: number; bb: number; k: number
+  pitches: number; decision: string
+}
+
 interface DailyHighlightsData {
   date: string
-  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
-  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
-  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
-  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
+  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null; game_line: BriefGameLine | null } | null
+  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null; game_line: BriefGameLine | null } | null
+  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number; game_line: BriefGameLine | null } | null
+  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number; game_line: BriefGameLine | null } | null
   new_pitches: Array<{
     player_id: number; player_name: string; team: string; pitch_name: string; count: number
     avg_hbreak: number | null; avg_ivb: number | null; avg_stuff_plus: number | null
@@ -329,9 +334,17 @@ function buildDailyHighlightsHtml(data: DailyHighlightsData | null): string {
   const subStyle = 'font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;'
   const valStyle = (c: string) => `font-size:22px;font-weight:800;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;color:${c};`
   const imgStyle = 'width:44px;height:44px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,0.05);'
+  const lineStyle = 'font-size:9px;color:rgba(255,255,255,0.35);margin-top:6px;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;'
+  const decBadge = (d: string) => {
+    const colors: Record<string, string> = { W: '#34d399', L: '#f87171', SV: '#38bdf8', HLD: '#fbbf24' }
+    const c = colors[d]
+    return c ? `<span style="font-size:9px;font-weight:700;color:${c};margin-right:4px;">${d}</span>` : ''
+  }
+  const fmtLine = (gl: BriefGameLine) => `${gl.ip} IP, ${gl.h} H, ${gl.er} ER, ${gl.bb} BB, ${gl.k} K`
 
   const stuffCard = (label: string, accentLabel: string, d: typeof data.stuff_starter) => {
     if (!d) return ''
+    const glHtml = d.game_line ? `<div style="${lineStyle}">${decBadge(d.game_line.decision)}${fmtLine(d.game_line)}</div>` : ''
     return `
     <a href="${siteUrl}/player/${d.player_id}" style="${cardStyle}">
       <div style="${labelStyle}"><span style="color:#fbbf24">${accentLabel}</span> ${label}</div>
@@ -346,11 +359,13 @@ function buildDailyHighlightsHtml(data: DailyHighlightsData | null): string {
           ${d.velo ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;">${d.velo} mph</div>` : ''}
         </div>
       </div>
+      ${glHtml}
     </a>`
   }
 
   const cmdCard = (label: string, accentLabel: string, d: typeof data.cmd_starter) => {
     if (!d) return ''
+    const glHtml = d.game_line ? `<div style="${lineStyle}">${decBadge(d.game_line.decision)}${fmtLine(d.game_line)}</div>` : ''
     return `
     <a href="${siteUrl}/player/${d.player_id}" style="${cardStyle}">
       <div style="${labelStyle}"><span style="color:#38bdf8">${accentLabel}</span> ${label}</div>
@@ -362,6 +377,7 @@ function buildDailyHighlightsHtml(data: DailyHighlightsData | null): string {
         </div>
         <div style="${valStyle(plusColorHex(d.cmd_plus))}">${d.cmd_plus}</div>
       </div>
+      ${glHtml}
     </a>`
   }
 
@@ -867,9 +883,9 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       ),
       ranked AS (
         SELECT p.pitcher AS player_id, pl.name AS player_name, pl.team,
-               p.pitch_name, p.stuff_plus,
-               ROUND(p.pfx_x * 12, 1) AS hbreak_in,
-               ROUND(p.pfx_z * 12, 1) AS ivb_in,
+               p.game_pk, p.pitch_name, p.stuff_plus,
+               ROUND((p.pfx_x * 12)::numeric, 1) AS hbreak_in,
+               ROUND((p.pfx_z * 12)::numeric, 1) AS ivb_in,
                ROUND(p.release_speed::numeric, 1) AS velo,
                CASE WHEN s.pitcher IS NOT NULL THEN 'starter' ELSE 'reliever' END AS role,
                ROW_NUMBER() OVER (
@@ -937,6 +953,7 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
         team: info?.team || '??',
         cmd_plus: +cmdPlus.toFixed(1),
         pitches: outing.pitches.length,
+        game_line: null as BriefGameLine | null,
       }
       if (outing.isStarter) {
         if (!bestCmdStarter || cmdPlus > bestCmdStarter.cmd_plus) bestCmdStarter = entry
@@ -991,18 +1008,61 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
     const stuffStarter = (stuffRes.data || []).find((r: any) => r.role === 'starter')
     const stuffReliever = (stuffRes.data || []).find((r: any) => r.role === 'reliever')
 
-    const mapStuff = (r: any) => r ? {
+    // Fetch game lines from MLB boxscore API
+    const fetchLine = async (gamePk: number, pid: number): Promise<BriefGameLine | null> => {
+      try {
+        const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`)
+        if (!res.ok) return null
+        const box = await res.json()
+        for (const side of ['home', 'away'] as const) {
+          const pitchers = box?.teams?.[side]?.pitchers || []
+          if (pitchers.includes(pid)) {
+            const s = box?.teams?.[side]?.players?.[`ID${pid}`]?.stats?.pitching
+            if (!s) return null
+            let decision = 'ND'
+            const note: string = s.note || ''
+            if (s.wins >= 1 || note.includes('W')) decision = 'W'
+            else if (s.losses >= 1 || note.includes('L')) decision = 'L'
+            else if (s.holds >= 1 || note.includes('H')) decision = 'HLD'
+            else if (s.saves >= 1 || note.includes('S')) decision = 'SV'
+            return { ip: s.inningsPitched || '0.0', h: s.hits ?? 0, r: s.runs ?? 0, er: s.earnedRuns ?? 0, bb: s.baseOnBalls ?? 0, k: s.strikeOuts ?? 0, pitches: s.numberOfPitches ?? 0, decision }
+          }
+        }
+        return null
+      } catch { return null }
+    }
+
+    // Fetch all game lines in parallel
+    const linePromises: Record<string, Promise<BriefGameLine | null>> = {}
+    if (stuffStarter) linePromises['ss'] = fetchLine(stuffStarter.game_pk, stuffStarter.player_id)
+    if (stuffReliever) linePromises['sr'] = fetchLine(stuffReliever.game_pk, stuffReliever.player_id)
+    // For cmd, find the game_pk from outingGroups
+    const cmdStarterGpk = bestCmdStarter ? Object.values(outingGroups).find(o => o.playerId === bestCmdStarter!.player_id && o.isStarter)?.gamePk : undefined
+    const cmdRelieverGpk = bestCmdReliever ? Object.values(outingGroups).find(o => o.playerId === bestCmdReliever!.player_id && !o.isStarter)?.gamePk : undefined
+    if (bestCmdStarter && cmdStarterGpk) linePromises['cs'] = fetchLine(cmdStarterGpk, bestCmdStarter.player_id)
+    if (bestCmdReliever && cmdRelieverGpk) linePromises['cr'] = fetchLine(cmdRelieverGpk, bestCmdReliever.player_id)
+
+    const lineKeys = Object.keys(linePromises)
+    const lineResults = await Promise.all(lineKeys.map(k => linePromises[k]))
+    const lines: Record<string, BriefGameLine | null> = {}
+    lineKeys.forEach((k, i) => { lines[k] = lineResults[i] })
+
+    const mapStuff = (r: any, lineKey: string) => r ? {
       player_id: r.player_id, player_name: r.player_name, team: r.team,
       pitch_name: r.pitch_name, stuff_plus: Number(r.stuff_plus),
       velo: r.velo != null ? Number(r.velo) : null,
       hbreak_in: r.hbreak_in != null ? Number(r.hbreak_in) : null,
       ivb_in: r.ivb_in != null ? Number(r.ivb_in) : null,
+      game_line: lines[lineKey] || null,
     } : null
+
+    if (bestCmdStarter) bestCmdStarter.game_line = lines['cs'] || null
+    if (bestCmdReliever) bestCmdReliever.game_line = lines['cr'] || null
 
     return {
       date: prevDay,
-      stuff_starter: mapStuff(stuffStarter),
-      stuff_reliever: mapStuff(stuffReliever),
+      stuff_starter: mapStuff(stuffStarter, 'ss'),
+      stuff_reliever: mapStuff(stuffReliever, 'sr'),
       cmd_starter: bestCmdStarter,
       cmd_reliever: bestCmdReliever,
       new_pitches: newPitches,

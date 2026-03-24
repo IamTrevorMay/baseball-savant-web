@@ -15,12 +15,17 @@ interface Alert {
   sentiment: 'good' | 'bad'
 }
 
+interface GameLine {
+  ip: string; h: number; r: number; er: number; bb: number; k: number
+  pitches: number; decision: string
+}
+
 interface DailyHighlights {
   date: string
-  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
-  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
-  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
-  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
+  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null; game_line: GameLine | null } | null
+  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null; game_line: GameLine | null } | null
+  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number; game_line: GameLine | null } | null
+  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number; game_line: GameLine | null } | null
   new_pitches: Array<{
     player_id: number; player_name: string; team: string; pitch_name: string; count: number
     avg_hbreak: number | null; avg_ivb: number | null; avg_stuff_plus: number | null
@@ -38,6 +43,18 @@ function plusColor(val: number) {
   if (val >= 100) return 'text-zinc-200'
   if (val >= 85) return 'text-orange-400'
   return 'text-red-400'
+}
+
+function fmtGameLine(gl: GameLine): string {
+  return `${gl.ip} IP, ${gl.h} H, ${gl.er} ER, ${gl.bb} BB, ${gl.k} K`
+}
+
+function decisionBadge(d: string) {
+  if (d === 'W') return <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1 py-0.5 rounded">W</span>
+  if (d === 'L') return <span className="text-[9px] font-bold text-red-400 bg-red-500/15 px-1 py-0.5 rounded">L</span>
+  if (d === 'SV') return <span className="text-[9px] font-bold text-sky-400 bg-sky-500/15 px-1 py-0.5 rounded">SV</span>
+  if (d === 'HLD') return <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 px-1 py-0.5 rounded">HLD</span>
+  return null
 }
 
 function sigmaColor(sigma: number, sentiment: string): string {
@@ -240,6 +257,12 @@ export default function TrendsPage() {
                           {daily.stuff_starter.velo && `${daily.stuff_starter.velo} mph`}
                         </span>
                       </div>
+                      {daily.stuff_starter.game_line && (
+                        <div className="text-[9px] text-zinc-500 mt-1 flex items-center gap-1">
+                          {decisionBadge(daily.stuff_starter.game_line.decision)}
+                          <span className="font-mono">{fmtGameLine(daily.stuff_starter.game_line)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </a>
@@ -268,6 +291,12 @@ export default function TrendsPage() {
                           {daily.stuff_reliever.velo && `${daily.stuff_reliever.velo} mph`}
                         </span>
                       </div>
+                      {daily.stuff_reliever.game_line && (
+                        <div className="text-[9px] text-zinc-500 mt-1 flex items-center gap-1">
+                          {decisionBadge(daily.stuff_reliever.game_line.decision)}
+                          <span className="font-mono">{fmtGameLine(daily.stuff_reliever.game_line)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </a>
@@ -293,6 +322,12 @@ export default function TrendsPage() {
                           {daily.cmd_starter.cmd_plus}
                         </span>
                       </div>
+                      {daily.cmd_starter.game_line && (
+                        <div className="text-[9px] text-zinc-500 mt-1 flex items-center gap-1">
+                          {decisionBadge(daily.cmd_starter.game_line.decision)}
+                          <span className="font-mono">{fmtGameLine(daily.cmd_starter.game_line)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </a>
@@ -318,13 +353,19 @@ export default function TrendsPage() {
                           {daily.cmd_reliever.cmd_plus}
                         </span>
                       </div>
+                      {daily.cmd_reliever.game_line && (
+                        <div className="text-[9px] text-zinc-500 mt-1 flex items-center gap-1">
+                          {decisionBadge(daily.cmd_reliever.game_line.decision)}
+                          <span className="font-mono">{fmtGameLine(daily.cmd_reliever.game_line)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </a>
               )}
 
-              {/* New Pitch Alert — show first one as card, rest in expanded section */}
-              {daily.new_pitches.length > 0 && (
+              {/* New Pitch Alert — show first one as card, or empty state */}
+              {daily.new_pitches.length > 0 ? (
                 <a href={`/player/${daily.new_pitches[0].player_id}`}
                   className="bg-zinc-900 border border-orange-500/20 rounded-lg p-3 hover:border-orange-500/30 transition group">
                   <div className="text-[9px] text-orange-400 uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -348,6 +389,13 @@ export default function TrendsPage() {
                     </div>
                   </div>
                 </a>
+              ) : (
+                <div className="bg-zinc-900 border border-zinc-800/50 rounded-lg p-3 flex flex-col min-h-[100px]">
+                  <div className="text-[9px] text-orange-400/40 uppercase tracking-wider mb-2">New Pitch Alert</div>
+                  <div className="flex-1 flex items-center justify-center">
+                    <span className="text-[11px] text-zinc-600">No new pitches for today</span>
+                  </div>
+                </div>
               )}
             </div>
 
