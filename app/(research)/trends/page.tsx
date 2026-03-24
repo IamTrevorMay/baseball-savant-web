@@ -2,7 +2,8 @@
 import { useState, useCallback, useEffect } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 
-const SEASONS = ['2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015']
+const CURRENT_YEAR = new Date().getFullYear()
+const SEASONS = Array.from({ length: CURRENT_YEAR - 2014 }, (_, i) => String(CURRENT_YEAR - i))
 const PLAYER_TYPES = ['pitcher', 'hitter'] as const
 
 interface Alert {
@@ -78,7 +79,7 @@ interface Highlight extends Alert {
 }
 
 export default function TrendsPage() {
-  const [season, setSeason] = useState('2025')
+  const [season, setSeason] = useState(String(CURRENT_YEAR))
   const [playerType, setPlayerType] = useState<'pitcher' | 'hitter'>('pitcher')
   const [minPitches, setMinPitches] = useState('500')
   const [loading, setLoading] = useState(false)
@@ -111,12 +112,12 @@ export default function TrendsPage() {
           fetch('/api/trends', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: 2025, playerType: 'pitcher', minPitches: 500 }),
+            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'pitcher', minPitches: 500 }),
           }),
           fetch('/api/trends', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: 2025, playerType: 'hitter', minPitches: 500 }),
+            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'hitter', minPitches: 500 }),
           }),
         ])
         if (cancelled) return

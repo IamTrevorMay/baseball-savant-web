@@ -6,12 +6,17 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
 export async function GET(_req: NextRequest) {
   try {
-    // Get previous game day (the day before the latest game_date in the current season)
+    // Determine current season and whether regular season has started
     const currentYear = new Date().getFullYear()
+    const regCheck = await q(`SELECT 1 FROM pitches WHERE game_year = ${currentYear} AND game_type = 'R' LIMIT 1`)
+    const hasRegularSeason = (regCheck.data || []).length > 0
+    const gameTypeFilter = hasRegularSeason ? "AND game_type = 'R'" : ''
+
+    // Get previous game day (most recent date in the applicable game scope)
     const dateRes = await q(`
       SELECT DISTINCT game_date::text AS gd
       FROM pitches
-      WHERE game_year = ${currentYear}
+      WHERE game_year = ${currentYear} ${gameTypeFilter}
       ORDER BY gd DESC
       LIMIT 2
     `)

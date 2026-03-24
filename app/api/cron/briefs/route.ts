@@ -845,10 +845,16 @@ const qAdmin = (sql: string) => supabaseAdmin.rpc('run_query', { query_text: sql
 
 async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsData | null> {
   try {
+    // Determine if regular season has started — if so, exclude Spring Training
+    const briefYear = new Date(briefDate).getFullYear()
+    const regCheck = await qAdmin(`SELECT 1 FROM pitches WHERE game_year = ${briefYear} AND game_type = 'R' LIMIT 1`)
+    const hasRS = (regCheck.data || []).length > 0
+    const gtFilter = hasRS ? "AND game_type = 'R'" : ''
+
     // Find the most recent game date on or before briefDate
     const dateRes = await qAdmin(`
       SELECT MAX(game_date::text) AS gd FROM pitches
-      WHERE game_date <= '${briefDate}' AND game_year = EXTRACT(YEAR FROM '${briefDate}'::date)::int
+      WHERE game_date <= '${briefDate}' AND game_year = ${briefYear} ${gtFilter}
     `)
     const prevDay = dateRes.data?.[0]?.gd
     if (!prevDay) return null

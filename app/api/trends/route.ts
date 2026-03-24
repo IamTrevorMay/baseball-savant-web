@@ -33,8 +33,13 @@ export async function POST(req: NextRequest) {
     const safeSeason = parseInt(season)
     if (isNaN(safeSeason)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
 
+    // Determine if regular season data exists — if so, exclude Spring Training
+    const regSeasonCheck = await q(`SELECT 1 FROM pitches WHERE game_year = ${safeSeason} AND game_type = 'R' LIMIT 1`)
+    const hasRegularSeason = (regSeasonCheck.data || []).length > 0
+    const gameTypeFilter = hasRegularSeason ? "AND game_type = 'R'" : ''
+
     // Recent window = 14 days before latest game_date in data
-    const dateRes = await q(`SELECT MAX(game_date) as latest FROM pitches WHERE game_year = ${safeSeason}`)
+    const dateRes = await q(`SELECT MAX(game_date) as latest FROM pitches WHERE game_year = ${safeSeason} ${gameTypeFilter}`)
     if (dateRes.error) return NextResponse.json({ error: dateRes.error.message }, { status: 500 })
     const latestDate = dateRes.data?.[0]?.latest
     if (!latestDate) return NextResponse.json({ rows: [], message: 'No data for this season' })
@@ -57,7 +62,7 @@ export async function POST(req: NextRequest) {
         ${recentCols}
       FROM pitches p
       JOIN players pl ON pl.id = p.${groupCol}
-      WHERE game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN')
+      WHERE game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gameTypeFilter}
       GROUP BY p.${groupCol}, pl.name
       HAVING COUNT(*) >= ${mp}
         AND COUNT(*) FILTER (WHERE game_date >= '${recentDate}') >= 30
