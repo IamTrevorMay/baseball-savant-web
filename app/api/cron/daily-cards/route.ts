@@ -25,18 +25,19 @@ export async function GET(req: NextRequest) {
     return json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Compute the latest date with available Statcast data.
-  // Statcast data isn't ready until ~4am EST the following day,
-  // so before 4am EST we go back 2 days, after 4am we use yesterday.
-  const now = new Date()
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  const etHour = et.getHours()
-  const daysBack = etHour < 4 ? 2 : 1
-  et.setDate(et.getDate() - daysBack)
-  const cardDate = et.toISOString().slice(0, 10)
+  // Use the latest date that actually has Statcast data in the DB
+  // (Statcast data availability lags — don't assume yesterday is ready)
+  const currentYear = new Date().getFullYear()
+  const { data: dateRows, error: dateErr } = await supabaseAdmin.rpc('run_query', {
+    query_text: `SELECT MAX(game_date::text) AS latest FROM pitches WHERE game_year = ${currentYear}`,
+  })
+  if (dateErr || !dateRows?.[0]?.latest) {
+    return json({ ok: true, skipped: true, reason: 'no_statcast_data' })
+  }
+  const cardDate = dateRows[0].latest
 
   // Skip offseason (Dec, Jan)
-  const month = et.getMonth() + 1
+  const month = new Date(cardDate).getMonth() + 1
   if (month === 12 || month === 1) {
     return json({ ok: true, skipped: true, reason: 'offseason' })
   }
