@@ -864,14 +864,72 @@ export async function renderCardToPNG(scene: Scene): Promise<Buffer> {
         break
       case 'text': {
         const p = el.props
-        ctx.font = `${p.fontWeight || 400} ${p.fontSize || 16}px ${FONT()}`
+        // Apply textTransform
+        let displayText = p.text || ''
+        if (p.textTransform === 'uppercase') displayText = displayText.toUpperCase()
+        else if (p.textTransform === 'lowercase') displayText = displayText.toLowerCase()
+
+        const baseFontSize = p.fontSize || 16
+        const lineHeightMul = p.lineHeight || 1.2
         ctx.fillStyle = p.color || '#ffffff'
         ctx.textBaseline = 'middle'
+
+        // Word-wrap with auto-shrink to fit element bounds
+        let fontSize = baseFontSize
+        let lines: string[] = []
+        while (fontSize >= 12) {
+          ctx.font = `${p.fontWeight || 400} ${fontSize}px ${p.fontFamily || FONT()}`
+          // Split into lines that fit el.width
+          const words = displayText.split(' ')
+          lines = []
+          let cur = ''
+          for (const w of words) {
+            const test = cur ? `${cur} ${w}` : w
+            if (ctx.measureText(test).width > el.width && cur) {
+              lines.push(cur)
+              cur = w
+            } else {
+              cur = test
+            }
+          }
+          if (cur) lines.push(cur)
+          const totalH = lines.length * fontSize * lineHeightMul
+          if (totalH <= el.height + fontSize * lineHeightMul * 0.3) break
+          fontSize -= 2
+        }
+
+        ctx.font = `${p.fontWeight || 400} ${fontSize}px ${p.fontFamily || FONT()}`
+        const lh = fontSize * lineHeightMul
+        const totalH = lines.length * lh
+        const startY = el.y + (el.height - totalH) / 2 + lh / 2
+
         let tx = el.x
         if (p.textAlign === 'center') { tx = el.x + el.width / 2; ctx.textAlign = 'center' }
         else if (p.textAlign === 'right') { tx = el.x + el.width; ctx.textAlign = 'right' }
         else { ctx.textAlign = 'left' }
-        ctx.fillText(p.text || '', tx, el.y + el.height / 2)
+
+        // Text shadow
+        if (p.textShadowBlur > 0 || p.textShadowOffsetX || p.textShadowOffsetY) {
+          ctx.save()
+          ctx.fillStyle = p.textShadowColor || '#000000'
+          ctx.shadowColor = p.textShadowColor || '#000000'
+          ctx.shadowBlur = p.textShadowBlur || 0
+          ctx.shadowOffsetX = p.textShadowOffsetX || 0
+          ctx.shadowOffsetY = p.textShadowOffsetY || 0
+          for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i], tx, startY + i * lh)
+          }
+          ctx.restore()
+          ctx.fillStyle = p.color || '#ffffff'
+          ctx.font = `${p.fontWeight || 400} ${fontSize}px ${p.fontFamily || FONT()}`
+          if (p.textAlign === 'center') ctx.textAlign = 'center'
+          else if (p.textAlign === 'right') ctx.textAlign = 'right'
+          else ctx.textAlign = 'left'
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+          ctx.fillText(lines[i], tx, startY + i * lh)
+        }
         break
       }
       default:
