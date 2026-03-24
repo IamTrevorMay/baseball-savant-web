@@ -7,7 +7,7 @@ const PRIMARY_LINKS = [
   { href: '/explore', label: 'Explore' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
-  { href: '/leaders', label: 'Historical' },
+  { href: '/trends', label: 'Trends' },
   { href: '/teams', label: 'Teams' },
 ]
 
@@ -17,12 +17,12 @@ const ADVANCED_LINKS = [
   { href: '/umpire', label: 'Umpires' },
   { href: '/matchups', label: 'Matchups' },
   { href: '/sequencing', label: 'Sequencing' },
-  { href: '/trends', label: 'Trends' },
   { href: '/park-adjusted', label: 'Park Adj' },
   { href: '/data-export', label: 'Data Export' },
 ]
 
 const MORE_LINKS = [
+  { href: '/leaders', label: 'Historical' },
   { href: '/briefs', label: 'Briefs' },
   { href: '/wbc', label: 'WBC' },
   { href: '/glossary', label: 'Glossary' },

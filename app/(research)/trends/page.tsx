@@ -14,6 +14,31 @@ interface Alert {
   sentiment: 'good' | 'bad'
 }
 
+interface DailyHighlights {
+  date: string
+  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
+  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
+  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
+  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
+  new_pitches: Array<{
+    player_id: number; player_name: string; team: string; pitch_name: string; count: number
+    avg_hbreak: number | null; avg_ivb: number | null; avg_stuff_plus: number | null
+    avg_brink: number | null; avg_cluster: number | null; avg_missfire: number | null; cmd_plus: number | null
+  }>
+}
+
+function headshot(id: number) {
+  return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${id}/headshot/67/current`
+}
+
+function plusColor(val: number) {
+  if (val >= 130) return 'text-emerald-400'
+  if (val >= 115) return 'text-emerald-500'
+  if (val >= 100) return 'text-zinc-200'
+  if (val >= 85) return 'text-orange-400'
+  return 'text-red-400'
+}
+
 function sigmaColor(sigma: number, sentiment: string): string {
   const abs = Math.abs(sigma)
   if (sentiment === 'good') {
@@ -63,6 +88,19 @@ export default function TrendsPage() {
   const [latestDate, setLatestDate] = useState('')
   const [highlights, setHighlights] = useState<{ surges: Highlight[]; concerns: Highlight[] } | null>(null)
   const [highlightsLoading, setHighlightsLoading] = useState(true)
+  const [daily, setDaily] = useState<DailyHighlights | null>(null)
+  const [dailyLoading, setDailyLoading] = useState(true)
+
+  // Auto-load daily highlights
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/daily-highlights')
+      .then(r => r.json())
+      .then(d => { if (!cancelled && !d.error) setDaily(d) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setDailyLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   // Auto-load highlights on mount — fetch both pitcher and hitter trends
   useEffect(() => {
@@ -153,6 +191,218 @@ export default function TrendsPage() {
       <div className="max-w-6xl mx-auto w-full px-4 md:px-6 py-6">
         <h1 className="text-lg font-semibold text-white mb-1">Trend Alerts</h1>
         <p className="text-xs text-zinc-500 mb-4">Detect significant recent performance changes vs season averages</p>
+
+        {/* Daily Highlights — previous day standouts */}
+        {dailyLoading && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+            {[0, 1, 2, 3, 4].map(i => (
+              <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 animate-pulse">
+                <div className="h-3 w-16 bg-zinc-800 rounded mb-3" />
+                <div className="flex gap-2 items-center">
+                  <div className="w-12 h-12 rounded-full bg-zinc-800" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-20 bg-zinc-800 rounded" />
+                    <div className="h-2.5 w-14 bg-zinc-800/60 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {daily && !dailyLoading && (
+          <>
+            <div className="flex items-baseline gap-2 mb-2">
+              <h2 className="text-sm font-semibold text-white">Yesterday&apos;s Standouts</h2>
+              <span className="text-[10px] text-zinc-600">{daily.date}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+              {/* Best Stuff+ Starter */}
+              {daily.stuff_starter && (
+                <a href={`/player/${daily.stuff_starter.player_id}`}
+                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition group">
+                  <div className="text-[9px] text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <span className="text-amber-400">Stuff+</span> Starter
+                  </div>
+                  <div className="flex gap-2.5 items-center">
+                    <img src={headshot(daily.stuff_starter.player_id)} alt=""
+                      className="w-12 h-12 rounded-full object-cover bg-zinc-800 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate group-hover:text-emerald-400 transition">
+                        {daily.stuff_starter.player_name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">{daily.stuff_starter.team} · {daily.stuff_starter.pitch_name}</div>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span className={`text-lg font-bold font-mono ${plusColor(daily.stuff_starter.stuff_plus)}`}>
+                          {daily.stuff_starter.stuff_plus}
+                        </span>
+                        <span className="text-[9px] text-zinc-600">
+                          {daily.stuff_starter.velo && `${daily.stuff_starter.velo} mph`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              )}
+
+              {/* Best Stuff+ Reliever */}
+              {daily.stuff_reliever && (
+                <a href={`/player/${daily.stuff_reliever.player_id}`}
+                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition group">
+                  <div className="text-[9px] text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <span className="text-amber-400">Stuff+</span> Reliever
+                  </div>
+                  <div className="flex gap-2.5 items-center">
+                    <img src={headshot(daily.stuff_reliever.player_id)} alt=""
+                      className="w-12 h-12 rounded-full object-cover bg-zinc-800 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate group-hover:text-emerald-400 transition">
+                        {daily.stuff_reliever.player_name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">{daily.stuff_reliever.team} · {daily.stuff_reliever.pitch_name}</div>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span className={`text-lg font-bold font-mono ${plusColor(daily.stuff_reliever.stuff_plus)}`}>
+                          {daily.stuff_reliever.stuff_plus}
+                        </span>
+                        <span className="text-[9px] text-zinc-600">
+                          {daily.stuff_reliever.velo && `${daily.stuff_reliever.velo} mph`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              )}
+
+              {/* Best Cmd+ Starter */}
+              {daily.cmd_starter && (
+                <a href={`/player/${daily.cmd_starter.player_id}`}
+                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition group">
+                  <div className="text-[9px] text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <span className="text-sky-400">Cmd+</span> Starter
+                  </div>
+                  <div className="flex gap-2.5 items-center">
+                    <img src={headshot(daily.cmd_starter.player_id)} alt=""
+                      className="w-12 h-12 rounded-full object-cover bg-zinc-800 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate group-hover:text-emerald-400 transition">
+                        {daily.cmd_starter.player_name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">{daily.cmd_starter.team} · {daily.cmd_starter.pitches} pitches</div>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span className={`text-lg font-bold font-mono ${plusColor(daily.cmd_starter.cmd_plus)}`}>
+                          {daily.cmd_starter.cmd_plus}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              )}
+
+              {/* Best Cmd+ Reliever */}
+              {daily.cmd_reliever && (
+                <a href={`/player/${daily.cmd_reliever.player_id}`}
+                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition group">
+                  <div className="text-[9px] text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <span className="text-sky-400">Cmd+</span> Reliever
+                  </div>
+                  <div className="flex gap-2.5 items-center">
+                    <img src={headshot(daily.cmd_reliever.player_id)} alt=""
+                      className="w-12 h-12 rounded-full object-cover bg-zinc-800 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate group-hover:text-emerald-400 transition">
+                        {daily.cmd_reliever.player_name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">{daily.cmd_reliever.team} · {daily.cmd_reliever.pitches} pitches</div>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span className={`text-lg font-bold font-mono ${plusColor(daily.cmd_reliever.cmd_plus)}`}>
+                          {daily.cmd_reliever.cmd_plus}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              )}
+
+              {/* New Pitch Alert — show first one as card, rest in expanded section */}
+              {daily.new_pitches.length > 0 && (
+                <a href={`/player/${daily.new_pitches[0].player_id}`}
+                  className="bg-zinc-900 border border-orange-500/20 rounded-lg p-3 hover:border-orange-500/30 transition group">
+                  <div className="text-[9px] text-orange-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    New Pitch Alert
+                  </div>
+                  <div className="flex gap-2.5 items-center">
+                    <img src={headshot(daily.new_pitches[0].player_id)} alt=""
+                      className="w-12 h-12 rounded-full object-cover bg-zinc-800 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm text-white font-medium truncate group-hover:text-emerald-400 transition">
+                        {daily.new_pitches[0].player_name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500">
+                        {daily.new_pitches[0].team} · {daily.new_pitches[0].pitch_name} ({daily.new_pitches[0].count}×)
+                      </div>
+                      {daily.new_pitches[0].avg_stuff_plus != null && (
+                        <div className="text-[10px] text-zinc-400 mt-0.5">
+                          Stuff+ <span className={`font-mono font-medium ${plusColor(daily.new_pitches[0].avg_stuff_plus)}`}>{daily.new_pitches[0].avg_stuff_plus}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </a>
+              )}
+            </div>
+
+            {/* Expanded new pitch alerts table */}
+            {daily.new_pitches.length > 0 && (
+              <div className="bg-zinc-900 border border-orange-500/10 rounded-lg overflow-hidden mb-6">
+                <div className="px-4 py-2 border-b border-zinc-800 flex items-center gap-2">
+                  <span className="text-orange-400 text-xs font-semibold">New Pitch Alerts</span>
+                  <span className="text-[10px] text-zinc-600">Pitch types never thrown before · {daily.date}</span>
+                </div>
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="bg-zinc-800/40 text-zinc-500">
+                      <th className="px-3 py-1.5 text-left font-medium">Pitcher</th>
+                      <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Count</th>
+                      <th className="px-3 py-1.5 text-right font-medium">HBreak</th>
+                      <th className="px-3 py-1.5 text-right font-medium">IVB</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Stuff+</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Brink</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Cluster</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Missfire</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Cmd+</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {daily.new_pitches.map((np) => (
+                      <tr key={`${np.player_id}-${np.pitch_name}`} className="border-t border-zinc-800/30 hover:bg-orange-500/5 transition">
+                        <td className="px-3 py-1.5">
+                          <a href={`/player/${np.player_id}`} className="flex items-center gap-2 text-white font-medium hover:text-emerald-400 transition">
+                            <img src={headshot(np.player_id)} alt="" className="w-6 h-6 rounded-full object-cover bg-zinc-800" />
+                            {np.player_name}
+                            <span className="text-[9px] text-zinc-600 font-normal">{np.team}</span>
+                          </a>
+                        </td>
+                        <td className="px-3 py-1.5 text-orange-300 font-medium">{np.pitch_name}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.count}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_hbreak != null ? `${np.avg_hbreak}"` : '—'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_ivb != null ? `${np.avg_ivb}"` : '—'}</td>
+                        <td className={`px-3 py-1.5 text-right font-mono font-medium ${np.avg_stuff_plus != null ? plusColor(np.avg_stuff_plus) : 'text-zinc-600'}`}>
+                          {np.avg_stuff_plus ?? '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_brink != null ? np.avg_brink.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_cluster != null ? np.avg_cluster.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_missfire != null ? np.avg_missfire.toFixed(1) : '—'}</td>
+                        <td className={`px-3 py-1.5 text-right font-mono font-medium ${np.cmd_plus != null ? plusColor(np.cmd_plus) : 'text-zinc-600'}`}>
+                          {np.cmd_plus ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Trends to Notice — auto-loaded highlights */}
         {highlightsLoading && (

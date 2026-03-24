@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@supabase/supabase-js'
+import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
 
 export const maxDuration = 300
 
@@ -66,11 +67,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch games, news, and transactions in parallel
-    const [gamesData, newsItems, transactions] = await Promise.all([
+    // Fetch games, news, transactions, and daily highlights in parallel
+    const [gamesData, newsItems, transactions, dailyHighlights] = await Promise.all([
       fetchGamesWithLinescores(briefDate),
       fetchNews(),
       fetchTransactions(briefDate),
+      fetchDailyHighlights(briefDate),
     ])
 
     // Fetch full box scores for finished games (batched)
@@ -205,6 +207,7 @@ Return ONLY valid JSON, no markdown fences.`,
       newsHtml,
       isOffDay,
       playerNameToId: playerNameToIdEarly,
+      dailyHighlights,
     })
 
     // Insert into briefs table
@@ -288,6 +291,144 @@ const S = {
   newsBadge: 'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);white-space:nowrap;margin-top:1px;',
 }
 
+interface DailyHighlightsData {
+  date: string
+  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
+  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null } | null
+  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
+  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number } | null
+  new_pitches: Array<{
+    player_id: number; player_name: string; team: string; pitch_name: string; count: number
+    avg_hbreak: number | null; avg_ivb: number | null; avg_stuff_plus: number | null
+    avg_brink: number | null; avg_cluster: number | null; avg_missfire: number | null; cmd_plus: number | null
+  }>
+}
+
+function plusColorHex(val: number): string {
+  if (val >= 130) return '#34d399'
+  if (val >= 115) return '#6ee7b7'
+  if (val >= 100) return '#d4d4d8'
+  if (val >= 85) return '#fb923c'
+  return '#f87171'
+}
+
+function buildDailyHighlightsHtml(data: DailyHighlightsData | null): string {
+  if (!data) return ''
+  const hasStuff = data.stuff_starter || data.stuff_reliever
+  const hasCmd = data.cmd_starter || data.cmd_reliever
+  const hasNew = data.new_pitches.length > 0
+  if (!hasStuff && !hasCmd && !hasNew) return ''
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
+  const headshot = (id: number) =>
+    `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_100,q_auto:best/v1/people/${id}/headshot/67/current`
+
+  const cardStyle = 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px 16px;text-decoration:none;display:block;color:inherit;'
+  const labelStyle = 'font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.35);margin-bottom:10px;'
+  const nameStyle = 'font-size:13px;font-weight:600;color:#f0f0f0;'
+  const subStyle = 'font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;'
+  const valStyle = (c: string) => `font-size:22px;font-weight:800;font-family:"SF Mono",SFMono-Regular,Menlo,monospace;color:${c};`
+  const imgStyle = 'width:44px;height:44px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,0.05);'
+
+  const stuffCard = (label: string, accentLabel: string, d: typeof data.stuff_starter) => {
+    if (!d) return ''
+    return `
+    <a href="${siteUrl}/player/${d.player_id}" style="${cardStyle}">
+      <div style="${labelStyle}"><span style="color:#fbbf24">${accentLabel}</span> ${label}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <img src="${headshot(d.player_id)}" alt="" style="${imgStyle}" />
+        <div style="flex:1;min-width:0;">
+          <div style="${nameStyle}">${escapeHtml(d.player_name)}</div>
+          <div style="${subStyle}">${escapeHtml(d.team)} · ${escapeHtml(d.pitch_name)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="${valStyle(plusColorHex(d.stuff_plus))}">${d.stuff_plus}</div>
+          ${d.velo ? `<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;">${d.velo} mph</div>` : ''}
+        </div>
+      </div>
+    </a>`
+  }
+
+  const cmdCard = (label: string, accentLabel: string, d: typeof data.cmd_starter) => {
+    if (!d) return ''
+    return `
+    <a href="${siteUrl}/player/${d.player_id}" style="${cardStyle}">
+      <div style="${labelStyle}"><span style="color:#38bdf8">${accentLabel}</span> ${label}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <img src="${headshot(d.player_id)}" alt="" style="${imgStyle}" />
+        <div style="flex:1;min-width:0;">
+          <div style="${nameStyle}">${escapeHtml(d.player_name)}</div>
+          <div style="${subStyle}">${escapeHtml(d.team)} · ${d.pitches} pitches</div>
+        </div>
+        <div style="${valStyle(plusColorHex(d.cmd_plus))}">${d.cmd_plus}</div>
+      </div>
+    </a>`
+  }
+
+  // Top row: 4 cards in 2x2 grid
+  const topCards = [
+    stuffCard('Starter', 'Stuff+', data.stuff_starter),
+    stuffCard('Reliever', 'Stuff+', data.stuff_reliever),
+    cmdCard('Starter', 'Cmd+', data.cmd_starter),
+    cmdCard('Reliever', 'Cmd+', data.cmd_reliever),
+  ].filter(Boolean)
+
+  let html = ''
+
+  if (topCards.length > 0) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">${topCards.join('')}</div>`
+  }
+
+  // New pitch alerts table
+  if (hasNew) {
+    const thStyle = 'padding:5px 8px;font-size:10px;font-weight:600;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.04em;border-bottom:1px solid rgba(255,255,255,0.08);'
+    const tdStyle = 'padding:5px 8px;font-size:11px;color:rgba(255,255,255,0.55);border-bottom:1px solid rgba(255,255,255,0.04);font-family:"SF Mono",SFMono-Regular,Menlo,monospace;'
+    const tdNameStyle = 'padding:5px 8px;font-size:11px;color:rgba(255,255,255,0.7);border-bottom:1px solid rgba(255,255,255,0.04);white-space:nowrap;'
+
+    const rows = data.new_pitches.map(np => {
+      const pLink = `<a href="${siteUrl}/player/${np.player_id}" style="color:inherit;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.2);text-underline-offset:2px;">${escapeHtml(np.player_name)}</a>`
+      const stuffColor = np.avg_stuff_plus != null ? plusColorHex(np.avg_stuff_plus) : 'rgba(255,255,255,0.3)'
+      const cmdColor = np.cmd_plus != null ? plusColorHex(np.cmd_plus) : 'rgba(255,255,255,0.3)'
+      return `<tr>
+        <td style="${tdNameStyle}">${pLink} <span style="font-size:9px;color:rgba(255,255,255,0.25)">${escapeHtml(np.team)}</span></td>
+        <td style="${tdStyle}color:#fb923c;font-weight:600;">${escapeHtml(np.pitch_name)}</td>
+        <td style="${tdStyle}text-align:right;">${np.count}</td>
+        <td style="${tdStyle}text-align:right;">${np.avg_hbreak != null ? np.avg_hbreak + '"' : '—'}</td>
+        <td style="${tdStyle}text-align:right;">${np.avg_ivb != null ? np.avg_ivb + '"' : '—'}</td>
+        <td style="${tdStyle}text-align:right;color:${stuffColor};font-weight:600;">${np.avg_stuff_plus ?? '—'}</td>
+        <td style="${tdStyle}text-align:right;">${np.avg_brink != null ? np.avg_brink.toFixed(1) : '—'}</td>
+        <td style="${tdStyle}text-align:right;">${np.avg_cluster != null ? np.avg_cluster.toFixed(1) : '—'}</td>
+        <td style="${tdStyle}text-align:right;">${np.avg_missfire != null ? np.avg_missfire.toFixed(1) : '—'}</td>
+        <td style="${tdStyle}text-align:right;color:${cmdColor};font-weight:600;">${np.cmd_plus ?? '—'}</td>
+      </tr>`
+    }).join('')
+
+    html += `
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(251,146,60,0.15);border-radius:10px;overflow:hidden;">
+      <div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:10px;font-weight:700;color:#fb923c;text-transform:uppercase;letter-spacing:0.08em;">
+        New Pitch Alerts
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="${thStyle}text-align:left;">Pitcher</th>
+          <th style="${thStyle}text-align:left;">Pitch</th>
+          <th style="${thStyle}text-align:right;">N</th>
+          <th style="${thStyle}text-align:right;">HBreak</th>
+          <th style="${thStyle}text-align:right;">IVB</th>
+          <th style="${thStyle}text-align:right;">Stuff+</th>
+          <th style="${thStyle}text-align:right;">Brink</th>
+          <th style="${thStyle}text-align:right;">Cluster</th>
+          <th style="${thStyle}text-align:right;">Missfire</th>
+          <th style="${thStyle}text-align:right;">Cmd+</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`
+  }
+
+  return html
+}
+
 function assembleBriefHtml(parts: {
   dayRundown: string
   aroundBaseball: string
@@ -299,10 +440,21 @@ function assembleBriefHtml(parts: {
   newsHtml: string
   isOffDay: boolean
   playerNameToId: Record<string, number>
+  dailyHighlights: DailyHighlightsData | null
 }) {
   const sections: string[] = []
   const halfGrid = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;'
   const noData = '<p style="color:rgba(255,255,255,0.4);font-size:13px">Nothing to report today.</p>'
+
+  // Yesterday's Standouts — daily highlights (always first)
+  const highlightsHtml = buildDailyHighlightsHtml(parts.dailyHighlights)
+  if (highlightsHtml) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Yesterday's Standouts</div>
+  ${highlightsHtml}
+</div>`)
+  }
 
   // The Day in Baseball — narrative + Around Baseball ("In Other News...") inside
   if (parts.dayRundown || parts.aroundBaseball) {
@@ -687,6 +839,172 @@ async function fetchNews() {
     // Only filter general feeds (NYT Baseball) for baseball keywords;
     // baseball-specific feeds (ESPN MLB, FanGraphs, etc.) pass through
     .filter(item => !item.isGeneralFeed || BASEBALL_KEYWORDS.test(item.title) || BASEBALL_KEYWORDS.test(item.description))
+}
+
+const qAdmin = (sql: string) => supabaseAdmin.rpc('run_query', { query_text: sql.trim() })
+
+async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsData | null> {
+  try {
+    // Find the most recent game date on or before briefDate
+    const dateRes = await qAdmin(`
+      SELECT MAX(game_date::text) AS gd FROM pitches
+      WHERE game_date <= '${briefDate}' AND game_year = EXTRACT(YEAR FROM '${briefDate}'::date)::int
+    `)
+    const prevDay = dateRes.data?.[0]?.gd
+    if (!prevDay) return null
+
+    // Best Stuff+ pitch (starter vs reliever)
+    const stuffRes = await qAdmin(`
+      WITH starters AS (
+        SELECT DISTINCT pitcher, game_pk FROM pitches
+        WHERE game_date = '${prevDay}' AND inning = 1
+      ),
+      ranked AS (
+        SELECT p.pitcher AS player_id, pl.name AS player_name, pl.team,
+               p.pitch_name, p.stuff_plus,
+               ROUND(p.pfx_x * 12, 1) AS hbreak_in,
+               ROUND(p.pfx_z * 12, 1) AS ivb_in,
+               ROUND(p.release_speed::numeric, 1) AS velo,
+               CASE WHEN s.pitcher IS NOT NULL THEN 'starter' ELSE 'reliever' END AS role,
+               ROW_NUMBER() OVER (
+                 PARTITION BY CASE WHEN s.pitcher IS NOT NULL THEN 'starter' ELSE 'reliever' END
+                 ORDER BY p.stuff_plus DESC NULLS LAST
+               ) AS rn
+        FROM pitches p
+        JOIN players pl ON pl.id = p.pitcher
+        LEFT JOIN starters s ON s.pitcher = p.pitcher AND s.game_pk = p.game_pk
+        WHERE p.game_date = '${prevDay}' AND p.stuff_plus IS NOT NULL AND p.pitch_name IS NOT NULL
+      )
+      SELECT * FROM ranked WHERE rn = 1
+    `)
+
+    // Fetch all pitches for Cmd+ computation
+    const [outingPitchesRes, outingPlayerRes] = await Promise.all([
+      qAdmin(`
+        SELECT p.pitcher AS player_id, p.game_pk,
+               p.plate_x, p.plate_z, p.pitch_name, p.sz_top, p.sz_bot,
+               p.zone, p.game_year, p.description, p.stand, p.inning
+        FROM pitches p
+        WHERE p.game_date = '${prevDay}' AND p.pitch_name IS NOT NULL
+          AND p.plate_x IS NOT NULL AND p.plate_z IS NOT NULL
+      `),
+      qAdmin(`
+        SELECT DISTINCT p.pitcher AS player_id, pl.name AS player_name, pl.team
+        FROM pitches p JOIN players pl ON pl.id = p.pitcher
+        WHERE p.game_date = '${prevDay}'
+      `),
+    ])
+
+    const playerMap: Record<number, { name: string; team: string }> = {}
+    for (const r of (outingPlayerRes.data || [])) {
+      playerMap[r.player_id] = { name: r.player_name, team: r.team }
+    }
+
+    // Group pitches by pitcher+game_pk
+    const outingGroups: Record<string, { playerId: number; gamePk: number; pitches: PitchRow[]; isStarter: boolean }> = {}
+    for (const r of (outingPitchesRes.data || [])) {
+      const key = `${r.player_id}-${r.game_pk}`
+      if (!outingGroups[key]) {
+        outingGroups[key] = { playerId: r.player_id, gamePk: r.game_pk, pitches: [], isStarter: false }
+      }
+      outingGroups[key].pitches.push({
+        plate_x: Number(r.plate_x), plate_z: Number(r.plate_z),
+        pitch_name: r.pitch_name, sz_top: Number(r.sz_top), sz_bot: Number(r.sz_bot),
+        zone: Number(r.zone), game_year: Number(r.game_year),
+        description: r.description || '', stand: r.stand || '',
+      })
+      if (Number(r.inning) === 1) outingGroups[key].isStarter = true
+    }
+
+    // Best Cmd+ outing
+    let bestCmdStarter: DailyHighlightsData['cmd_starter'] = null
+    let bestCmdReliever: DailyHighlightsData['cmd_reliever'] = null
+    for (const outing of Object.values(outingGroups)) {
+      if (outing.pitches.length < 15) continue
+      const cmd = computeOutingCommand(outing.pitches)
+      const cmdPlus = cmd.overall_cmd_plus
+      if (cmdPlus == null) continue
+      const info = playerMap[outing.playerId]
+      const entry = {
+        player_id: outing.playerId,
+        player_name: info?.name || 'Unknown',
+        team: info?.team || '??',
+        cmd_plus: +cmdPlus.toFixed(1),
+        pitches: outing.pitches.length,
+      }
+      if (outing.isStarter) {
+        if (!bestCmdStarter || cmdPlus > bestCmdStarter.cmd_plus) bestCmdStarter = entry
+      } else {
+        if (!bestCmdReliever || cmdPlus > bestCmdReliever.cmd_plus) bestCmdReliever = entry
+      }
+    }
+
+    // New pitch alerts
+    const newPitchRes = await qAdmin(`
+      WITH today_types AS (
+        SELECT pitcher, pitch_name, COUNT(*) AS count,
+               ROUND(AVG(pfx_x * 12)::numeric, 1) AS avg_hbreak,
+               ROUND(AVG(pfx_z * 12)::numeric, 1) AS avg_ivb,
+               ROUND(AVG(stuff_plus)::numeric, 1) AS avg_stuff_plus
+        FROM pitches WHERE game_date = '${prevDay}' AND pitch_name IS NOT NULL
+        GROUP BY pitcher, pitch_name
+      ),
+      prior_types AS (
+        SELECT DISTINCT pitcher, pitch_name FROM pitches
+        WHERE game_date < '${prevDay}' AND pitch_name IS NOT NULL
+          AND pitcher IN (SELECT DISTINCT pitcher FROM pitches WHERE game_date = '${prevDay}')
+      )
+      SELECT t.pitcher AS player_id, pl.name AS player_name, pl.team,
+             t.pitch_name, t.count, t.avg_hbreak, t.avg_ivb, t.avg_stuff_plus
+      FROM today_types t
+      JOIN players pl ON pl.id = t.pitcher
+      LEFT JOIN prior_types pr ON pr.pitcher = t.pitcher AND pr.pitch_name = t.pitch_name
+      WHERE pr.pitcher IS NULL AND t.count >= 3
+      ORDER BY t.count DESC
+    `)
+
+    const newPitches: DailyHighlightsData['new_pitches'] = []
+    for (const r of (newPitchRes.data || [])) {
+      let cmdData: { avg_brink?: number | null; avg_cluster?: number | null; avg_missfire?: number | null; cmd_plus?: number | null } = {}
+      const outingKey = Object.keys(outingGroups).find(k => k.startsWith(`${r.player_id}-`))
+      if (outingKey) {
+        const cmd = computeOutingCommand(outingGroups[outingKey].pitches)
+        const ptCmd = cmd.byPitch[r.pitch_name]
+        if (ptCmd) cmdData = { avg_brink: ptCmd.avg_brink, avg_cluster: ptCmd.avg_cluster, avg_missfire: ptCmd.avg_missfire, cmd_plus: ptCmd.cmd_plus }
+      }
+      newPitches.push({
+        player_id: r.player_id, player_name: r.player_name, team: r.team,
+        pitch_name: r.pitch_name, count: Number(r.count),
+        avg_hbreak: r.avg_hbreak != null ? Number(r.avg_hbreak) : null,
+        avg_ivb: r.avg_ivb != null ? Number(r.avg_ivb) : null,
+        avg_stuff_plus: r.avg_stuff_plus != null ? Number(r.avg_stuff_plus) : null,
+        ...cmdData as any,
+      })
+    }
+
+    const stuffStarter = (stuffRes.data || []).find((r: any) => r.role === 'starter')
+    const stuffReliever = (stuffRes.data || []).find((r: any) => r.role === 'reliever')
+
+    const mapStuff = (r: any) => r ? {
+      player_id: r.player_id, player_name: r.player_name, team: r.team,
+      pitch_name: r.pitch_name, stuff_plus: Number(r.stuff_plus),
+      velo: r.velo != null ? Number(r.velo) : null,
+      hbreak_in: r.hbreak_in != null ? Number(r.hbreak_in) : null,
+      ivb_in: r.ivb_in != null ? Number(r.ivb_in) : null,
+    } : null
+
+    return {
+      date: prevDay,
+      stuff_starter: mapStuff(stuffStarter),
+      stuff_reliever: mapStuff(stuffReliever),
+      cmd_starter: bestCmdStarter,
+      cmd_reliever: bestCmdReliever,
+      new_pitches: newPitches,
+    }
+  } catch (err) {
+    console.error('fetchDailyHighlights error:', err)
+    return null
+  }
 }
 
 async function fetchTransactions(date: string) {
