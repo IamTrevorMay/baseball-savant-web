@@ -7,10 +7,11 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 export async function GET(_req: NextRequest) {
   try {
     // Get previous game day (the day before the latest game_date in the current season)
+    const currentYear = new Date().getFullYear()
     const dateRes = await q(`
       SELECT DISTINCT game_date::text AS gd
       FROM pitches
-      WHERE game_year = 2025
+      WHERE game_year = ${currentYear}
       ORDER BY gd DESC
       LIMIT 2
     `)
