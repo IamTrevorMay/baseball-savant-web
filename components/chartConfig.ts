@@ -25,6 +25,15 @@ export const PITCH_CODE_NAMES: Record<string, string> = {
   KC: 'Knuckle Curve', KN: 'Knuckleball', EP: 'Eephus', FA: 'Fastball',
 }
 
+export const ZONE_SHAPES = [
+  { type: 'rect' as const, x0: -0.708, x1: 0.708, y0: 1.5, y1: 3.5, line: { color: '#ffffff', width: 2 } },
+  { type: 'line' as const, x0: -0.236, x1: -0.236, y0: 1.5, y1: 3.5, line: { color: 'rgba(255,255,255,0.15)', width: 1 } },
+  { type: 'line' as const, x0: 0.236, x1: 0.236, y0: 1.5, y1: 3.5, line: { color: 'rgba(255,255,255,0.15)', width: 1 } },
+  { type: 'line' as const, x0: -0.708, x1: 0.708, y0: 2.167, y1: 2.167, line: { color: 'rgba(255,255,255,0.15)', width: 1 } },
+  { type: 'line' as const, x0: -0.708, x1: 0.708, y0: 2.833, y1: 2.833, line: { color: 'rgba(255,255,255,0.15)', width: 1 } },
+  { type: 'path' as const, path: 'M -0.708 0.15 L 0 0 L 0.708 0.15', line: { color: 'rgba(255,255,255,0.3)', width: 2 } },
+]
+
 export const BASE_LAYOUT: any = {
   paper_bgcolor: COLORS.paper, plot_bgcolor: COLORS.bg,
   font: { family: 'Inter, system-ui, sans-serif', color: COLORS.text, size: 11 },
