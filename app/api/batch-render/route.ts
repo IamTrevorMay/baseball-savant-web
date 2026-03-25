@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
 
     // Otherwise return a ZIP (or single PNG for 1 card)
     if (buffers.length === 1) {
-      return new NextResponse(buffers[0], {
+      return new NextResponse(new Uint8Array(buffers[0]), {
         headers: {
           'Content-Type': 'image/png',
           'Content-Disposition': `attachment; filename="${filenamePrefix}-01.png"`,
