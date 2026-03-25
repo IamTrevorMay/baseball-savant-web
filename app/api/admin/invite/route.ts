@@ -36,9 +36,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: linkError.message }, { status: 500 })
   }
 
-  // Use Supabase's action_link which goes through their verification endpoint
-  // then redirects to our callback with a PKCE code — more reliable than raw token_hash
-  const inviteLink = linkData.properties.action_link
+  const tokenHash = linkData.properties.hashed_token
+  const inviteLink = `${siteUrl}/auth/callback?token_hash=${tokenHash}&type=invite&next=/set-password`
   const { error: emailError } = await resend.emails.send({
     from: 'Triton Apex <noreply@tritonapex.io>',
     to: email,
