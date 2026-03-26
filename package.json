@@ -13,7 +13,7 @@
     "@elgato-stream-deck/webhid": "^7.6.0",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
-    "@napi-rs/canvas": "^0.1.96",
+    "@napi-rs/canvas": "^0.1.97",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@supabase/ssr": "^0.8.0",
