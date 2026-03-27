@@ -2,6 +2,7 @@ import { Scene, SceneElement } from '@/lib/sceneTypes'
 import { interpolateScene } from '@/lib/sceneInterpolation'
 import { drawPitchFlightStatic } from './PitchFlightRenderer'
 import { drawStadiumStatic } from './StadiumRenderer'
+import { getPitchColor } from '@/components/chartConfig'
 
 // ── Canvas helpers ───────────────────────────────────────────────────────────
 
@@ -685,11 +686,9 @@ function drawRCStatBox(ctx: CanvasRenderingContext2D, el: SceneElement) {
 function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
-  const font = getFontStack()
+  const font = getFontStack(p.fontFamily)
   const cols: { key: string; label: string }[] = p.columns || []
   const rows: Record<string, any>[] = p.rows || []
-  const fontSize = p.fontSize || 13
-  const headerFontSize = p.headerFontSize || 11
   const radius = p.borderRadius ?? 12
   const title = p.title || ''
 
@@ -702,7 +701,8 @@ function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
   if (title) {
     titleOffset = 22
     ctx.fillStyle = '#a1a1aa'
-    ctx.font = `600 ${Math.max(10, headerFontSize + 1)}px ${font}`
+    const titleFontSize = p.headerFontSize ? Math.max(10, (p.headerFontSize || 11) + 1) : 12
+    ctx.font = `600 ${titleFontSize}px ${font}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(title, x + w / 2, y + 6)
@@ -710,20 +710,62 @@ function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
 
   if (cols.length === 0) { ctx.restore(); return }
 
-  const colW = w / cols.length
-  const headerH = headerFontSize + 16 + 1
-  const headerY = y + titleOffset
-  const availableH = h - titleOffset - headerH
+  // Dynamic font sizing to match preview renderer
+  const approxHeaderH = (p.headerFontSize || 16) + 18
+  const availableForRows = h - titleOffset - approxHeaderH
   const rowCount = Math.max(rows.length, 1)
-  const rowH = Math.max(0, availableH / rowCount)
+  const rowH = Math.max(0, availableForRows / rowCount)
+
+  const baseFontSize = p.fontSize || 16
+  const dynamicFontSize = baseFontSize !== 16
+    ? Math.round(baseFontSize * 1.1)
+    : Math.min(37, Math.max(13, Math.floor(rowH * 0.77)))
+  const baseHeaderSize = p.headerFontSize || 13
+  const dynamicHeaderFontSize = baseHeaderSize !== 13
+    ? baseHeaderSize
+    : Math.max(11, Math.floor(dynamicFontSize * 0.82))
+  const headerH = dynamicHeaderFontSize + 16 + 1
+
+  // Scale cell padding with column count (matches preview)
+  const colPad = cols.length >= 10 ? 4 : cols.length >= 7 ? 6 : 10
+  // Dot size scales with font (matches preview)
+  const dotSize = Math.max(6, Math.floor(dynamicFontSize * 0.6))
+
+  // Compute column widths: measure actual content to allocate proportionally
+  ctx.font = `600 ${dynamicHeaderFontSize}px ${font}`
+  const headerWidths = cols.map(c => ctx.measureText(c.label).width)
+  ctx.font = `400 ${dynamicFontSize}px ${font}`
+  const dataWidths = cols.map((c, ci) => {
+    let maxW = headerWidths[ci]
+    for (const row of rows) {
+      const val = String(row[c.key] ?? '--')
+      let mw = ctx.measureText(val).width
+      if (c.key === 'pitch_name') mw += dotSize + 6 // dot + gap
+      maxW = Math.max(maxW, mw)
+    }
+    return maxW + colPad * 2
+  })
+  const totalNeeded = dataWidths.reduce((a, b) => a + b, 0)
+  const scale = totalNeeded > 0 ? w / totalNeeded : 1
+  const colWidths = dataWidths.map(dw => dw * scale)
+
+  // Column start positions
+  const colX: number[] = []
+  let cx = x
+  for (let i = 0; i < cols.length; i++) {
+    colX.push(cx)
+    cx += colWidths[i]
+  }
+
+  const headerY = y + titleOffset
 
   // Header
-  ctx.font = `600 ${headerFontSize}px ${font}`
+  ctx.font = `600 ${dynamicHeaderFontSize}px ${font}`
   ctx.fillStyle = '#a1a1aa'
   ctx.textBaseline = 'middle'
   for (let i = 0; i < cols.length; i++) {
     ctx.textAlign = 'left'
-    ctx.fillText(cols[i].label, x + i * colW + 10, headerY + headerH / 2)
+    ctx.fillText(cols[i].label, colX[i] + colPad, headerY + headerH / 2)
   }
 
   // Separator
@@ -736,17 +778,33 @@ function drawRCTable(ctx: CanvasRenderingContext2D, el: SceneElement) {
 
   // Rows
   const startY = headerY + headerH
-  ctx.font = `400 ${fontSize}px ${font}`
+  ctx.font = `400 ${dynamicFontSize}px ${font}`
 
   for (let r = 0; r < rows.length; r++) {
     const ry = startY + r * rowH
     if (ry + rowH > y + h) break
     for (let c = 0; c < cols.length; c++) {
       const val = rows[r][cols[c].key] ?? '--'
-      ctx.fillStyle = cols[c].key === 'pitch_name' ? (rows[r]._color || '#e4e4e7') : '#e4e4e7'
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(String(val), x + c * colW + 10, ry + rowH / 2)
+      const cellX = colX[c] + colPad
+      const cellY = ry + rowH / 2
+
+      if (cols[c].key === 'pitch_name') {
+        // Draw color dot + pitch name
+        const color = rows[r]._color || getPitchColor(String(val))
+        ctx.fillStyle = color
+        ctx.beginPath()
+        ctx.arc(cellX + dotSize / 2, cellY, dotSize / 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#e4e4e7'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(val), cellX + dotSize + 6, cellY)
+      } else {
+        ctx.fillStyle = '#e4e4e7'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(String(val), cellX, cellY)
+      }
     }
   }
   ctx.restore()
@@ -1035,6 +1093,291 @@ function drawRCStatline(ctx: CanvasRenderingContext2D, el: SceneElement) {
   ctx.restore()
 }
 
+function drawRCMovementPlot(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x: ex, y: ey, width: w, height: h } = el
+  const pitches: { hb: number; ivb: number; pitch_name: string }[] = p.pitches || []
+  const seasonShapes: { pitch_name: string; avg_hb: number; avg_ivb: number; std_hb: number; std_ivb: number }[] = p.seasonShapes || []
+  const bgColor = p.bgColor || '#09090b'
+  const dotSize = p.dotSize || 10
+  const dotOpacity = p.dotOpacity ?? 0.85
+  const showSeasonShapes = p.showSeasonShapes !== false
+  const maxRange = p.maxRange || 24
+  const fontSize = p.fontSize || 10
+  const radius = p.borderRadius ?? 8
+
+  ctx.save()
+  ctx.fillStyle = bgColor
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.fill()
+
+  // Clip to element bounds
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.clip()
+
+  const pad = 30
+  const plotW = w - pad * 2
+  const plotH = h - pad * 2
+
+  function toX(hb: number): number {
+    return ex + pad + ((hb + maxRange) / (maxRange * 2)) * plotW
+  }
+  function toY(ivb: number): number {
+    return ey + pad + ((maxRange - ivb) / (maxRange * 2)) * plotH
+  }
+
+  const cx = toX(0)
+  const cy = toY(0)
+
+  // Concentric circles at 12" and 24"
+  ctx.setLineDash([4, 4])
+  ctx.strokeStyle = '#3f3f46'
+  ctx.lineWidth = 1
+  for (const r of [12, 24]) {
+    const rx = (r / (maxRange * 2)) * plotW
+    const ry = (r / (maxRange * 2)) * plotH
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+
+  // Axes through center
+  ctx.strokeStyle = '#52525b'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(ex + pad, cy)
+  ctx.lineTo(ex + w - pad, cy)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(cx, ey + pad)
+  ctx.lineTo(cx, ey + h - pad)
+  ctx.stroke()
+
+  const dynFont = Math.max(9, Math.min(16, Math.floor(Math.min(w, h) * 0.035)))
+  const effectiveFont = fontSize !== 10 ? fontSize : dynFont
+
+  // Tick marks
+  ctx.fillStyle = '#71717a'
+  ctx.font = `${Math.max(7, effectiveFont - 1)}px Inter, system-ui, sans-serif`
+  ctx.strokeStyle = '#52525b'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  for (const val of [12, -12]) {
+    const tx = toX(val)
+    ctx.beginPath(); ctx.moveTo(tx, cy - 3); ctx.lineTo(tx, cy + 3); ctx.stroke()
+    ctx.fillText(`${val}"`, tx, cy + 5)
+  }
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  for (const val of [12, -12]) {
+    const ty = toY(val)
+    ctx.beginPath(); ctx.moveTo(cx - 3, ty); ctx.lineTo(cx + 3, ty); ctx.stroke()
+    ctx.fillText(`${val}"`, cx - 6, ty)
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#71717a'
+  ctx.font = `${effectiveFont}px Inter, system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'bottom'
+  ctx.fillText('Rise', cx, ey + pad - 4)
+  ctx.textBaseline = 'top'
+  ctx.fillText('Drop', cx, ey + h - pad + 4)
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('Glove', ex + pad - 4, cy)
+  ctx.textAlign = 'left'
+  ctx.fillText('Arm', ex + w - pad + 4, cy)
+
+  // Season shapes
+  if (showSeasonShapes && seasonShapes.length > 0) {
+    for (const shape of seasonShapes) {
+      const sx = toX(shape.avg_hb)
+      const sy = toY(shape.avg_ivb)
+      const rx = (shape.std_hb / (maxRange * 2)) * plotW
+      const ry = (shape.std_ivb / (maxRange * 2)) * plotH
+      const color = getPitchColor(shape.pitch_name)
+
+      ctx.globalAlpha = 0.15
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.ellipse(sx, sy, Math.max(rx, 2), Math.max(ry, 2), 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.globalAlpha = 0.3
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+  }
+
+  // Pitch dots
+  for (const pitch of pitches) {
+    const px = toX(pitch.hb)
+    const py = toY(pitch.ivb)
+    const color = getPitchColor(pitch.pitch_name)
+
+    ctx.globalAlpha = dotOpacity
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(px, py, dotSize / 2, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.globalAlpha = dotOpacity * 0.4
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 0.5
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  ctx.restore()
+}
+
+function drawRCZonePlot(ctx: CanvasRenderingContext2D, el: SceneElement) {
+  const p = el.props
+  const { x: ex, y: ey, width: w, height: h } = el
+  const pitches: { plate_x: number; plate_z: number; pitch_name: string }[] = p.pitches || []
+  const showZone = p.showZone !== false
+  const dotSize = p.dotSize || 8
+  const dotOpacity = p.dotOpacity ?? 0.85
+  const bgColor = p.bgColor || '#09090b'
+  const showKey = p.showKey !== false
+  const zoneColor = p.zoneColor || '#52525b'
+  const zoneLineWidth = p.zoneLineWidth || 2
+  const title = p.title || ''
+  const fontSize = p.fontSize || 12
+  const radius = p.borderRadius ?? 8
+
+  const ZONE_LEFT = -17 / 24
+  const ZONE_RIGHT = 17 / 24
+  const ZONE_BOT = 1.5
+  const ZONE_TOP = 3.5
+  const VIEW_X_MIN = -2.5
+  const VIEW_X_MAX = 2.5
+  const VIEW_Z_MIN = 0
+  const VIEW_Z_MAX = 5
+
+  ctx.save()
+  ctx.fillStyle = bgColor
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.fill()
+
+  roundRect(ctx, ex, ey, w, h, radius)
+  ctx.clip()
+
+  const dynFont = Math.max(11, Math.min(20, Math.floor(Math.min(w, h) * 0.05)))
+  const effectiveFont = fontSize !== 12 ? fontSize : dynFont
+
+  let titleOffset = 0
+  if (title) {
+    titleOffset = effectiveFont + 12
+    ctx.fillStyle = '#a1a1aa'
+    ctx.font = `600 ${effectiveFont}px Inter, system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(title, ex + w / 2, ey + 6)
+  }
+
+  const keyHeight = showKey ? 50 : 0
+  const plotH = h - keyHeight - titleOffset
+  const padX = 30
+  const padY = 20 + titleOffset
+  const plotW = w - padX * 2
+  const plotArea = plotH - padY * 2
+
+  function toCanvasX(plateX: number): number {
+    return ex + padX + ((plateX - VIEW_X_MIN) / (VIEW_X_MAX - VIEW_X_MIN)) * plotW
+  }
+  function toCanvasY(plateZ: number): number {
+    return ey + padY + ((VIEW_Z_MAX - plateZ) / (VIEW_Z_MAX - VIEW_Z_MIN)) * plotArea
+  }
+
+  // Strike zone
+  if (showZone) {
+    const zx1 = toCanvasX(ZONE_LEFT)
+    const zx2 = toCanvasX(ZONE_RIGHT)
+    const zy1 = toCanvasY(ZONE_TOP)
+    const zy2 = toCanvasY(ZONE_BOT)
+
+    ctx.strokeStyle = zoneColor
+    ctx.lineWidth = zoneLineWidth
+    ctx.strokeRect(zx1, zy1, zx2 - zx1, zy2 - zy1)
+
+    // Inner grid
+    ctx.strokeStyle = zoneColor
+    ctx.lineWidth = 1
+    ctx.globalAlpha = 0.4
+    const zw = (zx2 - zx1) / 3
+    const zh = (zy2 - zy1) / 3
+    for (let i = 1; i < 3; i++) {
+      ctx.beginPath(); ctx.moveTo(zx1 + zw * i, zy1); ctx.lineTo(zx1 + zw * i, zy2); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(zx1, zy1 + zh * i); ctx.lineTo(zx2, zy1 + zh * i); ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+
+    // Home plate
+    const px = toCanvasX(0)
+    const py = toCanvasY(0)
+    ctx.fillStyle = zoneColor
+    ctx.globalAlpha = 0.5
+    ctx.beginPath()
+    ctx.moveTo(px - 8, py); ctx.lineTo(px - 4, py + 6); ctx.lineTo(px + 4, py + 6)
+    ctx.lineTo(px + 8, py); ctx.lineTo(px, py - 4)
+    ctx.closePath()
+    ctx.fill()
+    ctx.globalAlpha = 1
+  }
+
+  // Pitch dots
+  for (const pitch of pitches) {
+    const cx = toCanvasX(pitch.plate_x)
+    const cy = toCanvasY(pitch.plate_z)
+    const color = getPitchColor(pitch.pitch_name)
+
+    ctx.globalAlpha = dotOpacity
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(cx, cy, dotSize / 2, 0, Math.PI * 2)
+    ctx.fill()
+
+    ctx.globalAlpha = dotOpacity * 0.4
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 0.5
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  // Key/legend
+  if (showKey && pitches.length > 0) {
+    const uniqueTypes = [...new Set(pitches.map(p => p.pitch_name))].filter(Boolean)
+    const keyY = ey + plotH + 10
+    const entryW = Math.min(120, (w - 20) / Math.max(uniqueTypes.length, 1))
+    const startX = ex + (w - entryW * uniqueTypes.length) / 2
+
+    ctx.font = `${Math.max(9, effectiveFont - 1)}px Inter, system-ui, sans-serif`
+    ctx.textBaseline = 'middle'
+
+    for (let i = 0; i < uniqueTypes.length; i++) {
+      const type = uniqueTypes[i]
+      const entryX = startX + i * entryW
+      const entryY = keyY + 15
+
+      ctx.fillStyle = getPitchColor(type)
+      ctx.beginPath()
+      ctx.arc(entryX + 6, entryY, 5, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillStyle = '#a1a1aa'
+      ctx.textAlign = 'left'
+      ctx.fillText(type, entryX + 15, entryY)
+    }
+  }
+
+  ctx.restore()
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export async function exportScenePNG(scene: Scene, filename: string): Promise<void> {
@@ -1110,7 +1453,8 @@ export async function exportScenePNG(scene: Scene, filename: string): Promise<vo
         case 'rc-bar-chart': drawRCBarChart(ctx, el); break
         case 'rc-donut-chart': drawRCDonutChart(ctx, el); break
         case 'rc-statline': drawRCStatline(ctx, el); break
-        // rc-zone-plot and rc-movement-plot share the same props as zone-plot/movement-plot
+        case 'rc-movement-plot': drawRCMovementPlot(ctx, el); break
+        case 'rc-zone-plot': drawRCZonePlot(ctx, el); break
       }
 
       resetShadow(ctx)
