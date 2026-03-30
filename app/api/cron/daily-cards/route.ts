@@ -152,12 +152,9 @@ export async function GET(req: NextRequest) {
       return json({ ok: true, skipped: true, reason: 'no_starters', date: cardDate })
     }
 
-    // 3. Sort by IP desc, pitch_count desc → top N
     const topN = configRow?.top_n || 5
-    starters.sort((a, b) => b.ip - a.ip || b.pitchCount - a.pitchCount)
-    const top5 = starters.slice(0, topN)
 
-    // 4. Load template from config (falls back to name search if no config)
+    // 3. Load template from config (falls back to name search if no config)
     let templateData: any = null
     let templateError: any = null
 
@@ -200,50 +197,91 @@ export async function GET(req: NextRequest) {
       elements: templateData.elements || [],
     }
 
-    // 5. For each starter: fetch data from /api/starter-card, populate template
-    // Use NEXT_PUBLIC_SITE_URL (production domain) to avoid Vercel deployment protection
+    // 4. Fetch starter-card data for ALL starters (needed to sort by numeric grades)
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || (
       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
     )
 
+    interface StarterWithData extends StarterInfo {
+      cardData: any
+      populated: any
+      numericGrades: { start: number | null; stuff: number | null; command: number; triton: number | null }
+    }
+
+    const startersWithData: StarterWithData[] = []
+
+    // Batch starter-card fetches (5 at a time)
+    for (let i = 0; i < starters.length; i += 5) {
+      const batch = starters.slice(i, i + 5)
+      const results = await Promise.allSettled(
+        batch.map(async (starter) => {
+          const cardRes = await fetch(
+            `${baseUrl}/api/starter-card?pitcherId=${starter.mlbId}&gamePk=${starter.gamePk}`
+          )
+          if (!cardRes.ok) {
+            console.error(`starter-card failed for ${starter.name}:`, await cardRes.text())
+            return null
+          }
+          const cardJson = await cardRes.json()
+          const data = cardJson.data || cardJson
+
+          // Override with MLB API data (more reliable for spring training / missing pitch data)
+          if (!data.pitcher_name || data.pitcher_name === 'Unknown') {
+            data.pitcher_name = starter.name
+          }
+          if (!data.game_date) data.game_date = cardDate
+          if (!data.opponent || data.opponent === '??') data.opponent = starter.gameInfo
+
+          const populated = populateReportCard(templateScene, data)
+          const ng = data.numeric_grades || { start: null, stuff: null, command: 100, triton: null }
+
+          startersWithData.push({
+            ...starter,
+            cardData: data,
+            populated,
+            numericGrades: ng,
+          })
+        })
+      )
+      for (const r of results) {
+        if (r.status === 'rejected') console.error('starter-card fetch failed:', r.reason)
+      }
+    }
+
+    if (startersWithData.length === 0) {
+      return json({ error: 'No starter card data generated', date: cardDate }, { status: 500 })
+    }
+
+    // 5. Sort 4 ways, take top N from each bucket
+    type BucketDef = { key: string; sort: (a: StarterWithData, b: StarterWithData) => number }
+    const buckets: BucketDef[] = [
+      { key: 'top_ip', sort: (a, b) => b.ip - a.ip || b.pitchCount - a.pitchCount },
+      { key: 'top_start', sort: (a, b) => (b.numericGrades.start ?? -Infinity) - (a.numericGrades.start ?? -Infinity) },
+      { key: 'top_cmd', sort: (a, b) => (b.numericGrades.command ?? -Infinity) - (a.numericGrades.command ?? -Infinity) },
+      { key: 'top_stuff', sort: (a, b) => (b.numericGrades.stuff ?? -Infinity) - (a.numericGrades.stuff ?? -Infinity) },
+    ]
+
     const cards: any[] = []
 
-    for (let rank = 0; rank < top5.length; rank++) {
-      const starter = top5[rank]
-      try {
-        const cardRes = await fetch(
-          `${baseUrl}/api/starter-card?pitcherId=${starter.mlbId}&gamePk=${starter.gamePk}`
-        )
-        if (!cardRes.ok) {
-          console.error(`starter-card failed for ${starter.name}:`, await cardRes.text())
-          continue
-        }
-        const cardJson = await cardRes.json()
-        const data = cardJson.data || cardJson
+    for (const bucket of buckets) {
+      const sorted = [...startersWithData].sort(bucket.sort)
+      const topSlice = sorted.slice(0, topN)
 
-        // Override with MLB API data (more reliable for spring training / missing pitch data)
-        if (!data.pitcher_name || data.pitcher_name === 'Unknown') {
-          data.pitcher_name = starter.name
-        }
-        if (!data.game_date) data.game_date = cardDate
-        if (!data.opponent || data.opponent === '??') data.opponent = starter.gameInfo
-
-        const populated = populateReportCard(templateScene, data)
-
+      for (let rank = 0; rank < topSlice.length; rank++) {
+        const s = topSlice[rank]
         cards.push({
           date: cardDate,
-          pitcher_id: starter.mlbId,
-          pitcher_name: starter.name,
-          game_pk: starter.gamePk,
-          game_info: starter.gameInfo,
-          ip: starter.ip,
-          pitch_count: starter.pitchCount,
-          scene: populated,
+          pitcher_id: s.mlbId,
+          pitcher_name: s.name,
+          game_pk: s.gamePk,
+          game_info: s.gameInfo,
+          ip: s.ip,
+          pitch_count: s.pitchCount,
+          scene: s.populated,
           template_id: templateData.id,
           rank: rank + 1,
+          bucket: bucket.key,
         })
-      } catch (err) {
-        console.error(`Failed to generate card for ${starter.name}:`, err)
       }
     }
 
@@ -260,11 +298,17 @@ export async function GET(req: NextRequest) {
       return json({ error: insertError.message }, { status: 500 })
     }
 
+    const bucketSummary: Record<string, string[]> = {}
+    for (const c of cards) {
+      if (!bucketSummary[c.bucket]) bucketSummary[c.bucket] = []
+      bucketSummary[c.bucket].push(c.pitcher_name)
+    }
+
     return json({
       ok: true,
       date: cardDate,
       count: cards.length,
-      pitchers: cards.map(c => c.pitcher_name),
+      buckets: bucketSummary,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

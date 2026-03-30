@@ -30,3 +30,12 @@
 ## Existing Templates
 - `rotation-depth-chart` — Starting Rotation Depth Chart
 - `bullpen-depth-chart` — Bullpen Depth Chart (closer/setup/relief tiers)
+
+## Daily Cards System
+- **Cron**: `app/api/cron/daily-cards/route.ts` — generates cards for latest Statcast date, auth via `CRON_SECRET`
+- **GET API**: `app/api/daily-cards/route.ts` — supports `?latest=true`, `?date=`, `?bucket=` params
+- **Starter Card API**: `app/api/starter-card/route.ts` — returns full outing data + `grades` (letters) + `numeric_grades` (raw numbers)
+- **4 buckets**: `top_ip` (IP desc), `top_start` (triton+ desc), `top_cmd` (cmd+ desc), `top_stuff` (stuff+ desc)
+- **Config**: `daily_cards_config` table stores `template_id` and `top_n` (default 5)
+- **DB table**: `daily_cards` — columns include `bucket`, `rank`, `scene` (populated template JSON), `template_id`
+- **Template population**: `lib/reportCardPopulate.ts` — `populateReportCard(templateScene, data)`

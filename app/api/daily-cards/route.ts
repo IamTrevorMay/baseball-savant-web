@@ -10,15 +10,18 @@ export async function GET(req: NextRequest) {
 
   const latest = req.nextUrl.searchParams.get('latest')
   const date = req.nextUrl.searchParams.get('date')
+  const bucket = req.nextUrl.searchParams.get('bucket')
 
   // Full cards for a specific date
   if (date) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('daily_cards')
       .select('*')
       .eq('date', date)
-      .order('rank', { ascending: true })
+    if (bucket) query = query.eq('bucket', bucket)
+    query = query.order('rank', { ascending: true })
 
+    const { data, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data || data.length === 0) {
       return NextResponse.json({ error: 'No cards found' }, { status: 404 })
@@ -39,12 +42,14 @@ export async function GET(req: NextRequest) {
     if (recentErr) return NextResponse.json({ error: recentErr.message }, { status: 500 })
     if (!recent) return NextResponse.json({ cards: [] })
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('daily_cards')
       .select('*')
       .eq('date', recent.date)
-      .order('rank', { ascending: true })
+    if (bucket) query = query.eq('bucket', bucket)
+    query = query.order('rank', { ascending: true })
 
+    const { data, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ cards: data || [] })
   }
@@ -52,10 +57,10 @@ export async function GET(req: NextRequest) {
   // Archive: last 30 dates with pitcher names, no scene JSON
   const { data, error } = await supabase
     .from('daily_cards')
-    .select('id, date, pitcher_id, pitcher_name, game_info, ip, pitch_count, rank')
+    .select('id, date, pitcher_id, pitcher_name, game_info, ip, pitch_count, rank, bucket')
     .order('date', { ascending: false })
     .order('rank', { ascending: true })
-    .limit(150)
+    .limit(600)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -77,6 +82,7 @@ export async function GET(req: NextRequest) {
         ip: c.ip,
         pitch_count: c.pitch_count,
         rank: c.rank,
+        bucket: c.bucket,
       })),
     }))
 

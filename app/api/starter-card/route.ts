@@ -463,6 +463,12 @@ export async function GET(req: NextRequest) {
         command: cmdGrade,
         triton: tritonGrade,
       },
+      numeric_grades: {
+        start: tritonPlus,
+        stuff: avgStuffPlus,
+        command: cmdPlus,
+        triton: tritonPlus,
+      },
       primary_fastball: primaryFb,
       usage: usageData,
       movement,
