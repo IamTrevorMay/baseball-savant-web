@@ -49,7 +49,7 @@ export async function GET() {
     const prof = profileMap.get(u.id)
     const role = prof?.role ?? 'user'
     const tools = (role === 'owner' || role === 'admin')
-      ? ['research', 'mechanics', 'models', 'compete', 'visualize']
+      ? ['research', 'mechanics', 'models', 'compete', 'visualize', 'broadcast']
       : (permMap.get(u.id) ?? [])
     return {
       id: u.id,

@@ -27,13 +27,19 @@ export async function PATCH(
 
   // Update role in profiles
   if (role) {
-    await supabaseAdmin.from('profiles').update({ role }).eq('id', id)
+    const { error: roleErr } = await supabaseAdmin.from('profiles').update({ role }).eq('id', id)
+    if (roleErr) {
+      return NextResponse.json({ error: `Failed to update role: ${roleErr.message}` }, { status: 500 })
+    }
   }
 
   // Update tool permissions
   if (tools !== undefined) {
     // Delete existing permissions
-    await supabaseAdmin.from('tool_permissions').delete().eq('user_id', id)
+    const { error: delErr } = await supabaseAdmin.from('tool_permissions').delete().eq('user_id', id)
+    if (delErr) {
+      return NextResponse.json({ error: `Failed to clear permissions: ${delErr.message}` }, { status: 500 })
+    }
     // Insert new ones (only for non-admin roles)
     if (role !== 'owner' && role !== 'admin' && tools.length > 0) {
       const permRows = tools.map((tool: string) => ({
@@ -41,7 +47,10 @@ export async function PATCH(
         granted_by: admin.id,
         tool,
       }))
-      await supabaseAdmin.from('tool_permissions').insert(permRows)
+      const { error: insErr } = await supabaseAdmin.from('tool_permissions').insert(permRows)
+      if (insErr) {
+        return NextResponse.json({ error: `Failed to save permissions: ${insErr.message}` }, { status: 500 })
+      }
     }
   }
 

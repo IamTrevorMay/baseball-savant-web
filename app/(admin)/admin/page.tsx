@@ -40,6 +40,7 @@ export default function AdminPage() {
   const [editRole, setEditRole] = useState('')
   const [editTools, setEditTools] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -113,6 +114,7 @@ export default function AdminPage() {
   }
 
   function startEdit(u: UserRow) {
+    setSaveMsg(null)
     setEditingId(u.id)
     setEditRole(u.role)
     setEditTools(u.role === 'owner' || u.role === 'admin' ? [] : [...u.tools])
@@ -120,11 +122,18 @@ export default function AdminPage() {
 
   async function handleSaveEdit(id: string) {
     setSaving(true)
-    await fetch(`/api/admin/users/${id}`, {
+    setSaveMsg(null)
+    const res = await fetch(`/api/admin/users/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: editRole, tools: editTools }),
     })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setSaveMsg({ type: 'err', text: data.error || 'Failed to save changes' })
+      setSaving(false)
+      return
+    }
     setEditingId(null)
     setSaving(false)
     fetchUsers()
@@ -276,6 +285,15 @@ export default function AdminPage() {
         <h2 className="font-[family-name:var(--font-bebas)] text-2xl uppercase tracking-wider text-white mb-4">
           Active Users
         </h2>
+        {saveMsg && (
+          <div className={`rounded-lg px-4 py-3 text-sm mb-4 ${
+            saveMsg.type === 'ok'
+              ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+              : 'bg-red-500/10 border border-red-500/30 text-red-400'
+          }`}>
+            {saveMsg.text}
+          </div>
+        )}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
           {loadingUsers ? (
             <div className="p-6 text-center text-zinc-500 text-sm">Loading...</div>
