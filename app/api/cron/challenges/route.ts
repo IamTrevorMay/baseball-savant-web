@@ -146,7 +146,14 @@ export async function syncChallenges(
     // Batch upsert every 100 games or at the end
     if (rows.length >= 200 || i === games.length - 1) {
       if (rows.length > 0) {
-        const { error } = await supabaseAdmin.from('umpire_challenges').insert(rows)
+        // Use raw SQL via run_mutation for reliable inserts
+        const values = rows.map(r => {
+          const esc = (s: string | null) => s ? `'${s.replace(/'/g, "''").slice(0, 200)}'` : 'NULL'
+          const num = (n: number | null | undefined) => n != null ? n : 'NULL'
+          return `(${num(r.game_pk)}, ${esc(r.game_date)}, ${esc(r.hp_umpire)}, ${num(r.hp_umpire_id)}, ${num(r.inning)}, ${esc(r.half_inning)}, ${num(r.at_bat_index)}, ${esc(r.review_type)}, ${r.is_overturned}, ${num(r.challenge_team_id)}, ${esc(r.challenge_team)}, ${num(r.challenger_id)}, ${esc(r.challenger_name)}, ${num(r.batter_id)}, ${esc(r.batter_name)}, ${num(r.pitcher_id)}, ${esc(r.pitcher_name)}, ${num(r.balls)}, ${num(r.strikes)}, ${num(r.outs)}, ${esc(r.description)})`
+        }).join(',\n')
+        const sql = `INSERT INTO umpire_challenges (game_pk, game_date, hp_umpire, hp_umpire_id, inning, half_inning, at_bat_index, review_type, is_overturned, challenge_team_id, challenge_team, challenger_id, challenger_name, batter_id, batter_name, pitcher_id, pitcher_name, balls, strikes, outs, description) VALUES ${values} ON CONFLICT DO NOTHING`
+        const { error } = await supabaseAdmin.rpc('run_mutation', { query_text: sql })
         if (!error) inserted += rows.length
         else { insertError = error.message; errors += rows.length }
         rows.length = 0
