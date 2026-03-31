@@ -8,10 +8,10 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // All users with broadcast access can see all projects
     const { data, error } = await supabaseAdmin
       .from('broadcast_projects')
       .select('*')
-      .eq('user_id', user.id)
       .order('updated_at', { ascending: false })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

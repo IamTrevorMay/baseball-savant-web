@@ -9,11 +9,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // All users with broadcast access can view any project
     const { data, error } = await supabaseAdmin
       .from('broadcast_projects')
       .select('*')
       .eq('id', id)
-      .eq('user_id', user.id)
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 404 })
@@ -36,11 +36,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.description !== undefined) updates.description = body.description
     if (body.settings !== undefined) updates.settings = body.settings
 
+    // All users with broadcast access can edit any project
     const { error } = await supabaseAdmin
       .from('broadcast_projects')
       .update(updates)
       .eq('id', id)
-      .eq('user_id', user.id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })

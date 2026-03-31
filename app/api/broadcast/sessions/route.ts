@@ -73,11 +73,11 @@ export async function PUT(req: NextRequest) {
     const { id, ...updates } = body
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
+    // All users with broadcast access can interact with live sessions
     const { error } = await supabaseAdmin
       .from('broadcast_sessions')
       .update(updates)
       .eq('id', id)
-      .eq('user_id', user.id)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
