@@ -598,10 +598,10 @@ export async function computeLeagueBaselines(
       // ── Deception metrics (from pitcher_season_deception) ──
       const deceptionMetrics = await q(`
         SELECT
-          unnest(ARRAY['unique_score', 'deception_score', 'xdeception_score']) as metric,
-          unnest(ARRAY[AVG(unique_score), AVG(deception_score), AVG(xdeception_score)]) as mean,
-          unnest(ARRAY[STDDEV(unique_score), STDDEV(deception_score), STDDEV(xdeception_score)]) as stddev,
-          unnest(ARRAY[COUNT(unique_score), COUNT(deception_score), COUNT(xdeception_score)])::int as sample_size
+          unnest(ARRAY['unique_score', 'deception_score']) as metric,
+          unnest(ARRAY[AVG(unique_score), AVG(deception_score)]) as mean,
+          unnest(ARRAY[STDDEV(unique_score), STDDEV(deception_score)]) as stddev,
+          unnest(ARRAY[COUNT(unique_score), COUNT(deception_score)])::int as sample_size
         FROM pitcher_season_deception
         WHERE game_year = ${year}
       `)
