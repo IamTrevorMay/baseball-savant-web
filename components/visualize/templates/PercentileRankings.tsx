@@ -1,8 +1,9 @@
 'use client'
-import { useMemo, RefObject } from 'react'
+import { useMemo, useState, useEffect, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
+import { valueToPercentile, SAVANT_PERCENTILES, computePercentile } from '@/lib/leagueStats'
 
 interface TemplateProps {
   data: any[]
@@ -12,8 +13,7 @@ interface TemplateProps {
   onFrameUpdate?: (frame: number, total: number) => void
 }
 
-// Hardcoded 2024 league percentile tables (pitcher perspective)
-// [p10, p25, p50, p75, p90] values
+// Metric definitions for this template's subset
 const LEAGUE_PERCENTILES: Record<string, { label: string; unit: string; percentiles: number[]; higherBetter: boolean }> = {
   avg_velo: {
     label: 'Avg Velocity',
@@ -71,22 +71,11 @@ const LEAGUE_PERCENTILES: Record<string, { label: string; unit: string; percenti
   },
 }
 
-function computePercentile(value: number, percentiles: number[], higherBetter: boolean): number {
-  const pcts = [10, 25, 50, 75, 90]
-  // If not higherBetter, invert: lower value = higher percentile
-  const vals = higherBetter ? percentiles : [...percentiles].reverse()
-  const pctsUsed = higherBetter ? pcts : [90, 75, 50, 25, 10]
-
-  if (value <= vals[0]) return pctsUsed[0]
-  if (value >= vals[vals.length - 1]) return pctsUsed[pctsUsed.length - 1]
-
-  for (let i = 0; i < vals.length - 1; i++) {
-    if (value >= vals[i] && value <= vals[i + 1]) {
-      const frac = (value - vals[i]) / (vals[i + 1] - vals[i])
-      return pctsUsed[i] + frac * (pctsUsed[i + 1] - pctsUsed[i])
-    }
-  }
-  return 50
+// Mapping from this template's keys to league_metric_baselines keys
+const KEY_TO_BASELINE: Record<string, string> = {
+  avg_velo: 'avg_velo', max_velo: 'max_velo', avg_spin: 'avg_spin',
+  extension: 'extension', ivb: 'ivb_ff', hb: 'hb', vaa: 'vaa_ff',
+  whiff_pct: 'whiff_pct', chase_pct: 'chase_pct',
 }
 
 function percentileColor(pct: number): string {
@@ -107,6 +96,25 @@ function percentileColor(pct: number): string {
 }
 
 export default function PercentileRankings({ data, playerName }: TemplateProps) {
+  const [baselines, setBaselines] = useState<Record<string, { mean: number; stddev: number; higher_better: boolean }>>({})
+
+  useEffect(() => {
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))]
+    if (years.length === 0) return
+    fetch(`/api/league-baselines?years=${years.join(',')}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => {
+        const map: Record<string, { mean: number; stddev: number; higher_better: boolean }> = {}
+        for (const r of rows) {
+          if (r.pitch_type === '_all') {
+            map[r.metric] = { mean: Number(r.mean), stddev: Number(r.stddev), higher_better: r.higher_better }
+          }
+        }
+        setBaselines(map)
+      })
+      .catch(() => {})
+  }, [data])
+
   const metrics = useMemo(() => {
     if (!data.length) return []
 
@@ -166,15 +174,21 @@ export default function PercentileRankings({ data, playerName }: TemplateProps) 
     for (const [key, def] of Object.entries(LEAGUE_PERCENTILES)) {
       const v = vals[key]
       if (v == null) continue
-      results.push({
-        key,
-        value: v,
-        pct: computePercentile(v, def.percentiles, def.higherBetter),
-      })
+
+      let pct: number
+      const blKey = KEY_TO_BASELINE[key]
+      const bl = blKey ? baselines[blKey] : null
+      if (bl && bl.stddev > 0) {
+        pct = valueToPercentile(v, bl.mean, bl.stddev, bl.higher_better)
+      } else {
+        pct = computePercentile(v, def.percentiles, def.higherBetter)
+      }
+
+      results.push({ key, value: v, pct })
     }
 
     return results
-  }, [data])
+  }, [data, baselines])
 
   if (!metrics.length) {
     return (
@@ -208,7 +222,7 @@ export default function PercentileRankings({ data, playerName }: TemplateProps) 
   const layout = {
     ...BASE_LAYOUT,
     title: {
-      text: `${playerName} — Percentile Rankings (vs 2024 League)`,
+      text: `${playerName} — Percentile Rankings`,
       font: { size: 14, color: COLORS.textLight },
     },
     xaxis: {

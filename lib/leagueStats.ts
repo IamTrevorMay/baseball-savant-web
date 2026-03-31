@@ -1344,11 +1344,53 @@ function normalCDF(z: number): number {
   return 0.5 * (1.0 + sign * y)
 }
 
-/** Convert a plus stat to a league percentile rank (0–99) */
+/** Convert a plus stat to a league percentile rank (1–99) */
 export function plusToPercentile(plus: number): number {
   const z = (plus - 100) / 10
   return Math.max(1, Math.min(99, Math.round(normalCDF(z) * 100)))
 }
+
+/** Convert a raw value to a 1-99 percentile using dynamic league baselines */
+export function valueToPercentile(
+  value: number,
+  mean: number,
+  stddev: number,
+  higherBetter: boolean
+): number {
+  if (stddev <= 0) return 50
+  const plus = ((value - mean) / stddev) * 15 + 100
+  const adjusted = higherBetter ? plus : 200 - plus
+  return plusToPercentile(adjusted)
+}
+
+/** Metric display metadata (labels + units) — replaces SAVANT_PERCENTILES for display purposes */
+export const METRIC_META: Record<string, { label: string; unit: string }> = {
+  avg_velo: { label: 'Avg Velocity', unit: 'mph' },
+  max_velo: { label: 'Max Velocity', unit: 'mph' },
+  k_pct: { label: 'K%', unit: '%' },
+  bb_pct: { label: 'BB%', unit: '%' },
+  whiff_pct: { label: 'Whiff%', unit: '%' },
+  chase_pct: { label: 'Chase%', unit: '%' },
+  barrel_pct: { label: 'Barrel%', unit: '%' },
+  hard_hit: { label: 'Hard Hit%', unit: '%' },
+  avg_ev: { label: 'Avg EV', unit: 'mph' },
+  xba: { label: 'xBA', unit: '' },
+  gb_pct: { label: 'GB%', unit: '%' },
+  avg_spin: { label: 'Spin Rate', unit: 'rpm' },
+  extension: { label: 'Extension', unit: 'ft' },
+  ivb_ff: { label: 'IVB (FF)', unit: 'in' },
+  vaa_ff: { label: 'VAA (FF)', unit: '°' },
+  unique_score: { label: 'Unique', unit: 'z' },
+  deception_score: { label: 'Deception', unit: 'z' },
+}
+
+/** Ordered list of metric keys for consistent display */
+export const METRIC_ORDER = [
+  'avg_velo', 'max_velo', 'k_pct', 'bb_pct', 'whiff_pct', 'chase_pct',
+  'barrel_pct', 'hard_hit', 'avg_ev', 'xba', 'gb_pct',
+  'avg_spin', 'extension', 'ivb_ff', 'vaa_ff',
+  'unique_score', 'deception_score',
+]
 
 // Command+ weights — theory-weighted, 3 non-redundant components
 // (Cluster+ subsumes HDev+/VDev+ so they are dropped)

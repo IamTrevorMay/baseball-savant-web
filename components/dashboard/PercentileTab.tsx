@@ -3,9 +3,10 @@ import { useMemo, useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   SAVANT_PERCENTILES,
-  computePercentile, percentileColor, plusToPercentile,
+  computePercentile, percentileColor, plusToPercentile, valueToPercentile,
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
   isFastball, computeXDeceptionScore,
+  METRIC_META, METRIC_ORDER,
 } from '@/lib/leagueStats'
 
 type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'close_pct'
@@ -19,6 +20,25 @@ export default function PercentileTab({ data }: Props) {
   const [deceptionVals, setDeceptionVals] = useState<Record<string, number | null>>({
     unique_score: null, deception_score: null, xdeception_score: null,
   })
+  const [baselines, setBaselines] = useState<Record<string, { mean: number; stddev: number; higher_better: boolean }>>({})
+
+  // Fetch dynamic league baselines
+  useEffect(() => {
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))]
+    if (years.length === 0) return
+    fetch(`/api/league-baselines?years=${years.join(',')}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => {
+        const map: Record<string, { mean: number; stddev: number; higher_better: boolean }> = {}
+        for (const r of rows) {
+          if (r.pitch_type === '_all') {
+            map[r.metric] = { mean: Number(r.mean), stddev: Number(r.stddev), higher_better: r.higher_better }
+          }
+        }
+        setBaselines(map)
+      })
+      .catch(() => {})
+  }, [data])
 
   // Fetch pre-computed deception scores
   useEffect(() => {
@@ -127,16 +147,27 @@ export default function PercentileTab({ data }: Props) {
     }
 
     const results: { key: string; label: string; value: number; unit: string; pct: number }[] = []
-    for (const [key, def] of Object.entries(SAVANT_PERCENTILES)) {
+    for (const key of METRIC_ORDER) {
       const v = vals[key]
       if (v == null) continue
-      results.push({
-        key, label: def.label, unit: def.unit, value: v,
-        pct: computePercentile(v, def.percentiles, def.higherBetter),
-      })
+      const meta = METRIC_META[key]
+      if (!meta) continue
+
+      let pct: number
+      const bl = baselines[key]
+      if (bl && bl.stddev > 0) {
+        // Dynamic 1-99 percentile from league baselines
+        pct = valueToPercentile(v, bl.mean, bl.stddev, bl.higher_better)
+      } else {
+        // Fallback to hardcoded breakpoints
+        const def = SAVANT_PERCENTILES[key]
+        pct = def ? computePercentile(v, def.percentiles, def.higherBetter) : 50
+      }
+
+      results.push({ key, label: meta.label, unit: meta.unit, value: v, pct })
     }
     return results
-  }, [data, deceptionVals])
+  }, [data, deceptionVals, baselines])
 
   // Raw command metrics per pitch type with percentile ranks
   const rawMetrics = useMemo(() => {
