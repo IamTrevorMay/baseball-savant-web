@@ -508,56 +508,61 @@ export default function UmpireScorecardPage() {
             </div>
 
             {/* Challenge Strike Zone */}
-            {chalEvents.length > 0 && (
+            {chalEvents.filter((e: any) => e.plate_x != null).length > 0 && (
               <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-zinc-300 mb-3">Challenge Locations</h3>
-                <div className="h-[400px]">
-                  <Plot
-                    data={[
-                      {
-                        x: chalEvents.filter((e: any) => e.is_overturned).map(() => 0),
-                        y: chalEvents.filter((e: any) => e.is_overturned).map(() => 0),
-                        type: 'scatter' as any,
-                        mode: 'markers' as any,
-                        name: 'Overturned',
-                        marker: { color: '#f87171', size: 8, opacity: 0.8 },
-                        hovertext: chalEvents.filter((e: any) => e.is_overturned).map((e: any) =>
-                          `${e.challenger_name}<br>Inn ${e.inning} | ${e.balls}-${e.strikes}<br>${e.description?.slice(0, 60) || ''}`
-                        ),
-                        hoverinfo: 'text' as any,
-                        visible: false,
-                      },
-                      {
-                        x: chalEvents.filter((e: any) => !e.is_overturned).map(() => 0),
-                        y: chalEvents.filter((e: any) => !e.is_overturned).map(() => 0),
-                        type: 'scatter' as any,
-                        mode: 'markers' as any,
-                        name: 'Upheld',
-                        marker: { color: '#34d399', size: 8, opacity: 0.8 },
-                        hovertext: chalEvents.filter((e: any) => !e.is_overturned).map((e: any) =>
-                          `${e.challenger_name}<br>Inn ${e.inning} | ${e.balls}-${e.strikes}<br>${e.description?.slice(0, 60) || ''}`
-                        ),
-                        hoverinfo: 'text' as any,
-                        visible: false,
-                      },
-                    ]}
-                    layout={{
-                      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
-                      font: { color: '#a1a1aa' },
-                      showlegend: true, legend: { x: 0, y: 1.15, orientation: 'h' as any, font: { size: 11, color: '#a1a1aa' } },
-                      margin: { t: 30, r: 30, b: 40, l: 40 },
-                      annotations: [{
-                        text: 'Strike zone location data not available for challenges.<br>Showing summary counts only.',
-                        xref: 'paper' as any, yref: 'paper' as any, x: 0.5, y: 0.5,
-                        showarrow: false, font: { size: 13, color: '#71717a' },
-                      }],
-                      xaxis: { visible: false }, yaxis: { visible: false },
-                    }}
-                    config={{ displaylogo: false }}
-                    style={{ width: '100%', height: '100%' }}
-                  />
+                <div className="h-[450px]">
+                  {(() => {
+                    const withLoc = chalEvents.filter((e: any) => e.plate_x != null)
+                    const overturned = withLoc.filter((e: any) => e.is_overturned)
+                    const upheld = withLoc.filter((e: any) => !e.is_overturned)
+                    return (
+                      <Plot
+                        data={[
+                          {
+                            x: overturned.map((e: any) => Number(e.plate_x)),
+                            y: overturned.map((e: any) => Number(e.plate_z)),
+                            type: 'scatter' as any,
+                            mode: 'markers' as any,
+                            name: `Overturned (${overturned.length})`,
+                            marker: { color: '#f87171', size: 9, opacity: 0.8, line: { color: '#fff', width: 0.5 } },
+                            hovertext: overturned.map((e: any) =>
+                              `${e.challenger_name}<br>Inn ${e.half_inning === 'top' ? 'T' : 'B'}${e.inning} | ${e.balls}-${e.strikes}<br>${e.description?.slice(0, 80) || ''}`
+                            ),
+                            hoverinfo: 'text' as any,
+                          },
+                          {
+                            x: upheld.map((e: any) => Number(e.plate_x)),
+                            y: upheld.map((e: any) => Number(e.plate_z)),
+                            type: 'scatter' as any,
+                            mode: 'markers' as any,
+                            name: `Upheld (${upheld.length})`,
+                            marker: { color: '#34d399', size: 9, opacity: 0.8, line: { color: '#fff', width: 0.5 } },
+                            hovertext: upheld.map((e: any) =>
+                              `${e.challenger_name}<br>Inn ${e.half_inning === 'top' ? 'T' : 'B'}${e.inning} | ${e.balls}-${e.strikes}<br>${e.description?.slice(0, 80) || ''}`
+                            ),
+                            hoverinfo: 'text' as any,
+                          },
+                        ]}
+                        layout={{
+                          paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+                          font: { color: '#a1a1aa' },
+                          showlegend: true, legend: { x: 0, y: 1.12, orientation: 'h' as any, font: { size: 11, color: '#a1a1aa' } },
+                          margin: { t: 30, r: 30, b: 40, l: 40 },
+                          xaxis: { range: [-2.5, 2.5], zeroline: false, gridcolor: '#27272a', title: { text: 'Horizontal (ft)', font: { size: 10 } } },
+                          yaxis: { range: [0, 5], zeroline: false, gridcolor: '#27272a', title: { text: 'Vertical (ft)', font: { size: 10 } }, scaleanchor: 'x' as any },
+                          shapes: [
+                            { type: 'rect' as const, x0: -0.83, x1: 0.83, y0: 1.5, y1: 3.5, line: { color: '#52525b', width: 2 } },
+                            { type: 'rect' as const, x0: -0.913, x1: 0.913, y0: 1.417, y1: 3.583, line: { color: '#3f3f46', width: 1, dash: 'dot' as const } },
+                          ],
+                        }}
+                        config={{ displaylogo: false }}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    )
+                  })()}
                 </div>
-                <p className="text-[11px] text-zinc-600 mt-2">Note: Pitch location data for individual challenges is not available from the MLB API. The scatter plot will be enabled when location data becomes available.</p>
+                <p className="text-[11px] text-zinc-600 mt-2">Red = overturned (ump was wrong), Green = upheld (ump was right). Solid line = strike zone, dotted = shadow zone.</p>
               </div>
             )}
 

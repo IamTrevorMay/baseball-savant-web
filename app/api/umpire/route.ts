@@ -179,13 +179,24 @@ export async function POST(req: NextRequest) {
       WHERE ${chalWhereStr}
     `
 
-    // 7. Challenge events
+    // 7. Challenge events — join to pitches to get plate location
     const chalEventsSQL = `
       SELECT c.game_pk, c.game_date::text as game_date, c.inning, c.half_inning,
         c.review_type, c.is_overturned, c.challenge_team,
         c.challenger_name, c.batter_name, c.pitcher_name,
-        c.balls, c.strikes, c.outs, c.description
+        c.balls, c.strikes, c.outs, c.description,
+        p.plate_x, p.plate_z
       FROM umpire_challenges c
+      LEFT JOIN LATERAL (
+        SELECT plate_x, plate_z
+        FROM pitches
+        WHERE game_pk = c.game_pk
+          AND at_bat_number = c.at_bat_index + 1
+          AND description IN ('called_strike', 'ball')
+          AND plate_x IS NOT NULL
+        ORDER BY pitch_number DESC
+        LIMIT 1
+      ) p ON true
       WHERE ${chalWhereStr}
       ORDER BY c.game_date DESC, c.inning
       LIMIT 500
