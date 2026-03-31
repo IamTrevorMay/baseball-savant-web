@@ -340,15 +340,15 @@ export async function POST(req: NextRequest) {
         HAVING COUNT(DISTINCT u.game_pk) >= ${minGames}
       ),
       chal AS (
-        SELECT hp_umpire,
+        SELECT c.hp_umpire,
           COUNT(*) as challenges,
-          COUNT(*) FILTER (WHERE is_overturned) as overturns,
-          ROUND(COUNT(*) FILTER (WHERE is_overturned)::numeric / NULLIF(COUNT(*), 0), 4) as overturn_rate,
-          COUNT(*) FILTER (WHERE review_type = 'MJ') as abs_challenges,
-          COUNT(*) FILTER (WHERE review_type = 'MJ' AND is_overturned) as abs_overturns
-        FROM umpire_challenges
-        WHERE EXTRACT(YEAR FROM game_date) = ${year}
-        GROUP BY hp_umpire
+          COUNT(*) FILTER (WHERE c.is_overturned) as overturns,
+          ROUND(COUNT(*) FILTER (WHERE c.is_overturned)::numeric / NULLIF(COUNT(*), 0), 4) as overturn_rate,
+          COUNT(*) FILTER (WHERE c.review_type = 'MJ') as abs_challenges,
+          COUNT(*) FILTER (WHERE c.review_type = 'MJ' AND c.is_overturned) as abs_overturns
+        FROM umpire_challenges c
+        JOIN (SELECT DISTINCT game_pk FROM pitches WHERE game_year = ${year} ${gameType && ['R', 'S', 'P'].includes(gameType) ? `AND game_type = '${gameType}'` : ''}) gf ON gf.game_pk = c.game_pk
+        GROUP BY c.hp_umpire
       )
       SELECT a.*, COALESCE(c.challenges, 0) as challenges,
         COALESCE(c.overturns, 0) as overturns,
