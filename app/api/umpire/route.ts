@@ -159,12 +159,9 @@ export async function POST(req: NextRequest) {
     if (body.gameType && VALID_GAME_TYPES.includes(body.gameType)) {
       chalWhere.push(`c.game_pk IN (SELECT DISTINCT game_pk FROM pitches WHERE game_year = ${season || 'game_year'} AND game_type = '${body.gameType}')`)
     }
-    if (body.pitcherHand && ['R', 'L'].includes(body.pitcherHand)) {
-      chalWhere.push(`c.pitcher_id IN (SELECT DISTINCT pitcher FROM pitches WHERE p_throws = '${body.pitcherHand}')`)
-    }
-    if (body.batterSide && ['R', 'L'].includes(body.batterSide)) {
-      chalWhere.push(`c.batter_id IN (SELECT DISTINCT batter FROM pitches WHERE stand = '${body.batterSide}')`)
-    }
+    // Note: handedness filters are not applied to challenges server-side
+    // (too expensive to join). Challenge events include pitcher/batter IDs
+    // for client-side filtering if needed.
     const chalWhereStr = chalWhere.join(' AND ')
 
     const chalSummarySQL = `
