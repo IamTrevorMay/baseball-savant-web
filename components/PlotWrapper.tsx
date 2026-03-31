@@ -13,28 +13,17 @@ export default function Plot(props: any) {
     if (!el) return
     e.preventDefault()
 
-    // Use Plotly's built-in toImage to download as PNG
-    import('plotly.js').then((Plotly) => {
-      Plotly.downloadImage(el, {
+    // Use Plotly's built-in downloadImage via the global injected by react-plotly.js
+    const P = (window as any).Plotly
+    if (P?.downloadImage) {
+      P.downloadImage(el, {
         format: 'png',
         width: el.offsetWidth * 2,
         height: el.offsetHeight * 2,
         scale: 2,
         filename: 'chart',
       })
-    }).catch(() => {
-      // Fallback: try window.Plotly
-      const P = (window as any).Plotly
-      if (P?.downloadImage) {
-        P.downloadImage(el, {
-          format: 'png',
-          width: el.offsetWidth * 2,
-          height: el.offsetHeight * 2,
-          scale: 2,
-          filename: 'chart',
-        })
-      }
-    })
+    }
   }, [])
 
   // Ensure toImage is never in the remove list
