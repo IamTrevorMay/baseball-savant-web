@@ -103,7 +103,7 @@ function extractChallenges(
 export async function syncChallenges(
   season?: number,
   limit?: number
-): Promise<{ inserted: number; errors: number; games_processed: number }> {
+): Promise<{ inserted: number; errors: number; games_processed: number; last_error: string | null }> {
   const year = season || new Date().getFullYear()
 
   // Find games that have umpire data but no challenge records yet
@@ -120,7 +120,7 @@ export async function syncChallenges(
   })
 
   if (gErr) throw new Error(`Challenge query failed: ${gErr.message}`)
-  if (!games || games.length === 0) return { inserted: 0, errors: 0, games_processed: 0 }
+  if (!games || games.length === 0) return { inserted: 0, errors: 0, games_processed: 0, last_error: null }
 
   let inserted = 0
   let errors = 0
