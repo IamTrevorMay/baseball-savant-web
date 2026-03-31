@@ -300,7 +300,7 @@ export default function PercentileTab({ data }: Props) {
               return (
                 <div key={r.name} className="flex items-center gap-3 h-8">
                   <span className="w-28 text-xs text-zinc-400 text-right shrink-0 truncate">{r.name}</span>
-                  <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}&quot;</span>
+                  <span className="w-14 text-xs font-mono text-zinc-300 text-right shrink-0">{r.value.toFixed(1)}{mv.unit === '%' ? '%' : '″'}</span>
                   <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
                     <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
                     <div className="h-full rounded transition-all" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.8 }} />
