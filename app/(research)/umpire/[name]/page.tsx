@@ -555,7 +555,6 @@ export default function UmpireScorecardPage() {
                     }}
                     config={{ displaylogo: false }}
                     style={{ width: '100%', height: '100%' }}
-                    useResizeHandler
                   />
                 </div>
                 <p className="text-[11px] text-zinc-600 mt-2">Note: Pitch location data for individual challenges is not available from the MLB API. The scatter plot will be enabled when location data becomes available.</p>
