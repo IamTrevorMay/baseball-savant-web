@@ -145,11 +145,9 @@ export async function syncChallenges(
     // Batch upsert every 100 games or at the end
     if (rows.length >= 200 || i === games.length - 1) {
       if (rows.length > 0) {
-        const { error } = await supabaseAdmin.from('umpire_challenges').upsert(rows, {
-          onConflict: 'game_pk,at_bat_index,inning,review_type,challenger_id',
-        })
+        const { error } = await supabaseAdmin.from('umpire_challenges').insert(rows)
         if (!error) inserted += rows.length
-        else errors += rows.length
+        else { console.error('Challenge insert error:', error.message); errors += rows.length }
         rows.length = 0
       }
     }
