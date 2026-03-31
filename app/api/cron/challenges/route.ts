@@ -124,6 +124,7 @@ export async function syncChallenges(
 
   let inserted = 0
   let errors = 0
+  let insertError: string | null = null
   const rows: ChallengeRow[] = []
 
   for (let i = 0; i < games.length; i++) {
@@ -147,7 +148,7 @@ export async function syncChallenges(
       if (rows.length > 0) {
         const { error } = await supabaseAdmin.from('umpire_challenges').insert(rows)
         if (!error) inserted += rows.length
-        else { console.error('Challenge insert error:', error.message); errors += rows.length }
+        else { insertError = error.message; errors += rows.length }
         rows.length = 0
       }
     }
@@ -158,7 +159,7 @@ export async function syncChallenges(
     }
   }
 
-  return { inserted, errors, games_processed: games.length }
+  return { inserted, errors, games_processed: games.length, last_error: insertError }
 }
 
 // Cron GET handler
