@@ -106,8 +106,12 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     else inserted += batch.length
   }
 
-  // Refresh materialized view
+  // Sync new players that appeared in pitch data but aren't in the players table
+  const newPlayersResult = await syncNewPlayers(supabase, start_date, end_date)
+
+  // Refresh materialized views
   await supabase.rpc('refresh_player_summary')
+  await supabase.rpc('refresh_batter_summary')
 
   // Compute Stuff+ for the ingested date range
   const stuffResult = await computeStuffPlusForDateRange(supabase as any, start_date, end_date)
@@ -128,6 +132,101 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     message: `Fetched ${rows.length} pitches, ${inserted} processed`,
     stuff_plus: stuffResult,
     sos: sosResult,
+    new_players: newPlayersResult,
+  }
+}
+
+async function syncNewPlayers(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  startDate: string,
+  endDate: string
+): Promise<{ inserted: number; errors: number }> {
+  try {
+    // Find pitcher IDs in the ingested date range that are missing from the players table
+    const { data: missingPitchers } = await sb.rpc('run_query', {
+      query_text: `
+        SELECT DISTINCT p.pitcher AS id, p.player_name AS name
+        FROM pitches p
+        LEFT JOIN players pl ON pl.id = p.pitcher
+        WHERE p.game_date BETWEEN '${startDate}' AND '${endDate}'
+          AND pl.id IS NULL AND p.pitcher IS NOT NULL
+      `,
+    })
+
+    // Find batter IDs in the ingested date range that are missing from the players table
+    const { data: missingBatters } = await sb.rpc('run_query', {
+      query_text: `
+        SELECT DISTINCT p.batter AS id
+        FROM pitches p
+        LEFT JOIN players pl ON pl.id = p.batter
+        WHERE p.game_date BETWEEN '${startDate}' AND '${endDate}'
+          AND pl.id IS NULL AND p.batter IS NOT NULL
+      `,
+    })
+
+    const playerRows: { id: number; name: string; position: string | null }[] = []
+
+    // Pitcher names come directly from the CSV's player_name column (formatted as "Last, First")
+    if (missingPitchers && missingPitchers.length > 0) {
+      for (const p of missingPitchers) {
+        if (p.id && p.name) {
+          playerRows.push({ id: p.id, name: p.name, position: null })
+        }
+      }
+    }
+
+    // Batter names must be fetched from the MLB Stats API
+    if (missingBatters && missingBatters.length > 0) {
+      for (let i = 0; i < missingBatters.length; i += 50) {
+        const batch = missingBatters.slice(i, i + 50)
+        const results = await Promise.all(
+          batch.map(async (b: { id: number }) => {
+            try {
+              const res = await fetch(
+                `https://statsapi.mlb.com/api/v1/people/${b.id}`,
+                { signal: AbortSignal.timeout(10000) }
+              )
+              if (!res.ok) return null
+              const data = await res.json()
+              const person = data?.people?.[0]
+              if (!person) return null
+              const parts = (person.fullName || '').split(' ')
+              const formatted = parts.length > 1
+                ? `${parts.slice(-1)[0]}, ${parts.slice(0, -1).join(' ')}`
+                : person.fullName || 'Unknown'
+              return {
+                id: b.id,
+                name: formatted,
+                position: person.primaryPosition?.abbreviation || null,
+              }
+            } catch {
+              return null
+            }
+          })
+        )
+        for (const r of results) {
+          if (r) playerRows.push(r)
+        }
+      }
+    }
+
+    if (playerRows.length === 0) return { inserted: 0, errors: 0 }
+
+    let inserted = 0
+    let errors = 0
+
+    for (let i = 0; i < playerRows.length; i += 100) {
+      const batch = playerRows.slice(i, i + 100)
+      const { error } = await sb.from('players').upsert(batch, { onConflict: 'id' })
+      if (error) errors += batch.length
+      else inserted += batch.length
+    }
+
+    return { inserted, errors }
+  } catch (err) {
+    console.error('syncNewPlayers error:', err)
+    return { inserted: 0, errors: -1 }
   }
 }
 
