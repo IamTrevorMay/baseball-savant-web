@@ -48,12 +48,14 @@ interface UmpireRow {
   missed_calls: number; miss_rate: number | null
   bad_strikes: number; bad_balls: number
   non_shadow_pitches: number; non_shadow_missed: number; non_shadow_miss_rate: number | null
+  challenges: number; overturns: number; overturn_rate: number | null
+  abs_challenges: number; abs_overturns: number
 }
 
 type Tab = 'daily' | 'breakdowns' | 'teams' | 'leaderboard' | 'umpires'
 type DailySource = 'all' | 'batter' | 'fielder'
 type TeamSortField = 'team_abbr' | 'bat_for' | 'fld_for' | 'total_for' | 'bat_against' | 'fld_against' | 'total_against' | 'total' | 'net'
-type UmpireSortField = 'hp_umpire' | 'games' | 'called_pitches' | 'missed_calls' | 'miss_rate' | 'bad_strikes' | 'bad_balls' | 'non_shadow_missed' | 'non_shadow_miss_rate'
+type UmpireSortField = 'hp_umpire' | 'games' | 'called_pitches' | 'missed_calls' | 'miss_rate' | 'bad_strikes' | 'bad_balls' | 'non_shadow_missed' | 'non_shadow_miss_rate' | 'challenges' | 'overturns' | 'overturn_rate'
 type PlayerSortField = 'player_name' | 'n_challenges' | 'n_overturns' | 'n_fails' | 'rate_overturns' | 'exp_rate_overturns' | 'overturns_vs_exp' | 'net_net_chal'
 
 const GAME_TYPES = [
@@ -768,6 +770,9 @@ function UmpiresTab({ umpires, loading, minGames, setMinGames, umpireYear, setUm
                   {th('Bad Balls', 'bad_balls')}
                   {th('Non-Shadow Missed', 'non_shadow_missed')}
                   {th('NS Miss Rate', 'non_shadow_miss_rate')}
+                  {th('Challenges', 'challenges')}
+                  {th('Overturns', 'overturns')}
+                  {th('OT Rate', 'overturn_rate')}
                 </tr>
               </thead>
               <tbody>
@@ -788,6 +793,9 @@ function UmpiresTab({ umpires, loading, minGames, setMinGames, umpireYear, setUm
                     <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.bad_balls.toLocaleString()}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-zinc-300 font-medium">{u.non_shadow_missed.toLocaleString()}</td>
                     <td className={`px-3 py-2 text-center tabular-nums font-medium ${missRateColor(u.non_shadow_miss_rate)}`}>{pct(u.non_shadow_miss_rate)}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.challenges || 0}</td>
+                    <td className="px-3 py-2 text-center tabular-nums text-zinc-300 font-medium">{u.overturns || 0}</td>
+                    <td className={`px-3 py-2 text-center tabular-nums font-medium ${u.overturn_rate != null && u.overturn_rate > 0.5 ? 'text-red-400' : u.overturn_rate != null && u.overturn_rate > 0.3 ? 'text-amber-400' : 'text-emerald-400'}`}>{u.overturn_rate != null ? (u.overturn_rate * 100).toFixed(1) + '%' : '—'}</td>
                   </tr>
                 ))}
               </tbody>

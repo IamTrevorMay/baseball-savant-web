@@ -322,22 +322,42 @@ export async function POST(req: NextRequest) {
       : ''
 
     const sql = `
-      SELECT u.hp_umpire,
-        COUNT(DISTINCT u.game_pk) as games,
-        COUNT(*) as called_pitches,
-        COUNT(*) FILTER (WHERE NOT ${CORRECT}) as missed_calls,
-        ROUND(COUNT(*) FILTER (WHERE NOT ${CORRECT})::numeric / NULLIF(COUNT(*), 0), 4) as miss_rate,
-        COUNT(*) FILTER (WHERE p.type = 'S' AND NOT ${IN_ZONE}) as bad_strikes,
-        COUNT(*) FILTER (WHERE p.type = 'B' AND ${IN_ZONE}) as bad_balls,
-        COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as non_shadow_pitches,
-        COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND NOT ${CORRECT}) as non_shadow_missed,
-        ROUND(COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND NOT ${CORRECT})::numeric / NULLIF(COUNT(*) FILTER (WHERE ${NOT_SHADOW}), 0), 4) as non_shadow_miss_rate
-      FROM game_umpires u
-      JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${year} ${gtFilter}
-      WHERE ${UMP_BASE_WHERE}
-      GROUP BY u.hp_umpire
-      HAVING COUNT(DISTINCT u.game_pk) >= ${minGames}
-      ORDER BY missed_calls DESC
+      WITH accuracy AS (
+        SELECT u.hp_umpire,
+          COUNT(DISTINCT u.game_pk) as games,
+          COUNT(*) as called_pitches,
+          COUNT(*) FILTER (WHERE NOT ${CORRECT}) as missed_calls,
+          ROUND(COUNT(*) FILTER (WHERE NOT ${CORRECT})::numeric / NULLIF(COUNT(*), 0), 4) as miss_rate,
+          COUNT(*) FILTER (WHERE p.type = 'S' AND NOT ${IN_ZONE}) as bad_strikes,
+          COUNT(*) FILTER (WHERE p.type = 'B' AND ${IN_ZONE}) as bad_balls,
+          COUNT(*) FILTER (WHERE ${NOT_SHADOW}) as non_shadow_pitches,
+          COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND NOT ${CORRECT}) as non_shadow_missed,
+          ROUND(COUNT(*) FILTER (WHERE ${NOT_SHADOW} AND NOT ${CORRECT})::numeric / NULLIF(COUNT(*) FILTER (WHERE ${NOT_SHADOW}), 0), 4) as non_shadow_miss_rate
+        FROM game_umpires u
+        JOIN pitches p ON p.game_pk = u.game_pk AND p.game_year = ${year} ${gtFilter}
+        WHERE ${UMP_BASE_WHERE}
+        GROUP BY u.hp_umpire
+        HAVING COUNT(DISTINCT u.game_pk) >= ${minGames}
+      ),
+      chal AS (
+        SELECT hp_umpire,
+          COUNT(*) as challenges,
+          COUNT(*) FILTER (WHERE is_overturned) as overturns,
+          ROUND(COUNT(*) FILTER (WHERE is_overturned)::numeric / NULLIF(COUNT(*), 0), 4) as overturn_rate,
+          COUNT(*) FILTER (WHERE review_type = 'MJ') as abs_challenges,
+          COUNT(*) FILTER (WHERE review_type = 'MJ' AND is_overturned) as abs_overturns
+        FROM umpire_challenges
+        WHERE EXTRACT(YEAR FROM game_date) = ${year}
+        GROUP BY hp_umpire
+      )
+      SELECT a.*, COALESCE(c.challenges, 0) as challenges,
+        COALESCE(c.overturns, 0) as overturns,
+        c.overturn_rate,
+        COALESCE(c.abs_challenges, 0) as abs_challenges,
+        COALESCE(c.abs_overturns, 0) as abs_overturns
+      FROM accuracy a
+      LEFT JOIN chal c ON c.hp_umpire = a.hp_umpire
+      ORDER BY a.missed_calls DESC
       LIMIT 100
     `
 
