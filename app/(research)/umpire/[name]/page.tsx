@@ -81,8 +81,13 @@ export default function UmpireScorecardPage() {
   const [showSearch, setShowSearch] = useState(false)
   const [gameSortField, setGameSortField] = useState<GameSortField>('game_date')
   const [gameSortDir, setGameSortDir] = useState<'asc' | 'desc'>('desc')
+  const [tab, setTab] = useState<'accuracy' | 'abs'>('accuracy')
+  const [pitcherHand, setPitcherHand] = useState<string | null>(null)
+  const [batterSide, setBatterSide] = useState<string | null>(null)
+  const [chalSummary, setChalSummary] = useState<any>(null)
+  const [chalEvents, setChalEvents] = useState<any[]>([])
 
-  useEffect(() => { loadData() }, [umpireName, selectedSeason, gameType])
+  useEffect(() => { loadData() }, [umpireName, selectedSeason, gameType, pitcherHand, batterSide])
 
   async function loadData() {
     setLoading(true)
@@ -90,7 +95,7 @@ export default function UmpireScorecardPage() {
       const res = await fetch('/api/umpire', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'scorecard', name: umpireName, season: selectedSeason, gameType }),
+        body: JSON.stringify({ action: 'scorecard', name: umpireName, season: selectedSeason, gameType, pitcherHand, batterSide }),
       })
       if (!res.ok) {
         console.error('Scorecard error:', await res.text())
@@ -149,6 +154,12 @@ export default function UmpireScorecardPage() {
         }
       })
       setGames(gameRows)
+
+      // Challenge data
+      if (data.challenges) {
+        setChalSummary(data.challenges.summary || null)
+        setChalEvents(data.challenges.events || [])
+      }
     } catch (err) {
       console.error('Failed to load scorecard:', err)
     } finally {
@@ -263,6 +274,26 @@ export default function UmpireScorecardPage() {
                 </button>
               ))}
             </div>
+            {/* Pitcher hand */}
+            <div className="flex gap-1 text-[11px]">
+              <span className="text-zinc-600 text-[10px] self-center mr-0.5">P</span>
+              {([null, 'R', 'L'] as const).map(h => (
+                <button key={h ?? 'all'} onClick={() => setPitcherHand(h)}
+                  className={`px-2 py-1 rounded border transition ${pitcherHand === h ? 'border-emerald-600 text-emerald-400 bg-emerald-950/30' : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
+                  {h ?? 'All'}
+                </button>
+              ))}
+            </div>
+            {/* Batter side */}
+            <div className="flex gap-1 text-[11px]">
+              <span className="text-zinc-600 text-[10px] self-center mr-0.5">B</span>
+              {([null, 'R', 'L'] as const).map(s => (
+                <button key={s ?? 'all'} onClick={() => setBatterSide(s)}
+                  className={`px-2 py-1 rounded border transition ${batterSide === s ? 'border-emerald-600 text-emerald-400 bg-emerald-950/30' : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
+                  {s ?? 'All'}
+                </button>
+              ))}
+            </div>
             {/* Season selector */}
             {seasons.length > 0 && (
               <select value={selectedSeason ?? ''} onChange={e => setSelectedSeason(e.target.value ? Number(e.target.value) : null)}
@@ -291,6 +322,17 @@ export default function UmpireScorecardPage() {
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
+          {/* Tab toggle */}
+          <div className="flex gap-1">
+            {([['accuracy', 'Accuracy'], ['abs', 'ABS Challenges']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === key ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'accuracy' && <>
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             {[
@@ -445,6 +487,122 @@ export default function UmpireScorecardPage() {
             <p><span className="text-zinc-400 font-medium">Real Accuracy</span> — correct calls / non-shadow pitches (excludes pitches within 1&quot; of zone edge)</p>
             <p><span className="text-zinc-400 font-medium">Shadow Zone</span> — the 1&quot; band around the zone boundary where calls are genuinely borderline</p>
           </div>
+          </>}
+
+          {/* ABS Challenges Tab */}
+          {tab === 'abs' && <>
+            {/* Challenge Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {[
+                { label: 'Total Challenges', value: chalSummary?.total_challenges ?? 0, color: 'text-white' },
+                { label: 'Overturned', value: chalSummary?.overturned ?? 0, color: 'text-red-400' },
+                { label: 'Upheld', value: chalSummary?.upheld ?? 0, color: 'text-emerald-400' },
+                { label: 'Overturn Rate', value: chalSummary?.overturn_rate != null ? `${(Number(chalSummary.overturn_rate) * 100).toFixed(1)}%` : '—', color: chalSummary?.overturn_rate > 0.5 ? 'text-red-400' : chalSummary?.overturn_rate > 0.3 ? 'text-amber-400' : 'text-emerald-400' },
+                { label: 'ABS Challenges', value: chalSummary?.abs_challenges ?? 0, color: 'text-sky-400' },
+              ].map(c => (
+                <div key={c.label} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-center">
+                  <div className={`text-xl font-bold tabular-nums ${c.color}`}>{c.value}</div>
+                  <div className="text-[10px] text-zinc-500 mt-1">{c.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Challenge Strike Zone */}
+            {chalEvents.length > 0 && (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-zinc-300 mb-3">Challenge Locations</h3>
+                <div className="h-[400px]">
+                  <Plot
+                    data={[
+                      {
+                        x: chalEvents.filter((e: any) => e.is_overturned).map(() => 0),
+                        y: chalEvents.filter((e: any) => e.is_overturned).map(() => 0),
+                        type: 'scatter' as any,
+                        mode: 'markers' as any,
+                        name: 'Overturned',
+                        marker: { color: '#f87171', size: 8, opacity: 0.8 },
+                        hovertext: chalEvents.filter((e: any) => e.is_overturned).map((e: any) =>
+                          `${e.challenger_name}<br>Inn ${e.inning} | ${e.balls}-${e.strikes}<br>${e.description?.slice(0, 60) || ''}`
+                        ),
+                        hoverinfo: 'text' as any,
+                        visible: false,
+                      },
+                      {
+                        x: chalEvents.filter((e: any) => !e.is_overturned).map(() => 0),
+                        y: chalEvents.filter((e: any) => !e.is_overturned).map(() => 0),
+                        type: 'scatter' as any,
+                        mode: 'markers' as any,
+                        name: 'Upheld',
+                        marker: { color: '#34d399', size: 8, opacity: 0.8 },
+                        hovertext: chalEvents.filter((e: any) => !e.is_overturned).map((e: any) =>
+                          `${e.challenger_name}<br>Inn ${e.inning} | ${e.balls}-${e.strikes}<br>${e.description?.slice(0, 60) || ''}`
+                        ),
+                        hoverinfo: 'text' as any,
+                        visible: false,
+                      },
+                    ]}
+                    layout={{
+                      paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+                      font: { color: '#a1a1aa' },
+                      showlegend: true, legend: { x: 0, y: 1.15, orientation: 'h' as any, font: { size: 11, color: '#a1a1aa' } },
+                      margin: { t: 30, r: 30, b: 40, l: 40 },
+                      annotations: [{
+                        text: 'Strike zone location data not available for challenges.<br>Showing summary counts only.',
+                        xref: 'paper' as any, yref: 'paper' as any, x: 0.5, y: 0.5,
+                        showarrow: false, font: { size: 13, color: '#71717a' },
+                      }],
+                      xaxis: { visible: false }, yaxis: { visible: false },
+                    }}
+                    config={{ displaylogo: false }}
+                    style={{ width: '100%', height: '100%' }}
+                    useResizeHandler
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-600 mt-2">Note: Pitch location data for individual challenges is not available from the MLB API. The scatter plot will be enabled when location data becomes available.</p>
+              </div>
+            )}
+
+            {/* Challenge Log Table */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+              <h3 className="text-sm font-semibold text-zinc-300 px-4 py-3 border-b border-zinc-800">Challenge Log</h3>
+              {chalEvents.length === 0 ? (
+                <p className="text-zinc-500 text-sm py-8 text-center">No challenges found for this filter.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-zinc-800 text-zinc-500">
+                        <th className="px-3 py-2 text-left font-medium">Date</th>
+                        <th className="px-3 py-2 text-left font-medium">Inning</th>
+                        <th className="px-3 py-2 text-left font-medium">Count</th>
+                        <th className="px-3 py-2 text-left font-medium">Challenger</th>
+                        <th className="px-3 py-2 text-left font-medium">Type</th>
+                        <th className="px-3 py-2 text-left font-medium">Result</th>
+                        <th className="px-3 py-2 text-left font-medium">Batter</th>
+                        <th className="px-3 py-2 text-left font-medium">Pitcher</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chalEvents.map((e: any, i: number) => (
+                        <tr key={i} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                          <td className="px-3 py-2 text-zinc-300 font-mono">{e.game_date}</td>
+                          <td className="px-3 py-2 text-zinc-400">{e.half_inning === 'top' ? 'T' : 'B'}{e.inning}</td>
+                          <td className="px-3 py-2 text-zinc-400 tabular-nums">{e.balls != null ? `${e.balls}-${e.strikes}` : '—'}</td>
+                          <td className="px-3 py-2 text-zinc-300">{e.challenger_name || '—'}</td>
+                          <td className="px-3 py-2 text-zinc-400">{e.review_type === 'MJ' ? 'ABS' : e.review_type}</td>
+                          <td className={`px-3 py-2 font-medium ${e.is_overturned ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {e.is_overturned ? 'Overturned' : 'Upheld'}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-400">{e.batter_name || '—'}</td>
+                          <td className="px-3 py-2 text-zinc-400">{e.pitcher_name || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>}
         </div>
       </div>
     </div>

@@ -72,7 +72,10 @@ export async function POST(req: NextRequest) {
     const seasonFilter = season ? `AND u.game_date >= '${season}-01-01' AND u.game_date <= '${season}-12-31'` : ''
     const pitchSeasonFilter = season ? `AND p.game_year = ${season}` : ''
     const gtFilter = gameTypeFilter(body.gameType || null)
-    const umpWhere = `u.hp_umpire = '${umpireName}' AND ${BASE_WHERE} ${seasonFilter} ${pitchSeasonFilter} ${gtFilter}`
+    const pitcherHandFilter = body.pitcherHand && ['R', 'L'].includes(body.pitcherHand) ? `AND p.p_throws = '${body.pitcherHand}'` : ''
+    const batterSideFilter = body.batterSide && ['R', 'L'].includes(body.batterSide) ? `AND p.stand = '${body.batterSide}'` : ''
+    const handFilters = `${pitcherHandFilter} ${batterSideFilter}`
+    const umpWhere = `u.hp_umpire = '${umpireName}' AND ${BASE_WHERE} ${seasonFilter} ${pitchSeasonFilter} ${gtFilter} ${handFilters}`
 
     // 1. Summary stats
     const summarySQL = `
@@ -149,12 +152,51 @@ export async function POST(req: NextRequest) {
       ORDER BY season DESC
     `
 
+    // 6. Challenge summary
+    const chalWhere = [`c.hp_umpire = '${umpireName}'`]
+    if (season) chalWhere.push(`EXTRACT(YEAR FROM c.game_date) = ${season}`)
+    // Filter challenges by game type via pitches table
+    if (body.gameType && VALID_GAME_TYPES.includes(body.gameType)) {
+      chalWhere.push(`c.game_pk IN (SELECT DISTINCT game_pk FROM pitches WHERE game_year = ${season || 'game_year'} AND game_type = '${body.gameType}')`)
+    }
+    if (body.pitcherHand && ['R', 'L'].includes(body.pitcherHand)) {
+      chalWhere.push(`c.pitcher_id IN (SELECT DISTINCT pitcher FROM pitches WHERE p_throws = '${body.pitcherHand}')`)
+    }
+    if (body.batterSide && ['R', 'L'].includes(body.batterSide)) {
+      chalWhere.push(`c.batter_id IN (SELECT DISTINCT batter FROM pitches WHERE stand = '${body.batterSide}')`)
+    }
+    const chalWhereStr = chalWhere.join(' AND ')
+
+    const chalSummarySQL = `
+      SELECT
+        COUNT(*) as total_challenges,
+        COUNT(*) FILTER (WHERE c.is_overturned) as overturned,
+        COUNT(*) FILTER (WHERE NOT c.is_overturned) as upheld,
+        ROUND(COUNT(*) FILTER (WHERE c.is_overturned)::numeric / NULLIF(COUNT(*), 0), 4) as overturn_rate,
+        COUNT(*) FILTER (WHERE c.review_type = 'MJ') as abs_challenges,
+        COUNT(*) FILTER (WHERE c.review_type = 'MJ' AND c.is_overturned) as abs_overturned
+      FROM umpire_challenges c
+      WHERE ${chalWhereStr}
+    `
+
+    // 7. Challenge events
+    const chalEventsSQL = `
+      SELECT c.game_pk, c.game_date::text as game_date, c.inning, c.half_inning,
+        c.review_type, c.is_overturned, c.challenge_team,
+        c.challenger_name, c.batter_name, c.pitcher_name,
+        c.balls, c.strikes, c.outs, c.description
+      FROM umpire_challenges c
+      WHERE ${chalWhereStr}
+      ORDER BY c.game_date DESC, c.inning
+      LIMIT 500
+    `
+
     const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
-    const [summaryRes, missedRes, zoneRes, gameLogRes, seasonsRes] = await Promise.all([
-      q(summarySQL), q(missedSQL), q(zoneSQL), q(gameLogSQL), q(seasonsSQL),
+    const [summaryRes, missedRes, zoneRes, gameLogRes, seasonsRes, chalSumRes, chalEvtRes] = await Promise.all([
+      q(summarySQL), q(missedSQL), q(zoneSQL), q(gameLogSQL), q(seasonsSQL), q(chalSummarySQL), q(chalEventsSQL),
     ])
 
-    for (const res of [summaryRes, missedRes, zoneRes, gameLogRes, seasonsRes]) {
+    for (const res of [summaryRes, missedRes, zoneRes, gameLogRes, seasonsRes, chalSumRes, chalEvtRes]) {
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 })
     }
 
@@ -164,6 +206,10 @@ export async function POST(req: NextRequest) {
       zoneGrid: zoneRes.data || [],
       gameLog: gameLogRes.data || [],
       seasons: (seasonsRes.data || []).map((r: any) => r.season),
+      challenges: {
+        summary: chalSumRes.data?.[0] || null,
+        events: chalEvtRes.data || [],
+      },
     })
   }
 

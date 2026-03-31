@@ -264,51 +264,41 @@ export default function UmpirePage() {
             <p>No umpire data found.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {sortedLeaderboard.map((u, idx) => (
-              <div key={u.hp_umpire} onClick={() => goToUmpire(u.hp_umpire)}
-                className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer transition group relative">
-                <div className="absolute top-3 right-3 text-[10px] text-zinc-600 font-mono">#{idx + 1}</div>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300">HP</div>
-                  <span className="text-white font-medium text-sm group-hover:text-emerald-400 transition truncate pr-6">{u.hp_umpire}</span>
-                </div>
-                {/* Dual accuracy display */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="rounded-md border px-2 py-1.5 bg-zinc-800/50 border-zinc-700/50">
-                    <div className="text-[10px] text-zinc-500 mb-0.5">True Accuracy</div>
-                    <div className={`text-base font-bold tabular-nums ${accuracyColor(u.true_accuracy)}`}>{u.true_accuracy.toFixed(1)}%</div>
-                  </div>
-                  <div className="rounded-md border px-2 py-1.5 bg-zinc-800/50 border-zinc-700/50">
-                    <div className="text-[10px] text-zinc-500 mb-0.5">Real Accuracy</div>
-                    <div className={`text-base font-bold tabular-nums ${realAccuracyColor(u.real_accuracy)}`}>{u.real_accuracy.toFixed(1)}%</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">Games</span>
-                    <span className="text-zinc-300 tabular-nums">{u.games.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">Pitches</span>
-                    <span className="text-zinc-300 tabular-nums">{u.called_pitches.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">Correct</span>
-                    <span className="text-zinc-300 tabular-nums">{u.correct_calls.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">Missed</span>
-                    <span className="text-zinc-300 tabular-nums">{(u.called_pitches - u.correct_calls).toLocaleString()}</span>
-                  </div>
-                </div>
-                <div className="mt-2 text-[10px] text-zinc-600 flex justify-between">
-                  <span>{u.first_date}</span>
-                  <span>to</span>
-                  <span>{u.last_date}</span>
-                </div>
-              </div>
-            ))}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-zinc-500">
+                    <th className="px-3 py-2 text-left font-medium">#</th>
+                    <th className="px-3 py-2 text-left font-medium cursor-pointer hover:text-zinc-300" onClick={() => handleSort('games')}>Umpire</th>
+                    <th className="px-3 py-2 text-center font-medium cursor-pointer hover:text-zinc-300" onClick={() => handleSort('games')}>Games{sortArrow('games')}</th>
+                    <th className="px-3 py-2 text-center font-medium cursor-pointer hover:text-zinc-300" onClick={() => handleSort('called_pitches')}>Pitches{sortArrow('called_pitches')}</th>
+                    <th className="px-3 py-2 text-center font-medium">Correct</th>
+                    <th className="px-3 py-2 text-center font-medium">Missed</th>
+                    <th className="px-3 py-2 text-center font-medium cursor-pointer hover:text-zinc-300" onClick={() => handleSort('true_accuracy')}>True Acc{sortArrow('true_accuracy')}</th>
+                    <th className="px-3 py-2 text-center font-medium cursor-pointer hover:text-zinc-300" onClick={() => handleSort('real_accuracy')}>Real Acc{sortArrow('real_accuracy')}</th>
+                    <th className="px-3 py-2 text-center font-medium">Date Range</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedLeaderboard.map((u, idx) => (
+                    <tr key={u.hp_umpire} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 cursor-pointer" onClick={() => goToUmpire(u.hp_umpire)}>
+                      <td className="px-3 py-2 text-zinc-600 tabular-nums">{idx + 1}</td>
+                      <td className="px-3 py-2 text-left whitespace-nowrap">
+                        <span className="text-emerald-400 hover:text-emerald-300 font-medium transition">{u.hp_umpire}</span>
+                      </td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.games}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.called_pitches.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-emerald-400">{u.correct_calls.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-red-400">{(u.called_pitches - u.correct_calls).toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-center tabular-nums font-medium ${accuracyColor(u.true_accuracy)}`}>{u.true_accuracy.toFixed(1)}%</td>
+                      <td className={`px-3 py-2 text-center tabular-nums font-medium ${realAccuracyColor(u.real_accuracy)}`}>{u.real_accuracy.toFixed(1)}%</td>
+                      <td className="px-3 py-2 text-center text-zinc-600 text-[10px] whitespace-nowrap">{u.first_date} — {u.last_date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
