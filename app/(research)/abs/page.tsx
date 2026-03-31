@@ -143,7 +143,7 @@ export default function ABSPage() {
   const [umpireSort, setUmpireSort] = useState<UmpireSortField>('missed_calls')
   const [umpireDir, setUmpireDir] = useState<'asc' | 'desc'>('desc')
   const [minGames, setMinGames] = useState(1)
-  const [umpireYear, setUmpireYear] = useState(2025)
+  const [umpireYear, setUmpireYear] = useState(new Date().getFullYear())
   const [umpireGameType, setUmpireGameType] = useState('R')
 
   // Load filters
@@ -726,7 +726,7 @@ function UmpiresTab({ umpires, loading, minGames, setMinGames, umpireYear, setUm
     </th>
   )
 
-  const pitchYears = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015]
+  const pitchYears = Array.from({ length: new Date().getFullYear() - 2014 }, (_, i) => new Date().getFullYear() - i)
 
   return (
     <div>
