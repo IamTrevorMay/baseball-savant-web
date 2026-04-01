@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-03-31
+
+### Fix Scores Timezone — Use Local Time Instead of UTC
+- **What**: Live Scores on the home page were rolling to the next day's games prematurely (showing tomorrow's schedule while today's games were still on)
+- **Why**: `new Date().toISOString().slice(0,10)` returns UTC date, which is ahead of US timezones in the evening. Also, `useState(todayStr)` captures the SSR-computed (UTC) value and persists through hydration.
+- **Files**: `app/(research)/home/page.tsx`, `app/api/scores/route.ts`
+- **Fix**: (1) Extracted `localToday()` helper using `getFullYear/getMonth/getDate` (always local time); (2) Added mount `useEffect` to correct date if SSR computed a different UTC value; (3) Changed `shiftDate` and "Today" button to use `localToday()`; (4) API fallback uses `America/New_York` timezone; (5) Disabled stale `{ next: { revalidate: 30 } }` cache on MLB API fetch, switched to `{ cache: 'no-store' }`
+
+### Teams Page — Auto-Load + Game Type Filter
+- **What**: Teams page now auto-fetches on mount and when controls change. Added Spring Training / Regular Season / Postseason toggle.
+- **Why**: Previously required clicking "Load" button manually, showed all game types combined with no way to filter, and tab switching didn't re-fetch if initial load returned 0 rows.
+- **Files**: `app/(research)/teams/page.tsx`, `app/api/team-tendencies/route.ts`
+- **Fix**: (1) Added `useEffect` to auto-fetch when tab/season/gameType changes; (2) Removed manual "Load" button; (3) Added `GAME_TYPES` toggle (All, Spring Training, Regular Season, Postseason) defaulting to Regular Season; (4) API accepts `gameType` param mapping to `game_type` column filter (`R`, `S`, `D/L/W/F/P`); (5) Default season is now `new Date().getFullYear()` instead of hardcoded '2025'; (6) Added '2026' to seasons list
+
 ## 2026-03-30
 
 ### Multi-Bucket Daily Cards with Numeric Grade Sorting
