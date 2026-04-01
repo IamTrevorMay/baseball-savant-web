@@ -128,6 +128,10 @@ export default function TemplateBuilderPage() {
           const forked = builtin.rebuild(config, {})
           setScene({ ...forked, name: `${builtin.name} (Custom)` })
           setGlobalFilter({ type: 'bullpen-depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
+        } else if (builtin.id === '3-player-checkin') {
+          const forked = builtin.rebuild(config, {})
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'player-checkin', playerType: 'pitcher', dateRange: { type: 'season', year: new Date().getFullYear() }, players: [] })
         } else {
           const sample = getSampleData('leaderboard')
           const forked = builtin.rebuild(config, sample)
@@ -265,6 +269,24 @@ export default function TemplateBuilderPage() {
         if (builtin) {
           const config = { templateId: builtin.id, ...builtin.defaultConfig, teamAbbrev: team, dateRange: { type: 'season' as const, year } }
           const rebuilt = builtin.rebuild(config, dc)
+          setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
+        }
+        setDataLoaded(true)
+        setFetchLoading(false)
+        return
+      }
+
+      // Player Check-In: fetch stats for selected players and rebuild
+      if (globalFilter.type === 'player-checkin') {
+        const playerIds = (globalFilter.players || []).filter(p => p?.id).map(p => p.id)
+        if (playerIds.length === 0) { setDataLoaded(true); setFetchLoading(false); return }
+        const year = globalFilter.dateRange?.type === 'season' ? globalFilter.dateRange.year : new Date().getFullYear()
+        const res = await fetch(`/api/scene-stats?playerCheckin=true&playerIds=${playerIds.join(',')}&gameYear=${year}&playerType=${globalFilter.playerType || 'pitcher'}`)
+        const json = await res.json()
+        const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === '3-player-checkin')
+        if (builtin) {
+          const config = { templateId: builtin.id, ...builtin.defaultConfig, dateRange: { type: 'season' as const, year } }
+          const rebuilt = builtin.rebuild(config, json.checkin || {})
           setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
         }
         setDataLoaded(true)

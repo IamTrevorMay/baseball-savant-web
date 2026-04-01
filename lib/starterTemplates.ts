@@ -320,6 +320,47 @@ const bullpenDepthChart: StarterTemplate = {
   ],
 }
 
+/* ── 10  3 Player Check In ────────────────────────────────────────────── */
+
+const threePlayerCheckin: StarterTemplate = {
+  id: '3-player-checkin',
+  name: '3 Player Check In',
+  description: 'Side-by-side comparison of 3 players with headshots and configurable stat columns.',
+  filterType: 'player-checkin',
+  defaultFilter: {
+    type: 'player-checkin',
+    playerType: 'pitcher',
+    dateRange: { type: 'season', year: new Date().getFullYear() },
+    players: [],
+  },
+  canvasWidth: 1920,
+  canvasHeight: 1080,
+  background: '#111111',
+  elements: [
+    // Title
+    { type: 'text', x: 78, y: 50, width: 800, height: 70, props: { text: 'PITCHING CHECK IN', fontSize: 58, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT } },
+    // Subtitle
+    { type: 'text', x: 78, y: 118, width: 600, height: 30, props: { text: 'Regular Season  •  2026 Season Check In', fontSize: 22, fontWeight: 400, color: '#71717a', bgColor: TRANSPARENT } },
+    // Row 1
+    { type: 'text', x: 78, y: 242, width: 40, height: 64, props: { text: '1', fontSize: 64, fontWeight: 800, color: '#f59e0b', bgColor: TRANSPARENT, textAlign: 'center' } },
+    { type: 'player-image', x: 130, y: 242, width: 105, height: 136, bindingField: 'players[0].playerImage', props: { bgColor: TRANSPARENT, borderRadius: 12 } },
+    { type: 'text', x: 260, y: 282, width: 200, height: 32, bindingField: 'players[0].playerName', props: { text: 'Player 1', fontSize: 32, fontWeight: 700, color: WHITE, bgColor: TRANSPARENT } },
+    { type: 'text', x: 260, y: 318, width: 200, height: 20, props: { text: '2026 Season', fontSize: 18, fontWeight: 400, color: '#52525b', bgColor: TRANSPARENT } },
+    // Row 2
+    { type: 'text', x: 78, y: 472, width: 40, height: 64, props: { text: '2', fontSize: 64, fontWeight: 800, color: '#2dd4bf', bgColor: TRANSPARENT, textAlign: 'center' } },
+    { type: 'player-image', x: 130, y: 472, width: 105, height: 136, bindingField: 'players[1].playerImage', props: { bgColor: TRANSPARENT, borderRadius: 12 } },
+    { type: 'text', x: 260, y: 512, width: 200, height: 32, bindingField: 'players[1].playerName', props: { text: 'Player 2', fontSize: 32, fontWeight: 700, color: WHITE, bgColor: TRANSPARENT } },
+    { type: 'text', x: 260, y: 548, width: 200, height: 20, props: { text: '2026 Season', fontSize: 18, fontWeight: 400, color: '#52525b', bgColor: TRANSPARENT } },
+    // Row 3
+    { type: 'text', x: 78, y: 702, width: 40, height: 64, props: { text: '3', fontSize: 64, fontWeight: 800, color: '#34d399', bgColor: TRANSPARENT, textAlign: 'center' } },
+    { type: 'player-image', x: 130, y: 702, width: 105, height: 136, bindingField: 'players[2].playerImage', props: { bgColor: TRANSPARENT, borderRadius: 12 } },
+    { type: 'text', x: 260, y: 742, width: 200, height: 32, bindingField: 'players[2].playerName', props: { text: 'Player 3', fontSize: 32, fontWeight: 700, color: WHITE, bgColor: TRANSPARENT } },
+    { type: 'text', x: 260, y: 778, width: 200, height: 20, props: { text: '2026 Season', fontSize: 18, fontWeight: 400, color: '#52525b', bgColor: TRANSPARENT } },
+    // Watermark
+    { type: 'text', x: 660, y: 1040, width: 600, height: 20, props: { text: 'Data: Statcast via Triton Apex  •  tritonapex.io', fontSize: 16, fontWeight: 400, color: '#3f3f46', bgColor: TRANSPARENT, textAlign: 'center' } },
+  ],
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   top5Leaderboard,
   playerSpotlight,
@@ -330,4 +371,5 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   headToHead,
   rotationDepthChart,
   bullpenDepthChart,
+  threePlayerCheckin,
 ]

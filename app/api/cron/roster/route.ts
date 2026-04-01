@@ -141,6 +141,14 @@ export async function GET(req: NextRequest) {
       syncUmpires(),
     ])
 
+    // Refresh materialized views so updated names are searchable
+    if (players.updated > 0) {
+      await Promise.all([
+        supabaseAdmin.rpc('refresh_player_summary'),
+        supabaseAdmin.rpc('refresh_batter_summary'),
+      ])
+    }
+
     return NextResponse.json({
       ok: true,
       players,

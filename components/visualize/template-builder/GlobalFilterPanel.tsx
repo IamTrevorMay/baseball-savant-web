@@ -15,6 +15,7 @@ const FILTER_TYPES: { value: GlobalFilterType; label: string }[] = [
   { value: 'bullpen-depth-chart', label: 'Bullpen' },
   { value: 'live-game', label: 'Live Game' },
   { value: 'matchup', label: 'Matchup' },
+  { value: 'player-checkin', label: 'Check-In' },
 ]
 
 const MLB_TEAMS = [
@@ -337,6 +338,32 @@ export default function GlobalFilterPanel({
     </div>
   )
 
+  const renderPlayerCheckin = () => (
+    <div className="space-y-3">
+      <PitcherBatterToggle value={pType} onToggle={(v) => patch({ playerType: v })} />
+      {[0, 1, 2].map((idx) => {
+        const p = gf.players?.[idx]
+        return (
+          <div key={idx} className="space-y-1.5 border-t border-zinc-800 pt-2">
+            <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Player {idx + 1}</span>
+            <PlayerPicker
+              playerType={pType === 'batter' ? 'hitter' : 'pitcher'}
+              onSelect={(id, name) => {
+                const current = [...(gf.players || [])]
+                current[idx] = { id, name, type: pType }
+                patch({ players: current })
+              }}
+            />
+            {p?.name && (
+              <div className="text-[10px] text-emerald-400">{p.name}</div>
+            )}
+          </div>
+        )
+      })}
+      <SeasonSelect />
+    </div>
+  )
+
   const sections: Record<GlobalFilterType, () => React.ReactNode> = {
     'single-player': renderSinglePlayer,
     team: renderTeam,
@@ -345,6 +372,7 @@ export default function GlobalFilterPanel({
     'bullpen-depth-chart': renderDepthChart,
     'live-game': renderLiveGame,
     matchup: renderMatchup,
+    'player-checkin': renderPlayerCheckin,
   }
 
   /* ── Render ──────────────────────────────────────────────────────────────── */

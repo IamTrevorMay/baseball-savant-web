@@ -1,8 +1,8 @@
 /**
- * Generate PNG bullpen depth chart images for all 30 MLB teams.
- * Uses the "Custom Bullpen Depth Chart" template from Supabase + @napi-rs/canvas.
+ * Generate PNG depth chart images for all 30 MLB teams.
+ * Uses the "Starting Rotation Depth Chart" custom template + @napi-rs/canvas.
  *
- * Usage: npx tsx scripts/generate-bullpen-charts.ts
+ * Usage: npx tsx scripts/generate-depth-charts.ts
  */
 import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D, type Image } from '@napi-rs/canvas'
 import { createClient } from '@supabase/supabase-js'
@@ -11,9 +11,9 @@ import * as path from 'path'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const TEMPLATE_ID = '103e07a1-3ff8-480f-802a-87f7ef46cb5a'
-const OUTPUT_DIR = '/Users/trevor/Desktop/2026 MLB Depth Charts/Bullpens'
-const BULLPEN_JSON = '/tmp/bullpen_data.json'
+const TEMPLATE_ID = '3c0c5fcb-b809-49c0-a88f-ccbe61eab605'
+const OUTPUT_DIR = '/Users/trevor/Desktop/2026 MLB Depth Charts'
+// Data pre-converted from .numbers to JSON via Python
 
 // ── Team colors & full names ────────────────────────────────────────────────
 
@@ -78,19 +78,19 @@ interface Scene {
   elements: SceneElement[]
 }
 
-interface PlayerSlot { name: string; playerId: number | null }
-
-interface BullpenTeamData {
+interface TeamData {
+  abbrev: string
   teamName: string
-  closer: PlayerSlot | null
-  setup: PlayerSlot[]
-  relief: PlayerSlot[]
+  rotation: { name: string; playerId: number | null }[]
+  depth: { name: string; playerId: number | null }[]
 }
 
-// ── Parse bullpen JSON ──────────────────────────────────────────────────────
+// ── Parse pre-converted JSON data ───────────────────────────────────────────
 
-function parseBullpenData(): Record<string, { closer: string | null; setup: string[]; relief: string[] }> {
-  const raw = fs.readFileSync(BULLPEN_JSON, 'utf8')
+const DEPTH_JSON = '/tmp/depth_chart_data.json'
+
+function parseDepthData(): Record<string, { rotation: string[]; depth: string[] }> {
+  const raw = fs.readFileSync(DEPTH_JSON, 'utf8')
   return JSON.parse(raw)
 }
 
@@ -100,6 +100,7 @@ async function resolvePlayerIds(names: string[]): Promise<Map<string, number | n
   const result = new Map<string, number | null>()
   if (names.length === 0) return result
 
+  // Fetch all players from DB (paginated to get all)
   let allPlayers: { id: number; name: string }[] = []
   let from = 0
   const PAGE = 1000
@@ -113,12 +114,19 @@ async function resolvePlayerIds(names: string[]): Promise<Map<string, number | n
     if (data.length < PAGE) break
     from += PAGE
   }
+  const data = allPlayers
 
+  if (!data.length) return result
+
+  // Strip accents for fuzzy matching
   const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
+  // Build lookup: normalize name -> id
   const lookup = new Map<string, number>()
-  for (const p of allPlayers) {
+  for (const p of data) {
+    // DB format is "Last, First"
     lookup.set(normalize(p.name), p.id)
+    // Also store "First Last" form
     const parts = p.name.split(', ')
     if (parts.length === 2) {
       lookup.set(normalize(`${parts[1]} ${parts[0]}`), p.id)
@@ -126,7 +134,8 @@ async function resolvePlayerIds(names: string[]): Promise<Map<string, number | n
   }
 
   for (const name of names) {
-    result.set(name, lookup.get(normalize(name)) ?? null)
+    const key = normalize(name)
+    result.set(name, lookup.get(key) ?? null)
   }
 
   return result
@@ -137,22 +146,24 @@ async function resolvePlayerIds(names: string[]): Promise<Map<string, number | n
 let _fontFamily = 'sans-serif'
 
 async function ensureFont(): Promise<void> {
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-400-normal.woff2',
-    'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-600-normal.woff2',
-    'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff2',
-    'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-800-normal.woff2',
-  ]
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, { signal: AbortSignal.timeout(5000) })
-      if (resp.ok) {
-        const buf = Buffer.from(await resp.arrayBuffer())
-        GlobalFonts.register(buf, 'Inter')
-        _fontFamily = 'Inter'
-      }
-    } catch {}
-  }
+  try {
+    const urls = [
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-400-normal.woff2',
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-600-normal.woff2',
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff2',
+      'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-800-normal.woff2',
+    ]
+    for (const url of urls) {
+      try {
+        const resp = await fetch(url, { signal: AbortSignal.timeout(5000) })
+        if (resp.ok) {
+          const buf = Buffer.from(await resp.arrayBuffer())
+          GlobalFonts.register(buf, 'Inter')
+          _fontFamily = 'Inter'
+        }
+      } catch {}
+    }
+  } catch {}
 }
 
 function FONT() { return _fontFamily }
@@ -174,15 +185,6 @@ function roundRect(ctx: SKRSContext2D, x: number, y: number, w: number, h: numbe
   ctx.closePath()
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  hex = hex.replace('#', '')
-  return [
-    parseInt(hex.substring(0, 2), 16),
-    parseInt(hex.substring(2, 4), 16),
-    parseInt(hex.substring(4, 6), 16),
-  ]
-}
-
 async function fetchImage(url: string): Promise<Image | null> {
   try {
     const resp = await fetch(url)
@@ -192,9 +194,25 @@ async function fetchImage(url: string): Promise<Image | null> {
   } catch { return null }
 }
 
-// ── Render a single team using the custom template ──────────────────────────
+// ── Hex color helpers ───────────────────────────────────────────────────────
 
-async function renderTeam(template: Scene, team: BullpenTeamData, colors: { primary: string; secondary: string }): Promise<Buffer> {
+function hexToRgb(hex: string): [number, number, number] {
+  hex = hex.replace('#', '')
+  return [
+    parseInt(hex.substring(0, 2), 16),
+    parseInt(hex.substring(2, 4), 16),
+    parseInt(hex.substring(4, 6), 16),
+  ]
+}
+
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex)
+  return 0.299 * r + 0.587 * g + 0.114 * b
+}
+
+// ── Render a single team ────────────────────────────────────────────────────
+
+async function renderTeam(template: Scene, team: TeamData, colors: { primary: string; secondary: string }): Promise<Buffer> {
   const canvas = createCanvas(template.width, template.height)
   const ctx = canvas.getContext('2d')
 
@@ -218,38 +236,30 @@ async function renderTeam(template: Scene, team: BullpenTeamData, colors: { prim
   // Sort elements by zIndex
   const sorted = [...template.elements].sort((a, b) => a.zIndex - b.zIndex)
 
-  // Resolve bindings for bullpen: closer[N], setup[N], relief[N]
+  // Resolve bindings
   function resolveBinding(field: string): any {
+    // teamName
     if (field === 'teamName') return team.teamName
-
-    const closerMatch = field.match(/^closer\[(\d+)\]\.(\w+)$/)
-    if (closerMatch) {
-      const prop = closerMatch[2]
-      if (!team.closer) return null
-      if (prop === 'playerName') return team.closer.name
-      if (prop === 'playerImage') return team.closer.playerId
+    // rotation[N].playerName / rotation[N].playerImage
+    const rotMatch = field.match(/^rotation\[(\d+)\]\.(\w+)$/)
+    if (rotMatch) {
+      const idx = parseInt(rotMatch[1])
+      const prop = rotMatch[2]
+      const pitcher = team.rotation[idx]
+      if (!pitcher) return null
+      if (prop === 'playerName') return pitcher.name
+      if (prop === 'playerImage') return pitcher.playerId
     }
-
-    const setupMatch = field.match(/^setup\[(\d+)\]\.(\w+)$/)
-    if (setupMatch) {
-      const idx = parseInt(setupMatch[1])
-      const prop = setupMatch[2]
-      const player = team.setup[idx]
-      if (!player) return null
-      if (prop === 'playerName') return player.name
-      if (prop === 'playerImage') return player.playerId
+    // depth[N].playerName / depth[N].playerImage
+    const depthMatch = field.match(/^depth\[(\d+)\]\.(\w+)$/)
+    if (depthMatch) {
+      const idx = parseInt(depthMatch[1])
+      const prop = depthMatch[2]
+      const pitcher = team.depth[idx]
+      if (!pitcher) return null
+      if (prop === 'playerName') return pitcher.name
+      if (prop === 'playerImage') return pitcher.playerId
     }
-
-    const reliefMatch = field.match(/^relief\[(\d+)\]\.(\w+)$/)
-    if (reliefMatch) {
-      const idx = parseInt(reliefMatch[1])
-      const prop = reliefMatch[2]
-      const player = team.relief[idx]
-      if (!player) return null
-      if (prop === 'playerName') return player.name
-      if (prop === 'playerImage') return player.playerId
-    }
-
     return null
   }
 
@@ -281,17 +291,20 @@ async function renderTeam(template: Scene, team: BullpenTeamData, colors: { prim
         // Apply team theme colors
         let color = p.color || '#ffffff'
         if (bindingField === 'teamName') {
-          color = '#ffffff'
+          color = '#ffffff'  // Keep team name white
         } else if (p.color === '#10b981') {
+          // Replace emerald accent with team primary
           color = colors.primary
-        } else if (p.bgColor && typeof p.bgColor === 'string' && p.bgColor.includes('16,185,129')) {
+        } else if (p.bgColor && p.bgColor.includes('16,185,129')) {
+          // SP1-SP5 labels with emerald bg → team color bg
           color = colors.primary
         }
 
-        // Background
+        // Background for SP labels
         if (p.bgColor && p.bgColor !== 'transparent') {
           let bgColor = p.bgColor
-          if (typeof bgColor === 'string' && bgColor.includes('16,185,129')) {
+          if (p.bgColor.includes('16,185,129')) {
+            // Replace emerald tint with team color tint
             bgColor = `rgba(${pr},${pg},${pb},0.15)`
           }
           ctx.fillStyle = bgColor
@@ -402,7 +415,7 @@ async function main() {
   console.log('Loading font...')
   await ensureFont()
 
-  console.log('Fetching custom template...')
+  console.log('Fetching template...')
   const { data: templateData, error } = await supabase
     .from('custom_templates')
     .select('*')
@@ -423,51 +436,53 @@ async function main() {
 
   console.log(`Template: ${templateData.name} (${template.width}x${template.height}, ${template.elements.length} elements)`)
 
-  console.log('Parsing bullpen data...')
-  const rawData = parseBullpenData()
-  const teamAbbrevs = Object.keys(rawData).filter(k => k && TEAMS[k])
+  console.log('Parsing depth chart data...')
+  const depthData = parseDepthData()
+  const teamAbbrevs = Object.keys(depthData).filter(k => k && TEAMS[k])
   console.log(`Found ${teamAbbrevs.length} teams`)
 
   // Collect all player names for bulk ID lookup
   const allNames: string[] = []
   for (const abbrev of teamAbbrevs) {
-    const td = rawData[abbrev]
-    if (td.closer) allNames.push(td.closer)
-    allNames.push(...td.setup, ...td.relief)
+    const td = depthData[abbrev]
+    allNames.push(...td.rotation, ...td.depth)
   }
   const uniqueNames = [...new Set(allNames)]
   console.log(`Resolving ${uniqueNames.length} player IDs...`)
   const playerIds = await resolvePlayerIds(uniqueNames)
 
+  // Count resolved
   const resolved = [...playerIds.values()].filter(Boolean).length
   console.log(`Resolved ${resolved}/${uniqueNames.length} players`)
 
+  // Generate for each team
   fs.mkdirSync(OUTPUT_DIR, { recursive: true })
 
   for (const abbrev of teamAbbrevs) {
-    const td = rawData[abbrev]
+    const td = depthData[abbrev]
     const colors = TEAMS[abbrev]
 
-    const toSlot = (name: string): PlayerSlot => ({
-      name,
-      playerId: playerIds.get(name) ?? null,
-    })
-
-    const team: BullpenTeamData = {
+    const teamData: TeamData = {
+      abbrev,
       teamName: colors.name,
-      closer: td.closer ? toSlot(td.closer) : null,
-      setup: td.setup.slice(0, 2).map(toSlot),
-      relief: td.relief.slice(0, 5).map(toSlot),
+      rotation: td.rotation.slice(0, 5).map(name => ({
+        name,
+        playerId: playerIds.get(name) ?? null,
+      })),
+      depth: td.depth.slice(0, 3).map(name => ({
+        name,
+        playerId: playerIds.get(name) ?? null,
+      })),
     }
 
     process.stdout.write(`  ${abbrev} (${colors.name})...`)
-    const png = await renderTeam(template, team, colors)
-    const outPath = path.join(OUTPUT_DIR, `${abbrev}_bullpen_chart.png`)
+    const png = await renderTeam(template, teamData, colors)
+    const outPath = path.join(OUTPUT_DIR, `${abbrev}_depth_chart.png`)
     fs.writeFileSync(outPath, png)
     console.log(` done (${Math.round(png.length / 1024)}KB)`)
   }
 
-  console.log(`\nAll ${teamAbbrevs.length} bullpen charts saved to: ${OUTPUT_DIR}`)
+  console.log(`\nAll ${teamAbbrevs.length} depth charts saved to: ${OUTPUT_DIR}`)
 }
 
 main().catch(err => {

@@ -228,9 +228,46 @@ export const AUTO_COMPOSE_TOOLS: Anthropic.Tool[] = [
         playerId: { type: 'number', description: 'MLB player ID.' }
       },
       required: ['playerId']
-    }
+    },
   },
-]
+  // ── Design rules tools ──
+  {
+    name: 'save_design_rule',
+    description: 'Save a design rule or pattern to remember for future graphics. Use when the user says "remember this", "save this pattern", or when you notice a successful design pattern worth preserving. Categories: layout, typography, color, spacing, composition, data-viz, general.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        rule: { type: 'string', description: 'The design rule or pattern to remember. Be specific and actionable.' },
+        category: { type: 'string', enum: ['layout', 'typography', 'color', 'spacing', 'composition', 'data-viz', 'general'], description: 'Rule category.' },
+      },
+      required: ['rule', 'category']
+    },
+  },
+  {
+    name: 'list_design_rules',
+    description: 'List all saved design rules. Use to review current rules before building a graphic.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: { type: 'string', description: 'Optional: filter by category.' }
+      },
+      required: []
+    },
+  },
+  {
+    name: 'remove_design_rule',
+    description: 'Remove a design rule by ID. Use when the user says to forget or remove a rule.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Rule UUID to remove.' }
+      },
+      required: ['id']
+    },
+    // Cache breakpoint: all tool definitions above this are cached
+    cache_control: { type: 'ephemeral' as const },
+  },
+] as Anthropic.Tool[]
 
 // ── Tool Handlers ────────────────────────────────────────────────────────────
 
@@ -603,6 +640,35 @@ export async function handleAutoComposeTool(
       const { playerId } = input as { playerId: number }
       const url = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`
       return { result: JSON.stringify({ playerId, url }) }
+    }
+
+    // ── Design rules tools ──────────────────────────────────────────────
+
+    case 'save_design_rule': {
+      const { rule, category } = input as { rule: string; category: string }
+      const { data, error } = await supabase
+        .from('design_rules')
+        .insert({ rule, category, source: 'agent' })
+        .select('id')
+        .single()
+      if (error) return { result: JSON.stringify({ error: error.message }) }
+      return { result: JSON.stringify({ success: true, id: data.id, message: `Saved design rule: "${rule}"` }) }
+    }
+
+    case 'list_design_rules': {
+      const { category } = input as { category?: string }
+      let query = supabase.from('design_rules').select('id, rule, category, source, created_at').order('created_at', { ascending: true })
+      if (category) query = query.eq('category', category)
+      const { data, error } = await query
+      if (error) return { result: JSON.stringify({ error: error.message }) }
+      return { result: JSON.stringify({ rules: data, count: data?.length || 0 }) }
+    }
+
+    case 'remove_design_rule': {
+      const { id } = input as { id: string }
+      const { error } = await supabase.from('design_rules').delete().eq('id', id)
+      if (error) return { result: JSON.stringify({ error: error.message }) }
+      return { result: JSON.stringify({ success: true, message: 'Rule removed.' }) }
     }
 
     default:

@@ -1,8 +1,16 @@
 /**
  * autoComposePrompt — System prompt builder for Auto Compose AI agent.
+ * Returns an array of content blocks with cache_control for prompt caching.
  */
 
+import Anthropic from '@anthropic-ai/sdk'
 import { Scene, SceneElement, ELEMENT_CATALOG } from './sceneTypes'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 /** Compact summary of the current scene for the system prompt */
 export function summarizeScene(scene: Scene): string {
@@ -22,14 +30,35 @@ export function summarizeScene(scene: Scene): string {
   ].join('\n')
 }
 
-/** Build the system prompt for the Auto Compose agent */
-export function buildAutoComposeSystemPrompt(scene: Scene): string {
-  const sceneSummary = summarizeScene(scene)
+/** Fetch all design rules from DB */
+export async function fetchDesignRules(): Promise<{ id: string; rule: string; category: string }[]> {
+  const { data } = await supabase
+    .from('design_rules')
+    .select('id, rule, category')
+    .order('category')
+    .order('created_at', { ascending: true })
+  return data || []
+}
 
-  return `You are the Triton Auto Composer — an AI graphic designer for Triton, a baseball analytics platform. You build broadcast-quality graphics by manipulating a scene canvas.
+/** Format design rules for injection into the system prompt */
+function formatDesignRules(rules: { id: string; rule: string; category: string }[]): string {
+  if (rules.length === 0) return ''
 
-CURRENT SCENE:
-${sceneSummary}
+  const byCategory: Record<string, string[]> = {}
+  for (const r of rules) {
+    if (!byCategory[r.category]) byCategory[r.category] = []
+    byCategory[r.category].push(r.rule)
+  }
+
+  const sections = Object.entries(byCategory)
+    .map(([cat, items]) => `${cat}:\n${items.map(r => `  - ${r}`).join('\n')}`)
+    .join('\n')
+
+  return `\n\nLEARNED DESIGN RULES (${rules.length} rules — follow these when building graphics):\n${sections}`
+}
+
+/** Static instructions that don't change between iterations — cached */
+const STATIC_INSTRUCTIONS = `You are the Triton Auto Composer — an AI graphic designer for Triton, a baseball analytics platform. You build broadcast-quality graphics by manipulating a scene canvas.
 
 AVAILABLE ELEMENT TYPES:
 ${ELEMENT_CATALOG.map(e => `- ${e.type}: ${e.desc}`).join('\n')}
@@ -52,7 +81,7 @@ KEY ELEMENT PROPS:
 - comparison-bar: { label, value, maxValue, color, showValue, barBgColor }
 - image: { src (URL), objectFit }
 - zone-plot: { pitches [{plate_x, plate_z, pitch_name}], dotSize, dotOpacity, showZone }
-- movement-plot: { pitches [{pfx_x, pfx_z, pitch_name}], dotSize, dotOpacity, maxRange }
+- movement-plot: { pitches [{hb, ivb, pitch_name}], dotSize, dotOpacity, maxRange } — IMPORTANT: hb = horizontal break in INCHES, ivb = induced vertical break in INCHES. Statcast pfx_x/pfx_z are in FEET — multiply by 12 to convert. Use field names "hb" and "ivb", NOT "pfx_x"/"pfx_z".
 - rc-table: { columns [{key, label, format}], rows [{}], headerColor, textColor, fontSize, title }
 - rc-bar-chart: { barData [{label, value, color?}], metric, orientation, barColor, showValues, title }
 - rc-stat-box: { label, value, format, color, fontSize }
@@ -77,6 +106,14 @@ WORKFLOW:
 6. Use get_scene_info to check the current state of the canvas
 7. Iterate — make changes based on feedback
 
+DESIGN RULES SYSTEM:
+You have a persistent memory of design rules that improve over time. These rules are saved patterns and preferences from past sessions.
+- When the user says "remember this", "save this pattern", or similar — use save_design_rule to persist it
+- After building a graphic the user approves, consider proposing 1-2 design patterns worth saving (ask first, e.g. "Want me to save the glass-panel-behind-stats pattern as a design rule?")
+- Use list_design_rules at the start of complex builds to review existing rules
+- When the user says "forget that rule" or "remove that rule" — use remove_design_rule
+- Don't save duplicate or overly specific rules (e.g. "use 48px for this one title" is too specific; "use 48-64px for main titles" is good)
+
 IMPORTANT:
 - Always query for real data. Never invent statistics.
 - Position elements within canvas bounds (0,0 to width,height)
@@ -85,4 +122,27 @@ IMPORTANT:
 - For colors, use hex values (#RRGGBB)
 - Keep responses concise — describe what you did, not every detail
 - If you use build_from_template, the scene is fully replaced — mention this to the user`
+
+/**
+ * Build system prompt as content blocks with cache_control.
+ * The static instructions are cached; design rules + scene summary are dynamic.
+ */
+export async function buildAutoComposeSystemPrompt(
+  scene: Scene
+): Promise<Anthropic.MessageCreateParams['system']> {
+  const sceneSummary = summarizeScene(scene)
+  const rules = await fetchDesignRules()
+  const rulesText = formatDesignRules(rules)
+
+  return [
+    {
+      type: 'text' as const,
+      text: STATIC_INSTRUCTIONS,
+      cache_control: { type: 'ephemeral' as const },
+    },
+    {
+      type: 'text' as const,
+      text: `${rulesText}\n\nCURRENT SCENE:\n${sceneSummary}`,
+    },
+  ]
 }

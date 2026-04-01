@@ -2430,4 +2430,108 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }
     },
   },
+
+  // ── 3 Player Check In ──────────────────────────────────────────────────
+  {
+    id: '3-player-checkin',
+    name: '3 Player Check In',
+    category: 'social',
+    description: '3-player comparison with headshots, rank numbers, and stat columns',
+    icon: '\u{1f4cb}',
+    width: 1920,
+    height: 1080,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: new Date().getFullYear() },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const d = data || {}
+      const players: any[] = d.players || []
+      const title = d.title || 'PLAYER CHECK IN'
+      const subtitle = d.subtitle || `Regular Season  •  ${_config?.dateRange?.type === 'season' ? _config.dateRange.year : new Date().getFullYear()} Season Check In`
+      const statHeaders: string[] = d.statHeaders || ['IP', 'ERA', 'R', 'K', 'BB', 'BAA', 'OPS']
+      const statColors: string[] = d.statColors || ['#e4e4e7', '#f59e0b', '#ef4444', '#2dd4bf', '#38bdf8', '#34d399', '#a78bfa']
+      const rankColors = ['#f59e0b', '#2dd4bf', '#34d399', '#71717a', '#a78bfa']
+
+      // 7 stat columns spread across canvas
+      const colCX = [600, 800, 1000, 1200, 1380, 1560, 1740]
+
+      // Title
+      elements.push(el('text', 78, 50, 800, 70, {
+        text: title, fontSize: 58, fontWeight: 800, color: '#ffffff', textAlign: 'left',
+      }))
+      // Subtitle
+      elements.push(el('text', 78, 118, 600, 30, {
+        text: subtitle, fontSize: 22, fontWeight: 400, color: '#71717a', textAlign: 'left',
+      }))
+
+      // Column headers
+      for (let i = 0; i < statHeaders.length; i++) {
+        elements.push(el('text', colCX[i] - 50, 180, 100, 26, {
+          text: statHeaders[i], fontSize: 22, fontWeight: 600, color: '#52525b', textAlign: 'center',
+        }))
+      }
+
+      // Player rows
+      const topCY = 310
+      const spacing = 230
+      for (let i = 0; i < Math.min(3, players.length); i++) {
+        const p = players[i]
+        const cy = topCY + i * spacing
+
+        // Rank number
+        elements.push(el('text', 58, cy - 32, 40, 64, {
+          text: String(i + 1), fontSize: 64, fontWeight: 800, color: rankColors[i], textAlign: 'center',
+        }))
+
+        // Headshot
+        elements.push(el('player-image', 130, cy - 68, 105, 136, {
+          playerId: p?.player_id || null,
+          playerName: p?.player_name || '',
+          borderColor: '#27272a', borderWidth: 0, borderRadius: 12,
+          showLabel: false, bgColor: 'transparent',
+        }))
+
+        // Player name
+        elements.push(el('text', 260, cy - 28, 280, 36, {
+          text: p?.player_name || '—', fontSize: 32, fontWeight: 700, color: '#ffffff', textAlign: 'left',
+        }))
+
+        // "Season" subtitle
+        elements.push(el('text', 260, cy + 16, 200, 22, {
+          text: `${_config?.dateRange?.type === 'season' ? _config.dateRange.year : new Date().getFullYear()} Season`,
+          fontSize: 18, fontWeight: 400, color: '#52525b', textAlign: 'left',
+        }))
+
+        // Stat values
+        const stats: string[] = p?.stats || []
+        for (let j = 0; j < Math.min(stats.length, colCX.length); j++) {
+          elements.push(el('text', colCX[j] - 60, cy - 28, 120, 56, {
+            text: stats[j], fontSize: 56, fontWeight: 700, color: statColors[j] || '#e4e4e7', textAlign: 'center',
+          }))
+        }
+      }
+
+      // Watermark
+      elements.push(el('text', 660, 1040, 600, 20, {
+        text: 'Data: Statcast via Triton Apex  •  tritonapex.io',
+        fontSize: 16, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: title,
+        width: 1920,
+        height: 1080,
+        background: '#111111',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
 ]

@@ -71,6 +71,8 @@ export default function SceneComposerPage() {
   const [autoMessages, setAutoMessages] = useState<ChatMessage[]>([])
   const [autoLoading, setAutoLoading] = useState(false)
   const [autoSessionId, setAutoSessionId] = useState<string | null>(null)
+  const [autoActiveTools, setAutoActiveTools] = useState<string[]>([])
+  const [autoStreamingText, setAutoStreamingText] = useState('')
 
   const handleAutoSend = useCallback(async (message: string) => {
     if (autoLoading) return
@@ -84,6 +86,8 @@ export default function SceneComposerPage() {
     }
     setAutoMessages(prev => [...prev, userMsg])
     setAutoLoading(true)
+    setAutoActiveTools([])
+    setAutoStreamingText('')
 
     try {
       // Create session on first message if we don't have one
@@ -117,32 +121,84 @@ export default function SceneComposerPage() {
         }),
       })
 
-      const data = await res.json()
-
-      if (data.error) {
-        const errMsg: ChatMessage = {
-          id: Math.random().toString(36).slice(2, 10),
-          role: 'assistant',
-          content: `Error: ${data.error}`,
-          createdAt: new Date().toISOString(),
-        }
-        setAutoMessages(prev => [...prev, errMsg])
-      } else {
-        // Update scene with AI's result
-        if (data.scene) {
-          setScene(data.scene)
-        }
-
-        const assistantMsg: ChatMessage = {
-          id: Math.random().toString(36).slice(2, 10),
-          role: 'assistant',
-          content: data.text || 'Done.',
-          toolsUsed: data.toolsUsed,
-          sceneSnapshot: data.scene,
-          createdAt: new Date().toISOString(),
-        }
-        setAutoMessages(prev => [...prev, assistantMsg])
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(errData.error || `HTTP ${res.status}`)
       }
+
+      // Parse SSE stream
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let fullText = ''
+      let finalScene: any = null
+      let allToolsUsed: string[] = []
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse complete SSE events from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+        let eventType = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7)
+          } else if (line.startsWith('data: ') && eventType) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              switch (eventType) {
+                case 'new_turn':
+                  // Reset streaming text for new iteration
+                  fullText = ''
+                  setAutoStreamingText('')
+                  break
+                case 'text_delta':
+                  fullText += data.text
+                  setAutoStreamingText(fullText)
+                  break
+                case 'tool_start':
+                  setAutoActiveTools(prev => [...prev, data.name])
+                  break
+                case 'tool_done':
+                  setAutoActiveTools(prev => prev.filter(t => t !== data.name))
+                  break
+                case 'done':
+                  if (data.scene) {
+                    finalScene = data.scene
+                    setScene(data.scene)
+                  }
+                  allToolsUsed = data.toolsUsed || []
+                  break
+                case 'error':
+                  throw new Error(data.message)
+              }
+            } catch (e: any) {
+              if (e.message && eventType === 'error') throw e
+              // Ignore JSON parse errors for incomplete data
+            }
+            eventType = ''
+          }
+        }
+      }
+
+      // Add the complete assistant message
+      const assistantMsg: ChatMessage = {
+        id: Math.random().toString(36).slice(2, 10),
+        role: 'assistant',
+        content: fullText || 'Done.',
+        toolsUsed: allToolsUsed,
+        sceneSnapshot: finalScene,
+        createdAt: new Date().toISOString(),
+      }
+      setAutoMessages(prev => [...prev, assistantMsg])
     } catch (err: any) {
       const errMsg: ChatMessage = {
         id: Math.random().toString(36).slice(2, 10),
@@ -153,6 +209,8 @@ export default function SceneComposerPage() {
       setAutoMessages(prev => [...prev, errMsg])
     } finally {
       setAutoLoading(false)
+      setAutoActiveTools([])
+      setAutoStreamingText('')
     }
   }, [autoLoading, autoSessionId, autoMessages, scene, setScene])
 
@@ -1037,6 +1095,19 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── 3 Player Check In ────────────────────────────────────────
+      if (config.templateId === '3-player-checkin') {
+        const year = config.dateRange.type === 'season' ? config.dateRange.year : new Date().getFullYear()
+        // Use sample data for scene-composer preview (user configures in template-builder)
+        const res = await fetch(`/api/scene-stats?playerCheckin=true&playerIds=657277,694973,690997&gameYear=${year}&playerType=${config.playerType || 'pitcher'}`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.checkin || {})
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Bullpen Depth Chart ─────────────────────────────────────────
       if (config.templateId === 'bullpen-depth-chart') {
         const team = config.teamAbbrev || 'NYY'
@@ -1579,8 +1650,11 @@ export default function SceneComposerPage() {
         {composerMode === 'auto' ? (
           <div className="w-[350px] border-r border-zinc-800 bg-zinc-900/50 shrink-0 flex flex-col">
             <AutoChatPanel
-              messages={autoMessages}
-              loading={autoLoading}
+              messages={autoLoading && autoStreamingText
+                ? [...autoMessages, { id: '_streaming', role: 'assistant' as const, content: autoStreamingText, createdAt: '' }]
+                : autoMessages}
+              loading={autoLoading && !autoStreamingText}
+              activeTools={autoActiveTools}
               onSend={handleAutoSend}
             />
           </div>
@@ -1700,7 +1774,7 @@ export default function SceneComposerPage() {
                 onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
                 loading={templateLoading}
               />
-            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart') ? (
+            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart' || scene.templateConfig.templateId === '3-player-checkin') ? (
               <DepthChartConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}

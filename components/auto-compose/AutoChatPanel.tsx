@@ -14,10 +14,12 @@ export interface ChatMessage {
 interface AutoChatPanelProps {
   messages: ChatMessage[]
   loading: boolean
+  /** Currently active tools (shown during streaming) */
+  activeTools?: string[]
   onSend: (message: string) => void
 }
 
-export default function AutoChatPanel({ messages, loading, onSend }: AutoChatPanelProps) {
+export default function AutoChatPanel({ messages, loading, activeTools, onSend }: AutoChatPanelProps) {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -27,7 +29,7 @@ export default function AutoChatPanel({ messages, loading, onSend }: AutoChatPan
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, loading])
+  }, [messages, loading, activeTools])
 
   // Focus input on mount
   useEffect(() => {
@@ -99,12 +101,25 @@ export default function AutoChatPanel({ messages, loading, onSend }: AutoChatPan
 
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 space-y-1.5">
+              {/* Active tools */}
+              {activeTools && activeTools.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {activeTools.map((tool, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600/15 text-[9px] text-emerald-400 font-mono">
+                      <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: '0.2s' }} />
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: '0.4s' }} />
-                <span className="text-[10px] text-zinc-500 ml-1">Building...</span>
+                <span className="text-[10px] text-zinc-500 ml-1">
+                  {activeTools && activeTools.length > 0 ? 'Working...' : 'Thinking...'}
+                </span>
               </div>
             </div>
           </div>

@@ -92,6 +92,89 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // ── Player Check-In mode ──────────────────────────────────────────────
+    if (sp.get('playerCheckin') === 'true') {
+      const playerIdsRaw = sp.get('playerIds') || ''
+      const playerIds = playerIdsRaw.split(',').map(Number).filter(Boolean)
+      if (playerIds.length === 0) return NextResponse.json({ error: 'Missing playerIds' }, { status: 400 })
+      const gameYear = sp.get('gameYear') || new Date().getFullYear()
+      const playerType = sp.get('playerType') || 'pitcher'
+      const col = playerType === 'batter' ? 'batter' : 'pitcher'
+
+      // Fetch aggregated stats from pitches table
+      const where = `p.${col} IN (${playerIds.join(',')}) AND p.game_year = ${gameYear} AND p.game_type = 'R' AND p.pitch_type NOT IN ('PO','IN')`
+      const sql = `SELECT
+        p.${col} as player_id,
+        p.player_name,
+        COUNT(DISTINCT game_pk) as games,
+        (COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)
+         + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END)
+         + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip,
+        COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
+        COUNT(*) FILTER (WHERE events = 'walk') as bb,
+        ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as baa,
+        ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric
+          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0)
+          + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric
+          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ops
+      FROM pitches p
+      WHERE ${where}
+      GROUP BY p.${col}, p.player_name`
+
+      const { data: rows, error } = await q(sql)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      // Also fetch ERA + R from MLB Stats API for pitchers
+      const mlbStats: Record<number, { era: string; r: number }> = {}
+      await Promise.all(playerIds.map(async (id) => {
+        try {
+          const group = playerType === 'batter' ? 'hitting' : 'pitching'
+          const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=season&season=${gameYear}&group=${group}`, { signal: AbortSignal.timeout(5000) })
+          if (res.ok) {
+            const d = await res.json()
+            const s = d.stats?.[0]?.splits?.[0]?.stat
+            if (s) mlbStats[id] = { era: s.era || '0.00', r: s.runs || 0 }
+          }
+        } catch {}
+      }))
+
+      // Build player data in the order requested
+      const playerMap = new Map((rows as any[]).map((r: any) => [r.player_id, r]))
+      const players = playerIds.map(id => {
+        const r = playerMap.get(id) || {} as any
+        const mlb = mlbStats[id] || { era: '0.00', r: 0 }
+        const ip = Number(r.ip) || 0
+        const fullInnings = Math.floor(ip)
+        const remainder = Math.round((ip - fullInnings) * 3)
+        const ipDisplay = `${fullInnings}.${remainder}`
+        const fmtAvg = (v: any) => {
+          const n = Number(v)
+          if (isNaN(n)) return '.000'
+          if (n >= 1) return n.toFixed(3)
+          return '.' + n.toFixed(3).split('.')[1]
+        }
+        // Format name: "Last, First" -> "First Last"
+        const raw = r.player_name || ''
+        const name = raw.includes(',') ? raw.split(',').map((s: string) => s.trim()).reverse().join(' ') : raw
+
+        return {
+          player_id: id,
+          player_name: name,
+          stats: [ipDisplay, mlb.era, String(mlb.r), String(r.k || 0), String(r.bb || 0), fmtAvg(r.baa), fmtAvg(r.ops)],
+        }
+      })
+
+      return NextResponse.json({
+        checkin: {
+          title: playerType === 'batter' ? 'HITTING CHECK IN' : 'PITCHING CHECK IN',
+          subtitle: `Regular Season  •  ${gameYear} Season Check In`,
+          statHeaders: playerType === 'batter' ? ['AVG', 'SLG', 'OPS', 'HR', 'RBI', 'K', 'BB'] : ['IP', 'ERA', 'R', 'K', 'BB', 'BAA', 'OPS'],
+          players,
+        },
+      })
+    }
+
     // ── Leaderboard mode (for data-driven templates) ─────────────────────
     if (sp.get('leaderboard') === 'true') {
       const metric = sp.get('metric')

@@ -259,6 +259,7 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
       return LIVE_GAME_FIELDS
     case 'matchup':
       return MATCHUP_FIELDS
+    case 'player-checkin':
     case 'depth-chart':
     case 'bullpen-depth-chart':
     default:
@@ -396,6 +397,17 @@ export function getSampleDataForFilter(type: GlobalFilterType, playerType?: 'pit
           { player_id: 673540, player_name: 'Cruz, Fernando', jersey_number: '47', order: 2 },
         ],
         relief: [],
+      }
+    case 'player-checkin':
+      return {
+        title: 'PITCHING CHECK IN',
+        subtitle: 'Regular Season  •  2026 Season Check In',
+        statHeaders: ['IP', 'ERA', 'R', 'K', 'BB', 'BAA', 'OPS'],
+        players: [
+          { player_id: 657277, player_name: 'Logan Webb', stats: ['11.0', '7.36', '10', '12', '5', '.267', '.686'] },
+          { player_id: 694973, player_name: 'Paul Skenes', stats: ['0.2', '67.50', '5', '1', '2', '.800', '2.178'] },
+          { player_id: 690997, player_name: 'Nolan McLean', stats: ['5.0', '3.60', '2', '8', '2', '.211', '.739'] },
+        ],
       }
   }
 }

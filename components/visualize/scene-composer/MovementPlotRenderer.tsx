@@ -25,7 +25,19 @@ interface Props {
 
 export default function MovementPlotRenderer({ props: p, width, height }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const pitches: MovementPitch[] = p.pitches || []
+  // Normalize pitches: accept hb/ivb (correct) or pfx_x/pfx_z (Statcast raw, in feet → convert to inches)
+  const pitches: MovementPitch[] = (p.pitches || []).map((pt: any) => {
+    if (pt.hb !== undefined && pt.ivb !== undefined) return pt as MovementPitch
+    // Fallback: pfx_x/pfx_z in feet → multiply by 12 for inches
+    const rawHb = pt.pfx_x ?? pt.hb ?? 0
+    const rawIvb = pt.pfx_z ?? pt.ivb ?? 0
+    const needsConversion = Math.abs(rawHb) < 5 && Math.abs(rawIvb) < 5 // heuristic: feet if values are small
+    return {
+      hb: needsConversion ? rawHb * 12 : rawHb,
+      ivb: needsConversion ? rawIvb * 12 : rawIvb,
+      pitch_name: pt.pitch_name || 'Unknown',
+    }
+  })
   const seasonShapes: SeasonShape[] = p.seasonShapes || []
   const bgColor = p.bgColor || '#09090b'
   const dotSize = p.dotSize || 10

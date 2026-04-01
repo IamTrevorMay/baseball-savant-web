@@ -162,7 +162,7 @@ export type FormatType = 'raw' | '1f' | '2f' | 'integer' | 'percent' | '3f'
 
 // ── Global Filter ──────────────────────────────────────────────────────
 
-export type GlobalFilterType = 'single-player' | 'team' | 'leaderboard' | 'live-game' | 'matchup' | 'depth-chart' | 'bullpen-depth-chart'
+export type GlobalFilterType = 'single-player' | 'team' | 'leaderboard' | 'live-game' | 'matchup' | 'depth-chart' | 'bullpen-depth-chart' | 'player-checkin'
 
 export interface GlobalFilter {
   type: GlobalFilterType
@@ -186,6 +186,8 @@ export interface GlobalFilter {
   // Matchup
   playerA?: { id: number; name: string; type: 'pitcher' | 'batter' }
   playerB?: { id: number; name: string; type: 'pitcher' | 'batter' }
+  // Player Check-In (multi-player)
+  players?: { id: number; name: string; type: 'pitcher' | 'batter' }[]
 }
 
 // ── Scene Element ───────────────────────────────────────────────────────────

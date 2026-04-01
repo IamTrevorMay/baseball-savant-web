@@ -12,6 +12,53 @@ const GAME_TYPE_MAP: Record<string, string> = {
   P: 'P|',
 }
 
+async function syncNewPlayers(rows: any[]) {
+  // Collect unique pitcher IDs and names from CSV data
+  const pitcherMap = new Map<number, string>()
+  for (const r of rows) {
+    if (r.pitcher && r.player_name) pitcherMap.set(r.pitcher, r.player_name)
+  }
+
+  // Collect unique batter IDs
+  const batterIds = [...new Set(rows.map(r => r.batter).filter(Boolean))] as number[]
+
+  // Check which players already exist
+  const allIds = [...new Set([...pitcherMap.keys(), ...batterIds])]
+  if (allIds.length === 0) return
+
+  const { data: existing } = await supabase
+    .from('players')
+    .select('id')
+    .in('id', allIds)
+  const existingSet = new Set((existing || []).map((p: any) => p.id))
+
+  // Insert missing pitchers (we have names from player_name column)
+  const missingPitchers = [...pitcherMap.entries()]
+    .filter(([id]) => !existingSet.has(id))
+    .map(([id, name]) => ({ id, name }))
+
+  // For missing batters, fetch names from MLB People API in batches of 50
+  const missingBatterIds = batterIds.filter(id => !existingSet.has(id) && !pitcherMap.has(id))
+  const missingBatters: { id: number; name: string }[] = []
+
+  for (let i = 0; i < missingBatterIds.length; i += 50) {
+    const batch = missingBatterIds.slice(i, i + 50)
+    const ids = batch.join(',')
+    try {
+      const resp = await fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${ids}`)
+      const data = await resp.json()
+      for (const p of data.people || []) {
+        missingBatters.push({ id: p.id, name: p.fullName })
+      }
+    } catch { /* skip batch on error */ }
+  }
+
+  const toInsert = [...missingPitchers, ...missingBatters]
+  if (toInsert.length > 0) {
+    await supabase.from('players').upsert(toInsert, { onConflict: 'id', ignoreDuplicates: true })
+  }
+}
+
 export async function syncPitches(start_date: string, end_date: string, game_type: string = 'R') {
   const hfGT = GAME_TYPE_MAP[game_type] || 'R|'
 
@@ -106,8 +153,8 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     else inserted += batch.length
   }
 
-  // Sync new players that appeared in pitch data but aren't in the players table
-  const newPlayersResult = await syncNewPlayers(supabase, start_date, end_date)
+  // Sync any new players that appeared in the ingested data
+  await syncNewPlayers(rows)
 
   // Refresh materialized views
   await supabase.rpc('refresh_player_summary')
@@ -125,12 +172,6 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     console.error('SOS computation failed:', sosResult.error)
   }
 
-  // Recompute league metric baselines for affected years
-  const baselinesResult = await computeLeagueBaselines(supabase as any, start_date, end_date)
-  if (!baselinesResult.ok) {
-    console.error('League baselines computation failed:', baselinesResult.error)
-  }
-
   return {
     fetched: rows.length,
     inserted,
@@ -138,102 +179,6 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     message: `Fetched ${rows.length} pitches, ${inserted} processed`,
     stuff_plus: stuffResult,
     sos: sosResult,
-    new_players: newPlayersResult,
-    league_baselines: baselinesResult,
-  }
-}
-
-async function syncNewPlayers(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sb: any,
-  startDate: string,
-  endDate: string
-): Promise<{ inserted: number; errors: number }> {
-  try {
-    // Find pitcher IDs in the ingested date range that are missing from the players table
-    const { data: missingPitchers } = await sb.rpc('run_query', {
-      query_text: `
-        SELECT DISTINCT p.pitcher AS id, p.player_name AS name
-        FROM pitches p
-        LEFT JOIN players pl ON pl.id = p.pitcher
-        WHERE p.game_date BETWEEN '${startDate}' AND '${endDate}'
-          AND pl.id IS NULL AND p.pitcher IS NOT NULL
-      `,
-    })
-
-    // Find batter IDs in the ingested date range that are missing from the players table
-    const { data: missingBatters } = await sb.rpc('run_query', {
-      query_text: `
-        SELECT DISTINCT p.batter AS id
-        FROM pitches p
-        LEFT JOIN players pl ON pl.id = p.batter
-        WHERE p.game_date BETWEEN '${startDate}' AND '${endDate}'
-          AND pl.id IS NULL AND p.batter IS NOT NULL
-      `,
-    })
-
-    const playerRows: { id: number; name: string; position: string | null }[] = []
-
-    // Pitcher names come directly from the CSV's player_name column (formatted as "Last, First")
-    if (missingPitchers && missingPitchers.length > 0) {
-      for (const p of missingPitchers) {
-        if (p.id && p.name) {
-          playerRows.push({ id: p.id, name: p.name, position: null })
-        }
-      }
-    }
-
-    // Batter names must be fetched from the MLB Stats API
-    if (missingBatters && missingBatters.length > 0) {
-      for (let i = 0; i < missingBatters.length; i += 50) {
-        const batch = missingBatters.slice(i, i + 50)
-        const results = await Promise.all(
-          batch.map(async (b: { id: number }) => {
-            try {
-              const res = await fetch(
-                `https://statsapi.mlb.com/api/v1/people/${b.id}`,
-                { signal: AbortSignal.timeout(10000) }
-              )
-              if (!res.ok) return null
-              const data = await res.json()
-              const person = data?.people?.[0]
-              if (!person) return null
-              const parts = (person.fullName || '').split(' ')
-              const formatted = parts.length > 1
-                ? `${parts.slice(-1)[0]}, ${parts.slice(0, -1).join(' ')}`
-                : person.fullName || 'Unknown'
-              return {
-                id: b.id,
-                name: formatted,
-                position: person.primaryPosition?.abbreviation || null,
-              }
-            } catch {
-              return null
-            }
-          })
-        )
-        for (const r of results) {
-          if (r) playerRows.push(r)
-        }
-      }
-    }
-
-    if (playerRows.length === 0) return { inserted: 0, errors: 0 }
-
-    let inserted = 0
-    let errors = 0
-
-    for (let i = 0; i < playerRows.length; i += 100) {
-      const batch = playerRows.slice(i, i + 100)
-      const { error } = await sb.from('players').upsert(batch, { onConflict: 'id' })
-      if (error) errors += batch.length
-      else inserted += batch.length
-    }
-
-    return { inserted, errors }
-  } catch (err) {
-    console.error('syncNewPlayers error:', err)
-    return { inserted: 0, errors: -1 }
   }
 }
 
@@ -476,244 +421,6 @@ export async function computeSOSForYears(
     return { ok: true, years, upserted: totalUpserted }
   } catch (err: any) {
     console.error('computeSOSForYears error:', err)
-    return { ok: false, error: err.message }
-  }
-}
-
-// ── League metric baselines (dynamic percentile system) ──────────────────────
-
-export async function computeLeagueBaselines(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sb: any,
-  startDate: string,
-  endDate: string
-) {
-  try {
-    const q = async (sql: string) => {
-      const res = await sb.rpc('run_query_long', { query_text: sql.trim() })
-      if (res.error) throw new Error(`run_query_long failed: ${res.error.message}`)
-      return res.data || []
-    }
-    const m = async (sql: string) => {
-      const res = await sb.rpc('run_mutation', { query_text: sql.trim() })
-      if (res.error) throw new Error(`run_mutation failed: ${res.error.message}`)
-      return res
-    }
-
-    const startYear = parseInt(startDate.slice(0, 4), 10)
-    const endYear = parseInt(endDate.slice(0, 4), 10)
-    const years: number[] = []
-    for (let y = startYear; y <= endYear; y++) years.push(y)
-
-    let totalUpserted = 0
-
-    for (const year of years) {
-      // ── Pitcher-level metrics (one value per pitcher per season) ──
-      const pitcherMetrics = await q(`
-        WITH pitcher_stats AS (
-          SELECT
-            pitcher,
-            AVG(release_speed) as avg_velo,
-            MAX(release_speed) as max_velo,
-            AVG(release_spin_rate) as avg_spin,
-            AVG(release_extension) as extension,
-            AVG(CASE WHEN pitch_name IN ('4-Seam Fastball') THEN pfx_z * 12 END) as ivb_ff,
-            AVG(CASE WHEN pitch_name IN ('4-Seam Fastball')
-                      AND vy0 IS NOT NULL AND vz0 IS NOT NULL AND ay IS NOT NULL AND az IS NOT NULL AND release_extension IS NOT NULL
-                 THEN DEGREES(ATAN2(
-                   vz0 + az * ((-vy0 - SQRT(vy0*vy0 - 2*ay*(50 - release_extension))) / ay),
-                   -(vy0 + ay * ((-vy0 - SQRT(vy0*vy0 - 2*ay*(50 - release_extension))) / ay))
-                 ))
-            END) as vaa_ff,
-            COUNT(*) FILTER (WHERE events = 'strikeout')::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL), 0) * 100 as k_pct,
-            COUNT(*) FILTER (WHERE events = 'walk')::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL), 0) * 100 as bb_pct,
-            COUNT(*) FILTER (WHERE description IN ('swinging_strike', 'swinging_strike_blocked'))::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike', 'swinging_strike_blocked', 'foul', 'foul_tip', 'hit_into_play', 'hit_into_play_no_out', 'hit_into_play_score')), 0) * 100 as whiff_pct,
-            COUNT(*) FILTER (WHERE zone >= 11 AND description IN ('swinging_strike', 'swinging_strike_blocked', 'foul', 'foul_tip', 'foul_bunt', 'hit_into_play', 'hit_into_play_no_out', 'hit_into_play_score'))::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE zone >= 11), 0) * 100 as chase_pct,
-            COUNT(*) FILTER (WHERE launch_speed_angle::text = '6')::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0) * 100 as barrel_pct,
-            COUNT(*) FILTER (WHERE launch_speed >= 95)::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0) * 100 as hard_hit,
-            AVG(launch_speed) FILTER (WHERE launch_speed IS NOT NULL) as avg_ev,
-            AVG(estimated_ba_using_speedangle) FILTER (WHERE estimated_ba_using_speedangle IS NOT NULL) as xba,
-            COUNT(*) FILTER (WHERE bb_type = 'ground_ball')::numeric
-              / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0) * 100 as gb_pct
-          FROM pitches
-          WHERE game_year = ${year} AND game_type = 'R'
-            AND pitch_type NOT IN ('PO', 'IN')
-          GROUP BY pitcher
-          HAVING COUNT(*) >= 200
-        )
-        SELECT
-          unnest(ARRAY['avg_velo','max_velo','avg_spin','extension','ivb_ff','vaa_ff',
-                        'k_pct','bb_pct','whiff_pct','chase_pct','barrel_pct','hard_hit',
-                        'avg_ev','xba','gb_pct']) as metric,
-          unnest(ARRAY[
-            AVG(avg_velo), AVG(max_velo), AVG(avg_spin), AVG(extension), AVG(ivb_ff), AVG(vaa_ff),
-            AVG(k_pct), AVG(bb_pct), AVG(whiff_pct), AVG(chase_pct), AVG(barrel_pct), AVG(hard_hit),
-            AVG(avg_ev), AVG(xba), AVG(gb_pct)
-          ]) as mean,
-          unnest(ARRAY[
-            STDDEV(avg_velo), STDDEV(max_velo), STDDEV(avg_spin), STDDEV(extension), STDDEV(ivb_ff), STDDEV(vaa_ff),
-            STDDEV(k_pct), STDDEV(bb_pct), STDDEV(whiff_pct), STDDEV(chase_pct), STDDEV(barrel_pct), STDDEV(hard_hit),
-            STDDEV(avg_ev), STDDEV(xba), STDDEV(gb_pct)
-          ]) as stddev,
-          unnest(ARRAY[
-            COUNT(avg_velo), COUNT(max_velo), COUNT(avg_spin), COUNT(extension), COUNT(ivb_ff), COUNT(vaa_ff),
-            COUNT(k_pct), COUNT(bb_pct), COUNT(whiff_pct), COUNT(chase_pct), COUNT(barrel_pct), COUNT(hard_hit),
-            COUNT(avg_ev), COUNT(xba), COUNT(gb_pct)
-          ])::int as sample_size
-        FROM pitcher_stats
-      `)
-
-      const higherBetterMap: Record<string, boolean> = {
-        avg_velo: true, max_velo: true, avg_spin: true, extension: true,
-        ivb_ff: true, vaa_ff: true, k_pct: true, bb_pct: false,
-        whiff_pct: true, chase_pct: true, barrel_pct: false, hard_hit: false,
-        avg_ev: false, xba: false, gb_pct: true,
-      }
-
-      if (pitcherMetrics.length > 0) {
-        const values = pitcherMetrics
-          .filter((r: any) => r.mean != null && r.stddev != null && r.stddev > 0)
-          .map((r: any) =>
-            `('${r.metric}', ${year}, '_all', ${Number(r.mean).toFixed(4)}, ${Number(r.stddev).toFixed(4)}, ${r.sample_size}, ${higherBetterMap[r.metric] ?? true}, NOW())`
-          ).join(',\n')
-
-        if (values) {
-          await m(`
-            INSERT INTO league_metric_baselines (metric, game_year, pitch_type, mean, stddev, sample_size, higher_better, updated_at)
-            VALUES ${values}
-            ON CONFLICT (metric, game_year, pitch_type) DO UPDATE SET
-              mean = EXCLUDED.mean, stddev = EXCLUDED.stddev,
-              sample_size = EXCLUDED.sample_size, updated_at = NOW()
-          `)
-          totalUpserted += pitcherMetrics.filter((r: any) => r.mean != null && r.stddev != null && r.stddev > 0).length
-        }
-      }
-
-      // ── Deception metrics (from pitcher_season_deception) ──
-      const deceptionMetrics = await q(`
-        SELECT
-          unnest(ARRAY['unique_score', 'deception_score']) as metric,
-          unnest(ARRAY[AVG(unique_score), AVG(deception_score)]) as mean,
-          unnest(ARRAY[STDDEV(unique_score), STDDEV(deception_score)]) as stddev,
-          unnest(ARRAY[COUNT(unique_score), COUNT(deception_score)])::int as sample_size
-        FROM pitcher_season_deception
-        WHERE game_year = ${year}
-      `)
-
-      if (deceptionMetrics.length > 0) {
-        const values = deceptionMetrics
-          .filter((r: any) => r.mean != null && r.stddev != null && r.stddev > 0)
-          .map((r: any) =>
-            `('${r.metric}', ${year}, '_all', ${Number(r.mean).toFixed(4)}, ${Number(r.stddev).toFixed(4)}, ${r.sample_size}, true, NOW())`
-          ).join(',\n')
-
-        if (values) {
-          await m(`
-            INSERT INTO league_metric_baselines (metric, game_year, pitch_type, mean, stddev, sample_size, higher_better, updated_at)
-            VALUES ${values}
-            ON CONFLICT (metric, game_year, pitch_type) DO UPDATE SET
-              mean = EXCLUDED.mean, stddev = EXCLUDED.stddev,
-              sample_size = EXCLUDED.sample_size, updated_at = NOW()
-          `)
-          totalUpserted += deceptionMetrics.filter((r: any) => r.mean != null && r.stddev != null && r.stddev > 0).length
-        }
-      }
-
-      // ── Command metrics (per pitch type) ──
-      // brink, cluster, hdev, vdev, missfire, close_pct
-      const commandMetrics = await q(`
-        WITH pitch_with_brink AS (
-          SELECT
-            pitcher, pitch_name, plate_x, plate_z, sz_bot, sz_top, zone, description,
-            LEAST(
-              (plate_x + 0.83),
-              (0.83 - plate_x),
-              (plate_z - sz_bot),
-              (sz_top - plate_z)
-            ) * 12 as brink_in
-          FROM pitches
-          WHERE game_year = ${year} AND game_type = 'R'
-            AND plate_x IS NOT NULL AND sz_top IS NOT NULL
-            AND pitch_type NOT IN ('PO', 'IN')
-            AND pitch_name IS NOT NULL
-        ),
-        centroids AS (
-          SELECT pitcher, pitch_name,
-            AVG(plate_x) as cx, AVG(plate_z) as cz
-          FROM pitch_with_brink
-          GROUP BY pitcher, pitch_name
-        ),
-        pitcher_pitch_stats AS (
-          SELECT
-            p.pitcher, p.pitch_name,
-            AVG(p.brink_in) as avg_brink,
-            AVG(SQRT(POWER((p.plate_x - c.cx) * 12, 2) + POWER((p.plate_z - c.cz) * 12, 2))) as avg_cluster,
-            AVG(ABS((p.plate_x - c.cx) * 12)) as avg_hdev,
-            AVG(ABS((p.plate_z - c.cz) * 12)) as avg_vdev,
-            AVG(ABS(p.brink_in)) FILTER (
-              WHERE (p.zone IS NULL OR p.zone >= 11)
-              AND p.description NOT IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt',
-                                        'hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt')
-            ) as avg_missfire,
-            COUNT(*) FILTER (
-              WHERE (p.zone IS NULL OR p.zone >= 11)
-              AND p.description NOT IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt',
-                                        'hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt')
-              AND p.brink_in BETWEEN -2 AND 0
-            )::numeric / NULLIF(COUNT(*) FILTER (
-              WHERE (p.zone IS NULL OR p.zone >= 11)
-              AND p.description NOT IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt',
-                                        'hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt')
-            ), 0) * 100 as avg_close_pct,
-            COUNT(*) as n
-          FROM pitch_with_brink p
-          JOIN centroids c ON c.pitcher = p.pitcher AND c.pitch_name = p.pitch_name
-          GROUP BY p.pitcher, p.pitch_name
-          HAVING COUNT(*) >= 50
-        )
-        SELECT pitch_name,
-          unnest(ARRAY['brink','cluster','hdev','vdev','missfire','close_pct']) as metric,
-          unnest(ARRAY[AVG(avg_brink), AVG(avg_cluster), AVG(avg_hdev), AVG(avg_vdev), AVG(avg_missfire), AVG(avg_close_pct)]) as mean,
-          unnest(ARRAY[STDDEV(avg_brink), STDDEV(avg_cluster), STDDEV(avg_hdev), STDDEV(avg_vdev), STDDEV(avg_missfire), STDDEV(avg_close_pct)]) as stddev,
-          unnest(ARRAY[COUNT(avg_brink), COUNT(avg_cluster), COUNT(avg_hdev), COUNT(avg_vdev), COUNT(avg_missfire), COUNT(avg_close_pct)])::int as sample_size
-        FROM pitcher_pitch_stats
-        GROUP BY pitch_name
-      `)
-
-      const cmdHigherBetter: Record<string, boolean> = {
-        brink: true, cluster: false, hdev: false, vdev: false, missfire: false, close_pct: true,
-      }
-
-      if (commandMetrics.length > 0) {
-        const values = commandMetrics
-          .filter((r: any) => r.mean != null && r.stddev != null && r.stddev > 0)
-          .map((r: any) => {
-            const pn = (r.pitch_name || '').replace(/'/g, "''")
-            return `('${r.metric}', ${year}, '${pn}', ${Number(r.mean).toFixed(4)}, ${Number(r.stddev).toFixed(4)}, ${r.sample_size}, ${cmdHigherBetter[r.metric] ?? false}, NOW())`
-          }).join(',\n')
-
-        if (values) {
-          await m(`
-            INSERT INTO league_metric_baselines (metric, game_year, pitch_type, mean, stddev, sample_size, higher_better, updated_at)
-            VALUES ${values}
-            ON CONFLICT (metric, game_year, pitch_type) DO UPDATE SET
-              mean = EXCLUDED.mean, stddev = EXCLUDED.stddev,
-              sample_size = EXCLUDED.sample_size, updated_at = NOW()
-          `)
-          totalUpserted += commandMetrics.filter((r: any) => r.mean != null && r.stddev != null && r.stddev > 0).length
-        }
-      }
-    }
-
-    return { ok: true, years, upserted: totalUpserted }
-  } catch (err: any) {
-    console.error('computeLeagueBaselines error:', err)
     return { ok: false, error: err.message }
   }
 }
