@@ -5,11 +5,18 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
 export async function POST(req: NextRequest) {
   try {
-    const { season = 2025, tab = 'pitching' } = await req.json()
+    const { season = 2025, tab = 'pitching', gameType = 'all' } = await req.json()
     const safeSeason = parseInt(season)
     if (isNaN(safeSeason)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
 
-    const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN')`
+    const gtMap: Record<string, string> = {
+      regular: "AND game_type = 'R'",
+      spring: "AND game_type = 'S'",
+      postseason: "AND game_type IN ('D','L','W','F','P')",
+    }
+    const gtFilter = gtMap[gameType] || ''
+
+    const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}`
 
     if (tab === 'bullpen') {
       const { data, error } = await q(`

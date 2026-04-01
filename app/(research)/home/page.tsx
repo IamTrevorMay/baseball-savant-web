@@ -72,10 +72,14 @@ const TEAM_COLORS: Record<string,string> = {
 const AL_ORDER = ['AL East','AL Central','AL West']
 const NL_ORDER = ['NL East','NL Central','NL West']
 
+function localToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 export default function HomePage() {
   /* ─── Scores state ─── */
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const [scoresDate, setScoresDate] = useState(todayStr)
+  const [scoresDate, setScoresDate] = useState(localToday)
   const [games, setGames] = useState<Game[]>([])
   const [scoresLoading, setScoresLoading] = useState(true)
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -95,10 +99,10 @@ export default function HomePage() {
   const shiftDate = (days: number) => {
     const d = new Date(scoresDate + 'T12:00:00')
     d.setDate(d.getDate() + days)
-    setScoresDate(d.toISOString().slice(0, 10))
+    setScoresDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`)
   }
 
-  const isToday = scoresDate === todayStr
+  const isToday = scoresDate === localToday()
 
   /* ─── Brief state ─── */
   const [latestBrief, setLatestBrief] = useState<{ id: string; date: string; title: string; summary: string } | null>(null)
@@ -113,6 +117,13 @@ export default function HomePage() {
   const [season, setSeason] = useState(new Date().getFullYear())
   const [view, setView] = useState<'division'|'league'|'wildcard'>('division')
   const [standingsType, setStandingsType] = useState<'regular'|'spring'>('regular')
+
+  /* Correct date on hydration if SSR computed a different (UTC) date */
+  useEffect(() => {
+    const today = localToday()
+    if (scoresDate !== today) setScoresDate(today)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /* fetch scores on date change + auto-refresh every 30s */
   useEffect(() => {
@@ -217,7 +228,7 @@ export default function HomePage() {
               <input type="date" value={scoresDate} onChange={e => e.target.value && setScoresDate(e.target.value)}
                 className="bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-white focus:border-emerald-600 focus:outline-none [color-scheme:dark]" />
               {!isToday && (
-                <button onClick={() => setScoresDate(todayStr)}
+                <button onClick={() => setScoresDate(localToday())}
                   className="px-3 py-1.5 rounded text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-500 transition">
                   Today
                 </button>

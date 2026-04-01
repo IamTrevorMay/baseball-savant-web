@@ -1,12 +1,20 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 import { TEAM_COLORS } from '@/lib/teamColors'
 
 const TABS = ['pitching', 'hitting', 'bullpen', 'platoon'] as const
 type Tab = typeof TABS[number]
 
-const SEASONS = ['2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015']
+const GAME_TYPES = [
+  { value: 'all', label: 'All' },
+  { value: 'spring', label: 'Spring Training' },
+  { value: 'regular', label: 'Regular Season' },
+  { value: 'postseason', label: 'Postseason' },
+] as const
+type GameType = typeof GAME_TYPES[number]['value']
+
+const SEASONS = ['2026', '2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015']
 
 interface TeamRow {
   team: string
@@ -83,20 +91,21 @@ function TeamBadge({ team }: { team: string }) {
 
 export default function TeamsPage() {
   const [tab, setTab] = useState<Tab>('pitching')
-  const [season, setSeason] = useState('2025')
+  const [season, setSeason] = useState(String(new Date().getFullYear()))
+  const [gameType, setGameType] = useState<GameType>('regular')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<TeamRow[]>([])
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const handleFetch = useCallback(async (t: Tab = tab, s: string = season) => {
+  const handleFetch = useCallback(async (t: Tab, s: string, gt: GameType) => {
     setLoading(true); setError(null)
     try {
       const res = await fetch('/api/team-tendencies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season: s, tab: t }),
+        body: JSON.stringify({ season: s, tab: t, gameType: gt }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const data = await res.json()
@@ -104,7 +113,10 @@ export default function TeamsPage() {
       setSortCol(null)
     } catch (e: any) { setError(e.message) }
     setLoading(false)
-  }, [tab, season])
+  }, [])
+
+  // Auto-fetch on mount and when tab/season/gameType changes
+  useEffect(() => { handleFetch(tab, season, gameType) }, [tab, season, gameType, handleFetch])
 
   const handleSort = (col: string) => {
     const newDir = sortCol === col && sortDir === 'desc' ? 'asc' : 'desc'
@@ -141,20 +153,27 @@ export default function TeamsPage() {
               </select>
             </div>
             <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block">Game Type</label>
+              <div className="flex gap-0.5 bg-zinc-800 rounded p-0.5 border border-zinc-700">
+                {GAME_TYPES.map(gt => (
+                  <button key={gt.value} onClick={() => setGameType(gt.value)}
+                    className={`px-3 py-1.5 text-xs rounded transition ${gameType === gt.value ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+                    {gt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <label className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block">View</label>
               <div className="flex gap-0.5 bg-zinc-800 rounded p-0.5 border border-zinc-700">
                 {TABS.map(t => (
-                  <button key={t} onClick={() => { setTab(t); if (rows.length > 0) handleFetch(t, season) }}
+                  <button key={t} onClick={() => setTab(t)}
                     className={`px-3 py-1.5 text-xs rounded transition capitalize ${tab === t ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
                     {t}
                   </button>
                 ))}
               </div>
             </div>
-            <button onClick={() => handleFetch()} disabled={loading}
-              className="h-9 px-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white text-sm font-medium rounded transition">
-              {loading ? 'Loading...' : 'Load'}
-            </button>
           </div>
         </div>
 
@@ -199,7 +218,7 @@ export default function TeamsPage() {
 
         {!loading && rows.length === 0 && !error && (
           <div className="text-center py-20 text-zinc-600 text-sm">
-            Select a season and click Load to see team rankings.
+            No data available for {season}.
           </div>
         )}
       </div>

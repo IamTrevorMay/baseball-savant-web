@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
-  const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().slice(0, 10)
+  const date = req.nextUrl.searchParams.get('date') || new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
   try {
     const url = `https://statsapi.mlb.com/api/v1/schedule?date=${date}&sportId=1&hydrate=team,linescore,probablePitcher`
-    const resp = await fetch(url, { next: { revalidate: 30 } })
+    const resp = await fetch(url, { cache: 'no-store' })
     if (!resp.ok) return NextResponse.json({ error: 'MLB API error' }, { status: 502 })
 
     const data = await resp.json()
