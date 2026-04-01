@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
           // Use streaming for the API call
           const streamResponse = anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
-            max_tokens: 4096,
+            max_tokens: 16000,
             system: systemPrompt,
             tools: AUTO_COMPOSE_TOOLS,
             messages,
