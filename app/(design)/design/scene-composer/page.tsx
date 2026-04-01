@@ -21,6 +21,8 @@ import SceneGallery from '@/components/visualize/scene-composer/SceneGallery'
 import ThemePickerPanel from '@/components/visualize/scene-composer/ThemePickerPanel'
 import { THEME_PRESETS, applyThemeToScene, ensureThemeFontsLoaded } from '@/lib/themePresets'
 import { exportScenePNG, exportSceneJSON, exportImageSequence, exportWebM, exportMP4 } from '@/components/visualize/scene-composer/exportScene'
+import AutoChatPanel, { ChatMessage } from '@/components/auto-compose/AutoChatPanel'
+import AutoSessionsPanel from '@/components/auto-compose/AutoSessionsPanel'
 
 const STORAGE_KEY = 'triton-scene-composer'
 const ZOOM_STEPS = [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0]
@@ -63,6 +65,143 @@ export default function SceneComposerPage() {
   const lastTimeRef = useRef(0)
 
   const canvasRef = useRef<HTMLDivElement>(null)
+
+  // ── Auto Mode state ──────────────────────────────────────────────────────
+  const [composerMode, setComposerMode] = useState<'manual' | 'auto'>('manual')
+  const [autoMessages, setAutoMessages] = useState<ChatMessage[]>([])
+  const [autoLoading, setAutoLoading] = useState(false)
+  const [autoSessionId, setAutoSessionId] = useState<string | null>(null)
+
+  const handleAutoSend = useCallback(async (message: string) => {
+    if (autoLoading) return
+
+    // Add user message to chat
+    const userMsg: ChatMessage = {
+      id: Math.random().toString(36).slice(2, 10),
+      role: 'user',
+      content: message,
+      createdAt: new Date().toISOString(),
+    }
+    setAutoMessages(prev => [...prev, userMsg])
+    setAutoLoading(true)
+
+    try {
+      // Create session on first message if we don't have one
+      let sessId = autoSessionId
+      if (!sessId) {
+        try {
+          const sessRes = await fetch('/api/auto-sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: message.slice(0, 50), scene }),
+          })
+          const sessData = await sessRes.json()
+          if (sessData.session?.id) {
+            sessId = sessData.session.id
+            setAutoSessionId(sessId)
+          }
+        } catch {} // Non-critical if session save fails (unauthenticated use)
+      }
+
+      // Build compact history (just role + text)
+      const history = autoMessages.map(m => ({ role: m.role, content: m.content }))
+
+      const res = await fetch('/api/auto-compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessId,
+          message,
+          currentScene: scene,
+          history,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.error) {
+        const errMsg: ChatMessage = {
+          id: Math.random().toString(36).slice(2, 10),
+          role: 'assistant',
+          content: `Error: ${data.error}`,
+          createdAt: new Date().toISOString(),
+        }
+        setAutoMessages(prev => [...prev, errMsg])
+      } else {
+        // Update scene with AI's result
+        if (data.scene) {
+          setScene(data.scene)
+        }
+
+        const assistantMsg: ChatMessage = {
+          id: Math.random().toString(36).slice(2, 10),
+          role: 'assistant',
+          content: data.text || 'Done.',
+          toolsUsed: data.toolsUsed,
+          sceneSnapshot: data.scene,
+          createdAt: new Date().toISOString(),
+        }
+        setAutoMessages(prev => [...prev, assistantMsg])
+      }
+    } catch (err: any) {
+      const errMsg: ChatMessage = {
+        id: Math.random().toString(36).slice(2, 10),
+        role: 'assistant',
+        content: `Error: ${err.message || 'Request failed'}`,
+        createdAt: new Date().toISOString(),
+      }
+      setAutoMessages(prev => [...prev, errMsg])
+    } finally {
+      setAutoLoading(false)
+    }
+  }, [autoLoading, autoSessionId, autoMessages, scene, setScene])
+
+  function handleAutoNewSession() {
+    setAutoMessages([])
+    setAutoSessionId(null)
+  }
+
+  async function handleAutoLoadSession(sessionId: string) {
+    try {
+      const res = await fetch(`/api/auto-sessions/${sessionId}`)
+      const data = await res.json()
+      if (data.session) {
+        setAutoSessionId(sessionId)
+        // Restore scene
+        if (data.session.scene) {
+          setScene(data.session.scene)
+        }
+        // Restore messages
+        const msgs: ChatMessage[] = (data.messages || []).map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          toolsUsed: m.tools_used,
+          sceneSnapshot: m.scene_snapshot,
+          createdAt: m.created_at,
+        }))
+        setAutoMessages(msgs)
+      }
+    } catch (err) {
+      console.error('Load session error:', err)
+    }
+  }
+
+  function handleAutoRewind(sceneSnapshot: any) {
+    if (sceneSnapshot) {
+      setScene(sceneSnapshot)
+    }
+  }
+
+  async function handleAutoExport() {
+    setExporting(true)
+    try {
+      await exportScenePNG(scene, `${scene.name.replace(/\s+/g, '-').toLowerCase()}.png`)
+    } catch (err) {
+      console.error('Export error:', err)
+    }
+    setExporting(false)
+  }
 
   // ── Persistence ──────────────────────────────────────────────────────────
 
@@ -1215,10 +1354,30 @@ export default function SceneComposerPage() {
           'bg-zinc-600'
         }`} title={saveStatus} />
 
-        {/* Badge */}
-        <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-          Composer
-        </span>
+        {/* Mode toggle */}
+        <div className="shrink-0 flex items-center bg-zinc-800 rounded-lg border border-zinc-700 overflow-hidden">
+          <button
+            onClick={() => setComposerMode('manual')}
+            className={`px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide transition ${
+              composerMode === 'manual'
+                ? 'bg-emerald-500/15 text-emerald-400'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            Manual
+          </button>
+          <div className="w-px h-4 bg-zinc-700" />
+          <button
+            onClick={() => setComposerMode('auto')}
+            className={`px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide transition ${
+              composerMode === 'auto'
+                ? 'bg-violet-500/15 text-violet-400'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            Auto
+          </button>
+        </div>
 
         {/* Divider */}
         <div className="w-px h-5 bg-zinc-800" />
@@ -1416,30 +1575,40 @@ export default function SceneComposerPage() {
 
       {/* Main workspace */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Element Library + Themes */}
-        <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 flex flex-col">
-          <div className="flex border-b border-zinc-800 shrink-0">
-            {(['elements', 'themes'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setLeftTab(tab)}
-                className={`flex-1 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider transition ${
-                  leftTab === tab
-                    ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
-                    : 'text-zinc-600 hover:text-zinc-400'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+        {/* Left Panel */}
+        {composerMode === 'auto' ? (
+          <div className="w-[350px] border-r border-zinc-800 bg-zinc-900/50 shrink-0 flex flex-col">
+            <AutoChatPanel
+              messages={autoMessages}
+              loading={autoLoading}
+              onSend={handleAutoSend}
+            />
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {leftTab === 'elements'
-              ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} onLoadCustomTemplate={loadCustomTemplate} />
-              : <ThemePickerPanel selectedThemeId={activeThemeId} onApply={handleApplyTheme} />
-            }
+        ) : (
+          <div className="w-52 border-r border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0 flex flex-col">
+            <div className="flex border-b border-zinc-800 shrink-0">
+              {(['elements', 'themes'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setLeftTab(tab)}
+                  className={`flex-1 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider transition ${
+                    leftTab === tab
+                      ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5'
+                      : 'text-zinc-600 hover:text-zinc-400'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {leftTab === 'elements'
+                ? <ElementLibrary onAdd={addElement} onAddElement={addDirectElement} onLoadScene={loadTemplateScene} onLoadDataDriven={loadDataDrivenTemplate} onLoadCustomTemplate={loadCustomTemplate} />
+                : <ThemePickerPanel selectedThemeId={activeThemeId} onApply={handleApplyTheme} />
+              }
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Center: Canvas */}
         <div className="flex-1 min-w-0 overflow-hidden">
@@ -1456,8 +1625,19 @@ export default function SceneComposerPage() {
           />
         </div>
 
-        {/* Right: Properties or Template Config or Input Sections */}
-        {selectedElement && selectedIds.size <= 1 ? (
+        {/* Right Panel */}
+        {composerMode === 'auto' ? (
+          <div className="w-56 border-l border-zinc-800 bg-zinc-900/50 shrink-0 flex flex-col">
+            <AutoSessionsPanel
+              messages={autoMessages}
+              currentSessionId={autoSessionId}
+              onRewind={handleAutoRewind}
+              onNewSession={handleAutoNewSession}
+              onLoadSession={handleAutoLoadSession}
+              onExport={handleAutoExport}
+            />
+          </div>
+        ) : selectedElement && selectedIds.size <= 1 ? (
           <div className="w-64 border-l border-zinc-800 bg-zinc-900/50 overflow-y-auto shrink-0">
             <PropertiesPanel
               element={selectedElement}
