@@ -157,7 +157,7 @@ export default function ExplorePage() {
         const groupBy = getGroupBy(view)
         const filters = filtersToReportFormat(activeFilters)
         if (gameType) {
-          filters.push({ column: 'game_type', op: '=', value: gameType })
+          filters.push({ column: 'game_type', op: 'eq', value: gameType })
         }
 
         const res = await fetch('/api/report', {
@@ -420,12 +420,7 @@ export default function ExplorePage() {
             </div>
           </div>
 
-          {/* Triton/Deception regular-season-only banner */}
-          {gameType !== 'R' && TRITON_TABS.has(statSet) && (
-            <div className="px-6 py-1.5 bg-amber-500/10 border-b border-amber-500/20 text-[11px] text-amber-400">
-              Triton and Deception metrics are computed from Regular Season data only.
-            </div>
-          )}
+
 
           {/* Data table */}
           <div className="flex-1 overflow-auto">
