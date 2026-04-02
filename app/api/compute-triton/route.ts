@@ -28,15 +28,17 @@ export async function POST(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || '2025')
+  const gameType = searchParams.get('gameType') || 'R'
 
   try {
-    // Get all pitchers for the year with min 50 pitches per pitch type
+    // Get all pitchers for the year + game type with min 50 pitches per pitch type
     const sql = `
       SELECT pitcher, player_name, pitch_name, game_year,
         plate_x, plate_z, sz_top, sz_bot,
         zone, description, stand
       FROM pitches
       WHERE game_year = ${year}
+        AND game_type = '${gameType}'
         AND pitch_name IS NOT NULL
         AND plate_x IS NOT NULL
         AND plate_z IS NOT NULL
@@ -211,6 +213,7 @@ export async function POST(req: NextRequest) {
           pitcher: parseInt(pitcherId),
           player_name: playerName,
           game_year: year,
+          game_type: gameType,
           pitch_name: pitchName,
           pitches: pitches.length,
           avg_brink: avgBrink != null ? +avgBrink.toFixed(2) : null,
@@ -242,7 +245,7 @@ export async function POST(req: NextRequest) {
       const batch = upsertRows.slice(i, i + 500)
       const { error: upsertErr } = await supabase
         .from('pitcher_season_command')
-        .upsert(batch, { onConflict: 'pitcher,game_year,pitch_name' })
+        .upsert(batch, { onConflict: 'pitcher,game_year,pitch_name,game_type' })
       if (upsertErr) return NextResponse.json({ error: upsertErr.message, upserted }, { status: 500 })
       upserted += batch.length
     }
@@ -250,6 +253,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: `Computed Triton metrics for ${pitcherCount} pitchers, ${upserted} pitch type rows`,
       year,
+      gameType,
       pitcherCount,
       rowsUpserted: upserted,
     })

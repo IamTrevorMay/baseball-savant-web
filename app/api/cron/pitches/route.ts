@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncPitches } from '@/app/api/update/route'
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -10,6 +12,7 @@ export async function GET(req: NextRequest) {
   // Determine game type(s) based on current month
   const now = new Date()
   const month = now.getMonth() + 1
+  const year = now.getFullYear()
   const gameTypes: string[] = []
   if (month >= 2 && month <= 3) gameTypes.push('S')
   if (month === 3 || (month >= 4 && month <= 9)) gameTypes.push('R')
@@ -28,7 +31,38 @@ export async function GET(req: NextRequest) {
     for (const gt of gameTypes) {
       results[gt] = await syncPitches(fmt(start), fmt(end), gt)
     }
-    return NextResponse.json({ ok: true, gameTypes, start: fmt(start), end: fmt(end), results })
+
+    // Recompute Triton + Deception metrics for each active game type
+    const computeResults: Record<string, any> = {}
+    for (const gt of gameTypes) {
+      try {
+        const [tritonRes, deceptionRes] = await Promise.all([
+          fetch(`${SITE_URL}/api/compute-triton?year=${year}&gameType=${gt}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
+          }),
+          fetch(`${SITE_URL}/api/compute-deception?year=${year}&gameType=${gt}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
+          }),
+        ])
+        computeResults[gt] = {
+          triton: await tritonRes.json(),
+          deception: await deceptionRes.json(),
+        }
+      } catch (e: any) {
+        computeResults[gt] = { error: e.message }
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      gameTypes,
+      start: fmt(start),
+      end: fmt(end),
+      results,
+      computeResults,
+    })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })

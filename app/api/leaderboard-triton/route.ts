@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       gameYear = 2025,
+      gameType = 'R',
       minPitches = 500,
       sortBy = 'cmd_plus',
       sortDir = 'DESC',
@@ -40,13 +41,14 @@ export async function POST(req: NextRequest) {
         cmd_plus, rpcom_plus
       FROM pitcher_season_command
       WHERE game_year = ${safeYear}
+        AND game_type = '${String(gameType).replace(/'/g, '')}'
     `.trim()
 
     // Fetch avg stuff_plus per pitcher × pitch type from pitches table
     const stuffSql = `
       SELECT pitcher, pitch_name, ROUND(AVG(stuff_plus)::numeric, 1) AS avg_stuff_plus
       FROM pitches
-      WHERE game_year = ${safeYear} AND pitch_name IS NOT NULL AND stuff_plus IS NOT NULL
+      WHERE game_year = ${safeYear} AND game_type = '${String(gameType).replace(/'/g, '')}' AND pitch_name IS NOT NULL AND stuff_plus IS NOT NULL
       GROUP BY pitcher, pitch_name
     `.trim()
 

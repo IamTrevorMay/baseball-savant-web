@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       gameYear = 2025,
+      gameType = 'R',
       minPitches = 500,
       sortBy = 'deception_score',
       sortDir = 'DESC',
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
         unique_score, deception_score
       FROM pitcher_season_deception
       WHERE game_year = ${safeYear}
+        AND game_type = '${String(gameType).replace(/'/g, '')}'
     `.trim()
 
     const { data, error } = await supabase.rpc('run_query', { query_text: sql })

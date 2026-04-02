@@ -139,6 +139,7 @@ export default function ExplorePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gameYear,
+            gameType: gameType || 'R',
             minPitches: qualifier.minPitches || 500,
             sortBy,
             sortDir,

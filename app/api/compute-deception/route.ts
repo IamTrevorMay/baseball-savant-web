@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || '2025')
+  const gameType = searchParams.get('gameType') || 'R'
 
   try {
     // Step 1: Compute per-pitcher, per-pitch-type averages
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
         AVG(release_extension) as avg_ext
       FROM pitches
       WHERE game_year = ${year}
+        AND game_type = '${gameType}'
         AND pitch_type IS NOT NULL
         AND pitch_type NOT IN ('PO', 'IN')
         AND release_extension IS NOT NULL
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest) {
         pitcher: Number(row.pitcher),
         player_name: row.player_name,
         game_year: year,
+        game_type: gameType,
         pitch_type: row.pitch_type,
         pitch_name: row.pitch_name,
         p_throws: row.p_throws,
@@ -132,7 +135,7 @@ export async function POST(req: NextRequest) {
       const batch = upsertRows.slice(i, i + 500)
       const { error: upsertErr } = await supabase
         .from('pitcher_season_deception')
-        .upsert(batch, { onConflict: 'pitcher,game_year,pitch_type' })
+        .upsert(batch, { onConflict: 'pitcher,game_year,pitch_type,game_type' })
       if (upsertErr) return NextResponse.json({ error: upsertErr.message, upserted }, { status: 500 })
       upserted += batch.length
     }
@@ -140,6 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: `Computed deception metrics for ${year}`,
       year,
+      gameType,
       rowsUpserted: upserted,
       pitcherAvgs: pitcherRows.length,
       baselineGroups: Object.keys(baselines).length,

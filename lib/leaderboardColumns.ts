@@ -472,11 +472,26 @@ export function getCellColor(col: ColumnDef, value: any, view: View): string {
   return col.colorClass
 }
 
-/** Default qualifier for each view */
+/**
+ * Default qualifier for each view.
+ * Scales based on how far into the current season we are — full-season thresholds
+ * assume ~180 games (Apr–Sep). Early in the season, proportionally lower thresholds
+ * prevent empty leaderboards. Minimum floor of 50 pitches / 20 PA.
+ */
 export function defaultQualifier(view: View): { minPitches: number; minPA: number } {
+  const FULL_SEASON_PITCHES = 500
+  const FULL_SEASON_PA = 200
+  // Season runs ~Apr 1 (day 91) through Sep 30 (day 273) = 182 days
+  const now = new Date()
+  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
+  const seasonStart = 91  // ~April 1
+  const seasonDays = 182
+  const daysIn = Math.max(0, dayOfYear - seasonStart)
+  const fraction = Math.min(1, daysIn / seasonDays)
+
   switch (view) {
-    case 'pitching': return { minPitches: 500, minPA: 0 }
-    case 'hitting': return { minPitches: 0, minPA: 200 }
+    case 'pitching': return { minPitches: Math.max(50, Math.round(FULL_SEASON_PITCHES * fraction)), minPA: 0 }
+    case 'hitting': return { minPitches: 0, minPA: Math.max(20, Math.round(FULL_SEASON_PA * fraction)) }
     case 'team': return { minPitches: 0, minPA: 0 }
     default: return { minPitches: 0, minPA: 0 }
   }
