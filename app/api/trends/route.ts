@@ -38,13 +38,18 @@ export async function POST(req: NextRequest) {
     const hasRegularSeason = (regSeasonCheck.data || []).length > 0
     const gameTypeFilter = hasRegularSeason ? "AND game_type = 'R'" : ''
 
-    // Recent window = 14 days before latest game_date in data
-    const dateRes = await q(`SELECT MAX(game_date) as latest FROM pitches WHERE game_year = ${safeSeason} ${gameTypeFilter}`)
+    // Recent window: adaptive based on how much season data exists
+    const dateRes = await q(`SELECT MIN(game_date) as earliest, MAX(game_date) as latest FROM pitches WHERE game_year = ${safeSeason} ${gameTypeFilter}`)
     if (dateRes.error) return NextResponse.json({ error: dateRes.error.message }, { status: 500 })
     const latestDate = dateRes.data?.[0]?.latest
+    const earliestDate = dateRes.data?.[0]?.earliest
     if (!latestDate) return NextResponse.json({ rows: [], message: 'No data for this season' })
 
-    const recentDate = new Date(new Date(latestDate).getTime() - 14 * 86400000).toISOString().slice(0, 10)
+    // If season span is < 21 days, use half the span as the recent window (min 3 days)
+    // Otherwise use 14 days
+    const seasonSpanDays = Math.round((new Date(latestDate).getTime() - new Date(earliestDate).getTime()) / 86400000)
+    const recentWindowDays = seasonSpanDays < 21 ? Math.max(3, Math.floor(seasonSpanDays / 2)) : 14
+    const recentDate = new Date(new Date(latestDate).getTime() - recentWindowDays * 86400000).toISOString().slice(0, 10)
 
     const isPitcher = playerType === 'pitcher'
     const groupCol = isPitcher ? 'pitcher' : 'batter'

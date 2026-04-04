@@ -98,7 +98,7 @@ interface Highlight extends Alert {
 export default function TrendsPage() {
   const [season, setSeason] = useState(String(CURRENT_YEAR))
   const [playerType, setPlayerType] = useState<'pitcher' | 'hitter'>('pitcher')
-  const [minPitches, setMinPitches] = useState('500')
+  const [minPitches, setMinPitches] = useState(new Date().getMonth() + 1 <= 4 ? '50' : '500')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<Alert[]>([])
@@ -125,16 +125,19 @@ export default function TrendsPage() {
     let cancelled = false
     async function loadHighlights() {
       try {
+        // Use lower threshold early in season (before May)
+        const month = new Date().getMonth() + 1
+        const autoMinPitches = month <= 4 ? 50 : 500
         const [pitcherRes, hitterRes] = await Promise.all([
           fetch('/api/trends', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'pitcher', minPitches: 500 }),
+            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'pitcher', minPitches: autoMinPitches }),
           }),
           fetch('/api/trends', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'hitter', minPitches: 500 }),
+            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'hitter', minPitches: autoMinPitches }),
           }),
         ])
         if (cancelled) return
