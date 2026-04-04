@@ -827,10 +827,7 @@ async function fetchFeedUrls(): Promise<{ name: string; url: string }[]> {
     .from('research_feeds')
     .select('name, url')
     .eq('enabled', true)
-  const feeds = (data || []).map((f: any) => ({ name: f.name, url: f.url }))
-  // Always include NYT Baseball (not in research_feeds)
-  feeds.push({ name: 'NYT Baseball', url: 'https://rss.nytimes.com/services/xml/rss/nyt/Baseball.xml' })
-  return feeds
+  return (data || []).map((f: any) => ({ name: f.name, url: f.url }))
 }
 
 const BASEBALL_KEYWORDS = /\b(mlb|baseball|pitcher|batting|homer|home run|strikeout|innings?|bullpen|roster|free agent|trade|minor league|spring training|world series|playoffs|postseason|mound|dugout|umpire|outfield|infield|shortstop|catcher|lineup|standings|wild card|no-hitter|perfect game|grand slam|double play|triple play|farm system|draft|arbitration|injured list|disabled list|designated hitter|pinch hit|relief pitcher|closer|starter|rotation|pitch clock|milb|college baseball|ncaa baseball|little league|wbc|world baseball)\b/i
