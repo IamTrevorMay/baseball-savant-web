@@ -136,19 +136,48 @@ async function generateIGStarterCard(date: string): Promise<any | null> {
 // ── 2. Trends ────────────────────────────────────────────────────────────────
 
 async function generateTrends(): Promise<any> {
-  const { data: trendRows } = await supabaseAdmin.rpc('run_query', {
-    query_text: `
-      SELECT player_id, player_name, type, metric, metric_label,
-             season_val, recent_val, delta, sigma, direction, sentiment
-      FROM trends
-      WHERE ABS(sigma) >= 1.5
-      ORDER BY ABS(sigma) DESC
-      LIMIT 30
-    `,
-  })
+  const baseUrl = getBaseUrl()
+  const season = new Date().getFullYear()
+  const earlyMonth = new Date().getMonth() + 1 <= 4
+  const minPitches = earlyMonth ? 50 : 500
 
-  const surges = (trendRows || []).filter((r: any) => r.sentiment === 'good').slice(0, 5)
-  const concerns = (trendRows || []).filter((r: any) => r.sentiment === 'bad').slice(0, 5)
+  // Fetch both pitcher and hitter trends in parallel
+  const [pitcherRes, hitterRes] = await Promise.all([
+    fetch(`${baseUrl}/api/trends`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ season, playerType: 'pitcher', minPitches }),
+    }),
+    fetch(`${baseUrl}/api/trends`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ season, playerType: 'hitter', minPitches }),
+    }),
+  ])
+
+  const [pd, hd] = await Promise.all([pitcherRes.json(), hitterRes.json()])
+  const pitcherAlerts = (pd.rows || []).map((a: any) => ({ ...a, type: 'pitcher' }))
+  const hitterAlerts = (hd.rows || []).map((a: any) => ({ ...a, type: 'hitter' }))
+  const all = [...pitcherAlerts, ...hitterAlerts]
+
+  const surgeAll = all.filter((a: any) => a.sentiment === 'good').sort((a: any, b: any) => Math.abs(b.sigma) - Math.abs(a.sigma))
+  const concernAll = all.filter((a: any) => a.sentiment === 'bad').sort((a: any, b: any) => Math.abs(b.sigma) - Math.abs(a.sigma))
+
+  // Deduplicate: one per player, highest |sigma|
+  const pickUnique = (list: any[], n: number) => {
+    const seen = new Set<number>()
+    const result: any[] = []
+    for (const item of list) {
+      if (seen.has(item.player_id)) continue
+      seen.add(item.player_id)
+      result.push(item)
+      if (result.length >= n) break
+    }
+    return result
+  }
+
+  const surges = pickUnique(surgeAll, 5)
+  const concerns = pickUnique(concernAll, 5)
 
   const template = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'trends')
   if (!template) throw new Error('Trends template not found')
