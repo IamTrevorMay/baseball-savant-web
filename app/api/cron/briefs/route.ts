@@ -222,6 +222,7 @@ Return ONLY valid JSON, no markdown fences.`,
           games_count: gamesData.length,
           finished_count: finishedGames.length,
           is_off_day: isOffDay,
+          daily_highlights: dailyHighlights,
         },
       })
 

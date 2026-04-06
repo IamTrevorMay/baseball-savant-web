@@ -306,7 +306,7 @@ export const AUTO_COMPOSE_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'get_daily_brief',
-    description: 'Get structured Daily Brief data for a given date. Returns brief metadata, game scores, Stuff+ leaders, new pitch alerts (first-time pitch types), and IL transactions. Use for building daily summary graphics, scoreboards, standout performers, or new pitch alert visuals.',
+    description: 'Get structured Daily Brief data for a given date. Returns brief metadata, game scores, standouts (Stuff+ and Cmd+ leaders for starters and relievers), top 5 Stuff+ pitches, new pitch alerts (first-time pitch types), and IL transactions. Use for building daily summary graphics, scoreboards, standout performers, or new pitch alert visuals.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -900,6 +900,17 @@ export async function handleAutoComposeTool(
             type: t.typeDesc || t.description?.slice(0, 60),
           }))
 
+        // Extract Cmd+ leaders from stored daily highlights
+        const dh = meta.daily_highlights as Record<string, any> | null
+        const cmdLeaders: any[] = []
+        if (dh?.cmd_starter) cmdLeaders.push({ ...dh.cmd_starter, role: 'starter' })
+        if (dh?.cmd_reliever) cmdLeaders.push({ ...dh.cmd_reliever, role: 'reliever' })
+
+        // Extract stuff standouts from daily highlights (best single pitch)
+        const stuffStandouts: any[] = []
+        if (dh?.stuff_starter) stuffStandouts.push({ ...dh.stuff_starter, role: 'starter' })
+        if (dh?.stuff_reliever) stuffStandouts.push({ ...dh.stuff_reliever, role: 'reliever' })
+
         return { result: JSON.stringify({
           brief: {
             title: brief.title,
@@ -909,6 +920,10 @@ export async function handleAutoComposeTool(
             is_off_day: meta.is_off_day ?? false,
           },
           games,
+          standouts: {
+            stuff: stuffStandouts,
+            cmd: cmdLeaders,
+          },
           stuff_leaders: stuffLeaders,
           new_pitches: newPitches,
           transactions,
