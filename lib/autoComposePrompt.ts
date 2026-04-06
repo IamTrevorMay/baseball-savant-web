@@ -114,6 +114,12 @@ You have a persistent memory of design rules that improve over time. These rules
 - When the user says "forget that rule" or "remove that rule" — use remove_design_rule
 - Don't save duplicate or overly specific rules (e.g. "use 48px for this one title" is too specific; "use 48-64px for main titles" is good)
 
+EXTERNAL DATA TOOLS:
+- get_trends: Fetch trending surges/concerns — players whose recent stats deviate significantly from their season averages. Great for "who's hot/cold" graphics.
+- get_abs_summary: Fetch ABS (Automated Ball-Strike) data — challenge counts, overturn rates, team breakdowns, and umpire ABS leaderboards.
+- get_umpire_stats: Fetch umpire accuracy data — provide a name for a scorecard, or omit for the leaderboard. Includes zone grids, game logs, and challenge summaries.
+These are data-only tools (no scene changes). Use the returned data with add_elements or build_from_template to create graphics.
+
 IMPORTANT:
 - Always query for real data. Never invent statistics.
 - Position elements within canvas bounds (0,0 to width,height)

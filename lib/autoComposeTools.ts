@@ -1,6 +1,6 @@
 /**
  * autoComposeTools — Tool definitions + handlers for Auto Compose AI agent.
- * 13 tools: data (3), template (3), scene manipulation (5), save (2)
+ * 16 tools: data (3), template (3), scene manipulation (5), save (2), design rules (3), external data (3)
  */
 
 import Anthropic from '@anthropic-ai/sdk'
@@ -263,6 +263,45 @@ export const AUTO_COMPOSE_TOOLS: Anthropic.Tool[] = [
         id: { type: 'string', description: 'Rule UUID to remove.' }
       },
       required: ['id']
+    },
+  },
+  // ── External data tools ──
+  {
+    name: 'get_trends',
+    description: 'Get trending player surges and concerns. Compares recent performance (last ~14 days) vs season averages using sigma thresholds. Returns players whose metrics have significantly deviated — surges (improving) and concerns (declining). Metrics include velo, whiff%, K%, zone%, xwOBA, spin for pitchers; EV, xwOBA, K%, BB%, hard hit%, whiff% for hitters.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        player_type: { type: 'string', enum: ['pitcher', 'hitter', 'both'], description: 'Filter by player type. Default: both.' },
+        season: { type: 'number', description: 'Season year. Default: current year.' },
+        min_pitches: { type: 'number', description: 'Minimum pitch count qualifier. Default: 500.' },
+      },
+      required: []
+    },
+  },
+  {
+    name: 'get_abs_summary',
+    description: 'Get Automated Ball-Strike (ABS) system data: daily challenge/overturn summary, team breakdown, and umpire ABS leaderboard. Use for questions about ABS challenges, overturn rates, or which teams/umpires are most affected.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        year: { type: 'number', description: 'Season year. Default: current year.' },
+        game_type: { type: 'string', enum: ['R', 'S', 'P'], description: 'Game type: R=regular, S=spring, P=postseason. Default: R.' },
+      },
+      required: []
+    },
+  },
+  {
+    name: 'get_umpire_stats',
+    description: 'Get umpire performance data. If umpire_name is provided, returns that umpire\'s scorecard (accuracy, miss rate, zone grid, game log, challenge summary). If omitted, returns the umpire leaderboard ranked by games umpired with accuracy stats.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        umpire_name: { type: 'string', description: 'Umpire full name (e.g. "Angel Hernandez"). Omit for leaderboard.' },
+        season: { type: 'number', description: 'Season year. Default: current year.' },
+        game_type: { type: 'string', enum: ['R', 'S', 'P'], description: 'Game type filter. Optional.' },
+      },
+      required: []
     },
     // Cache breakpoint: all tool definitions above this are cached
     cache_control: { type: 'ephemeral' as const },
@@ -669,6 +708,131 @@ export async function handleAutoComposeTool(
       const { error } = await supabase.from('design_rules').delete().eq('id', id)
       if (error) return { result: JSON.stringify({ error: error.message }) }
       return { result: JSON.stringify({ success: true, message: 'Rule removed.' }) }
+    }
+
+    // ── External data tools ──────────────────────────────────────────────
+
+    case 'get_trends': {
+      const playerType = (input.player_type as string) || 'both'
+      const season = (input.season as number) || new Date().getFullYear()
+      const minPitches = (input.min_pitches as number) || 500
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
+      const types = playerType === 'both' ? ['pitcher', 'hitter'] : [playerType]
+      const allAlerts: any[] = []
+
+      for (const pt of types) {
+        try {
+          const res = await fetch(`${siteUrl}/api/trends`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ season, playerType: pt, minPitches }),
+          })
+          const json = await res.json()
+          if (json.rows) {
+            for (const r of json.rows) {
+              allAlerts.push({ ...r, player_type: pt })
+            }
+          }
+        } catch {}
+      }
+
+      // Split into surges and concerns, take top 10 each
+      const surges = allAlerts.filter(a => a.sentiment === 'good').slice(0, 10)
+      const concerns = allAlerts.filter(a => a.sentiment === 'bad').slice(0, 10)
+
+      return { result: JSON.stringify({ surges, concerns, total: allAlerts.length, season }) }
+    }
+
+    case 'get_abs_summary': {
+      const year = (input.year as number) || new Date().getFullYear()
+      const gameType = (input.game_type as string) || 'R'
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
+      try {
+        const [dashRes, umpRes] = await Promise.all([
+          fetch(`${siteUrl}/api/abs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'dashboard', year, gameType }),
+          }),
+          fetch(`${siteUrl}/api/abs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'umpires', year, gameType }),
+          }),
+        ])
+        const dashboard = await dashRes.json()
+        const umpires = await umpRes.json()
+
+        // Compact the response: summary + top teams + top umpires
+        const teams = (dashboard.teams || []).map((t: any) => ({
+          team: t.team_abbr,
+          bat_for: t.bat_for, fld_for: t.fld_for,
+          bat_against: t.bat_against, fld_against: t.fld_against,
+        }))
+
+        const topUmps = (Array.isArray(umpires) ? umpires : []).slice(0, 15).map((u: any) => ({
+          name: u.hp_umpire, games: u.games,
+          called_pitches: u.called_pitches, miss_rate: u.miss_rate,
+          challenges: u.challenges, overturns: u.overturns,
+          abs_challenges: u.abs_challenges, abs_overturns: u.abs_overturns,
+        }))
+
+        return { result: JSON.stringify({
+          summary: dashboard.summary || {},
+          teams,
+          top_umpires: topUmps,
+          year, gameType,
+        }) }
+      } catch (err: any) {
+        return { result: JSON.stringify({ error: err.message }) }
+      }
+    }
+
+    case 'get_umpire_stats': {
+      const umpireName = input.umpire_name as string | undefined
+      const season = (input.season as number) || new Date().getFullYear()
+      const gameType = input.game_type as string | undefined
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
+      try {
+        if (umpireName) {
+          // Scorecard for specific umpire
+          const res = await fetch(`${siteUrl}/api/umpire`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'scorecard', name: umpireName, season, gameType }),
+          })
+          const data = await res.json()
+          // Compact: drop raw missed calls array (too large for context), keep summary + zone + game log
+          const compact: any = {
+            umpire: umpireName, season,
+            summary: data.summary || null,
+            zoneGrid: data.zoneGrid || [],
+            gameLog: (data.gameLog || []).slice(0, 20),
+            challenges: data.challenges?.summary || null,
+          }
+          return { result: JSON.stringify(compact) }
+        } else {
+          // Leaderboard
+          const res = await fetch(`${siteUrl}/api/umpire`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'leaderboard', season, gameType }),
+          })
+          const data = await res.json()
+          const leaderboard = (Array.isArray(data) ? data : []).map((u: any) => ({
+            name: u.hp_umpire, games: u.games,
+            called_pitches: u.called_pitches,
+            accuracy: u.called_pitches > 0 ? ((u.correct_calls / u.called_pitches) * 100).toFixed(1) + '%' : null,
+            real_accuracy: u.real_called_pitches > 0 ? ((u.real_correct_calls / u.real_called_pitches) * 100).toFixed(1) + '%' : null,
+          }))
+          return { result: JSON.stringify({ leaderboard, season }) }
+        }
+      } catch (err: any) {
+        return { result: JSON.stringify({ error: err.message }) }
+      }
     }
 
     default:
