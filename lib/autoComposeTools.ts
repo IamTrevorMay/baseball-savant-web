@@ -1,6 +1,6 @@
 /**
  * autoComposeTools — Tool definitions + handlers for Auto Compose AI agent.
- * 16 tools: data (3), template (3), scene manipulation (5), save (2), design rules (3), external data (3)
+ * 17 tools: data (3), template (3), scene manipulation (5), save (2), design rules (3), external data (4)
  */
 
 import Anthropic from '@anthropic-ai/sdk'
@@ -300,6 +300,17 @@ export const AUTO_COMPOSE_TOOLS: Anthropic.Tool[] = [
         umpire_name: { type: 'string', description: 'Umpire full name (e.g. "Angel Hernandez"). Omit for leaderboard.' },
         season: { type: 'number', description: 'Season year. Default: current year.' },
         game_type: { type: 'string', enum: ['R', 'S', 'P'], description: 'Game type filter. Optional.' },
+      },
+      required: []
+    },
+  },
+  {
+    name: 'get_daily_brief',
+    description: 'Get structured Daily Brief data for a given date. Returns brief metadata, game scores, Stuff+ leaders, new pitch alerts (first-time pitch types), and IL transactions. Use for building daily summary graphics, scoreboards, standout performers, or new pitch alert visuals.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        date: { type: 'string', description: 'Date in YYYY-MM-DD format. Defaults to the latest brief date if omitted.' },
       },
       required: []
     },
@@ -792,6 +803,114 @@ export async function handleAutoComposeTool(
           teams,
           top_umpires: topUmps,
           year, gameType,
+        }) }
+      } catch (err: any) {
+        return { result: JSON.stringify({ error: err.message }) }
+      }
+    }
+
+    case 'get_daily_brief': {
+      const dateInput = input.date as string | undefined
+      try {
+        // 1. Fetch brief — by date or latest
+        let briefQuery = supabase
+          .from('briefs')
+          .select('id, title, summary, date, games_count, is_off_day')
+          .order('date', { ascending: false })
+          .limit(1)
+        if (dateInput) briefQuery = briefQuery.eq('date', dateInput)
+        const { data: briefRows, error: briefErr } = await briefQuery
+        if (briefErr) return { result: JSON.stringify({ error: `Brief query: ${briefErr.message}` }) }
+        if (!briefRows?.length) return { result: JSON.stringify({ error: `No brief found${dateInput ? ` for ${dateInput}` : ''}` }) }
+        const brief = briefRows[0]
+        const briefDate = brief.date as string // YYYY-MM-DD
+
+        // 2. Run parallel fetches anchored to brief date
+        const [gamesRes, stuffRes, newPitchRes, txRes] = await Promise.all([
+          // MLB schedule API for game scores
+          fetch(`${MLB_API}/schedule?date=${briefDate}&sportId=1&hydrate=linescore`).then(r => r.json()).catch(() => null),
+
+          // Stuff+ leaders: top 5 pitches by stuff_plus
+          supabase.rpc('run_query', { query_text: `
+            SELECT p.pitcher AS player_id, pl.name AS player_name, pl.team,
+                   p.pitch_name, ROUND(p.stuff_plus::numeric, 1) AS stuff_plus,
+                   ROUND(p.release_speed::numeric, 1) AS velo,
+                   ROUND((p.pfx_x * 12)::numeric, 1) AS hbreak_in,
+                   ROUND((p.pfx_z * 12)::numeric, 1) AS ivb_in
+            FROM pitches p
+            JOIN players pl ON pl.id = p.pitcher
+            WHERE p.game_date = '${briefDate}' AND p.stuff_plus IS NOT NULL AND p.pitch_name IS NOT NULL
+            ORDER BY p.stuff_plus DESC
+            LIMIT 5
+          ` }),
+
+          // New pitch alerts: pitch types thrown for the first time
+          supabase.rpc('run_query', { query_text: `
+            WITH today_types AS (
+              SELECT pitcher, pitch_name, COUNT(*) AS cnt,
+                     ROUND(AVG(stuff_plus)::numeric, 1) AS avg_stuff_plus,
+                     ROUND(AVG(release_speed)::numeric, 1) AS avg_velo,
+                     ROUND(AVG(pfx_x * 12)::numeric, 1) AS avg_hbreak,
+                     ROUND(AVG(pfx_z * 12)::numeric, 1) AS avg_ivb
+              FROM pitches WHERE game_date = '${briefDate}' AND pitch_name IS NOT NULL
+              GROUP BY pitcher, pitch_name
+            ),
+            prior_types AS (
+              SELECT DISTINCT pitcher, pitch_name FROM pitches
+              WHERE game_date < '${briefDate}' AND pitch_name IS NOT NULL
+                AND pitcher IN (SELECT DISTINCT pitcher FROM today_types)
+            )
+            SELECT t.pitcher AS player_id, pl.name AS player_name, pl.team,
+                   t.pitch_name, t.cnt AS count, t.avg_stuff_plus, t.avg_velo, t.avg_hbreak, t.avg_ivb
+            FROM today_types t
+            JOIN players pl ON pl.id = t.pitcher
+            LEFT JOIN prior_types pr ON pr.pitcher = t.pitcher AND pr.pitch_name = t.pitch_name
+            WHERE pr.pitcher IS NULL AND t.cnt >= 3
+            ORDER BY t.cnt DESC
+          ` }),
+
+          // MLB transactions API for IL moves
+          fetch(`${MLB_API}/transactions?date=${briefDate}&transactionTypes=Injured List,Reinstated From IL`)
+            .then(r => r.json()).catch(() => null),
+        ])
+
+        // Parse game scores
+        const games = ((gamesRes?.dates?.[0]?.games) || []).map((g: any) => ({
+          away: g.teams?.away?.team?.abbreviation || g.teams?.away?.team?.name,
+          home: g.teams?.home?.team?.abbreviation || g.teams?.home?.team?.name,
+          awayScore: g.teams?.away?.score ?? null,
+          homeScore: g.teams?.home?.score ?? null,
+          state: g.status?.detailedState || g.status?.abstractGameState,
+        }))
+
+        // Parse stuff+ leaders
+        const stuffLeaders = (stuffRes.error ? [] : stuffRes.data) || []
+
+        // Parse new pitches
+        const newPitches = (newPitchRes.error ? [] : newPitchRes.data) || []
+
+        // Parse transactions — filter to IL placements & activations
+        const transactions = ((txRes?.transactions) || [])
+          .filter((t: any) => t.typeCode === 'IL' || t.typeCode === 'RI' || t.description?.match(/injured list|reinstated/i))
+          .slice(0, 20)
+          .map((t: any) => ({
+            player: t.person?.fullName,
+            team: t.team?.name,
+            type: t.typeDesc || t.description?.slice(0, 60),
+          }))
+
+        return { result: JSON.stringify({
+          brief: {
+            title: brief.title,
+            summary: brief.summary,
+            date: briefDate,
+            games_count: brief.games_count,
+            is_off_day: brief.is_off_day,
+          },
+          games,
+          stuff_leaders: stuffLeaders,
+          new_pitches: newPitches,
+          transactions,
         }) }
       } catch (err: any) {
         return { result: JSON.stringify({ error: err.message }) }

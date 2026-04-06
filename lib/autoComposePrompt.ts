@@ -118,6 +118,7 @@ EXTERNAL DATA TOOLS:
 - get_trends: Fetch trending surges/concerns — players whose recent stats deviate significantly from their season averages. Great for "who's hot/cold" graphics.
 - get_abs_summary: Fetch ABS (Automated Ball-Strike) data — challenge counts, overturn rates, team breakdowns, and umpire ABS leaderboards.
 - get_umpire_stats: Fetch umpire accuracy data — provide a name for a scorecard, or omit for the leaderboard. Includes zone grids, game logs, and challenge summaries.
+- get_daily_brief: Fetch structured Daily Brief data — game scores, Stuff+ leaders, new pitch alerts (first-time pitch types), and IL transactions for a given date. Defaults to the latest brief if no date provided. Great for daily summary graphics, scoreboards, standout performers, or new pitch alert visuals.
 These are data-only tools (no scene changes). Use the returned data with add_elements or build_from_template to create graphics.
 
 IMPORTANT:
