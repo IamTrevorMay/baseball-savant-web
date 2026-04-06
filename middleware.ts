@@ -5,7 +5,9 @@ export async function middleware(request: NextRequest) {
   // Serve domain-specific favicon
   if (request.nextUrl.pathname === '/favicon.ico') {
     const host = request.headers.get('host') || ''
-    const icon = host.includes('mayday.games') ? '/percentile-icon.png' : '/triton-icon.png'
+    const icon = host.includes('mayday.games') ? '/percentile-icon.png'
+      : host.includes('daily.mayday.show') ? '/triton-icon.png'
+      : '/triton-icon.png'
     return NextResponse.rewrite(new URL(icon, request.url))
   }
 

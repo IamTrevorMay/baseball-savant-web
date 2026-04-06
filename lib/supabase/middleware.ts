@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const GAME_HOSTS = ['mayday.games', 'www.mayday.games']
+const DAILY_HOSTS = ['daily.mayday.show', 'www.daily.mayday.show']
 
 export async function updateSession(request: NextRequest) {
   const host = request.headers.get('host')?.replace(/:\d+$/, '') ?? ''
@@ -16,6 +17,17 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.next()
     }
     // Block all other routes — redirect to game root
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  // Newsletter domain: rewrite root → /newsletter, allow /api/newsletter, block rest
+  if (DAILY_HOSTS.includes(host)) {
+    if (pathname === '/') {
+      return NextResponse.rewrite(new URL('/newsletter', request.url))
+    }
+    if (pathname.startsWith('/newsletter') || pathname.startsWith('/api/newsletter')) {
+      return NextResponse.next()
+    }
     return NextResponse.redirect(new URL('/', request.url))
   }
 
@@ -45,7 +57,7 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   // Public paths that don't require auth
-  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay']
+  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay', '/newsletter']
   const isPublicPath = publicPaths.some(p => request.nextUrl.pathname.startsWith(p))
 
   // API routes: auth checked individually in each handler
