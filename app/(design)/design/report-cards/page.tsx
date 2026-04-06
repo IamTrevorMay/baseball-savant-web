@@ -164,6 +164,7 @@ export default function ReportCardsPage() {
                 className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-[10px] text-zinc-400 focus:outline-none"
               >
                 <option value="1920x1080">1920x1080</option>
+                <option value="1080x1350">1080x1350</option>
                 <option value="1080x1920">1080x1920</option>
                 <option value="1080x1080">1080x1080</option>
                 <option value="1200x628">1200x628</option>
