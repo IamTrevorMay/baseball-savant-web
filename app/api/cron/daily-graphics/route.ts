@@ -145,23 +145,30 @@ async function generateTrends(): Promise<any> {
     const isPitcher = playerType === 'pitcher'
     const groupCol = isPitcher ? 'pitcher' : 'batter'
 
-    const metrics = isPitcher
-      ? [
-          { key: 'velo', label: 'Avg Velo', higherIsBetter: true },
-          { key: 'whiff', label: 'Whiff%', higherIsBetter: true },
-          { key: 'k_pct', label: 'K%', higherIsBetter: true },
-          { key: 'zone_pct', label: 'Zone%', higherIsBetter: false },
-          { key: 'xwoba', label: 'xwOBA', higherIsBetter: false },
-          { key: 'spin', label: 'Avg Spin', higherIsBetter: true },
-        ]
-      : [
-          { key: 'ev', label: 'Avg EV', higherIsBetter: true },
-          { key: 'xwoba', label: 'xwOBA', higherIsBetter: true },
-          { key: 'k_pct', label: 'K%', higherIsBetter: false },
-          { key: 'bb_pct', label: 'BB%', higherIsBetter: true },
-          { key: 'hard_hit', label: 'Hard Hit%', higherIsBetter: true },
-          { key: 'whiff', label: 'Whiff%', higherIsBetter: false },
-        ]
+    interface MetricDef {
+      key: string; label: string; higherIsBetter: boolean
+      seasonSQL: string; recentSQL: string // recentSQL uses {recent} placeholder
+    }
+
+    const PITCHER_METRICS: MetricDef[] = [
+      { key: 'velo', label: 'Avg Velo', higherIsBetter: true, seasonSQL: 'ROUND(AVG(release_speed)::numeric, 1)', recentSQL: "ROUND(AVG(release_speed) FILTER (WHERE game_date >= '{recent}')::numeric, 1)" },
+      { key: 'whiff', label: 'Whiff%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt'), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description = 'missed_bunt')) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt')), 0), 1)" },
+      { key: 'k_pct', label: 'K%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)" },
+      { key: 'zone_pct', label: 'Zone%', higherIsBetter: false, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND zone IS NOT NULL), 0), 1)" },
+      { key: 'xwoba', label: 'xwOBA', higherIsBetter: false, seasonSQL: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)', recentSQL: "ROUND(AVG(estimated_woba_using_speedangle) FILTER (WHERE game_date >= '{recent}')::numeric, 3)" },
+      { key: 'spin', label: 'Avg Spin', higherIsBetter: true, seasonSQL: 'ROUND(AVG(release_spin_rate)::numeric, 0)', recentSQL: "ROUND(AVG(release_spin_rate) FILTER (WHERE game_date >= '{recent}')::numeric, 0)" },
+    ]
+
+    const HITTER_METRICS: MetricDef[] = [
+      { key: 'ev', label: 'Avg EV', higherIsBetter: true, seasonSQL: 'ROUND(AVG(launch_speed)::numeric, 1)', recentSQL: "ROUND(AVG(launch_speed) FILTER (WHERE game_date >= '{recent}')::numeric, 1)" },
+      { key: 'xwoba', label: 'xwOBA', higherIsBetter: true, seasonSQL: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)', recentSQL: "ROUND(AVG(estimated_woba_using_speedangle) FILTER (WHERE game_date >= '{recent}')::numeric, 3)" },
+      { key: 'k_pct', label: 'K%', higherIsBetter: false, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)" },
+      { key: 'bb_pct', label: 'BB%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)" },
+      { key: 'hard_hit', label: 'Hard Hit%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND launch_speed IS NOT NULL), 0), 1)" },
+      { key: 'whiff', label: 'Whiff%', higherIsBetter: false, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt'), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description = 'missed_bunt')) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt')), 0), 1)" },
+    ]
+
+    const metrics = isPitcher ? PITCHER_METRICS : HITTER_METRICS
 
     // Check if regular season data exists
     const regCheck = await supabaseAdmin.rpc('run_query', {
@@ -182,31 +189,8 @@ async function generateTrends(): Promise<any> {
     const recentDays = spanDays < 21 ? Math.max(3, Math.floor(spanDays / 2)) : 14
     const recentDate = new Date(new Date(latestDate).getTime() - recentDays * 86400000).toISOString().slice(0, 10)
 
-    // Build SQL for season + recent metrics
-    const seasonSQLMap: Record<string, string> = {
-      velo: 'ROUND(AVG(release_speed)::numeric, 1)',
-      whiff: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt'), 0), 1)",
-      k_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
-      zone_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)",
-      xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
-      spin: 'ROUND(AVG(release_spin_rate)::numeric, 0)',
-      ev: 'ROUND(AVG(launch_speed)::numeric, 1)',
-      bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
-      hard_hit: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1)",
-    }
-
-    const seasonCols = metrics.map(m => `${seasonSQLMap[m.key]} as season_${m.key}`).join(', ')
-    const recentCols = metrics.map(m => {
-      const sql = seasonSQLMap[m.key]
-      // Add game_date filter for recent window
-      const recentSQL = sql.replace(/COUNT\(\*\)/g, `COUNT(*) FILTER (WHERE game_date >= '${recentDate}')`)
-        .replace(/AVG\((\w+)\)/g, `AVG($1) FILTER (WHERE game_date >= '${recentDate}')`)
-        .replace(/FILTER \(WHERE (.*?)\)/g, (_, cond) => {
-          if (cond.includes('game_date')) return `FILTER (WHERE ${cond})`
-          return `FILTER (WHERE game_date >= '${recentDate}' AND ${cond})`
-        })
-      return `${recentSQL} as recent_${m.key}`
-    }).join(', ')
+    const seasonCols = metrics.map(m => `${m.seasonSQL} as season_${m.key}`).join(', ')
+    const recentCols = metrics.map(m => `${m.recentSQL.replace(/\{recent\}/g, recentDate)} as recent_${m.key}`).join(', ')
 
     const { data } = await supabaseAdmin.rpc('run_query', {
       query_text: `
