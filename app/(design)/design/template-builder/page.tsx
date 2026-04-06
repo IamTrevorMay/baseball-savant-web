@@ -132,6 +132,14 @@ export default function TemplateBuilderPage() {
           const forked = builtin.rebuild(config, {})
           setScene({ ...forked, name: `${builtin.name} (Custom)` })
           setGlobalFilter({ type: 'player-checkin', playerType: 'pitcher', dateRange: { type: 'season', year: new Date().getFullYear() }, players: [] })
+        } else if (builtin.id === 'yesterday-scores') {
+          const forked = builtin.rebuild(config, {})
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'yesterday-scores' })
+        } else if (builtin.id === 'trends') {
+          const forked = builtin.rebuild(config, {})
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'trends' })
         } else {
           const sample = getSampleData('leaderboard')
           const forked = builtin.rebuild(config, sample)
@@ -287,6 +295,38 @@ export default function TemplateBuilderPage() {
         if (builtin) {
           const config = { templateId: builtin.id, ...builtin.defaultConfig, dateRange: { type: 'season' as const, year } }
           const rebuilt = builtin.rebuild(config, json.checkin || {})
+          setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
+        }
+        setDataLoaded(true)
+        setFetchLoading(false)
+        return
+      }
+
+      // Trends: fetch surges & concerns
+      if (globalFilter.type === 'trends') {
+        const res = await fetch(`/api/scene-stats?trends=true`)
+        const json = await res.json()
+        const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'trends')
+        if (builtin) {
+          const config = { templateId: builtin.id, ...builtin.defaultConfig }
+          const rebuilt = builtin.rebuild(config, json.trends || {})
+          setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
+        }
+        setDataLoaded(true)
+        setFetchLoading(false)
+        return
+      }
+
+      // Yesterday's Scores: fetch from MLB Schedule API
+      if (globalFilter.type === 'yesterday-scores') {
+        const defaultDate = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10) })()
+        const date = globalFilter.scoreDate || defaultDate
+        const res = await fetch(`/api/scene-stats?yesterdayScores=true&date=${date}`)
+        const json = await res.json()
+        const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'yesterday-scores')
+        if (builtin) {
+          const config = { templateId: builtin.id, ...builtin.defaultConfig }
+          const rebuilt = builtin.rebuild(config, json.scores || {})
           setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
         }
         setDataLoaded(true)
@@ -682,6 +722,14 @@ export default function TemplateBuilderPage() {
       const built = template.rebuild(config, {})
       setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
       setGlobalFilter({ type: 'bullpen-depth-chart', teamAbbrev: 'NYY', dateRange: { type: 'season', year: new Date().getFullYear() } })
+    } else if (template.id === 'yesterday-scores') {
+      const built = template.rebuild(config, {})
+      setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+      setGlobalFilter({ type: 'yesterday-scores' })
+    } else if (template.id === 'trends') {
+      const built = template.rebuild(config, {})
+      setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+      setGlobalFilter({ type: 'trends' })
     } else {
       const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
       const built = template.rebuild(config, sampleData)

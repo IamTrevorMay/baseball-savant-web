@@ -16,6 +16,8 @@ const FILTER_TYPES: { value: GlobalFilterType; label: string }[] = [
   { value: 'live-game', label: 'Live Game' },
   { value: 'matchup', label: 'Matchup' },
   { value: 'player-checkin', label: 'Check-In' },
+  { value: 'yesterday-scores', label: 'Scores' },
+  { value: 'trends', label: 'Trends' },
 ]
 
 const MLB_TEAMS = [
@@ -364,6 +366,28 @@ export default function GlobalFilterPanel({
     </div>
   )
 
+  const renderYesterdayScores = () => {
+    // Default to yesterday's date
+    const defaultDate = (() => {
+      const d = new Date()
+      d.setDate(d.getDate() - 1)
+      return d.toISOString().slice(0, 10)
+    })()
+    return (
+      <div className="space-y-2.5">
+        <div>
+          <span className={labelCls}>Date</span>
+          <input
+            type="date"
+            className={inputCls}
+            value={gf.scoreDate ?? defaultDate}
+            onChange={(e) => patch({ scoreDate: e.target.value })}
+          />
+        </div>
+      </div>
+    )
+  }
+
   const sections: Record<GlobalFilterType, () => React.ReactNode> = {
     'single-player': renderSinglePlayer,
     team: renderTeam,
@@ -373,6 +397,12 @@ export default function GlobalFilterPanel({
     'live-game': renderLiveGame,
     matchup: renderMatchup,
     'player-checkin': renderPlayerCheckin,
+    'yesterday-scores': renderYesterdayScores,
+    trends: () => (
+      <div className="space-y-2.5">
+        <p className="text-[11px] text-zinc-400">Fetches top surges &amp; concerns from the Trends API. No configuration needed.</p>
+      </div>
+    ),
   }
 
   /* ── Render ──────────────────────────────────────────────────────────────── */

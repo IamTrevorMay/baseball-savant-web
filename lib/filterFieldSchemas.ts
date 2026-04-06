@@ -259,6 +259,25 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
       return LIVE_GAME_FIELDS
     case 'matchup':
       return MATCHUP_FIELDS
+    case 'yesterday-scores':
+      return [{
+        category: 'Scores',
+        fields: [
+          { key: 'date', label: 'Date', shortLabel: 'Date', type: 'string' },
+          { key: 'games_count', label: 'Games Count', shortLabel: 'Games', type: 'number' },
+        ],
+      }]
+    case 'trends':
+      return [{
+        category: 'Trends',
+        fields: [
+          { key: 'player_name', label: 'Player Name', shortLabel: 'Name', type: 'string' },
+          { key: 'metric_label', label: 'Metric', shortLabel: 'Metric', type: 'string' },
+          { key: 'recent_val', label: 'Recent Value', shortLabel: 'Recent', type: 'number' },
+          { key: 'season_val', label: 'Season Value', shortLabel: 'Season', type: 'number' },
+          { key: 'delta', label: 'Delta', shortLabel: 'Delta', type: 'number' },
+        ],
+      }]
     case 'player-checkin':
     case 'depth-chart':
     case 'bullpen-depth-chart':
@@ -407,6 +426,27 @@ export function getSampleDataForFilter(type: GlobalFilterType, playerType?: 'pit
           { player_id: 657277, player_name: 'Logan Webb', stats: ['11.0', '7.36', '10', '12', '5', '.267', '.686'] },
           { player_id: 694973, player_name: 'Paul Skenes', stats: ['0.2', '67.50', '5', '1', '2', '.800', '2.178'] },
           { player_id: 690997, player_name: 'Nolan McLean', stats: ['5.0', '3.60', '2', '8', '2', '.211', '.739'] },
+        ],
+      }
+    case 'trends':
+      return {
+        surges: [
+          { player_id: 669373, player_name: 'Paul Skenes', type: 'pitcher', metric: 'velo', metric_label: 'Avg Velo', season_val: 97.2, recent_val: 99.1, delta: 1.9, sigma: 2.5, direction: 'up', sentiment: 'good' },
+          { player_id: 660271, player_name: 'Shohei Ohtani', type: 'hitter', metric: 'ev', metric_label: 'Avg EV', season_val: 91.3, recent_val: 94.1, delta: 2.8, sigma: 2.2, direction: 'up', sentiment: 'good' },
+        ],
+        concerns: [
+          { player_id: 543037, player_name: 'Gerrit Cole', type: 'pitcher', metric: 'velo', metric_label: 'Avg Velo', season_val: 96.1, recent_val: 94.3, delta: -1.8, sigma: -2.1, direction: 'down', sentiment: 'bad' },
+        ],
+      }
+    case 'yesterday-scores':
+      return {
+        date: '2026-04-05',
+        dateFormatted: 'Saturday, April 5, 2026',
+        games: [
+          { awayAbbrev: 'NYY', homeAbbrev: 'BOS', awayScore: 5, homeScore: 3, winPitcher: 'Cole', losePitcher: 'Sale' },
+          { awayAbbrev: 'LAD', homeAbbrev: 'SF', awayScore: 2, homeScore: 7, winPitcher: 'Webb', losePitcher: 'Buehler', savePitcher: 'Doval' },
+          { awayAbbrev: 'HOU', homeAbbrev: 'SEA', awayScore: 4, homeScore: 1, winPitcher: 'Valdez', losePitcher: 'Castillo' },
+          { awayAbbrev: 'ATL', homeAbbrev: 'NYM', awayScore: 6, homeScore: 8, winPitcher: 'Senga', losePitcher: 'Fried', savePitcher: 'Diaz' },
         ],
       }
   }

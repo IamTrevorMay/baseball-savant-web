@@ -7,6 +7,7 @@ import { Scene, SceneElement, TemplateConfig, TemplateDataRow, OutingData, Start
 import { SCENE_METRICS } from './reportMetrics'
 import { getPitchColor } from '@/components/chartConfig'
 import { gradeColor } from './leagueStats'
+import { TEAM_COLORS } from './teamColors'
 
 export interface SceneTemplate {
   id: string
@@ -2527,6 +2528,308 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
         width: 1920,
         height: 1080,
         background: '#111111',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
+
+  // ── Yesterday's Scores ──────────────────────────────────────────────────
+  {
+    id: 'yesterday-scores',
+    name: "Yesterday's Scores",
+    category: 'social',
+    description: 'Final MLB scores for a given date with team colors and pitcher decisions',
+    icon: '\u{1f4ca}',
+    width: 1080,
+    height: 1350,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: new Date().getFullYear() },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const scores = data || {}
+      const games: any[] = scores.games || []
+      const dateFormatted = scores.dateFormatted || 'No Date'
+      const W = 1080, H = 1350
+
+      // ── Title ──────────────────────────────────────────────────────────
+      elements.push(el('text', 40, 40, W - 80, 60, {
+        text: "YESTERDAY'S SCORES", fontSize: 48, fontWeight: 800, color: '#ffffff', textAlign: 'center',
+      }))
+      elements.push(el('text', 40, 105, W - 80, 30, {
+        text: dateFormatted, fontSize: 22, fontWeight: 400, color: '#a1a1aa', textAlign: 'center',
+      }))
+
+      if (games.length === 0) {
+        elements.push(el('text', 40, 600, W - 80, 40, {
+          text: 'No games found for this date', fontSize: 24, fontWeight: 400, color: '#52525b', textAlign: 'center',
+        }))
+      } else {
+        // ── Layout: 2-column grid ──────────────────────────────────────
+        const cols = 2
+        const pad = 28
+        const gapX = 20
+        const gapY = 16
+        const cardW = Math.floor((W - pad * 2 - gapX * (cols - 1)) / cols)
+        const startY = 155
+
+        // Compute card height based on game count to fill the space
+        const rows = Math.ceil(games.length / cols)
+        const availH = (H - 60) - startY  // leave 60px bottom for watermark
+        const cardH = Math.min(160, Math.floor((availH - gapY * (rows - 1)) / rows))
+
+        for (let i = 0; i < games.length; i++) {
+          const g = games[i]
+          const col = i % cols
+          const row = Math.floor(i / cols)
+          const x = pad + col * (cardW + gapX)
+          const y = startY + row * (cardH + gapY)
+
+          // Card background
+          elements.push(el('shape', x, y, cardW, cardH, {
+            shape: 'rect', fill: 'rgba(255,255,255,0.03)', stroke: '#27272a', strokeWidth: 1, borderRadius: 12,
+          }))
+
+          // Team color bars
+          const awayColor = TEAM_COLORS[g.awayAbbrev]?.primary || '#52525b'
+          const homeColor = TEAM_COLORS[g.homeAbbrev]?.primary || '#52525b'
+
+          elements.push(el('shape', x + 12, y + 14, 5, 24, {
+            shape: 'rect', fill: awayColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 3,
+          }))
+          elements.push(el('shape', x + 12, y + 44, 5, 24, {
+            shape: 'rect', fill: homeColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 3,
+          }))
+
+          // Away team + score
+          const awayWon = g.awayScore > g.homeScore
+          const homeWon = g.homeScore > g.awayScore
+          elements.push(el('text', x + 24, y + 12, 140, 32, {
+            text: g.awayAbbrev || '???', fontSize: 28, fontWeight: awayWon ? 800 : 500,
+            color: awayWon ? '#ffffff' : '#71717a', textAlign: 'left',
+          }))
+          elements.push(el('text', x + cardW - 80, y + 12, 65, 32, {
+            text: String(g.awayScore ?? ''), fontSize: 28, fontWeight: awayWon ? 800 : 500,
+            color: awayWon ? '#ffffff' : '#71717a', textAlign: 'right',
+          }))
+
+          // Home team + score
+          elements.push(el('text', x + 24, y + 46, 140, 32, {
+            text: g.homeAbbrev || '???', fontSize: 28, fontWeight: homeWon ? 800 : 500,
+            color: homeWon ? '#ffffff' : '#71717a', textAlign: 'left',
+          }))
+          elements.push(el('text', x + cardW - 80, y + 46, 65, 32, {
+            text: String(g.homeScore ?? ''), fontSize: 28, fontWeight: homeWon ? 800 : 500,
+            color: homeWon ? '#ffffff' : '#71717a', textAlign: 'right',
+          }))
+
+          // FINAL label
+          elements.push(el('text', x + cardW - 80, y + 82, 65, 20, {
+            text: 'FINAL', fontSize: 13, fontWeight: 600, color: '#52525b', textAlign: 'right', letterSpacing: 1,
+          }))
+
+          // Pitcher decisions
+          const decisions: string[] = []
+          if (g.winPitcher) decisions.push(`W: ${g.winPitcher}`)
+          if (g.losePitcher) decisions.push(`L: ${g.losePitcher}`)
+          if (g.savePitcher) decisions.push(`S: ${g.savePitcher}`)
+          if (decisions.length > 0) {
+            elements.push(el('text', x + 12, y + cardH - 32, cardW - 24, 22, {
+              text: decisions.join('  '), fontSize: 14, fontWeight: 500, color: '#a1a1aa', textAlign: 'left',
+            }))
+          }
+        }
+      }
+
+      // ── Watermark ──────────────────────────────────────────────────────
+      elements.push(el('text', 140, H - 40, W - 280, 20, {
+        text: 'Powered by Mayday Media', fontSize: 16, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: "Yesterday's Scores",
+        width: W,
+        height: H,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
+
+  // ── Trends (Surges & Concerns) ──────────────────────────────────────────
+  {
+    id: 'trends',
+    name: 'Trends',
+    category: 'social',
+    description: 'Surges & Concerns — rolling averages over the last 30 days',
+    icon: '\u{1f4c8}',
+    width: 1080,
+    height: 1350,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'avg_velo',
+      dateRange: { type: 'season', year: new Date().getFullYear() },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const trends = data || {}
+      const surges: any[] = (trends.surges || []).slice(0, 5)
+      const concerns: any[] = (trends.concerns || []).slice(0, 5)
+      const W = 1080, H = 1350
+
+      // ── Title ──────────────────────────────────────────────────────────
+      elements.push(el('text', 40, 40, W - 80, 60, {
+        text: 'TRENDS', fontSize: 60, fontWeight: 800, color: '#ffffff', textAlign: 'center',
+      }))
+      elements.push(el('text', 40, 105, W - 80, 30, {
+        text: 'Rolling averages over the last 30 days', fontSize: 25, fontWeight: 400, color: '#a1a1aa', textAlign: 'center',
+      }))
+
+      // Layout constants
+      const sectionX = 40
+      const sectionW = W - 80
+      const rowH = 90
+      const maxRows = 5
+      const colNameW = 340
+      const colChangeW = 340
+      const colSeasonW = sectionW - colNameW - colChangeW
+
+      // ── Helper: draw a section ─────────────────────────────────────────
+      function drawSection(
+        label: string, labelColor: string, accentColor: string, bgColor: string,
+        items: any[], startY: number
+      ) {
+        // Section background
+        const sectionH = 40 + 36 + maxRows * rowH + 20
+        elements.push(el('shape', sectionX - 16, startY - 12, sectionW + 32, sectionH, {
+          shape: 'rect', fill: bgColor, stroke: 'transparent', strokeWidth: 0, borderRadius: 16,
+        }))
+
+        // Section header
+        elements.push(el('text', sectionX, startY, 300, 32, {
+          text: label, fontSize: 23, fontWeight: 700, color: labelColor, textAlign: 'left', letterSpacing: 3,
+        }))
+
+        // Column headers
+        const headerY = startY + 40
+        elements.push(el('text', sectionX, headerY, colNameW, 22, {
+          text: 'PLAYER', fontSize: 15, fontWeight: 600, color: '#71717a', textAlign: 'center', letterSpacing: 1,
+        }))
+        elements.push(el('text', sectionX + colNameW, headerY, colChangeW, 22, {
+          text: 'CHANGE', fontSize: 15, fontWeight: 600, color: '#71717a', textAlign: 'center', letterSpacing: 1,
+        }))
+        elements.push(el('text', sectionX + colNameW + colChangeW, headerY, colSeasonW, 22, {
+          text: 'SEASON', fontSize: 15, fontWeight: 600, color: '#71717a', textAlign: 'center', letterSpacing: 1,
+        }))
+
+        // Divider under header
+        elements.push(el('shape', sectionX, headerY + 28, sectionW, 1, {
+          shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+        }))
+
+        const rowStartY = headerY + 36
+
+        for (let i = 0; i < maxRows; i++) {
+          const item = items[i]
+          const ry = rowStartY + i * rowH
+
+          if (!item) {
+            // Empty slot — dim placeholder
+            elements.push(el('text', sectionX, ry + 20, colNameW, 30, {
+              text: '—', fontSize: 25, fontWeight: 400, color: '#27272a', textAlign: 'center',
+            }))
+            continue
+          }
+
+          // Format values
+          const fmtVal = (metric: string, val: number): string => {
+            if (metric === 'xwoba') return val.toFixed(3)
+            if (metric === 'spin') return String(Math.round(val))
+            if (metric === 'velo' || metric === 'ev') return val.toFixed(1)
+            return val.toFixed(1)
+          }
+
+          const fmtChange = (metric: string, recent: number, season: number): string => {
+            const diff = recent - season
+            const sign = diff >= 0 ? '+' : ''
+            if (metric === 'xwoba') return `${sign}${diff.toFixed(3)}`
+            if (metric === 'spin') return `${sign}${Math.round(diff)}`
+            return `${sign}${diff.toFixed(1)}`
+          }
+
+          const playerName = item.player_name || '—'
+          const displayName = playerName.includes(',')
+            ? playerName.split(',').map((s: string) => s.trim()).reverse().join(' ')
+            : playerName
+          const typeTag = item.type === 'hitter' ? 'H' : 'P'
+
+          // Player name + type + metric label (centered)
+          elements.push(el('text', sectionX, ry + 8, colNameW, 30, {
+            text: displayName, fontSize: 28, fontWeight: 600, color: '#e4e4e7', textAlign: 'center',
+          }))
+          elements.push(el('text', sectionX, ry + 42, colNameW, 22, {
+            text: `${typeTag}  •  ${item.metric_label}`, fontSize: 17, fontWeight: 400, color: '#71717a', textAlign: 'center',
+          }))
+
+          // Change value (big, centered, colored)
+          const changeText = fmtChange(item.metric, item.recent_val, item.season_val)
+          elements.push(el('text', sectionX + colNameW, ry + 10, colChangeW, 44, {
+            text: changeText, fontSize: 41, fontWeight: 800, color: accentColor, textAlign: 'center',
+          }))
+          // Metric unit under change
+          const unit = item.metric === 'velo' || item.metric === 'ev' ? 'mph'
+            : item.metric === 'spin' ? 'rpm'
+            : item.metric === 'xwoba' ? ''
+            : '%'
+          if (unit) {
+            elements.push(el('text', sectionX + colNameW, ry + 54, colChangeW, 18, {
+              text: unit, fontSize: 15, fontWeight: 500, color: '#52525b', textAlign: 'center',
+            }))
+          }
+
+          // Season value
+          elements.push(el('text', sectionX + colNameW + colChangeW, ry + 16, colSeasonW, 34, {
+            text: fmtVal(item.metric, item.season_val), fontSize: 32, fontWeight: 600, color: '#a1a1aa', textAlign: 'center',
+          }))
+
+          // Row divider (except last)
+          if (i < maxRows - 1) {
+            elements.push(el('shape', sectionX, ry + rowH - 4, sectionW, 1, {
+              shape: 'rect', fill: 'rgba(255,255,255,0.04)', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
+            }))
+          }
+        }
+      }
+
+      // ── Surges section ─────────────────────────────────────────────────
+      drawSection('SURGES', '#10b981', '#10b981', 'rgba(16, 185, 129, 0.08)', surges, 155)
+
+      // ── Concerns section ───────────────────────────────────────────────
+      const concernsY = 155 + 40 + 36 + maxRows * rowH + 40
+      drawSection('CONCERNS', '#ef4444', '#ef4444', 'rgba(239, 68, 68, 0.08)', concerns, concernsY)
+
+      // ── Watermark ──────────────────────────────────────────────────────
+      elements.push(el('text', 140, H - 40, W - 280, 20, {
+        text: 'Powered by Mayday Media', fontSize: 18, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: 'Trends',
+        width: W,
+        height: H,
+        background: '#09090b',
         elements,
         duration: 5,
         fps: 30,

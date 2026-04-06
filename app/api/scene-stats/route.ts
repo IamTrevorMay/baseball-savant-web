@@ -22,6 +22,106 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
 
+    // ── Trends mode (Surges & Concerns from /api/trends) ────────────────
+    if (sp.get('trends') === 'true') {
+      const season = sp.get('season') || new Date().getFullYear()
+      const earlyMonth = new Date().getMonth() + 1 <= 4
+      const minPitches = earlyMonth ? 50 : 500
+
+      // Fetch both pitcher and hitter alerts in parallel
+      const baseUrl = req.nextUrl.origin
+      const [pitcherRes, hitterRes] = await Promise.all([
+        fetch(`${baseUrl}/api/trends`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ season: Number(season), playerType: 'pitcher', minPitches }),
+        }),
+        fetch(`${baseUrl}/api/trends`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ season: Number(season), playerType: 'hitter', minPitches }),
+        }),
+      ])
+
+      const [pd, hd] = await Promise.all([pitcherRes.json(), hitterRes.json()])
+      const pitcherAlerts = (pd.rows || []).map((a: any) => ({ ...a, type: 'pitcher' }))
+      const hitterAlerts = (hd.rows || []).map((a: any) => ({ ...a, type: 'hitter' }))
+      const all = [...pitcherAlerts, ...hitterAlerts]
+
+      const surgeAll = all.filter((a: any) => a.sentiment === 'good').sort((a: any, b: any) => Math.abs(b.sigma) - Math.abs(a.sigma))
+      const concernAll = all.filter((a: any) => a.sentiment === 'bad').sort((a: any, b: any) => Math.abs(b.sigma) - Math.abs(a.sigma))
+
+      // Deduplicate: one per player, highest |sigma|
+      const pickUnique = (list: any[], n: number) => {
+        const seen = new Set<number>()
+        const result: any[] = []
+        for (const item of list) {
+          if (seen.has(item.player_id)) continue
+          seen.add(item.player_id)
+          result.push(item)
+          if (result.length >= n) break
+        }
+        return result
+      }
+
+      return NextResponse.json({
+        trends: {
+          surges: pickUnique(surgeAll, 5),
+          concerns: pickUnique(concernAll, 5),
+        },
+      })
+    }
+
+    // ── Yesterday's Scores mode (MLB Schedule API) ──────────────────────
+    if (sp.get('yesterdayScores') === 'true') {
+      const date = sp.get('date') || (() => {
+        const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10)
+      })()
+      const url = `https://statsapi.mlb.com/api/v1/schedule?date=${date}&sportId=1&hydrate=team,linescore,decisions`
+      const res = await fetch(url, { next: { revalidate: 300 } })
+      if (!res.ok) return NextResponse.json({ error: `MLB API returned ${res.status}` }, { status: 502 })
+      const data = await res.json()
+
+      const allGames = data.dates?.[0]?.games || []
+      const finalGames = allGames.filter((g: any) =>
+        g.status?.abstractGameState === 'Final' || g.status?.detailedState === 'Final'
+      )
+
+      const games = finalGames.map((g: any) => {
+        const away = g.teams?.away
+        const home = g.teams?.home
+        // Map MLB abbreviation quirks
+        const fixAbbrev = (a: string) => {
+          if (a === 'AZ') return 'ARI'
+          if (a === 'WSN') return 'WSH'
+          return a
+        }
+        return {
+          awayAbbrev: fixAbbrev(away?.team?.abbreviation || '???'),
+          homeAbbrev: fixAbbrev(home?.team?.abbreviation || '???'),
+          awayName: away?.team?.name || '',
+          homeName: home?.team?.name || '',
+          awayScore: away?.score ?? 0,
+          homeScore: home?.score ?? 0,
+          winPitcher: g.decisions?.winner?.fullName?.split(', ').pop()?.split(' ').pop() || '',
+          losePitcher: g.decisions?.loser?.fullName?.split(', ').pop()?.split(' ').pop() || '',
+          savePitcher: g.decisions?.save?.fullName?.split(', ').pop()?.split(' ').pop() || '',
+        }
+      })
+
+      // Format date
+      const d = new Date(date + 'T12:00:00')
+      const dateFormatted = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+
+      return NextResponse.json({
+        scores: {
+          date,
+          dateFormatted,
+          games,
+        },
+      })
+    }
+
     // ── Depth Chart mode (MLB Stats API roster) ──────────────────────────
     if (sp.get('depthChart') === 'true') {
       const TEAM_IDS: Record<string, number> = {

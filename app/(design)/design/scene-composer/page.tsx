@@ -1121,6 +1121,29 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── Trends ─────────────────────────────────────────────────────
+      if (config.templateId === 'trends') {
+        const res = await fetch(`/api/scene-stats?trends=true`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.trends || {})
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
+      // ── Yesterday's Scores ────────────────────────────────────────
+      if (config.templateId === 'yesterday-scores') {
+        const defaultDate = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10) })()
+        const res = await fetch(`/api/scene-stats?yesterdayScores=true&date=${defaultDate}`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.scores || {})
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Default leaderboard logic ──────────────────────────────────────
       const params = new URLSearchParams({
         leaderboard: 'true',
@@ -1774,7 +1797,7 @@ export default function SceneComposerPage() {
                 onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
                 loading={templateLoading}
               />
-            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart' || scene.templateConfig.templateId === '3-player-checkin') ? (
+            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart' || scene.templateConfig.templateId === '3-player-checkin' || scene.templateConfig.templateId === 'yesterday-scores' || scene.templateConfig.templateId === 'trends') ? (
               <DepthChartConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}

@@ -361,6 +361,61 @@ const threePlayerCheckin: StarterTemplate = {
   ],
 }
 
+/* ── 11  Yesterday's Scores ──────────────────────────────────────────── */
+
+const yesterdayScores: StarterTemplate = {
+  id: 'yesterday-scores',
+  name: "Yesterday's Scores",
+  description: 'Final MLB scores for a given date with team colors and pitcher decisions.',
+  filterType: 'yesterday-scores',
+  defaultFilter: {
+    type: 'yesterday-scores',
+  },
+  canvasWidth: 1080,
+  canvasHeight: 1350,
+  background: '#09090b',
+  elements: [
+    // Title
+    { type: 'text', x: 40, y: 40, width: 1000, height: 60, props: { text: "YESTERDAY'S SCORES", fontSize: 48, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT, textAlign: 'center' } },
+    // Date subtitle
+    { type: 'text', x: 140, y: 105, width: 800, height: 30, props: { text: 'Select a date to load scores', fontSize: 22, fontWeight: 400, color: DIM, bgColor: TRANSPARENT, textAlign: 'center' } },
+    // Sample score card placeholder
+    { type: 'shape', x: 40, y: 170, width: 480, height: 140, props: { shape: 'rect', fill: 'rgba(255,255,255,0.04)', stroke: '#27272a', strokeWidth: 1, borderRadius: 12 } },
+    { type: 'text', x: 60, y: 185, width: 140, height: 32, props: { text: 'NYY', fontSize: 28, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT } },
+    { type: 'text', x: 370, y: 185, width: 65, height: 32, props: { text: '5', fontSize: 28, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT, textAlign: 'right' } },
+    { type: 'text', x: 60, y: 222, width: 140, height: 32, props: { text: 'BOS', fontSize: 28, fontWeight: 500, color: DIM, bgColor: TRANSPARENT } },
+    { type: 'text', x: 370, y: 222, width: 65, height: 32, props: { text: '3', fontSize: 28, fontWeight: 500, color: DIM, bgColor: TRANSPARENT, textAlign: 'right' } },
+    { type: 'text', x: 60, y: 268, width: 400, height: 20, props: { text: 'W: Cole  L: Sale', fontSize: 14, fontWeight: 500, color: '#a1a1aa', bgColor: TRANSPARENT } },
+    // Watermark
+    { type: 'text', x: 190, y: 1310, width: 700, height: 20, props: { text: 'Powered by Mayday Media', fontSize: 16, fontWeight: 400, color: '#3f3f46', bgColor: TRANSPARENT, textAlign: 'center' } },
+  ],
+}
+
+/* ── 12  Trends ─────────────────────────────────────────────────────── */
+
+const trends: StarterTemplate = {
+  id: 'trends',
+  name: 'Trends',
+  description: 'Surges & Concerns — rolling averages over the last 30 days.',
+  filterType: 'trends',
+  defaultFilter: { type: 'trends' },
+  canvasWidth: 1080,
+  canvasHeight: 1350,
+  background: '#09090b',
+  elements: [
+    // Title
+    { type: 'text', x: 40, y: 40, width: 1000, height: 60, props: { text: 'TRENDS', fontSize: 52, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT, textAlign: 'center' } },
+    // Subtitle
+    { type: 'text', x: 40, y: 105, width: 1000, height: 30, props: { text: 'Rolling averages over the last 30 days', fontSize: 22, fontWeight: 400, color: DIM, bgColor: TRANSPARENT, textAlign: 'center' } },
+    // Surges header
+    { type: 'text', x: 40, y: 170, width: 200, height: 32, props: { text: 'SURGES', fontSize: 20, fontWeight: 700, color: EMERALD, bgColor: TRANSPARENT, letterSpacing: 3 } },
+    // Concerns header
+    { type: 'text', x: 40, y: 740, width: 200, height: 32, props: { text: 'CONCERNS', fontSize: 20, fontWeight: 700, color: '#ef4444', bgColor: TRANSPARENT, letterSpacing: 3 } },
+    // Watermark
+    { type: 'text', x: 190, y: 1310, width: 700, height: 20, props: { text: 'Powered by Mayday Media', fontSize: 16, fontWeight: 400, color: '#3f3f46', bgColor: TRANSPARENT, textAlign: 'center' } },
+  ],
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   top5Leaderboard,
   playerSpotlight,
@@ -372,4 +427,6 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   rotationDepthChart,
   bullpenDepthChart,
   threePlayerCheckin,
+  yesterdayScores,
+  trends,
 ]
