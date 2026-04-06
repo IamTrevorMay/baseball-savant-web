@@ -2837,4 +2837,164 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }
     },
   },
+
+  // ── Top Pitchers (Daily Highlights) ──────────────────────────────────────
+  {
+    id: 'top-pitchers',
+    name: 'Top Pitchers',
+    category: 'social',
+    description: 'Daily highlight cards — best Stuff+ and Cmd+ starters & relievers',
+    icon: '\u{1f3c6}',
+    width: 1080,
+    height: 1350,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'stuff_plus',
+      dateRange: { type: 'season', year: new Date().getFullYear() },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const W = 1080, H = 1350
+
+      // ── Color helpers ────────────────────────────────────────────────
+      const plusColor = (v: number | null | undefined): string => {
+        if (v == null) return '#ffffff'
+        if (v >= 130) return '#10b981' // emerald
+        if (v >= 115) return '#22c55e' // green
+        if (v >= 100) return '#ffffff' // white
+        if (v >= 85) return '#f97316'  // orange
+        return '#ef4444'               // red
+      }
+      const decisionColor = (d: string): string => {
+        if (d === 'W') return '#22c55e'
+        if (d === 'L') return '#ef4444'
+        if (d === 'SV') return '#38bdf8'
+        if (d === 'HLD') return '#f59e0b'
+        return '#71717a'
+      }
+
+      // ── Format date ──────────────────────────────────────────────────
+      const dateStr = data?.date
+        ? new Date(data.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+        : ''
+
+      // ── Title ────────────────────────────────────────────────────────
+      elements.push(el('text', 40, 40, W - 80, 60, {
+        text: 'TOP PITCHERS', fontSize: 60, fontWeight: 800, color: '#ffffff', textAlign: 'center',
+      }))
+      elements.push(el('text', 40, 105, W - 80, 30, {
+        text: dateStr, fontSize: 25, fontWeight: 400, color: '#a1a1aa', textAlign: 'center',
+      }))
+
+      // ── Card definitions ─────────────────────────────────────────────
+      const cards: { label: string; accent: string; key: string; isStuff: boolean }[] = [
+        { label: 'STUFF+ STARTER',  accent: '#f59e0b', key: 'stuff_starter',  isStuff: true },
+        { label: 'STUFF+ RELIEVER', accent: '#f59e0b', key: 'stuff_reliever', isStuff: true },
+        { label: 'CMD+ STARTER',    accent: '#38bdf8', key: 'cmd_starter',    isStuff: false },
+        { label: 'CMD+ RELIEVER',   accent: '#38bdf8', key: 'cmd_reliever',   isStuff: false },
+      ]
+
+      const cardH = 270
+      const cardW = W - 80
+      const cardX = 40
+      let cardY = 155
+
+      for (const card of cards) {
+        const d = data?.[card.key] || null
+
+        // Card background
+        elements.push(el('shape', cardX, cardY, cardW, cardH, {
+          shape: 'rect', fill: 'rgba(255,255,255,0.04)', stroke: '#27272a', strokeWidth: 1, borderRadius: 16,
+        }))
+
+        // Accent bar (left)
+        elements.push(el('shape', cardX, cardY, 6, cardH, {
+          shape: 'rect', fill: card.accent, stroke: 'transparent', strokeWidth: 0, borderRadius: 3,
+        }))
+
+        // Card label
+        elements.push(el('text', cardX + 28, cardY + 16, 400, 28, {
+          text: card.label, fontSize: 20, fontWeight: 700, color: card.accent, textAlign: 'left', letterSpacing: 2,
+        }))
+
+        if (!d) {
+          // Empty placeholder
+          elements.push(el('text', cardX + 28, cardY + 110, cardW - 56, 40, {
+            text: 'No data', fontSize: 28, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+          }))
+        } else {
+          const playerName = d.player_name || '—'
+          const displayName = playerName.includes(',')
+            ? playerName.split(',').map((s: string) => s.trim()).reverse().join(' ')
+            : playerName
+
+          // Plus value (right side, big)
+          const plusVal = card.isStuff ? d.stuff_plus : d.cmd_plus
+          const plusStr = plusVal != null ? Math.round(plusVal).toString() : '—'
+          elements.push(el('text', cardX + cardW - 200, cardY + 55, 170, 85, {
+            text: plusStr, fontSize: 80, fontWeight: 800, color: plusColor(plusVal), textAlign: 'center',
+          }))
+
+          // Player name (left, large)
+          elements.push(el('text', cardX + 28, cardY + 55, cardW - 240, 50, {
+            text: displayName, fontSize: 48, fontWeight: 700, color: '#e4e4e7', textAlign: 'left',
+          }))
+
+          // Detail line: team · pitch/pitches · velo
+          const team = d.team || '??'
+          let detailParts: string[] = [team]
+          if (card.isStuff) {
+            if (d.pitch_name) detailParts.push(d.pitch_name)
+            if (d.velo != null) detailParts.push(`${d.velo} mph`)
+          } else {
+            if (d.pitches != null) detailParts.push(`${d.pitches} pitches`)
+          }
+          elements.push(el('text', cardX + 28, cardY + 110, cardW - 240, 28, {
+            text: detailParts.join('  ·  '), fontSize: 26, fontWeight: 400, color: '#71717a', textAlign: 'left',
+          }))
+
+          // Game line
+          const gl = d.game_line
+          if (gl) {
+            const lineY = cardY + 175
+            const decision = gl.decision || 'ND'
+
+            // Decision badge
+            elements.push(el('shape', cardX + 28, lineY, 52, 36, {
+              shape: 'rect', fill: decisionColor(decision) + '22', stroke: decisionColor(decision), strokeWidth: 1, borderRadius: 8,
+            }))
+            elements.push(el('text', cardX + 28, lineY + 4, 52, 28, {
+              text: decision, fontSize: 20, fontWeight: 700, color: decisionColor(decision), textAlign: 'center',
+            }))
+
+            // Game line stats
+            const lineText = `${gl.ip} IP   ${gl.h}H   ${gl.er}ER   ${gl.bb}BB   ${gl.k}K`
+            elements.push(el('text', cardX + 92, lineY + 4, cardW - 130, 28, {
+              text: lineText, fontSize: 24, fontWeight: 500, color: '#a1a1aa', textAlign: 'left', letterSpacing: 1,
+            }))
+          }
+        }
+
+        cardY += cardH + 12
+      }
+
+      // ── Watermark ────────────────────────────────────────────────────
+      elements.push(el('text', 140, H - 40, W - 280, 20, {
+        text: 'Powered by Mayday Media', fontSize: 18, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: 'Top Pitchers',
+        width: W,
+        height: H,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
 ]

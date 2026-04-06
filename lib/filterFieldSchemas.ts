@@ -278,6 +278,16 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
           { key: 'delta', label: 'Delta', shortLabel: 'Delta', type: 'number' },
         ],
       }]
+    case 'top-pitchers':
+      return [{
+        category: 'Top Pitchers',
+        fields: [
+          { key: 'player_name', label: 'Player Name', shortLabel: 'Name', type: 'string' },
+          { key: 'stuff_plus', label: 'Stuff+', shortLabel: 'Stuff+', type: 'number' },
+          { key: 'cmd_plus', label: 'Cmd+', shortLabel: 'Cmd+', type: 'number' },
+          { key: 'velo', label: 'Velocity', shortLabel: 'Velo', type: 'number' },
+        ],
+      }]
     case 'player-checkin':
     case 'depth-chart':
     case 'bullpen-depth-chart':
@@ -437,6 +447,30 @@ export function getSampleDataForFilter(type: GlobalFilterType, playerType?: 'pit
         concerns: [
           { player_id: 543037, player_name: 'Gerrit Cole', type: 'pitcher', metric: 'velo', metric_label: 'Avg Velo', season_val: 96.1, recent_val: 94.3, delta: -1.8, sigma: -2.1, direction: 'down', sentiment: 'bad' },
         ],
+      }
+    case 'top-pitchers':
+      return {
+        date: '2026-04-05',
+        stuff_starter: {
+          player_id: 694973, player_name: 'Skenes, Paul', team: 'PIT',
+          pitch_name: 'Splinker', stuff_plus: 155, velo: 97.4,
+          game_line: { ip: '6.0', h: 3, r: 1, er: 1, bb: 1, k: 8, pitches: 94, decision: 'W' },
+        },
+        stuff_reliever: {
+          player_id: 677951, player_name: 'Bednar, David', team: 'PIT',
+          pitch_name: 'Curveball', stuff_plus: 142, velo: 82.1,
+          game_line: { ip: '1.0', h: 0, r: 0, er: 0, bb: 0, k: 2, pitches: 14, decision: 'SV' },
+        },
+        cmd_starter: {
+          player_id: 543037, player_name: 'Cole, Gerrit', team: 'NYY',
+          cmd_plus: 128, pitches: 97,
+          game_line: { ip: '7.0', h: 4, r: 2, er: 2, bb: 1, k: 9, pitches: 97, decision: 'W' },
+        },
+        cmd_reliever: {
+          player_id: 642585, player_name: 'Doval, Camilo', team: 'SF',
+          cmd_plus: 118, pitches: 16,
+          game_line: { ip: '1.0', h: 1, r: 0, er: 0, bb: 0, k: 1, pitches: 16, decision: 'HLD' },
+        },
       }
     case 'yesterday-scores':
       return {

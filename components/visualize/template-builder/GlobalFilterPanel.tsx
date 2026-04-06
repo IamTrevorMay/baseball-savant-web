@@ -18,6 +18,7 @@ const FILTER_TYPES: { value: GlobalFilterType; label: string }[] = [
   { value: 'player-checkin', label: 'Check-In' },
   { value: 'yesterday-scores', label: 'Scores' },
   { value: 'trends', label: 'Trends' },
+  { value: 'top-pitchers', label: 'Top Pitchers' },
 ]
 
 const MLB_TEAMS = [
@@ -401,6 +402,11 @@ export default function GlobalFilterPanel({
     trends: () => (
       <div className="space-y-2.5">
         <p className="text-[11px] text-zinc-400">Fetches top surges &amp; concerns from the Trends API. No configuration needed.</p>
+      </div>
+    ),
+    'top-pitchers': () => (
+      <div className="space-y-2.5">
+        <p className="text-[11px] text-zinc-400">Fetches daily highlights — best Stuff+ and Cmd+ starters &amp; relievers. No configuration needed.</p>
       </div>
     ),
   }

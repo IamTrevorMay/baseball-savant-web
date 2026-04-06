@@ -1132,6 +1132,17 @@ export default function SceneComposerPage() {
         return
       }
 
+      // ── Top Pitchers ──────────────────────────────────────────────
+      if (config.templateId === 'top-pitchers') {
+        const res = await fetch(`/api/scene-stats?topPitchers=true`)
+        const json = await res.json()
+        const rebuilt = template.rebuild(config, json.highlights || {})
+        setScene(rebuilt)
+        setSelectedId(null)
+        setSelectedIds(new Set())
+        return
+      }
+
       // ── Yesterday's Scores ────────────────────────────────────────
       if (config.templateId === 'yesterday-scores') {
         const defaultDate = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10) })()
@@ -1797,7 +1808,7 @@ export default function SceneComposerPage() {
                 onRefresh={() => fetchAndRebuildTemplate(scene.templateConfig!)}
                 loading={templateLoading}
               />
-            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart' || scene.templateConfig.templateId === '3-player-checkin' || scene.templateConfig.templateId === 'yesterday-scores' || scene.templateConfig.templateId === 'trends') ? (
+            ) : (scene.templateConfig.templateId === 'rotation-depth-chart' || scene.templateConfig.templateId === 'bullpen-depth-chart' || scene.templateConfig.templateId === '3-player-checkin' || scene.templateConfig.templateId === 'yesterday-scores' || scene.templateConfig.templateId === 'trends' || scene.templateConfig.templateId === 'top-pitchers') ? (
               <DepthChartConfigPanel
                 config={scene.templateConfig}
                 onUpdateConfig={updateTemplateConfig}

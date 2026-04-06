@@ -72,6 +72,15 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // ── Top Pitchers mode (daily highlights proxy) ────────────────────
+    if (sp.get('topPitchers') === 'true') {
+      const baseUrl = req.nextUrl.origin
+      const res = await fetch(`${baseUrl}/api/daily-highlights`)
+      const json = await res.json()
+      if (!res.ok) return NextResponse.json({ error: json.error || 'Failed to fetch highlights' }, { status: res.status })
+      return NextResponse.json({ highlights: json })
+    }
+
     // ── Yesterday's Scores mode (MLB Schedule API) ──────────────────────
     if (sp.get('yesterdayScores') === 'true') {
       const date = sp.get('date') || (() => {

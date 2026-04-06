@@ -416,6 +416,27 @@ const trends: StarterTemplate = {
   ],
 }
 
+/* ── 13  Top Pitchers ──────────────────────────────────────────────── */
+
+const topPitchers: StarterTemplate = {
+  id: 'top-pitchers',
+  name: 'Top Pitchers',
+  description: 'Daily highlight cards: best Stuff+ and Cmd+ starters & relievers.',
+  filterType: 'top-pitchers',
+  defaultFilter: { type: 'top-pitchers' },
+  canvasWidth: 1080,
+  canvasHeight: 1350,
+  background: '#09090b',
+  elements: [
+    // Title
+    { type: 'text', x: 40, y: 40, width: 1000, height: 60, props: { text: 'TOP PITCHERS', fontSize: 60, fontWeight: 800, color: WHITE, bgColor: TRANSPARENT, textAlign: 'center' } },
+    // Date subtitle
+    { type: 'text', x: 40, y: 105, width: 1000, height: 30, props: { text: 'Fetching latest data...', fontSize: 25, fontWeight: 400, color: DIM, bgColor: TRANSPARENT, textAlign: 'center' } },
+    // Watermark
+    { type: 'text', x: 190, y: 1310, width: 700, height: 20, props: { text: 'Powered by Mayday Media', fontSize: 16, fontWeight: 400, color: '#3f3f46', bgColor: TRANSPARENT, textAlign: 'center' } },
+  ],
+}
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   top5Leaderboard,
   playerSpotlight,
@@ -429,4 +450,5 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   threePlayerCheckin,
   yesterdayScores,
   trends,
+  topPitchers,
 ]
