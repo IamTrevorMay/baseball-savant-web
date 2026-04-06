@@ -815,7 +815,7 @@ export async function handleAutoComposeTool(
         // 1. Fetch brief — by date or latest
         let briefQuery = supabase
           .from('briefs')
-          .select('id, title, summary, date, games_count, is_off_day')
+          .select('id, title, summary, date, metadata')
           .order('date', { ascending: false })
           .limit(1)
         if (dateInput) briefQuery = briefQuery.eq('date', dateInput)
@@ -824,6 +824,7 @@ export async function handleAutoComposeTool(
         if (!briefRows?.length) return { result: JSON.stringify({ error: `No brief found${dateInput ? ` for ${dateInput}` : ''}` }) }
         const brief = briefRows[0]
         const briefDate = brief.date as string // YYYY-MM-DD
+        const meta = (brief.metadata || {}) as Record<string, any>
 
         // 2. Run parallel fetches anchored to brief date
         const [gamesRes, stuffRes, newPitchRes, txRes] = await Promise.all([
@@ -904,8 +905,8 @@ export async function handleAutoComposeTool(
             title: brief.title,
             summary: brief.summary,
             date: briefDate,
-            games_count: brief.games_count,
-            is_off_day: brief.is_off_day,
+            games_count: meta.games_count ?? null,
+            is_off_day: meta.is_off_day ?? false,
           },
           games,
           stuff_leaders: stuffLeaders,
