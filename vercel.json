@@ -26,7 +26,11 @@
     },
     {
       "path": "/api/cron/briefs",
-      "schedule": "0 14 * * *"
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/newsletter",
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/daily-cards",

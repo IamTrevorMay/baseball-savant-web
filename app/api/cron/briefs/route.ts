@@ -223,6 +223,22 @@ Return ONLY valid JSON, no markdown fences.`,
           finished_count: finishedGames.length,
           is_off_day: isOffDay,
           daily_highlights: dailyHighlights,
+          claude_sections: {
+            dayRundown: parsed.dayRundown,
+            topPerformances: parsed.topPerformances,
+            worstPerformances: parsed.worstPerformances,
+            injuries: parsed.injuries,
+            transactions: parsed.transactions,
+          },
+          scores: boxScores.map(bs => ({
+            away: bs.away.team.abbrev,
+            home: bs.home.team.abbrev,
+            awayScore: bs.totals.away.runs,
+            homeScore: bs.totals.home.runs,
+            winner: bs.decisions.winner || null,
+            loser: bs.decisions.loser || null,
+            save: bs.decisions.save || null,
+          })),
         },
       })
 
