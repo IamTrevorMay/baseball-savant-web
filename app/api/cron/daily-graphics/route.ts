@@ -136,28 +136,139 @@ async function generateIGStarterCard(date: string): Promise<any | null> {
 // ── 2. Trends ────────────────────────────────────────────────────────────────
 
 async function generateTrends(): Promise<any> {
-  const baseUrl = getBaseUrl()
   const season = new Date().getFullYear()
   const earlyMonth = new Date().getMonth() + 1 <= 4
   const minPitches = earlyMonth ? 50 : 500
 
-  // Fetch both pitcher and hitter trends in parallel
-  const [pitcherRes, hitterRes] = await Promise.all([
-    fetch(`${baseUrl}/api/trends`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season, playerType: 'pitcher', minPitches }),
-    }),
-    fetch(`${baseUrl}/api/trends`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season, playerType: 'hitter', minPitches }),
-    }),
-  ])
+  // Fetch trends directly from DB (same logic as /api/trends)
+  async function fetchAlerts(playerType: 'pitcher' | 'hitter') {
+    const isPitcher = playerType === 'pitcher'
+    const groupCol = isPitcher ? 'pitcher' : 'batter'
 
-  const [pd, hd] = await Promise.all([pitcherRes.json(), hitterRes.json()])
-  const pitcherAlerts = (pd.rows || []).map((a: any) => ({ ...a, type: 'pitcher' }))
-  const hitterAlerts = (hd.rows || []).map((a: any) => ({ ...a, type: 'hitter' }))
+    const metrics = isPitcher
+      ? [
+          { key: 'velo', label: 'Avg Velo', higherIsBetter: true },
+          { key: 'whiff', label: 'Whiff%', higherIsBetter: true },
+          { key: 'k_pct', label: 'K%', higherIsBetter: true },
+          { key: 'zone_pct', label: 'Zone%', higherIsBetter: false },
+          { key: 'xwoba', label: 'xwOBA', higherIsBetter: false },
+          { key: 'spin', label: 'Avg Spin', higherIsBetter: true },
+        ]
+      : [
+          { key: 'ev', label: 'Avg EV', higherIsBetter: true },
+          { key: 'xwoba', label: 'xwOBA', higherIsBetter: true },
+          { key: 'k_pct', label: 'K%', higherIsBetter: false },
+          { key: 'bb_pct', label: 'BB%', higherIsBetter: true },
+          { key: 'hard_hit', label: 'Hard Hit%', higherIsBetter: true },
+          { key: 'whiff', label: 'Whiff%', higherIsBetter: false },
+        ]
+
+    // Check if regular season data exists
+    const regCheck = await supabaseAdmin.rpc('run_query', {
+      query_text: `SELECT 1 FROM pitches WHERE game_year = ${season} AND game_type = 'R' LIMIT 1`,
+    })
+    const hasReg = (regCheck.data || []).length > 0
+    const gtFilter = hasReg ? "AND game_type = 'R'" : ''
+
+    // Get date range
+    const dateRes = await supabaseAdmin.rpc('run_query', {
+      query_text: `SELECT MIN(game_date) as earliest, MAX(game_date) as latest FROM pitches WHERE game_year = ${season} ${gtFilter}`,
+    })
+    const latestDate = dateRes.data?.[0]?.latest
+    const earliestDate = dateRes.data?.[0]?.earliest
+    if (!latestDate) return []
+
+    const spanDays = Math.round((new Date(latestDate).getTime() - new Date(earliestDate).getTime()) / 86400000)
+    const recentDays = spanDays < 21 ? Math.max(3, Math.floor(spanDays / 2)) : 14
+    const recentDate = new Date(new Date(latestDate).getTime() - recentDays * 86400000).toISOString().slice(0, 10)
+
+    // Build SQL for season + recent metrics
+    const seasonSQLMap: Record<string, string> = {
+      velo: 'ROUND(AVG(release_speed)::numeric, 1)',
+      whiff: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt'), 0), 1)",
+      k_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
+      zone_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)",
+      xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
+      spin: 'ROUND(AVG(release_spin_rate)::numeric, 0)',
+      ev: 'ROUND(AVG(launch_speed)::numeric, 1)',
+      bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
+      hard_hit: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1)",
+    }
+
+    const seasonCols = metrics.map(m => `${seasonSQLMap[m.key]} as season_${m.key}`).join(', ')
+    const recentCols = metrics.map(m => {
+      const sql = seasonSQLMap[m.key]
+      // Add game_date filter for recent window
+      const recentSQL = sql.replace(/COUNT\(\*\)/g, `COUNT(*) FILTER (WHERE game_date >= '${recentDate}')`)
+        .replace(/AVG\((\w+)\)/g, `AVG($1) FILTER (WHERE game_date >= '${recentDate}')`)
+        .replace(/FILTER \(WHERE (.*?)\)/g, (_, cond) => {
+          if (cond.includes('game_date')) return `FILTER (WHERE ${cond})`
+          return `FILTER (WHERE game_date >= '${recentDate}' AND ${cond})`
+        })
+      return `${recentSQL} as recent_${m.key}`
+    }).join(', ')
+
+    const { data } = await supabaseAdmin.rpc('run_query', {
+      query_text: `
+        SELECT p.${groupCol} as player_id, pl.name as player_name,
+          COUNT(*) as total_pitches,
+          ${seasonCols}, ${recentCols}
+        FROM pitches p
+        JOIN players pl ON pl.id = p.${groupCol}
+        WHERE game_year = ${season} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}
+        GROUP BY p.${groupCol}, pl.name
+        HAVING COUNT(*) >= ${minPitches}
+          AND COUNT(*) FILTER (WHERE game_date >= '${recentDate}') >= 30
+      `,
+    })
+
+    if (!data || data.length === 0) return []
+
+    // Compute stddev per metric
+    const stddevs: Record<string, number> = {}
+    for (const m of metrics) {
+      const vals = data.map((r: any) => r[`season_${m.key}`]).filter((v: any) => v != null) as number[]
+      if (vals.length < 3) { stddevs[m.key] = 1; continue }
+      const mean = vals.reduce((a: number, b: number) => a + b, 0) / vals.length
+      const variance = vals.reduce((a: number, b: number) => a + (b - mean) ** 2, 0) / vals.length
+      stddevs[m.key] = Math.sqrt(variance) || 1
+    }
+
+    // Build alerts
+    const alerts: any[] = []
+    for (const row of data as any[]) {
+      for (const m of metrics) {
+        const sv = row[`season_${m.key}`]
+        const rv = row[`recent_${m.key}`]
+        if (sv == null || rv == null) continue
+        const delta = rv - sv
+        const sigma = delta / stddevs[m.key]
+        if (Math.abs(sigma) < 1.5) continue
+        const direction = delta > 0 ? 'up' : 'down'
+        const isGood = (delta > 0) === m.higherIsBetter
+        alerts.push({
+          player_id: row.player_id,
+          player_name: row.player_name,
+          type: playerType,
+          metric: m.key,
+          metric_label: m.label,
+          season_val: sv,
+          recent_val: rv,
+          delta: Math.round(delta * 100) / 100,
+          sigma: Math.round(sigma * 100) / 100,
+          direction,
+          sentiment: isGood ? 'good' : 'bad',
+        })
+      }
+    }
+
+    return alerts
+  }
+
+  const [pitcherAlerts, hitterAlerts] = await Promise.all([
+    fetchAlerts('pitcher'),
+    fetchAlerts('hitter'),
+  ])
   const all = [...pitcherAlerts, ...hitterAlerts]
 
   const surgeAll = all.filter((a: any) => a.sentiment === 'good').sort((a: any, b: any) => Math.abs(b.sigma) - Math.abs(a.sigma))
@@ -178,6 +289,10 @@ async function generateTrends(): Promise<any> {
 
   const surges = pickUnique(surgeAll, 5)
   const concerns = pickUnique(concernAll, 5)
+
+  if (surges.length === 0 && concerns.length === 0) {
+    throw new Error('No trend data found')
+  }
 
   const template = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'trends')
   if (!template) throw new Error('Trends template not found')
