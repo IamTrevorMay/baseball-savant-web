@@ -715,11 +715,12 @@ export async function handleAutoComposeTool(
     case 'get_trends': {
       const playerType = (input.player_type as string) || 'both'
       const season = (input.season as number) || new Date().getFullYear()
-      const minPitches = (input.min_pitches as number) || 500
+      const minPitches = (input.min_pitches as number) || 200
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
       const types = playerType === 'both' ? ['pitcher', 'hitter'] : [playerType]
       const allAlerts: any[] = []
+      const errors: string[] = []
 
       for (const pt of types) {
         try {
@@ -729,19 +730,25 @@ export async function handleAutoComposeTool(
             body: JSON.stringify({ season, playerType: pt, minPitches }),
           })
           const json = await res.json()
+          if (!res.ok || json.error) {
+            errors.push(`${pt}: ${json.error || res.statusText}`)
+            continue
+          }
           if (json.rows) {
             for (const r of json.rows) {
               allAlerts.push({ ...r, player_type: pt })
             }
           }
-        } catch {}
+        } catch (err: any) {
+          errors.push(`${pt}: ${err.message}`)
+        }
       }
 
       // Split into surges and concerns, take top 10 each
       const surges = allAlerts.filter(a => a.sentiment === 'good').slice(0, 10)
       const concerns = allAlerts.filter(a => a.sentiment === 'bad').slice(0, 10)
 
-      return { result: JSON.stringify({ surges, concerns, total: allAlerts.length, season }) }
+      return { result: JSON.stringify({ surges, concerns, total: allAlerts.length, season, ...(errors.length ? { errors } : {}) }) }
     }
 
     case 'get_abs_summary': {
@@ -763,6 +770,7 @@ export async function handleAutoComposeTool(
           }),
         ])
         const dashboard = await dashRes.json()
+        if (!dashRes.ok) return { result: JSON.stringify({ error: `ABS dashboard: ${dashboard.error || dashRes.statusText}` }) }
         const umpires = await umpRes.json()
 
         // Compact the response: summary + top teams + top umpires
@@ -805,6 +813,7 @@ export async function handleAutoComposeTool(
             body: JSON.stringify({ action: 'scorecard', name: umpireName, season, gameType }),
           })
           const data = await res.json()
+          if (!res.ok) return { result: JSON.stringify({ error: `Umpire scorecard: ${data.error || res.statusText}` }) }
           // Compact: drop raw missed calls array (too large for context), keep summary + zone + game log
           const compact: any = {
             umpire: umpireName, season,
@@ -822,6 +831,7 @@ export async function handleAutoComposeTool(
             body: JSON.stringify({ action: 'leaderboard', season, gameType }),
           })
           const data = await res.json()
+          if (!res.ok) return { result: JSON.stringify({ error: `Umpire leaderboard: ${data.error || res.statusText}` }) }
           const leaderboard = (Array.isArray(data) ? data : []).map((u: any) => ({
             name: u.hp_umpire, games: u.games,
             called_pitches: u.called_pitches,
