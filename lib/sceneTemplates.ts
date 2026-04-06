@@ -2997,4 +2997,137 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
       }
     },
   },
+
+  // ── Top Performances (Daily Brief) ──────────────────────────────────────
+  {
+    id: 'top-performances',
+    name: 'Top Performances',
+    category: 'social',
+    description: 'Ranked list of daily top performers — batters and pitchers from the brief',
+    icon: '\u{1f31f}',
+    width: 1080,
+    height: 1350,
+    defaultConfig: {
+      playerType: 'pitcher',
+      primaryStat: 'stuff_plus',
+      dateRange: { type: 'season', year: new Date().getFullYear() },
+    },
+    rebuild: (_config: TemplateConfig, data: any): Scene => {
+      _z = 100
+      const elements: SceneElement[] = []
+      const W = 1080, H = 1350
+
+      // ── Parse HTML → entries ────────────────────────────────────────
+      interface PerfEntry { name: string; team: string; stats: string }
+      function parsePerformancesHtml(html: string): PerfEntry[] {
+        const entries: PerfEntry[] = []
+        const trRegex = /<tr>([\s\S]*?)<\/tr>/gi
+        let trMatch
+        while ((trMatch = trRegex.exec(html)) !== null) {
+          const rowHtml = trMatch[1]
+          const nameMatch = rowHtml.match(/font-weight:\s*600[^>]*>([^<]+)</)
+          const teamMatch = rowHtml.match(/font-size:\s*11px[^>]*>([^<]+)</)
+          const tds = rowHtml.match(/<td[^>]*>([\s\S]*?)<\/td>/gi)
+          let stats = ''
+          if (tds && tds.length >= 2) {
+            stats = tds[1].replace(/<[^>]+>/g, '').trim()
+          }
+          if (nameMatch) {
+            entries.push({
+              name: nameMatch[1].trim(),
+              team: teamMatch ? teamMatch[1].trim() : '??',
+              stats: stats || '—',
+            })
+          }
+        }
+        return entries
+      }
+
+      const entries: PerfEntry[] = data?.topPerformances
+        ? parsePerformancesHtml(data.topPerformances)
+        : []
+
+      // ── Format date ─────────────────────────────────────────────────
+      const dateStr = data?.date
+        ? new Date(data.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+        : ''
+
+      // ── Title ───────────────────────────────────────────────────────
+      elements.push(el('text', 40, 40, W - 80, 60, {
+        text: 'TOP PERFORMANCES', fontSize: 60, fontWeight: 800, color: '#ffffff', textAlign: 'center',
+      }))
+      elements.push(el('text', 40, 105, W - 80, 30, {
+        text: dateStr, fontSize: 25, fontWeight: 400, color: '#a1a1aa', textAlign: 'center',
+      }))
+
+      // ── Rank accent colors ──────────────────────────────────────────
+      const rankColors = [
+        '#f59e0b', '#f59e0b', '#f59e0b', // gold top 3
+        '#10b981', '#10b981', '#10b981', '#10b981', '#10b981', '#10b981', '#10b981', // emerald rest
+      ]
+
+      const maxEntries = Math.min(entries.length, 10)
+      const contentH = H - 200
+      const rowH = Math.min(110, contentH / Math.max(maxEntries, 1))
+      const startY = 160
+      const rowX = 40
+      const rowW = W - 80
+
+      if (maxEntries === 0) {
+        elements.push(el('text', 40, H / 2 - 30, W - 80, 60, {
+          text: 'No data available', fontSize: 28, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+        }))
+      }
+
+      for (let i = 0; i < maxEntries; i++) {
+        const entry = entries[i]
+        const ry = startY + i * rowH
+
+        // Row background
+        elements.push(el('shape', rowX, ry, rowW, rowH - 8, {
+          shape: 'rect', fill: 'rgba(255,255,255,0.03)', stroke: 'transparent', strokeWidth: 0, borderRadius: 12,
+        }))
+
+        const rankColor = rankColors[i] || '#10b981'
+
+        // Rank number (left)
+        elements.push(el('text', rowX + 10, ry + 12, 50, 42, {
+          text: String(i + 1), fontSize: 42, fontWeight: 800, color: rankColor, textAlign: 'center',
+        }))
+
+        // Player name
+        elements.push(el('text', rowX + 70, ry + 10, rowW - 200, 44, {
+          text: entry.name, fontSize: 40, fontWeight: 700, color: '#e4e4e7', textAlign: 'left',
+        }))
+
+        // Team badge (right of name)
+        elements.push(el('text', rowW - 20, ry + 16, 80, 28, {
+          text: entry.team, fontSize: 18, fontWeight: 600, color: '#a1a1aa', textAlign: 'center',
+          bgColor: 'rgba(255,255,255,0.08)', borderRadius: 6,
+        }))
+
+        // Stats line (centered below name)
+        elements.push(el('text', rowX + 70, ry + 58, rowW - 140, 28, {
+          text: entry.stats, fontSize: 26, fontWeight: 400, color: '#71717a', textAlign: 'left',
+        }))
+      }
+
+      // ── Watermark ────────────────────────────────────────────────────
+      elements.push(el('text', 140, H - 40, W - 280, 20, {
+        text: 'Powered by Mayday Media', fontSize: 18, fontWeight: 400, color: '#3f3f46', textAlign: 'center',
+      }))
+
+      return {
+        id: Math.random().toString(36).slice(2, 10),
+        name: 'Top Performances',
+        width: W,
+        height: H,
+        background: '#09090b',
+        elements,
+        duration: 5,
+        fps: 30,
+        templateConfig: _config,
+      }
+    },
+  },
 ]

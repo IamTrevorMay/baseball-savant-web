@@ -72,6 +72,24 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // ── Top Performances mode (daily brief topPerformances) ────────────
+    if (sp.get('topPerformances') === 'true') {
+      const { data } = await supabase
+        .from('briefs')
+        .select('date, metadata')
+        .order('date', { ascending: false })
+        .limit(1)
+        .single()
+
+      const topPerformances = data?.metadata?.claude_sections?.topPerformances || null
+      return NextResponse.json({
+        brief: {
+          date: data?.date || null,
+          topPerformances,
+        },
+      })
+    }
+
     // ── Top Pitchers mode (daily highlights proxy) ────────────────────
     if (sp.get('topPitchers') === 'true') {
       const baseUrl = req.nextUrl.origin

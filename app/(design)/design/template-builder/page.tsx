@@ -144,6 +144,10 @@ export default function TemplateBuilderPage() {
           const forked = builtin.rebuild(config, {})
           setScene({ ...forked, name: `${builtin.name} (Custom)` })
           setGlobalFilter({ type: 'top-pitchers' })
+        } else if (builtin.id === 'top-performances') {
+          const forked = builtin.rebuild(config, {})
+          setScene({ ...forked, name: `${builtin.name} (Custom)` })
+          setGlobalFilter({ type: 'top-performances' })
         } else {
           const sample = getSampleData('leaderboard')
           const forked = builtin.rebuild(config, sample)
@@ -329,6 +333,21 @@ export default function TemplateBuilderPage() {
         if (builtin) {
           const config = { templateId: builtin.id, ...builtin.defaultConfig }
           const rebuilt = builtin.rebuild(config, json.highlights || {})
+          setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
+        }
+        setDataLoaded(true)
+        setFetchLoading(false)
+        return
+      }
+
+      // Top Performances: fetch from daily brief
+      if (globalFilter.type === 'top-performances') {
+        const res = await fetch(`/api/scene-stats?topPerformances=true`)
+        const json = await res.json()
+        const builtin = DATA_DRIVEN_TEMPLATES.find(t => t.id === 'top-performances')
+        if (builtin) {
+          const config = { templateId: builtin.id, ...builtin.defaultConfig }
+          const rebuilt = builtin.rebuild(config, json.brief || {})
           setScene(prev => ({ ...prev, elements: rebuilt.elements, background: rebuilt.background }))
         }
         setDataLoaded(true)
@@ -753,6 +772,10 @@ export default function TemplateBuilderPage() {
       const built = template.rebuild(config, {})
       setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
       setGlobalFilter({ type: 'top-pitchers' })
+    } else if (template.id === 'top-performances') {
+      const built = template.rebuild(config, {})
+      setScene({ ...built, name: `${template.name} (Custom)`, templateConfig: undefined, templateData: undefined })
+      setGlobalFilter({ type: 'top-performances' })
     } else {
       const sampleData = getSampleData(template.defaultConfig.primaryStat ? 'leaderboard' : 'generic')
       const built = template.rebuild(config, sampleData)

@@ -22,6 +22,7 @@ const FILTER_LABELS: Record<GlobalFilterType, string> = {
   'yesterday-scores': 'Custom',
   trends: 'Custom',
   'top-pitchers': 'Custom',
+  'top-performances': 'Custom',
 }
 
 const BADGE_COLORS: Record<GlobalFilterType, string> = {
@@ -36,6 +37,7 @@ const BADGE_COLORS: Record<GlobalFilterType, string> = {
   'yesterday-scores': 'bg-orange-500/20 text-orange-400',
   trends: 'bg-orange-500/20 text-orange-400',
   'top-pitchers': 'bg-amber-500/20 text-amber-400',
+  'top-performances': 'bg-amber-500/20 text-amber-400',
 }
 
 /* Group templates by filter type, preserving order */
@@ -48,6 +50,7 @@ function grouped(): { label: string; type: GlobalFilterType; templates: StarterT
       : t.filterType === 'yesterday-scores' ? 'player-checkin' as GlobalFilterType
       : t.filterType === 'trends' ? 'player-checkin' as GlobalFilterType
       : t.filterType === 'top-pitchers' ? 'player-checkin' as GlobalFilterType
+      : t.filterType === 'top-performances' ? 'player-checkin' as GlobalFilterType
       : t.filterType
     if (!map.has(group)) map.set(group, [])
     map.get(group)!.push(t)

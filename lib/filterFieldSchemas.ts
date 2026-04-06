@@ -288,6 +288,15 @@ export function getFilterFields(type: GlobalFilterType, playerType?: 'pitcher' |
           { key: 'velo', label: 'Velocity', shortLabel: 'Velo', type: 'number' },
         ],
       }]
+    case 'top-performances':
+      return [{
+        category: 'Top Performances',
+        fields: [
+          { key: 'name', label: 'Player Name', shortLabel: 'Name', type: 'string' },
+          { key: 'team', label: 'Team', shortLabel: 'Team', type: 'string' },
+          { key: 'stats', label: 'Stats', shortLabel: 'Stats', type: 'string' },
+        ],
+      }]
     case 'player-checkin':
     case 'depth-chart':
     case 'bullpen-depth-chart':
@@ -482,6 +491,11 @@ export function getSampleDataForFilter(type: GlobalFilterType, playerType?: 'pit
           { awayAbbrev: 'HOU', homeAbbrev: 'SEA', awayScore: 4, homeScore: 1, winPitcher: 'Valdez', losePitcher: 'Castillo' },
           { awayAbbrev: 'ATL', homeAbbrev: 'NYM', awayScore: 6, homeScore: 8, winPitcher: 'Senga', losePitcher: 'Fried', savePitcher: 'Diaz' },
         ],
+      }
+    case 'top-performances':
+      return {
+        date: '2026-04-05',
+        topPerformances: '<table><tr><td><span style="font-weight:600">Aaron Judge</span> <span style="font-size:11px">NYY</span></td><td>3-for-4, 2 HR, 5 RBI</td></tr><tr><td><span style="font-weight:600">Paul Skenes</span> <span style="font-size:11px">PIT</span></td><td>7.0 IP, 2 H, 0 ER, 12 K</td></tr><tr><td><span style="font-weight:600">Shohei Ohtani</span> <span style="font-size:11px">LAD</span></td><td>4-for-5, HR, 3B, 4 RBI</td></tr></table>',
       }
   }
 }
