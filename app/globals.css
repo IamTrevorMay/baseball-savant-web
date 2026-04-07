@@ -19,6 +19,11 @@ nav a, nav button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Dark mode date picker — shows calendar icon and dropdown in dark theme */
+input[type="date"] {
+  color-scheme: dark;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
