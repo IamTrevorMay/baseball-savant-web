@@ -42,9 +42,9 @@ export default function PitchersPage() {
   }, [])
 
   async function loadDbInfo() {
-    const { count } = await supabase.from('pitches').select('*', { count: 'exact', head: true })
-    const { data: ld } = await supabase.from('pitches').select('game_date').order('game_date', { ascending: false }).limit(1)
-    setDbInfo({ total: count || 0, pitchers: 0, lastDate: ld?.[0]?.game_date || '' })
+    const { data: stats } = await supabase.rpc('run_query', { query_text: "SELECT COUNT(*)::int as total, MAX(game_date)::text as last_date FROM pitches" })
+    const row = stats?.[0]
+    setDbInfo({ total: row?.total || 0, pitchers: 0, lastDate: row?.last_date || '' })
   }
 
   async function loadTopPitchers() {
