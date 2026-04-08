@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || '2025')
   const gameType = searchParams.get('gameType') || 'R'
+  const month = new Date().getMonth() + 1
 
   try {
     // Step 1: Compute per-pitcher, per-pitch-type averages
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
         AND pfx_z IS NOT NULL
         AND pfx_x IS NOT NULL
       GROUP BY pitcher, player_name, pitch_type, pitch_name, p_throws
-      HAVING COUNT(*) >= 100
+      HAVING COUNT(*) >= ${month <= 5 ? 30 : 100}
     `.trim()
 
     const { data: pitcherRows, error: pitcherErr } = await supabase.rpc('run_query', { query_text: pitcherSql })
