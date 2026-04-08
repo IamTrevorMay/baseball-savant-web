@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
 import ResearchNav from '@/components/ResearchNav'
@@ -54,7 +54,6 @@ const TEAM_COLORS: Record<string, string> = {
 
 export default function PlayerDashboard() {
   const params = useParams()
-  const router = useRouter()
   const pitcherId = Number(params.id)
 
   const [info, setInfo] = useState<PlayerInfo | null>(null)
@@ -79,11 +78,6 @@ export default function PlayerDashboard() {
 
   // Lahman historical data
   const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
-
-  // Search bar state
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [showSearch, setShowSearch] = useState(false)
 
   useEffect(() => { loadPlayer(); loadModelTabs() }, [pitcherId])
 
@@ -156,13 +150,6 @@ export default function PlayerDashboard() {
   }
 
 
-  async function handleSearch(value: string) {
-    setSearchQuery(value)
-    if (!value.trim()) { setSearchResults([]); return }
-    const { data } = await supabase.rpc("search_players", { search_term: value.trim(), result_limit: 6 })
-    setSearchResults(data || [])
-    setShowSearch(true)
-  }
   async function fetchData(year?: number | null) {
     setDataLoading(true)
     try {
@@ -286,25 +273,7 @@ export default function PlayerDashboard() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 flex flex-col">
       {/* Top Nav */}
-      <ResearchNav active="/pitchers">
-        <div className="relative ml-4 hidden sm:block">
-          <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
-            onFocus={() => searchQuery && setShowSearch(true)}
-            placeholder="Search pitcher..."
-            className="w-64 pl-3 pr-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
-          {showSearch && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-xl z-50">
-              {searchResults.map(p => (
-                <div key={p.pitcher} onClick={() => { router.push(`/player/${p.pitcher}`); setShowSearch(false); setSearchQuery('') }}
-                  className="px-3 py-2 text-sm hover:bg-zinc-700 cursor-pointer flex justify-between">
-                  <span className="text-white">{p.player_name}</span>
-                  <span className="text-zinc-500 text-xs">{p.team}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </ResearchNav>
+      <ResearchNav active="/pitchers" />
 
       {/* Player Header */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-5">

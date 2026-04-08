@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
 import ResearchNav from '@/components/ResearchNav'
@@ -46,7 +46,6 @@ const TEAM_COLORS: Record<string, string> = {
 
 export default function HitterDashboard() {
   const params = useParams()
-  const router = useRouter()
   const batterId = Number(params.id)
 
   const [info, setInfo] = useState<HitterInfo | null>(null)
@@ -67,10 +66,7 @@ export default function HitterDashboard() {
   // Lahman historical data
   const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
 
-  // Search bar state
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [showSearch, setShowSearch] = useState(false)
+  const [seasonType, setSeasonType] = useState<'regular'|'spring'|'postseason'|'all'>('regular')
 
   useEffect(() => { loadPlayer(); loadModelTabs() }, [batterId])
 
@@ -79,11 +75,23 @@ export default function HitterDashboard() {
     setModelTabs(getDashboardModels(models, 'hitter'))
   }
 
+  // Partition by season type before user filters
+  const seasonFilteredData = useMemo(() => {
+    if (seasonType === 'all') return allData
+    return allData.filter((r: any) => {
+      const gt = r.game_type
+      if (seasonType === 'regular') return gt === 'R'
+      if (seasonType === 'spring') return gt === 'S' || gt === 'E'
+      if (seasonType === 'postseason') return ['P','F','D','L','W'].includes(gt)
+      return true
+    })
+  }, [allData, seasonType])
+
   // Client-side filtered data
   const filteredData = useMemo(() => {
-    if (activeFilters.length === 0) return allData
-    return applyFiltersToData(allData, activeFilters)
-  }, [allData, activeFilters])
+    if (activeFilters.length === 0) return seasonFilteredData
+    return applyFiltersToData(seasonFilteredData, activeFilters)
+  }, [seasonFilteredData, activeFilters])
 
   // Debounced filter application
   useEffect(() => {
@@ -114,14 +122,6 @@ export default function HitterDashboard() {
       .catch(() => {})
     await Promise.all([fetchData(initialYear), lahmanPromise])
     setLoading(false)
-  }
-
-  async function handleSearch(value: string) {
-    setSearchQuery(value)
-    if (!value.trim()) { setSearchResults([]); return }
-    const { data } = await supabase.rpc("search_batters", { search_term: value.trim(), result_limit: 6 })
-    setSearchResults(data || [])
-    setShowSearch(true)
   }
 
   async function fetchData(year?: number | null) {
@@ -214,25 +214,7 @@ export default function HitterDashboard() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 flex flex-col">
       {/* Top Nav */}
-      <ResearchNav active="/hitters">
-        <div className="relative ml-4 hidden sm:block">
-          <input type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
-            onFocus={() => searchQuery && setShowSearch(true)}
-            placeholder="Search hitter..."
-            className="w-64 pl-3 pr-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none" />
-          {showSearch && searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg overflow-hidden shadow-xl z-50">
-              {searchResults.map((p: any) => (
-                <div key={p.batter} onClick={() => { router.push(`/hitter/${p.batter}`); setShowSearch(false); setSearchQuery('') }}
-                  className="px-3 py-2 text-sm hover:bg-zinc-700 cursor-pointer flex justify-between">
-                  <span className="text-white">{p.player_name}</span>
-                  <span className="text-zinc-500 text-xs">{p.team}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </ResearchNav>
+      <ResearchNav active="/hitters" />
 
       {/* Player Header */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-5">
@@ -256,9 +238,16 @@ export default function HitterDashboard() {
                     <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
+                <select value={seasonType} onChange={e => setSeasonType(e.target.value as any)}
+                  className="bg-zinc-800 border border-zinc-700 text-white text-xs rounded px-2 py-1 focus:border-emerald-600 focus:outline-none">
+                  <option value="regular">Regular Season</option>
+                  <option value="spring">Spring Training</option>
+                  <option value="postseason">Postseason</option>
+                  <option value="all">All Games</option>
+                </select>
                 <span>Bats {info.bats}</span>
-                <span>{info.total_pitches.toLocaleString()} pitches seen</span>
-                <span>{info.games.toLocaleString()} games</span>
+                <span>{seasonFilteredData.length.toLocaleString()} pitches seen</span>
+                <span>{new Set(seasonFilteredData.map((r: any) => r.game_pk)).size.toLocaleString()} games</span>
                 <span>{info.first_date} — {info.last_date}</span>
                 {lahmanData?.player?.debut && <span>Debut: {lahmanData.player.debut}</span>}
               </div>

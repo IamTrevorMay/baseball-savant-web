@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import TridentLogo from '@/components/TridentLogo'
+import GlobalPlayerSearch from '@/components/GlobalPlayerSearch'
 
 const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
@@ -64,7 +65,10 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
       <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
       <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4 hidden sm:inline">Research</a>
 
-      {/* Injected content (search bars etc) */}
+      {/* Global player search */}
+      <GlobalPlayerSearch />
+
+      {/* Injected content */}
       {children}
 
       {/* Desktop nav links — centered */}
