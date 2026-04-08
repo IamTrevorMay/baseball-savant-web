@@ -58,6 +58,8 @@ export default function HitterDashboard() {
   const [allData, setAllData] = useState<any[]>([])
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
+  const [selectedYear, setSelectedYear] = useState<number | null>(new Date().getFullYear())
+  const [availableYears, setAvailableYears] = useState<number[]>([])
 
   // Model tabs
   const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
@@ -101,12 +103,16 @@ export default function HitterDashboard() {
       .from('batter_summary').select('*').eq('batter', batterId).single()
     if (pData) setInfo(pData as HitterInfo)
 
+    // Default to player's latest season (handles retired players correctly)
+    const initialYear = pData?.latest_season || new Date().getFullYear()
+    setSelectedYear(initialYear)
+
     // Load pitches + Lahman data in parallel
     const lahmanPromise = fetch(`/api/lahman/player?mlb_id=${batterId}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.player) setLahmanData(d) })
       .catch(() => {})
-    await Promise.all([fetchData(), lahmanPromise])
+    await Promise.all([fetchData(initialYear), lahmanPromise])
     setLoading(false)
   }
 
@@ -118,23 +124,15 @@ export default function HitterDashboard() {
     setShowSearch(true)
   }
 
-  async function fetchData() {
+  async function fetchData(year?: number | null) {
     setDataLoading(true)
     try {
-      const res = await fetch(`/api/player-data?id=${batterId}&col=batter`)
+      const yearParam = year != null ? `&year=${year}` : ''
+      const res = await fetch(`/api/player-data?id=${batterId}&col=batter${yearParam}`)
       if (!res.ok) throw new Error('Failed to fetch player data')
       const { rows: allRows } = await res.json() as { rows: any[] }
 
-      // Look up pitcher names
-      const pitcherIds = [...new Set(allRows.map((r: any) => r.pitcher).filter(Boolean))]
-      const pitcherNames: Record<number, string> = {}
-      for (let i = 0; i < pitcherIds.length; i += 500) {
-        const batch = pitcherIds.slice(i, i + 500)
-        const { data: players } = await supabase.from("players").select("id, name").in("id", batch)
-        if (players) players.forEach((p: any) => { pitcherNames[p.id] = p.name })
-      }
-
-      // Enrich with derived fields
+      // Enrich with derived fields (pitcher_name now comes from server-side JOIN)
       allRows.forEach((p: any) => {
         // VAA (approach angle context)
         if (p.vz0 != null && p.vy0 != null && p.az != null && p.ay != null && p.release_extension != null) {
@@ -156,8 +154,6 @@ export default function HitterDashboard() {
         // vs Team (opposing pitching team)
         if (p.inning_topbot === "Top") p.vs_team = p.home_team
         else if (p.inning_topbot === "Bot") p.vs_team = p.away_team
-        // Pitcher name
-        if (p.pitcher && pitcherNames[p.pitcher]) p.pitcher_name = pitcherNames[p.pitcher]
       })
 
       const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
@@ -167,8 +163,17 @@ export default function HitterDashboard() {
 
       // Build filter options from loaded data
       const buildOpts = (col: string) => [...new Set(cleaned.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
+      const years = buildOpts("game_year").sort().reverse()
+      if (year != null && availableYears.length === 0) {
+        fetch(`/api/player-filter-options?id=${batterId}&col=batter`)
+          .then(r => r.json())
+          .then(d => { if (d.game_year) setAvailableYears(d.game_year.map(Number)) })
+          .catch(() => {})
+      } else if (year == null) {
+        setAvailableYears(years.map(Number))
+      }
       setOptionsCache({
-        game_year: buildOpts("game_year").sort().reverse(),
+        game_year: years,
         pitch_name: buildOpts("pitch_name"),
         pitch_type: buildOpts("pitch_type"),
         stand: buildOpts("stand"),
@@ -239,7 +244,18 @@ export default function HitterDashboard() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">{info.player_name}</h1>
-              <div className="flex gap-4 text-sm text-zinc-400 mt-1">
+              <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
+                <select value={selectedYear ?? 'all'} onChange={e => {
+                  const v = e.target.value === 'all' ? null : parseInt(e.target.value)
+                  setSelectedYear(v)
+                  fetchData(v)
+                }}
+                  className="bg-zinc-800 border border-zinc-700 text-white text-xs rounded px-2 py-1 focus:border-emerald-600 focus:outline-none">
+                  <option value="all">All Seasons</option>
+                  {(availableYears.length > 0 ? availableYears : [new Date().getFullYear()]).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
                 <span>Bats {info.bats}</span>
                 <span>{info.total_pitches.toLocaleString()} pitches seen</span>
                 <span>{info.games.toLocaleString()} games</span>

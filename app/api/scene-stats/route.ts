@@ -925,7 +925,9 @@ export async function GET(req: NextRequest) {
       stats.player_name = pData?.[0]?.name || null
     }
 
-    return NextResponse.json({ stats })
+    return NextResponse.json({ stats }, {
+      headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' }
+    })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

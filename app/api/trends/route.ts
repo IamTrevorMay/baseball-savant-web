@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { getCached, setCache } from '@/lib/queryCache'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -32,6 +33,15 @@ export async function POST(req: NextRequest) {
     const { season = 2025, playerType = 'pitcher', minPitches = 500 } = await req.json()
     const safeSeason = parseInt(season)
     if (isNaN(safeSeason)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
+
+    // Check DB cache (6h TTL)
+    const cacheKey = `trends:${safeSeason}:${playerType}:${minPitches}`
+    const cached = await getCached(cacheKey)
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' }
+      })
+    }
 
     // Determine if regular season data exists — if so, exclude Spring Training
     const regSeasonCheck = await q(`SELECT 1 FROM pitches WHERE game_year = ${safeSeason} AND game_type = 'R' LIMIT 1`)
@@ -128,7 +138,12 @@ export async function POST(req: NextRequest) {
     // Sort by |sigma| descending
     alerts.sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
 
-    return NextResponse.json({ rows: alerts.slice(0, 200), recentDate, latestDate })
+    const result = { rows: alerts.slice(0, 200), recentDate, latestDate }
+    // Cache for 6 hours
+    setCache(cacheKey, result, { ttlSeconds: 21600 }).catch(() => {})
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' }
+    })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncPitches } from '@/app/api/update/route'
+import { invalidateCache, purgeExpired } from '@/lib/queryCache'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
@@ -54,6 +55,12 @@ export async function GET(req: NextRequest) {
         computeResults[gt] = { error: e.message }
       }
     }
+
+    // Invalidate query caches after fresh data sync
+    await Promise.all([
+      invalidateCache('trends:'),
+      purgeExpired(),
+    ]).catch(() => {})
 
     return NextResponse.json({
       ok: true,

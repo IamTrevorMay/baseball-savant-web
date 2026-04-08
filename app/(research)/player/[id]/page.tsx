@@ -68,6 +68,8 @@ export default function PlayerDashboard() {
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
   const [seasonType, setSeasonType] = useState<'regular'|'spring'|'postseason'|'all'>('regular')
+  const [selectedYear, setSelectedYear] = useState<number | null>(new Date().getFullYear())
+  const [availableYears, setAvailableYears] = useState<number[]>([])
 
   // Model tabs
   const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
@@ -126,8 +128,10 @@ export default function PlayerDashboard() {
       .from('player_summary').select('*').eq('pitcher', pitcherId).single()
     if (pData) setInfo(pData as PlayerInfo)
 
-    // Load pitches
-    await fetchData()
+    // Default to player's latest season (handles retired players correctly)
+    const initialYear = pData?.latest_season || new Date().getFullYear()
+    setSelectedYear(initialYear)
+    await fetchData(initialYear)
 
     // Fetch MLB official stats, Lahman data, and SOS scores in parallel
     try {
@@ -159,24 +163,15 @@ export default function PlayerDashboard() {
     setSearchResults(data || [])
     setShowSearch(true)
   }
-  async function fetchData() {
+  async function fetchData(year?: number | null) {
     setDataLoading(true)
     try {
-      const res = await fetch(`/api/player-data?id=${pitcherId}&col=pitcher`)
+      const yearParam = year != null ? `&year=${year}` : ''
+      const res = await fetch(`/api/player-data?id=${pitcherId}&col=pitcher${yearParam}`)
       if (!res.ok) throw new Error('Failed to fetch player data')
       const { rows: allRows } = await res.json() as { rows: any[] }
 
-
-
-      // Load batter names from players table
-      const batterIds = [...new Set(allRows.map((r: any) => r.batter).filter(Boolean))]
-      const batterNames: Record<number, string> = {}
-      for (let i = 0; i < batterIds.length; i += 500) {
-        const batch = batterIds.slice(i, i + 500)
-        const { data: players } = await supabase.from("players").select("id, name").in("id", batch)
-        if (players) players.forEach((p: any) => { batterNames[p.id] = p.name })
-      }
-      // Enrich with derived fields
+      // Enrich with derived fields (batter_name now comes from server-side JOIN)
       allRows.forEach((p: any) => {
         // Vertical Approach Angle (degrees)
         if (p.vz0 != null && p.vy0 != null && p.az != null && p.ay != null && p.release_extension != null) {
@@ -204,8 +199,6 @@ export default function PlayerDashboard() {
         // vs Team (batting team)
         if (p.inning_topbot === "Top") p.vs_team = p.away_team
         else if (p.inning_topbot === "Bot") p.vs_team = p.home_team
-        // Batter name
-        if (p.batter && batterNames[p.batter]) p.batter_name = batterNames[p.batter]
       })
       // Cluster / HDev / VDev — distance from year-partitioned pitch-type centroid (inches)
       const cBuckets: Record<string, { sx: number; sz: number; n: number }> = {}
@@ -241,8 +234,18 @@ export default function PlayerDashboard() {
 
       // Build filter options from loaded data
       const buildOpts = (col: string) => [...new Set(allRows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
+      const years = buildOpts("game_year").sort().reverse()
+      // If loading a single year, fetch available years from filter-options endpoint
+      if (year != null && availableYears.length === 0) {
+        fetch(`/api/player-filter-options?id=${pitcherId}&col=pitcher`)
+          .then(r => r.json())
+          .then(d => { if (d.game_year) setAvailableYears(d.game_year.map(Number)) })
+          .catch(() => {})
+      } else if (year == null) {
+        setAvailableYears(years.map(Number))
+      }
       setOptionsCache({
-        game_year: buildOpts("game_year").sort().reverse(),
+        game_year: years,
         pitch_name: buildOpts("pitch_name"),
         pitch_type: buildOpts("pitch_type"),
         stand: buildOpts("stand"),
@@ -314,6 +317,17 @@ export default function PlayerDashboard() {
             <div>
               <h1 className="text-2xl font-bold text-white">{info.player_name}</h1>
               <div className="flex items-center gap-4 text-sm text-zinc-400 mt-1">
+                <select value={selectedYear ?? 'all'} onChange={e => {
+                  const v = e.target.value === 'all' ? null : parseInt(e.target.value)
+                  setSelectedYear(v)
+                  fetchData(v)
+                }}
+                  className="bg-zinc-800 border border-zinc-700 text-white text-xs rounded px-2 py-1 focus:border-emerald-600 focus:outline-none">
+                  <option value="all">All Seasons</option>
+                  {(availableYears.length > 0 ? availableYears : [new Date().getFullYear()]).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
                 <select value={seasonType} onChange={e => setSeasonType(e.target.value as any)}
                   className="bg-zinc-800 border border-zinc-700 text-white text-xs rounded px-2 py-1 focus:border-emerald-600 focus:outline-none">
                   <option value="regular">Regular Season</option>

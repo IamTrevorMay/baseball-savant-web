@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const [transitionsRes, arsenalRes] = await Promise.all([
-      // 1. Transition matrix
+      // 1. Transition matrix (b.pitcher + b.game_year in JOIN for composite index)
       q(`SELECT a.pitch_name as from_pitch, b.pitch_name as to_pitch,
           COUNT(*) as freq,
           ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY a.pitch_name), 0), 1) as transition_pct,
@@ -43,7 +43,8 @@ export async function POST(req: NextRequest) {
             / NULLIF(COUNT(*) FILTER (WHERE b.description LIKE '%swinging_strike%' OR b.description LIKE '%foul%' OR b.description = 'hit_into_play' OR b.description = 'foul_tip' OR b.description = 'missed_bunt'), 0), 1) as whiff_pct,
           ROUND(AVG(b.estimated_woba_using_speedangle)::numeric, 3) as xwoba
         FROM pitches a
-        JOIN pitches b ON a.game_pk = b.game_pk AND a.at_bat_number = b.at_bat_number
+        JOIN pitches b ON b.pitcher = ${safeId} ${!isNaN(safeSeason) ? `AND b.game_year = ${safeSeason}` : ''}
+          AND a.game_pk = b.game_pk AND a.at_bat_number = b.at_bat_number
           AND b.pitch_number = a.pitch_number + 1
         WHERE a.pitcher = ${safeId} ${yearFilter}
           AND a.pitch_name IS NOT NULL AND b.pitch_name IS NOT NULL

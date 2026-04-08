@@ -1334,7 +1334,7 @@ export function computePlus(pitcherAvg: number, leagueMean: number, leagueStddev
 }
 
 // Normal CDF approximation (Abramowitz & Stegun)
-function normalCDF(z: number): number {
+export function normalCDF(z: number): number {
   const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741
   const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911
   const sign = z < 0 ? -1 : 1

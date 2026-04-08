@@ -31,26 +31,44 @@ export async function POST(req: NextRequest) {
   const gameType = searchParams.get('gameType') || 'R'
 
   try {
-    // Get all pitchers for the year + game type with min 50 pitches per pitch type
-    const sql = `
-      SELECT pitcher, player_name, pitch_name, game_year,
-        plate_x, plate_z, sz_top, sz_bot,
-        zone, description, stand
-      FROM pitches
-      WHERE game_year = ${year}
-        AND game_type = '${gameType}'
-        AND pitch_name IS NOT NULL
-        AND plate_x IS NOT NULL
-        AND plate_z IS NOT NULL
-        AND sz_top IS NOT NULL
-        AND sz_bot IS NOT NULL
-        AND pitch_type NOT IN ('PO', 'IN')
-      ORDER BY pitcher, pitch_name
+    // First get distinct pitchers for the year (fast with composite index)
+    const pitcherSql = `
+      SELECT DISTINCT pitcher FROM pitches
+      WHERE game_year = ${year} AND game_type = '${gameType}' AND pitch_name IS NOT NULL AND pitch_type NOT IN ('PO', 'IN')
     `
+    const { data: pitcherList, error: pitcherErr } = await supabase.rpc('run_query', { query_text: pitcherSql })
+    if (pitcherErr) return NextResponse.json({ error: pitcherErr.message }, { status: 500 })
+    if (!pitcherList || pitcherList.length === 0) return NextResponse.json({ message: 'No data found', year })
 
-    const { data: rows, error } = await supabase.rpc('run_query', { query_text: sql })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    if (!rows || rows.length === 0) return NextResponse.json({ message: 'No data found', year })
+    const allPitcherIds = pitcherList.map((r: any) => r.pitcher)
+
+    // Fetch in batches of 50 pitchers to avoid timeouts
+    const BATCH_SIZE = 50
+    const rows: any[] = []
+    for (let i = 0; i < allPitcherIds.length; i += BATCH_SIZE) {
+      const batch = allPitcherIds.slice(i, i + BATCH_SIZE)
+      const sql = `
+        SELECT pitcher, player_name, pitch_name, game_year,
+          plate_x, plate_z, sz_top, sz_bot,
+          zone, description, stand
+        FROM pitches
+        WHERE game_year = ${year}
+          AND game_type = '${gameType}'
+          AND pitcher IN (${batch.join(',')})
+          AND pitch_name IS NOT NULL
+          AND plate_x IS NOT NULL
+          AND plate_z IS NOT NULL
+          AND sz_top IS NOT NULL
+          AND sz_bot IS NOT NULL
+          AND pitch_type NOT IN ('PO', 'IN')
+        ORDER BY pitcher, pitch_name
+      `
+      const { data: batchRows, error } = await supabase.rpc('run_query', { query_text: sql })
+      if (error) return NextResponse.json({ error: error.message, batch: i }, { status: 500 })
+      if (batchRows) rows.push(...batchRows)
+    }
+
+    if (rows.length === 0) return NextResponse.json({ message: 'No data found', year })
 
     // Group by pitcher → pitch_name → array of pitches
     const groups: Record<string, Record<string, any[]>> = {}
