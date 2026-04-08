@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -12,6 +12,8 @@ export default function GlobalPlayerSearch() {
   const [hitters, setHitters] = useState<Result[]>([])
   const [show, setShow] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const seqRef = useRef(0) // discard stale responses
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -21,16 +23,24 @@ export default function GlobalPlayerSearch() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  async function handleSearch(value: string) {
-    setQuery(value)
-    if (value.trim().length < 2) { setPitchers([]); setHitters([]); setShow(false); return }
+  const doSearch = useCallback(async (term: string) => {
+    const seq = ++seqRef.current
     const [pRes, hRes] = await Promise.all([
-      supabase.rpc('search_all_players', { search_term: value.trim(), player_type: 'pitcher', result_limit: 4 }),
-      supabase.rpc('search_all_players', { search_term: value.trim(), player_type: 'hitter', result_limit: 4 }),
+      supabase.rpc('search_all_players', { search_term: term, player_type: 'pitcher', result_limit: 4 }),
+      supabase.rpc('search_all_players', { search_term: term, player_type: 'hitter', result_limit: 4 }),
     ])
+    if (seq !== seqRef.current) return // stale
     setPitchers(pRes.data || [])
     setHitters(hRes.data || [])
     setShow(true)
+  }, [])
+
+  function handleChange(value: string) {
+    setQuery(value)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    const trimmed = value.trim()
+    if (trimmed.length < 2) { setPitchers([]); setHitters([]); setShow(false); return }
+    timerRef.current = setTimeout(() => doSearch(trimmed), 250)
   }
 
   function navigate(id: number, type: 'pitcher' | 'hitter') {
@@ -48,8 +58,8 @@ export default function GlobalPlayerSearch() {
       <input
         type="text"
         value={query}
-        onChange={e => handleSearch(e.target.value)}
-        onFocus={() => query.trim().length >= 2 && setShow(true)}
+        onChange={e => handleChange(e.target.value)}
+        onFocus={() => query.trim().length >= 2 && hasResults && setShow(true)}
         placeholder="Search player..."
         className="w-64 pl-3 pr-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white placeholder-zinc-600 focus:border-emerald-600 focus:outline-none"
       />
