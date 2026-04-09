@@ -108,6 +108,7 @@ export default function TrendsPage() {
   const [highlightsLoading, setHighlightsLoading] = useState(true)
   const [daily, setDaily] = useState<DailyHighlights | null>(null)
   const [dailyLoading, setDailyLoading] = useState(true)
+  const [trendTab, setTrendTab] = useState<'overview' | 'stuff' | 'arsenal'>('overview')
 
   // Auto-load daily highlights
   useEffect(() => {
@@ -211,8 +212,19 @@ export default function TrendsPage() {
       <ResearchNav active="/trends" />
       <div className="max-w-6xl mx-auto w-full px-4 md:px-6 py-6">
         <h1 className="text-lg font-semibold text-white mb-1">Trend Alerts</h1>
-        <p className="text-xs text-zinc-500 mb-4">Detect significant recent performance changes vs season averages</p>
+        <p className="text-xs text-zinc-500 mb-3">Detect significant recent performance changes vs season averages</p>
 
+        {/* Tab toggle */}
+        <div className="flex gap-1 mb-4">
+          {([['overview', 'Overview'], ['stuff', 'Stuff+'], ['arsenal', 'Arsenal']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setTrendTab(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${trendTab === key ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {trendTab === 'overview' && <>
         {/* Daily Highlights — previous day standouts */}
         {dailyLoading && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
@@ -616,6 +628,33 @@ export default function TrendsPage() {
         {!loading && alerts.length === 0 && !error && (
           <div className="text-center py-20 text-zinc-600 text-sm">
             Click Scan to detect players with significant recent performance changes.
+          </div>
+        )}
+        </>}
+
+        {/* Stuff+ Tab */}
+        {trendTab === 'stuff' && (
+          <div className="space-y-6">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <h2 className="text-sm font-semibold text-white mb-1">Stuff+ Trends</h2>
+              <p className="text-[11px] text-zinc-500 mb-4">Overall Stuff+ leaders and pitch-type gainers/losers (recent vs season)</p>
+              <div className="text-center py-16 text-zinc-600 text-sm">
+                Coming soon — Stuff+ overall leaderboard with pitch-type gainers and losers.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Arsenal Tab */}
+        {trendTab === 'arsenal' && (
+          <div className="space-y-6">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <h2 className="text-sm font-semibold text-white mb-1">Arsenal Changes</h2>
+              <p className="text-[11px] text-zinc-500 mb-4">Movement and velocity changes by pitch type over time</p>
+              <div className="text-center py-16 text-zinc-600 text-sm">
+                Coming soon — Track velocity and movement changes across pitch types throughout the season.
+              </div>
+            </div>
           </div>
         )}
       </div>
