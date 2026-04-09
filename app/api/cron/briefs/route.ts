@@ -133,8 +133,8 @@ export async function GET(req: NextRequest) {
 - "aroundBaseball": If notable non-MLB baseball news appears in the headlines (minor leagues, college, high school, international), write a brief HTML paragraph or two covering it. If no non-MLB baseball news is present, return an empty string.
 - "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Use a styled list with player names, teams, and key stats.
 - "worstPerformances": HTML section of the 4-5 worst individual performances. Same format.
-- "injuries": HTML section for possible in-game injuries — players who may have left games early based on box score anomalies (starter with unusually few AB, pitcher pulled early). Use color:#fbbf24 accent. If none detected, return an empty string.
-- "transactions": HTML section for IL placements and IL activations from the transaction data. Use red accent (#f87171) for placements and green accent (#34d399) for activations. If no transaction data, return an empty string.
+- "injuries": HTML section for official IL placements from the transaction data. Include the IL type (10-Day, 15-Day, 60-Day) and injury description if available in the transaction text. Use color:#fbbf24 accent. If no IL placements, return an empty string.
+- "transactions": HTML section for IL activations (players returning from injury) from the transaction data. Use green accent (#34d399). If no activations, return an empty string.
 
 Box score data:\n${JSON.stringify(performanceData)}
 
@@ -171,12 +171,9 @@ For worst performances, use color:#f87171 on the stats td instead of the default
 For top performances, highlight dominant pitching (lots of K, low ER, deep outings) and big offensive games (multi-hit, HR, high RBI).
 For worst performances, highlight blown starts (short outings, high ER), 0-for with multiple K, etc.
 
-For injuries, generate HTML using the same table format for possible in-game injuries only — players who may have left games early based on box score anomalies (early exit, unusually low AB for a starter, pitcher pulled after few pitches). Use color:#fbbf24 for these entries. Each entry: player name (bold), team abbreviation, and description. If no possible injuries detected, return an empty string.
+For injuries, generate HTML using the same table format for official IL placements ONLY (from the IL/Transaction data provided). Include the IL type (10-Day, 15-Day, 60-Day) and injury description if available in the transaction text. Use color:#fbbf24 for the status label. Each entry: player name (bold), team abbreviation, IL type, and injury if mentioned. If no IL placements in the data, return an empty string. Do NOT speculate about injuries from box score data.
 
-For transactions, generate HTML using the same table format for IL moves:
-1. "IL Placements" — players placed on the injured list (use color:#f87171 for the status label)
-2. "Activated" — players activated from the injured list (use color:#34d399 for the status label)
-Each entry: player name (bold), team abbreviation, and description. If no transaction data exists, return an empty string.
+For transactions, generate HTML using the same table format for IL activations (players returning from injury) from the transaction data. Use color:#34d399 for the status label. Each entry: player name (bold), team abbreviation, and description. If no activations in the data, return an empty string.
 
 Return ONLY valid JSON, no markdown fences.`,
     })
