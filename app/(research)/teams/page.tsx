@@ -39,6 +39,7 @@ const HITTING_COLS = [
   { key: 'team', label: 'Team', align: 'left' as const },
   { key: 'games', label: 'G', fmt: (v: number) => String(v) },
   { key: 'pa', label: 'PA', fmt: (v: number) => String(v) },
+  { key: 'runs', label: 'R', fmt: (v: number) => String(v || 0) },
   { key: 'avg_ev', label: 'Avg EV', fmt: (v: number) => v?.toFixed(1) },
   { key: 'ba', label: 'BA', fmt: (v: number) => v?.toFixed(3) },
   { key: 'slg', label: 'SLG', fmt: (v: number) => v?.toFixed(3) },

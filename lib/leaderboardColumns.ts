@@ -96,6 +96,9 @@ const batTeamCol: ColumnDef = { key: 'bat_team', label: 'Team', colorClass: 'tex
 
 // Shared counting
 const games: ColumnDef = { key: 'games', label: 'G', colorClass: 'text-zinc-400', format: 'int' }
+const ip: ColumnDef = { key: 'ip', label: 'IP', colorClass: 'text-zinc-400', format: 'dec1' }
+const wins: ColumnDef = { key: 'wins', label: 'W', colorClass: 'text-emerald-400', format: 'int' }
+const losses: ColumnDef = { key: 'losses', label: 'L', colorClass: 'text-red-400', format: 'int' }
 const pa: ColumnDef = { key: 'pa', label: 'PA', colorClass: 'text-zinc-400', format: 'int' }
 const pitches: ColumnDef = { key: 'pitches', label: 'Pitches', colorClass: 'text-zinc-400', format: 'int' }
 const h: ColumnDef = { key: 'h', label: 'H', colorClass: 'text-zinc-300', format: 'int' }
@@ -164,7 +167,7 @@ const oContactPct: ColumnDef = { key: 'o_contact_pct', label: 'O-Contact%', colo
 // ── Column arrays keyed by "view:statset" ────────────────────────────────────
 export const COLUMNS: Record<string, ColumnDef[]> = {
   // ── PITCHING ───────────────────────────────────────────────────
-  'pitching:traditional': [pitcherName, pitcherId, games, pa, pitches, h, doubles, triples, hr, bb, k, hbp, ba, obp, slg, ops, kPct, bbPct, re24],
+  'pitching:traditional': [pitcherName, pitcherId, games, ip, pa, pitches, h, doubles, triples, hr, bb, k, hbp, ba, obp, slg, ops, kPct, bbPct, re24],
   'pitching:advanced': [pitcherName, pitcherId, pitches, kPct, bbPct, kMinusBb, whiffPct, swstrPct, cswPct, xba, xwoba, xslg, woba, re24, sos],
   'pitching:stuff': [pitcherName, pitcherId, pitches, velo, maxVelo, spin, hBreak, ivb, ext, armAngle, whiffPct, cswPct],
   'pitching:battedball': [pitcherName, pitcherId, pitches, avgEv, maxEv, avgLa, hardHit, barrel, gbPct, fbPct, ldPct, puPct],

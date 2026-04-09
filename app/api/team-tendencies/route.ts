@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
       : `COUNT(*) as pitches,
          COUNT(DISTINCT game_pk) as games,
          COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+         SUM(COALESCE(post_bat_score, 0) - COALESCE(bat_score, 0)) FILTER (WHERE events IS NOT NULL) as runs,
          ROUND(AVG(launch_speed)::numeric, 1) as avg_ev,
          ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
            / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ba,

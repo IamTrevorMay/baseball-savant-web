@@ -7,6 +7,7 @@ export const METRICS: Record<string, string> = {
   pitches: 'COUNT(*)',
   pa: "COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END)",
   games: 'COUNT(DISTINCT game_pk)',
+  ip: "ROUND(COUNT(*) FILTER (WHERE events IN ('strikeout','strikeout_double_play','field_out','double_play','grounded_into_double_play','force_out','fielders_choice','fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play'))::numeric / 3, 1)",
   // Averages
   avg_velo: 'ROUND(AVG(release_speed)::numeric, 1)',
   max_velo: 'ROUND(MAX(release_speed)::numeric, 1)',
@@ -179,6 +180,7 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'pitches', label: 'Pitch Count', group: 'Counting' },
   { value: 'pa', label: 'PA', group: 'Counting' },
   { value: 'games', label: 'Games', group: 'Counting' },
+  { value: 'ip', label: 'IP', group: 'Counting' },
   { value: 'h', label: 'Hits', group: 'Counting' },
   { value: 'hr_count', label: 'Home Runs', group: 'Counting' },
   { value: 'k_count', label: 'Strikeouts', group: 'Counting' },

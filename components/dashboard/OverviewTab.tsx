@@ -53,7 +53,7 @@ function calcTraditionalByYear(data: any[]) {
     return {
       year: Number(year), pitches: pitches.length, games, pa: pas, ip: ipDisplay,
       h: hits, '2b': doubles, '3b': triples, hr: hrs, bb: bbs, k: ks, hbp: hbps,
-      ba: ba.toFixed(3), obp: obp.toFixed(3), slg: slg.toFixed(3),
+      ba: ba.toFixed(3), obp: obp.toFixed(3), slg: slg.toFixed(3), ops: (obp + slg).toFixed(3),
       kPct: pas > 0 ? (ks / pas * 100).toFixed(1) : '—',
       bbPct: pas > 0 ? (bbs / pas * 100).toFixed(1) : '—',
       whiffPct: swings > 0 ? (whiffs / swings * 100).toFixed(1) : '—',
@@ -321,7 +321,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:"games", l:"G" }, { k:"gs", l:"GS" }, { k:"sv", l:"SV" }, { k:"ip", l:"IP" },
     { k:"pa", l:"PA" }, { k:"h", l:"H" }, { k:"2b", l:"2B" }, { k:"3b", l:"3B" },
     { k:"hr", l:"HR" }, { k:"bb", l:"BB" }, { k:"k", l:"K" }, { k:"hbp", l:"HBP" },
-    { k:"ba", l:"BA" }, { k:"obp", l:"OBP" }, { k:"slg", l:"SLG" }, { k:"whip", l:"WHIP" },
+    { k:"ba", l:"BA" }, { k:"obp", l:"OBP" }, { k:"slg", l:"SLG" }, { k:"ops", l:"OPS" }, { k:"whip", l:"WHIP" },
     { k:"kPct", l:"K%" }, { k:"bbPct", l:"BB%" }, { k:"whiffPct", l:"Whiff%" },
     { k:"pitches", l:"Pitches" },
   ]
