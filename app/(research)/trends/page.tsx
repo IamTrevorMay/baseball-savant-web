@@ -109,6 +109,30 @@ export default function TrendsPage() {
   const [daily, setDaily] = useState<DailyHighlights | null>(null)
   const [dailyLoading, setDailyLoading] = useState(true)
   const [trendTab, setTrendTab] = useState<'overview' | 'stuff' | 'arsenal'>('overview')
+  const [stuffData, setStuffData] = useState<any>(null)
+  const [stuffLoading, setStuffLoading] = useState(false)
+  const [arsenalData, setArsenalData] = useState<any>(null)
+  const [arsenalLoading, setArsenalLoading] = useState(false)
+
+  // Load Stuff+ data when tab changes
+  useEffect(() => {
+    if (trendTab !== 'stuff' || stuffData) return
+    setStuffLoading(true)
+    fetch('/api/trends', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ season: Number(season), tab: 'stuff', minPitches: parseInt(minPitches) || 50 }),
+    }).then(r => r.json()).then(d => setStuffData(d)).catch(() => {}).finally(() => setStuffLoading(false))
+  }, [trendTab, season])
+
+  // Load Arsenal data when tab changes
+  useEffect(() => {
+    if (trendTab !== 'arsenal' || arsenalData) return
+    setArsenalLoading(true)
+    fetch('/api/trends', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ season: Number(season), tab: 'arsenal', minPitches: parseInt(minPitches) || 50 }),
+    }).then(r => r.json()).then(d => setArsenalData(d)).catch(() => {}).finally(() => setArsenalLoading(false))
+  }, [trendTab, season])
 
   // Auto-load daily highlights
   useEffect(() => {
@@ -635,26 +659,193 @@ export default function TrendsPage() {
         {/* Stuff+ Tab */}
         {trendTab === 'stuff' && (
           <div className="space-y-6">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-white mb-1">Stuff+ Trends</h2>
-              <p className="text-[11px] text-zinc-500 mb-4">Overall Stuff+ leaders and pitch-type gainers/losers (recent vs season)</p>
-              <div className="text-center py-16 text-zinc-600 text-sm">
-                Coming soon — Stuff+ overall leaderboard with pitch-type gainers and losers.
+            {stuffLoading ? (
+              <div className="flex justify-center py-20"><div className="w-6 h-6 border-2 border-zinc-700 border-t-emerald-500 rounded-full animate-spin" /></div>
+            ) : stuffData ? (<>
+              {/* Leaders */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800">
+                  <h2 className="text-sm font-semibold text-white">Stuff+ Leaders</h2>
+                  <p className="text-[10px] text-zinc-500">Top 25 by average Stuff+ ({stuffData.recentDate} – {stuffData.latestDate})</p>
+                </div>
+                <table className="w-full text-xs">
+                  <thead><tr className="bg-zinc-800/40 text-zinc-500">
+                    <th className="px-3 py-1.5 text-left font-medium w-8">#</th>
+                    <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Pitches</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Avg Stuff+</th>
+                  </tr></thead>
+                  <tbody>
+                    {(stuffData.leaders || []).map((r: any, i: number) => (
+                      <tr key={r.player_id} className="border-t border-zinc-800/30 hover:bg-zinc-800/20">
+                        <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
+                        <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-emerald-400 hover:text-emerald-300 font-medium">{r.player_name}</a></td>
+                        <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{Number(r.pitches).toLocaleString()}</td>
+                        <td className={`px-3 py-1.5 text-right font-mono font-bold tabular-nums ${plusColor(Number(r.avg_stuff_plus))}`}>{r.avg_stuff_plus}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
+
+              {/* Gainers & Losers */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Gainers */}
+                <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b border-zinc-800">
+                    <h2 className="text-sm font-semibold text-emerald-400">Biggest Stuff+ Gainers</h2>
+                    <p className="text-[10px] text-zinc-500">Recent vs season avg by pitch type</p>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead><tr className="bg-zinc-800/40 text-zinc-500">
+                      <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                      <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Season</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Recent</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Delta</th>
+                    </tr></thead>
+                    <tbody>
+                      {(stuffData.gainers || []).map((r: any, i: number) => (
+                        <tr key={`${r.player_id}-${r.pitch_name}`} className="border-t border-zinc-800/30">
+                          <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-white hover:text-emerald-300 font-medium">{r.player_name}</a></td>
+                          <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
+                          <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{r.season_stuff}</td>
+                          <td className="px-3 py-1.5 text-right text-white tabular-nums font-medium">{r.recent_stuff}</td>
+                          <td className="px-3 py-1.5 text-right text-emerald-400 tabular-nums font-bold">+{r.delta}</td>
+                        </tr>
+                      ))}
+                      {(!stuffData.gainers || stuffData.gainers.length === 0) && <tr><td colSpan={5} className="px-3 py-6 text-center text-zinc-600">No significant gainers</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Losers */}
+                <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b border-zinc-800">
+                    <h2 className="text-sm font-semibold text-red-400">Biggest Stuff+ Drops</h2>
+                    <p className="text-[10px] text-zinc-500">Recent vs season avg by pitch type</p>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead><tr className="bg-zinc-800/40 text-zinc-500">
+                      <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                      <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Season</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Recent</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Delta</th>
+                    </tr></thead>
+                    <tbody>
+                      {(stuffData.losers || []).map((r: any, i: number) => (
+                        <tr key={`${r.player_id}-${r.pitch_name}`} className="border-t border-zinc-800/30">
+                          <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-white hover:text-red-300 font-medium">{r.player_name}</a></td>
+                          <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
+                          <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{r.season_stuff}</td>
+                          <td className="px-3 py-1.5 text-right text-white tabular-nums font-medium">{r.recent_stuff}</td>
+                          <td className="px-3 py-1.5 text-right text-red-400 tabular-nums font-bold">{r.delta}</td>
+                        </tr>
+                      ))}
+                      {(!stuffData.losers || stuffData.losers.length === 0) && <tr><td colSpan={5} className="px-3 py-6 text-center text-zinc-600">No significant drops</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>) : <div className="text-center py-20 text-zinc-600 text-sm">No Stuff+ data available</div>}
           </div>
         )}
 
         {/* Arsenal Tab */}
         {trendTab === 'arsenal' && (
           <div className="space-y-6">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-white mb-1">Arsenal Changes</h2>
-              <p className="text-[11px] text-zinc-500 mb-4">Movement and velocity changes by pitch type over time</p>
-              <div className="text-center py-16 text-zinc-600 text-sm">
-                Coming soon — Track velocity and movement changes across pitch types throughout the season.
-              </div>
-            </div>
+            {arsenalLoading ? (
+              <div className="flex justify-center py-20"><div className="w-6 h-6 border-2 border-zinc-700 border-t-emerald-500 rounded-full animate-spin" /></div>
+            ) : arsenalData?.changes?.length > 0 ? (<>
+              {/* Velocity Changes */}
+              {(() => {
+                const veloChanges = [...arsenalData.changes].filter((r: any) => Math.abs(r.velo_delta) >= 0.5).sort((a: any, b: any) => Math.abs(b.velo_delta) - Math.abs(a.velo_delta)).slice(0, 20)
+                const moveChanges = [...arsenalData.changes].filter((r: any) => Math.abs(r.ivb_delta) >= 0.5 || Math.abs(r.hb_delta) >= 0.5).sort((a: any, b: any) => (Math.abs(b.ivb_delta) + Math.abs(b.hb_delta)) - (Math.abs(a.ivb_delta) + Math.abs(a.hb_delta))).slice(0, 20)
+                const usageChanges = [...arsenalData.changes].filter((r: any) => Math.abs(r.usage_delta) >= 3).sort((a: any, b: any) => Math.abs(b.usage_delta) - Math.abs(a.usage_delta)).slice(0, 20)
+                const deltaColor = (v: number) => v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : 'text-zinc-400'
+                const fmtDelta = (v: number, unit: string) => `${v > 0 ? '+' : ''}${v}${unit}`
+                return (<>
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <h2 className="text-sm font-semibold text-white">Velocity Changes</h2>
+                      <p className="text-[10px] text-zinc-500">Season vs recent window ({arsenalData.recentDate} – {arsenalData.latestDate})</p>
+                    </div>
+                    {veloChanges.length > 0 ? (
+                      <table className="w-full text-xs"><thead><tr className="bg-zinc-800/40 text-zinc-500">
+                        <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                        <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Season</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Recent</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Delta</th>
+                      </tr></thead><tbody>
+                        {veloChanges.map((r: any) => (
+                          <tr key={`${r.player_id}-${r.pitch_name}-v`} className="border-t border-zinc-800/30">
+                            <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-white hover:text-emerald-300 font-medium">{r.player_name}</a></td>
+                            <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
+                            <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{r.season_velo}</td>
+                            <td className="px-3 py-1.5 text-right text-white tabular-nums">{r.recent_velo}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.velo_delta)}`}>{fmtDelta(r.velo_delta, ' mph')}</td>
+                          </tr>
+                        ))}
+                      </tbody></table>
+                    ) : <div className="px-4 py-6 text-center text-zinc-600 text-xs">No significant velocity changes</div>}
+                  </div>
+
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <h2 className="text-sm font-semibold text-white">Movement Changes</h2>
+                      <p className="text-[10px] text-zinc-500">IVB and horizontal break shifts</p>
+                    </div>
+                    {moveChanges.length > 0 ? (
+                      <table className="w-full text-xs"><thead><tr className="bg-zinc-800/40 text-zinc-500">
+                        <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                        <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
+                        <th className="px-3 py-1.5 text-right font-medium">IVB Δ</th>
+                        <th className="px-3 py-1.5 text-right font-medium">HB Δ</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Spin Δ</th>
+                      </tr></thead><tbody>
+                        {moveChanges.map((r: any) => (
+                          <tr key={`${r.player_id}-${r.pitch_name}-m`} className="border-t border-zinc-800/30">
+                            <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-white hover:text-emerald-300 font-medium">{r.player_name}</a></td>
+                            <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.ivb_delta)}`}>{fmtDelta(r.ivb_delta, '"')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.hb_delta)}`}>{fmtDelta(r.hb_delta, '"')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums ${deltaColor(r.spin_delta)}`}>{fmtDelta(r.spin_delta, ' rpm')}</td>
+                          </tr>
+                        ))}
+                      </tbody></table>
+                    ) : <div className="px-4 py-6 text-center text-zinc-600 text-xs">No significant movement changes</div>}
+                  </div>
+
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800">
+                      <h2 className="text-sm font-semibold text-white">Usage Changes</h2>
+                      <p className="text-[10px] text-zinc-500">Pitch mix shifts (recent vs season)</p>
+                    </div>
+                    {usageChanges.length > 0 ? (
+                      <table className="w-full text-xs"><thead><tr className="bg-zinc-800/40 text-zinc-500">
+                        <th className="px-3 py-1.5 text-left font-medium">Player</th>
+                        <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Season %</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Recent %</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Delta</th>
+                      </tr></thead><tbody>
+                        {usageChanges.map((r: any) => (
+                          <tr key={`${r.player_id}-${r.pitch_name}-u`} className="border-t border-zinc-800/30">
+                            <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-white hover:text-emerald-300 font-medium">{r.player_name}</a></td>
+                            <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
+                            <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{r.season_usage}%</td>
+                            <td className="px-3 py-1.5 text-right text-white tabular-nums">{r.recent_usage}%</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.usage_delta)}`}>{fmtDelta(r.usage_delta, '%')}</td>
+                          </tr>
+                        ))}
+                      </tbody></table>
+                    ) : <div className="px-4 py-6 text-center text-zinc-600 text-xs">No significant usage changes</div>}
+                  </div>
+                </>)
+              })()}
+            </>) : <div className="text-center py-20 text-zinc-600 text-sm">{arsenalLoading ? '' : 'No arsenal data available'}</div>}
           </div>
         )}
       </div>

@@ -19,6 +19,7 @@ const PITCH_NAME_TO_TYPE: Record<string, string> = {
 }
 
 export default function PitchLevelTab({ data }: Props) {
+  const [view, setView] = useState<'command' | 'performance'>('command')
   // Fetch pre-computed deception scores for this pitcher
   const [deceptionData, setDeceptionData] = useState<Record<string, any>>({})
 
@@ -135,6 +136,38 @@ export default function PitchLevelTab({ data }: Props) {
         unique: dec?.unique != null ? dec.unique.toFixed(2) : '—',
         deception: dec?.deception != null ? dec.deception.toFixed(2) : '—',
         _pitchType: pt,
+        // Performance metrics
+        whiffPct: (() => {
+          const swings = pitches.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip') })
+          const whiffs = swings.filter(p => { const d = (p.description || '').toLowerCase(); return d === 'swinging_strike' || d === 'swinging_strike_blocked' })
+          return swings.length > 0 ? (whiffs.length / swings.length * 100).toFixed(1) + '%' : '—'
+        })(),
+        cswPct: (() => {
+          const csw = pitches.filter(p => { const d = (p.description || '').toLowerCase(); return d === 'called_strike' || d === 'swinging_strike' || d === 'swinging_strike_blocked' })
+          return pitches.length > 0 ? (csw.length / pitches.length * 100).toFixed(1) + '%' : '—'
+        })(),
+        zonePct: (() => {
+          const inZone = pitches.filter(p => p.zone != null && Number(p.zone) >= 1 && Number(p.zone) <= 9)
+          const withZone = pitches.filter(p => p.zone != null)
+          return withZone.length > 0 ? (inZone.length / withZone.length * 100).toFixed(1) + '%' : '—'
+        })(),
+        chasePct: (() => {
+          const oz = pitches.filter(p => p.zone != null && Number(p.zone) >= 11)
+          const chases = oz.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') })
+          return oz.length > 0 ? (chases.length / oz.length * 100).toFixed(1) + '%' : '—'
+        })(),
+        avgEv: (() => {
+          const evs = pitches.map(p => p.launch_speed).filter((v: any) => v != null)
+          return evs.length > 0 ? (evs.reduce((a: number, b: number) => a + b, 0) / evs.length).toFixed(1) : '—'
+        })(),
+        avgXwoba: (() => {
+          const vals = pitches.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
+          return vals.length > 0 ? (vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(3) : '—'
+        })(),
+        avgStuffPlus: (() => {
+          const vals = pitches.map(p => p.stuff_plus).filter((v: any) => v != null)
+          return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : '—'
+        })(),
       }
     }).sort((a, b) => b.count - a.count)
   }, [data, deceptionData])
@@ -163,7 +196,7 @@ export default function PitchLevelTab({ data }: Props) {
     return '—'
   }, [rows, deceptionData])
 
-  const cols = [
+  const commandCols = [
     { k: 'name', l: 'Pitch' },
     { k: 'count', l: '#' },
     { k: 'brink', l: 'Brink' },
@@ -185,6 +218,20 @@ export default function PitchLevelTab({ data }: Props) {
     { k: 'deception', l: 'Deception' },
   ]
 
+  const perfCols = [
+    { k: 'name', l: 'Pitch' },
+    { k: 'count', l: '#' },
+    { k: 'whiffPct', l: 'Whiff%' },
+    { k: 'cswPct', l: 'CSW%' },
+    { k: 'zonePct', l: 'Zone%' },
+    { k: 'chasePct', l: 'Chase%' },
+    { k: 'avgEv', l: 'Avg EV' },
+    { k: 'avgXwoba', l: 'xwOBA' },
+    { k: 'avgStuffPlus', l: 'Stuff+' },
+  ]
+
+  const cols = view === 'command' ? commandCols : perfCols
+
   const cellColor = (k: string, v: any) => {
     if (k === 'name') return 'text-white font-medium'
     if (k === 'count') return 'text-zinc-400'
@@ -195,6 +242,15 @@ export default function PitchLevelTab({ data }: Props) {
       const n = Number(v)
       if (isNaN(n)) return 'text-zinc-400'
       return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'
+    }
+    if (['whiffPct', 'cswPct', 'chasePct'].includes(k)) return 'text-emerald-400'
+    if (k === 'zonePct') return 'text-sky-400'
+    if (k === 'avgEv') return 'text-orange-400'
+    if (k === 'avgXwoba') return 'text-rose-400'
+    if (k === 'avgStuffPlus') {
+      const n = Number(v)
+      if (isNaN(n)) return 'text-zinc-400'
+      return n >= 115 ? 'text-emerald-300' : n >= 100 ? 'text-zinc-300' : n >= 85 ? 'text-orange-400' : 'text-red-400'
     }
     if (k === 'unique' || k === 'deception') {
       const n = Number(v)
@@ -212,7 +268,17 @@ export default function PitchLevelTab({ data }: Props) {
     <div className="space-y-4">
       <div className="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-300">Pitch-Level Metrics</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-zinc-300">Pitch-Level Metrics</h3>
+            <div className="flex gap-0.5 bg-zinc-800 rounded p-0.5 border border-zinc-700 ml-2">
+              {(['command', 'performance'] as const).map(v => (
+                <button key={v} onClick={() => setView(v)}
+                  className={`px-2.5 py-1 text-[10px] rounded transition capitalize ${view === v ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center gap-4">
             {xDeception !== '—' && (
               <span className="text-[11px] text-zinc-400">
