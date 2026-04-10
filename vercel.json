@@ -9,6 +9,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/milb-pitches",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/cron/roster",
       "schedule": "0 9 * * *"
     },
