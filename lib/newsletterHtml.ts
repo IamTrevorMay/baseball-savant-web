@@ -234,6 +234,118 @@ function buildScoresSection(scores: GameScore[]): string {
   </tr>`
 }
 
+/**
+ * Build the Mayday Daily email by wrapping the brief's pre-rendered HTML
+ * in the email shell (header, footer, divider) and appending the Substack section.
+ * This ensures the email matches the brief layout exactly.
+ */
+export function buildNewsletterFromBrief(opts: {
+  date: string
+  briefContent: string
+  latestPost?: NewsletterData['latestPost']
+  unsubscribeUrl: string
+}): string {
+  const dateFormatted = formatDate(opts.date)
+  const briefBody = (opts.briefContent || '').replace(/<a /g, '<a target="_blank" rel="noopener" ')
+
+  const substackSection = opts.latestPost ? `
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:24px;">
+    ${buildSectionTitle('Latest from Mayday')}
+    <tr>
+      <td>
+        <a href="${opts.latestPost.link}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:block;">
+          <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;overflow:hidden;">
+            ${opts.latestPost.imageUrl ? `
+            <tr>
+              <td style="padding:0;">
+                <img src="${opts.latestPost.imageUrl}" alt="" width="640" style="width:100%;height:auto;display:block;border-radius:8px 8px 0 0;" />
+              </td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding:16px 20px;">
+                <p style="margin:0;font-size:16px;font-weight:700;color:${TEXT_BRIGHT};line-height:1.4;">
+                  ${escapeHtml(opts.latestPost.title)}
+                </p>
+                <p style="margin:6px 0 0;font-size:13px;color:${TEXT};line-height:1.5;">
+                  ${escapeHtml(opts.latestPost.description)}
+                </p>
+                ${opts.latestPost.author ? `
+                <p style="margin:10px 0 0;font-size:11px;color:${TEXT_MUTED};">By ${escapeHtml(opts.latestPost.author)}</p>
+                ` : ''}
+                <p style="margin:12px 0 0;">
+                  <span style="font-size:12px;font-weight:600;color:${EMERALD};">Read on Substack &rarr;</span>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </a>
+      </td>
+    </tr>
+  </table>
+  ` : ''
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <title>Mayday Daily — ${escapeHtml(dateFormatted)}</title>
+  <!--[if mso]>
+  <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+  <![endif]-->
+  <style>
+    body, table, td { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; padding: 0; background-color: ${BG}; }
+    img { border: 0; display: block; }
+    a { color: ${EMERALD}; }
+    @media only screen and (max-width: 660px) {
+      .email-container { width: 100% !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:${BG};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;color:${TEXT};">
+  <center>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:${BG};">
+      <tr>
+        <td align="center" style="padding:20px 16px;">
+          <table role="presentation" class="email-container" cellpadding="0" cellspacing="0" border="0" width="900" style="max-width:900px;width:100%;background-color:${BG};">
+            <tr>
+              <td style="padding:32px 0 24px;text-align:center;">
+                <p style="margin:0;font-size:32px;font-weight:800;letter-spacing:0.04em;color:${TEXT_BRIGHT};">MAYDAY DAILY</p>
+                <p style="margin:8px 0 0;font-size:13px;color:${TEXT_MUTED};letter-spacing:0.06em;text-transform:uppercase;">${escapeHtml(dateFormatted)}</p>
+              </td>
+            </tr>
+            <tr><td style="border-bottom:1px solid ${BORDER};"></td></tr>
+            <tr>
+              <td style="padding:24px 0 0;color:${TEXT};">
+                ${briefBody}
+                ${substackSection}
+              </td>
+            </tr>
+            <tr><td style="border-top:1px solid ${BORDER};padding-top:0;"></td></tr>
+            <tr>
+              <td style="padding:24px 0;text-align:center;">
+                <p style="margin:0;font-size:11px;color:${TEXT_MUTED};">
+                  Mayday Daily by <a href="${SITE_URL}" style="color:${EMERALD};text-decoration:none;">Triton Apex</a>
+                </p>
+                <p style="margin:8px 0 0;font-size:10px;color:${TEXT_MUTED};">
+                  <a href="${opts.unsubscribeUrl}" style="color:${TEXT_MUTED};text-decoration:underline;">Unsubscribe</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </center>
+</body>
+</html>`
+}
+
 export function buildNewsletterHtml(data: NewsletterData): string {
   const dateFormatted = formatDate(data.date)
 
