@@ -239,6 +239,52 @@ function buildScoresSection(scores: GameScore[]): string {
  * in the email shell (header, footer, divider) and appending the Substack section.
  * This ensures the email matches the brief layout exactly.
  */
+/**
+ * Remove a top-level section by its title from the brief HTML.
+ * Sections in the brief are top-level <div style="margin-bottom:40px;">...</div>
+ * blocks containing a section title div. We find the title and walk back to the
+ * containing section opener, then forward to find its matching closing div.
+ */
+function stripBriefSection(html: string, sectionTitle: string): string {
+  const titleMarker = `>${sectionTitle}<`
+  const titleIdx = html.indexOf(titleMarker)
+  if (titleIdx === -1) return html
+
+  // Walk backward to find the section opener
+  const openMarker = '<div style="margin-bottom:40px;'
+  const sectionStart = html.lastIndexOf(openMarker, titleIdx)
+  if (sectionStart === -1) return html
+
+  // Walk forward from sectionStart finding matched </div>
+  let depth = 0
+  let i = sectionStart
+  while (i < html.length) {
+    const nextOpen = html.indexOf('<div', i)
+    const nextClose = html.indexOf('</div>', i)
+    if (nextClose === -1) break
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++
+      i = nextOpen + 4
+    } else {
+      depth--
+      i = nextClose + 6
+      if (depth === 0) break
+    }
+  }
+  return html.slice(0, sectionStart) + html.slice(i)
+}
+
+/**
+ * Strip <a href="..."> wrappers from brief HTML, keeping only the inner text.
+ * Triton is not publicly accessible, so player links can't be followed from email.
+ * Excludes <img> elements wrapped in anchors (like the Start of the Day card).
+ */
+function stripPlayerLinks(html: string): string {
+  // Replace <a ...>(text without nested <img>)</a> with just the inner content.
+  // This regex avoids matching across image-containing anchors.
+  return html.replace(/<a [^>]*>([^<]*?(?:<(?!\/a>|img)[^<]*)*?)<\/a>/g, '$1')
+}
+
 export function buildNewsletterFromBrief(opts: {
   date: string
   briefContent: string
@@ -246,7 +292,14 @@ export function buildNewsletterFromBrief(opts: {
   unsubscribeUrl: string
 }): string {
   const dateFormatted = formatDate(opts.date)
-  const briefBody = (opts.briefContent || '').replace(/<a /g, '<a target="_blank" rel="noopener" ')
+  // Transform brief content for email:
+  // 1. Strip box scores (too dense for email, no benefit without expandability)
+  // 2. Strip player name links (Triton isn't public, links lead nowhere)
+  // 3. Add target=_blank to remaining links (Substack section, etc.)
+  let briefBody = opts.briefContent || ''
+  briefBody = stripBriefSection(briefBody, 'Box Scores')
+  briefBody = stripPlayerLinks(briefBody)
+  briefBody = briefBody.replace(/<a /g, '<a target="_blank" rel="noopener" ')
 
   const substackSection = opts.latestPost ? `
   <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:24px;">
