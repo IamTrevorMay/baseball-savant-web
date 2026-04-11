@@ -67,14 +67,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch games, news, transactions, daily highlights, standings, and trends in parallel
-    const [gamesData, newsItems, transactions, dailyHighlights, standings, trendAlerts] = await Promise.all([
+    // Fetch games, news, transactions, daily highlights, standings, trends, and top start card in parallel
+    const [gamesData, newsItems, transactions, dailyHighlights, standings, trendAlerts, topStartCard] = await Promise.all([
       fetchGamesWithLinescores(briefDate),
       fetchNews(),
       fetchTransactions(briefDate),
       fetchDailyHighlights(briefDate),
       fetchStandings(briefDate),
       fetchTrendAlerts(briefDate),
+      fetchTopStartCard(briefDate),
     ])
 
     // Fetch full box scores for finished games (batched)
@@ -210,6 +211,7 @@ Return ONLY valid JSON, no markdown fences.`,
       dailyHighlights,
       standings,
       trendAlerts,
+      topStartCard,
     })
 
     // Insert into briefs table
@@ -478,6 +480,7 @@ function assembleBriefHtml(parts: {
   dailyHighlights: DailyHighlightsData | null
   standings: StandingsData | null
   trendAlerts: TrendAlertsData | null
+  topStartCard: TopStartCardData | null
 }) {
   const sections: string[] = []
   const halfGrid = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;'
@@ -519,8 +522,8 @@ function assembleBriefHtml(parts: {
 </div>`)
   }
 
-  // 4. Start of the Day — highest-graded start (just the stuff_starter card from highlights)
-  const startOfDayHtml = buildStartOfDayHtml(parts.dailyHighlights)
+  // 4. Start of the Day — top-ranked card from the daily_cards top_start bucket
+  const startOfDayHtml = buildStartOfDayHtml(parts.topStartCard)
   if (startOfDayHtml) {
     sections.push(`
 <div style="${S.section}">
@@ -1312,35 +1315,39 @@ function buildSurgesConcernsHtml(data: TrendAlertsData | null): string {
   return surgesSection + concernsSection
 }
 
-// ── Start of the Day ───────────────────────────────────────────────────────
+// ── Start of the Day (top-ranked daily card from top_start bucket) ─────────
 
-function buildStartOfDayHtml(data: DailyHighlightsData | null): string {
-  if (!data?.stuff_starter) return ''
-  const d = data.stuff_starter
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
-  const headshot = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${d.player_id}/headshot/67/current`
-  const decBadge = (dec: string) => {
-    const colors: Record<string, string> = { W: '#34d399', L: '#f87171', SV: '#38bdf8', HLD: '#fbbf24' }
-    const c = colors[dec]
-    return c ? `<span style="font-size:11px;font-weight:700;color:${c};margin-right:6px;padding:2px 6px;background:${c}22;border-radius:4px;">${dec}</span>` : ''
+interface TopStartCardData {
+  id: string
+  pitcher_id: number | null
+  pitcher_name: string | null
+  game_info: string | null
+}
+
+async function fetchTopStartCard(date: string): Promise<TopStartCardData | null> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('daily_cards')
+      .select('id, pitcher_id, pitcher_name, game_info')
+      .eq('date', date)
+      .eq('bucket', 'top_start')
+      .eq('rank', 1)
+      .maybeSingle()
+    if (!data) return null
+    return data as TopStartCardData
+  } catch (err) {
+    console.error('fetchTopStartCard error:', err)
+    return null
   }
-  const gl = d.game_line
-  const lineHtml = gl ? `<div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,0.55);font-family:monospace;">${decBadge(gl.decision)}${gl.ip} IP, ${gl.h} H, ${gl.er} ER, ${gl.bb} BB, ${gl.k} K</div>` : ''
-  const c = plusColorHex(d.stuff_plus)
+}
+
+function buildStartOfDayHtml(card: TopStartCardData | null): string {
+  if (!card) return ''
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
+  const imgUrl = `${siteUrl}/api/card-image?id=${card.id}`
+  const playerLink = card.pitcher_id ? `${siteUrl}/player/${card.pitcher_id}` : '#'
   return `
-  <a href="${siteUrl}/player/${d.player_id}" style="display:block;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:18px 22px;text-decoration:none;color:inherit;">
-    <div style="display:flex;align-items:center;gap:16px;">
-      <img src="${headshot}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,0.05);" />
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#fbbf24;margin-bottom:4px;">Top Stuff+ Outing</div>
-        <div style="font-size:20px;font-weight:700;color:#f0f0f0;">${escapeHtml(d.player_name)}</div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.45);margin-top:2px;">${escapeHtml(d.team)} · ${escapeHtml(d.pitch_name)}${d.velo ? ` · ${d.velo} mph` : ''}</div>
-        ${lineHtml}
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:42px;font-weight:800;font-family:'SF Mono',SFMono-Regular,Menlo,monospace;color:${c};line-height:1;">${d.stuff_plus}</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.05em;margin-top:4px;">Stuff+</div>
-      </div>
-    </div>
+  <a href="${playerLink}" style="display:block;text-decoration:none;color:inherit;">
+    <img src="${imgUrl}" alt="${escapeHtml(card.pitcher_name || 'Top Start')}" style="display:block;width:100%;max-width:100%;height:auto;border-radius:12px;border:1px solid rgba(255,255,255,0.08);" />
   </a>`
 }
