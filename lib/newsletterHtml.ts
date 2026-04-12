@@ -340,7 +340,7 @@ export function buildNewsletterFromBrief(opts: {
   // 2. Strip player name links (Triton isn't public, links lead nowhere)
   // 3. Add target=_blank to remaining links (Substack section, etc.)
   let briefBody = opts.briefContent || ''
-  briefBody = stripBriefSection(briefBody, 'Box Scores')
+  // Box scores stay in the email — they're static linescores, not expandable
   briefBody = stripPlayerLinks(briefBody)
   briefBody = convertGridToTables(briefBody)
   briefBody = briefBody.replace(/<a /g, '<a target="_blank" rel="noopener" ')
