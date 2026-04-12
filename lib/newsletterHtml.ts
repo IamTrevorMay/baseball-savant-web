@@ -285,6 +285,49 @@ function stripPlayerLinks(html: string): string {
   return html.replace(/<a [^>]*>([^<]*?(?:<(?!\/a>|img)[^<]*)*?)<\/a>/g, '$1')
 }
 
+/**
+ * Convert CSS grid layouts in brief HTML to email-safe equivalents.
+ * Replaces display:grid with display:table and adds display:table-cell
+ * to direct children. Works in Gmail, Outlook, and Apple Mail.
+ */
+function convertGridToTables(html: string): string {
+  // Replace all grid declarations with table display
+  html = html.replace(/display:grid;grid-template-columns:1fr 1fr;gap:16px;/g, 'display:table;width:100%;table-layout:fixed;border-spacing:8px 0;')
+  html = html.replace(/display:grid;grid-template-columns:1fr 1fr;gap:10px;/g, 'display:table;width:100%;table-layout:fixed;border-spacing:5px 0;')
+  html = html.replace(/display:grid;grid-template-columns:repeat\(3,1fr\);gap:12px;/g, 'display:table;width:100%;table-layout:fixed;border-spacing:6px;')
+  html = html.replace(/display:grid;grid-template-columns:repeat\(4,1fr\);gap:12px;/g, 'display:table;width:100%;table-layout:fixed;border-spacing:6px;')
+
+  // Add table-cell to direct children of table containers.
+  // The brief uses plain <div> or <div style="..."> as grid children.
+  // After converting parent to display:table, children need display:table-cell.
+
+  // Handle plain <div> children (surges/concerns, injuries/transactions half-grids)
+  // These appear as: ...table;...">\n    <div>\n
+  html = html.replace(/(<div style="[^"]*display:table;[^"]*">\s*\n\s*)<div>\n/g, '$1<div style="display:table-cell;vertical-align:top;">\n')
+
+  // Handle subsequent plain <div> siblings within table containers
+  // Pattern: </div>\n    <div>\n  (after a table-cell sibling)
+  // We can't tell context from regex alone, so target the specific HTML pattern
+  // from the brief: a closing </div> followed by whitespace and opening <div>
+  // within sections we know are table containers.
+  // This is the second child in the 2-column layout:
+  html = html.replace(/(display:table-cell;vertical-align:top;">\n[\s\S]*?<\/div>\s*\n\s*)<div>\n/g, '$1<div style="display:table-cell;vertical-align:top;">\n')
+
+  // Handle styled children (standings division cards)
+  html = html.replace(
+    /<div style="background:rgba\(255,255,255,0\.03\);border:1px solid rgba\(255,255,255,0\.08\);border-radius:8px;overflow:hidden;">/g,
+    '<div style="display:table-cell;vertical-align:top;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;">'
+  )
+
+  // Handle standouts 2x2 grid children (the <a> card links inside the grid)
+  html = html.replace(
+    /(<div style="[^"]*display:table;[^"]*">\s*\n\s*)<a /g,
+    '$1<a style="display:table-cell;vertical-align:top;" '
+  )
+
+  return html
+}
+
 export function buildNewsletterFromBrief(opts: {
   date: string
   briefContent: string
@@ -299,6 +342,7 @@ export function buildNewsletterFromBrief(opts: {
   let briefBody = opts.briefContent || ''
   briefBody = stripBriefSection(briefBody, 'Box Scores')
   briefBody = stripPlayerLinks(briefBody)
+  briefBody = convertGridToTables(briefBody)
   briefBody = briefBody.replace(/<a /g, '<a target="_blank" rel="noopener" ')
 
   const substackSection = opts.latestPost ? `
