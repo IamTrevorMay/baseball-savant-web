@@ -69,6 +69,10 @@ export interface GameScore {
   home: string
   awayScore: number
   homeScore: number
+  awayHits?: number
+  homeHits?: number
+  awayErrors?: number
+  homeErrors?: number
   winner?: string | null
   loser?: string | null
   save?: string | null
@@ -78,7 +82,6 @@ export interface NewsletterData {
   date: string // YYYY-MM-DD
   title: string
   scores: GameScore[]
-  dayRundown: string
   topPerformances: string
   worstPerformances: string
   injuries: string
@@ -176,8 +179,8 @@ function buildScoreCard(game: GameScore): string {
   const awayWon = game.awayScore > game.homeScore
   const winColor = TEXT_BRIGHT
   const loseColor = TEXT_MUTED
+  const hasExtras = game.awayHits !== undefined || game.homeHits !== undefined
 
-  // Decision line: W: Name · L: Name · SV: Name
   const decParts: string[] = []
   if (game.winner) decParts.push(`<span style="color:${EMERALD};font-weight:600;">W</span> ${escapeHtml(game.winner)}`)
   if (game.loser) decParts.push(`<span style="color:${RED};font-weight:600;">L</span> ${escapeHtml(game.loser)}`)
@@ -189,12 +192,19 @@ function buildScoreCard(game: GameScore): string {
         <td style="padding:8px 10px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="font-size:12px;font-weight:700;color:${awayWon ? winColor : loseColor};">${escapeHtml(game.away)}</td>
-              <td align="right" style="font-size:14px;font-weight:800;color:${awayWon ? winColor : loseColor};">${game.awayScore}</td>
+              <td></td>
+              <td align="right" width="18" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">R</td>
+              ${hasExtras ? `<td align="right" width="18" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">H</td><td align="right" width="18" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">E</td>` : ''}
             </tr>
             <tr>
-              <td style="font-size:12px;font-weight:700;color:${!awayWon ? winColor : loseColor};">${escapeHtml(game.home)}</td>
-              <td align="right" style="font-size:14px;font-weight:800;color:${!awayWon ? winColor : loseColor};">${game.homeScore}</td>
+              <td style="font-size:11px;font-weight:700;color:${awayWon ? winColor : loseColor};">${escapeHtml(game.away)}</td>
+              <td align="right" style="font-size:13px;font-weight:800;color:${awayWon ? winColor : loseColor};">${game.awayScore}</td>
+              ${hasExtras ? `<td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.awayHits ?? '—'}</td><td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.awayErrors ?? '—'}</td>` : ''}
+            </tr>
+            <tr>
+              <td style="font-size:11px;font-weight:700;color:${!awayWon ? winColor : loseColor};">${escapeHtml(game.home)}</td>
+              <td align="right" style="font-size:13px;font-weight:800;color:${!awayWon ? winColor : loseColor};">${game.homeScore}</td>
+              ${hasExtras ? `<td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.homeHits ?? '—'}</td><td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.homeErrors ?? '—'}</td>` : ''}
             </tr>
           </table>
           ${decParts.length > 0 ? `<p style="margin:4px 0 0;font-size:9px;color:${TEXT_MUTED};line-height:1.4;">${decParts.join(' &middot; ')}</p>` : ''}
@@ -237,7 +247,7 @@ function buildScoresSection(scores: GameScore[]): string {
 export function buildNewsletterHtml(data: NewsletterData): string {
   const dateFormatted = formatDate(data.date)
 
-  // Build standout cards HTML (2-column grid using table)
+  // Build standout cards HTML (2-per-row grid, collapses to 1-col on mobile)
   let standoutsHtml = ''
   if (data.standouts.length > 0) {
     const pairs: string[] = []
@@ -249,7 +259,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
         <td width="50%" valign="top" style="padding-left:4px;">${right}</td>
       </tr>`)
     }
-    standoutsHtml = `<table cellpadding="0" cellspacing="0" border="0" width="100%">${pairs.join('')}</table>`
+    standoutsHtml = `<table cellpadding="0" cellspacing="0" border="0" width="100%" class="two-col">${pairs.join('')}</table>`
   }
 
   // Strip inline styles from Claude HTML that reference non-email-safe properties
@@ -319,45 +329,13 @@ export function buildNewsletterHtml(data: NewsletterData): string {
             ${buildScoresSection(data.scores)}
             ` : ''}
 
-            ${data.dayRundown ? `
-            <!-- The Day in Baseball -->
-            <tr>
-              <td style="padding:28px 0 24px;">
-                <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                  ${buildSectionTitle('The Day in Baseball')}
-                  <tr>
-                    <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:16px 20px;">
-                      ${sanitizeClaudeHtml(data.dayRundown)}
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            ` : ''}
-
             ${standoutsHtml ? `
-            <!-- Yesterday's Standouts (full width) -->
+            <!-- Yesterday's Standouts — 2-per-row grid, collapses on mobile -->
             <tr>
               <td style="padding:0 0 24px;">
                 <table cellpadding="0" cellspacing="0" border="0" width="100%">
                   ${buildSectionTitle("Yesterday's Standouts")}
                   <tr><td>${standoutsHtml}</td></tr>
-                </table>
-              </td>
-            </tr>
-            ` : ''}
-
-            ${data.topPerformances ? `
-            <!-- Top Performances (full width) -->
-            <tr>
-              <td style="padding:0 0 24px;">
-                <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                  ${buildSectionTitle('Top Performances')}
-                  <tr>
-                    <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
-                      ${sanitizeClaudeHtml(data.topPerformances)}
-                    </td>
-                  </tr>
                 </table>
               </td>
             </tr>
@@ -389,6 +367,58 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                         </tr>
                       </table>
                     </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ` : ''}
+
+            <!-- START OF THE DAY — starter card image -->
+            <tr>
+              <td style="padding:0 0 24px;">
+                <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                  ${buildSectionTitle('Start of the Day')}
+                  <tr>
+                    <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;overflow:hidden;">
+                      <a href="${SITE_URL}/api/daily-graphics?date=${data.date}&type=ig-starter-card" target="_blank" rel="noopener" style="display:block;">
+                        <img src="${SITE_URL}/api/daily-graphics?date=${data.date}&type=ig-starter-card" alt="Start of the Day — Starter Card" width="640" style="width:100%;height:auto;display:block;" />
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            ${data.topPerformances || data.worstPerformances ? `
+            <!-- Top Performances + Rough Outings — 2-column on desktop, single column on mobile -->
+            <tr>
+              <td style="padding:0 0 24px;">
+                <table cellpadding="0" cellspacing="0" border="0" width="100%" class="two-col">
+                  <tr>
+                    ${data.topPerformances ? `
+                    <td width="50%" valign="top" style="padding-right:${data.worstPerformances ? '8' : '0'}px;">
+                      <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                        ${buildSectionTitle('Top Performances')}
+                        <tr>
+                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                            ${sanitizeClaudeHtml(data.topPerformances)}
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    ` : ''}
+                    ${data.worstPerformances ? `
+                    <td width="50%" valign="top" style="padding-left:${data.topPerformances ? '8' : '0'}px;">
+                      <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                        ${buildSectionTitle('Rough Outings')}
+                        <tr>
+                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                            ${sanitizeClaudeHtml(data.worstPerformances)}
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    ` : ''}
                   </tr>
                 </table>
               </td>

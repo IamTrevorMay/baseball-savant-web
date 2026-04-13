@@ -107,7 +107,6 @@ export async function GET(req: NextRequest) {
           date: briefDate,
           title: brief.title || 'Mayday Daily',
           scores: metadata.scores || [],
-          dayRundown: claudeSections.dayRundown || '',
           topPerformances: claudeSections.topPerformances || '',
           worstPerformances: claudeSections.worstPerformances || '',
           injuries: claudeSections.injuries || '',

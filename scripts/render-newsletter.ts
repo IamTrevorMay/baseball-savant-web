@@ -10,36 +10,25 @@ async function main() {
 const latestPost = await fetchLatestSubstackPost()
 
 const sampleData: NewsletterData = {
-  date: '2026-04-05',
-  title: 'Walk-Offs, Blowouts, and Pitchers\' Duels — April 5 Recap',
+  date: '2026-04-13',
+  title: 'Walk-Offs, Blowouts, and Pitchers\' Duels — April 13 Recap',
   scores: [
-    { away: 'NYY', home: 'TOR', awayScore: 6, homeScore: 0, winner: 'Gerrit Cole', loser: 'Kevin Gausman', save: null },
-    { away: 'LAD', home: 'SD', awayScore: 5, homeScore: 7, winner: 'Robert Suarez', loser: 'Blake Treinen', save: null },
-    { away: 'PHI', home: 'ATL', awayScore: 3, homeScore: 11, winner: 'Max Fried', loser: 'Zack Wheeler', save: null },
-    { away: 'HOU', home: 'SEA', awayScore: 4, homeScore: 2, winner: 'Framber Valdez', loser: 'Luis Castillo', save: 'Josh Hader' },
-    { away: 'CLE', home: 'MIN', awayScore: 3, homeScore: 1, winner: 'Tanner Bibee', loser: 'Pablo Lopez', save: 'Emmanuel Clase' },
-    { away: 'SF', home: 'NYM', awayScore: 8, homeScore: 5, winner: 'Logan Webb', loser: 'Kodai Senga', save: null },
-    { away: 'BAL', home: 'BOS', awayScore: 2, homeScore: 4, winner: 'Brayan Bello', loser: 'Grayson Rodriguez', save: 'Kenley Jansen' },
-    { away: 'CHC', home: 'MIL', awayScore: 1, homeScore: 3, winner: 'Freddy Peralta', loser: 'Justin Steele', save: 'Devin Williams' },
-    { away: 'TB', home: 'DET', awayScore: 6, homeScore: 7, winner: 'Jason Foley', loser: 'Pete Fairbanks', save: null },
-    { away: 'TEX', home: 'LAA', awayScore: 5, homeScore: 3, winner: 'Nathan Eovaldi', loser: 'Tyler Anderson', save: 'Kirby Yates' },
-    { away: 'STL', home: 'CIN', awayScore: 4, homeScore: 4, winner: null, loser: null, save: null },
-    { away: 'KC', home: 'OAK', awayScore: 9, homeScore: 2, winner: 'Cole Ragans', loser: 'JP Sears', save: null },
-    { away: 'WSH', home: 'MIA', awayScore: 3, homeScore: 1, winner: 'MacKenzie Gore', loser: 'Jesus Luzardo', save: 'Kyle Finnegan' },
-    { away: 'PIT', home: 'ARI', awayScore: 2, homeScore: 6, winner: 'Zac Gallen', loser: 'Mitch Keller', save: null },
-    { away: 'COL', home: 'CWS', awayScore: 7, homeScore: 1, winner: 'Kyle Freeland', loser: 'Garrett Crochet', save: null },
+    { away: 'NYY', home: 'TOR', awayScore: 6, homeScore: 0, awayHits: 9, homeHits: 3, awayErrors: 0, homeErrors: 1, winner: 'Gerrit Cole', loser: 'Kevin Gausman', save: null },
+    { away: 'LAD', home: 'SD', awayScore: 5, homeScore: 7, awayHits: 8, homeHits: 10, awayErrors: 1, homeErrors: 0, winner: 'Robert Suarez', loser: 'Blake Treinen', save: null },
+    { away: 'PHI', home: 'ATL', awayScore: 3, homeScore: 11, awayHits: 7, homeHits: 14, awayErrors: 2, homeErrors: 0, winner: 'Max Fried', loser: 'Zack Wheeler', save: null },
+    { away: 'HOU', home: 'SEA', awayScore: 4, homeScore: 2, awayHits: 8, homeHits: 5, awayErrors: 0, homeErrors: 0, winner: 'Framber Valdez', loser: 'Luis Castillo', save: 'Josh Hader' },
+    { away: 'CLE', home: 'MIN', awayScore: 3, homeScore: 1, awayHits: 6, homeHits: 4, awayErrors: 0, homeErrors: 1, winner: 'Tanner Bibee', loser: 'Pablo Lopez', save: 'Emmanuel Clase' },
+    { away: 'SF', home: 'NYM', awayScore: 8, homeScore: 5, awayHits: 12, homeHits: 9, awayErrors: 1, homeErrors: 0, winner: 'Logan Webb', loser: 'Kodai Senga', save: null },
+    { away: 'BAL', home: 'BOS', awayScore: 2, homeScore: 4, awayHits: 5, homeHits: 8, awayErrors: 0, homeErrors: 0, winner: 'Brayan Bello', loser: 'Grayson Rodriguez', save: 'Kenley Jansen' },
+    { away: 'CHC', home: 'MIL', awayScore: 1, homeScore: 3, awayHits: 4, homeHits: 7, awayErrors: 1, homeErrors: 0, winner: 'Freddy Peralta', loser: 'Justin Steele', save: 'Devin Williams' },
+    { away: 'TB', home: 'DET', awayScore: 6, homeScore: 7, awayHits: 10, homeHits: 9, awayErrors: 0, homeErrors: 1, winner: 'Jason Foley', loser: 'Pete Fairbanks', save: null },
+    { away: 'TEX', home: 'LAA', awayScore: 5, homeScore: 3, awayHits: 9, homeHits: 6, awayErrors: 0, homeErrors: 0, winner: 'Nathan Eovaldi', loser: 'Tyler Anderson', save: 'Kirby Yates' },
+    { away: 'STL', home: 'CIN', awayScore: 4, homeScore: 4, awayHits: 7, homeHits: 8, awayErrors: 1, homeErrors: 1, winner: null, loser: null, save: null },
+    { away: 'KC', home: 'OAK', awayScore: 9, homeScore: 2, awayHits: 13, homeHits: 5, awayErrors: 0, homeErrors: 2, winner: 'Cole Ragans', loser: 'JP Sears', save: null },
+    { away: 'WSH', home: 'MIA', awayScore: 3, homeScore: 1, awayHits: 6, homeHits: 4, awayErrors: 0, homeErrors: 0, winner: 'MacKenzie Gore', loser: 'Jesus Luzardo', save: 'Kyle Finnegan' },
+    { away: 'PIT', home: 'ARI', awayScore: 2, homeScore: 6, awayHits: 5, homeHits: 10, awayErrors: 1, homeErrors: 0, winner: 'Zac Gallen', loser: 'Mitch Keller', save: null },
+    { away: 'COL', home: 'CWS', awayScore: 7, homeScore: 1, awayHits: 11, homeHits: 4, awayErrors: 0, homeErrors: 1, winner: 'Kyle Freeland', loser: 'Garrett Crochet', save: null },
   ],
-  dayRundown: `
-    <p style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;">
-      Saturday's slate delivered everything — from a dominant shutout in the Bronx to a walk-off thriller in San Diego. <strong style="color:#f0f0f0">Gerrit Cole</strong> turned in his best start of the young season, carving through the Blue Jays lineup for 7 scoreless innings with 11 strikeouts. The Yankees cruised to a 6-0 win behind a pair of <strong style="color:#f0f0f0">Aaron Judge</strong> homers, his third multi-HR game this week.
-    </p>
-    <p style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;">
-      Out west, <strong style="color:#f0f0f0">Fernando Tatis Jr.</strong> launched a walk-off three-run shot in the bottom of the ninth to lift the Padres past the Dodgers, 7-5. The blast capped a furious rally from a 5-2 deficit and sent Petco Park into a frenzy. <strong style="color:#f0f0f0">Shohei Ohtani</strong> had gone 3-for-4 with a homer of his own in a losing effort.
-    </p>
-    <p style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;">
-      In Atlanta, the Braves' bats stayed hot as <strong style="color:#f0f0f0">Ronald Acuña Jr.</strong> continued his torrid start with a 4-for-5 night including two doubles and a stolen base. The Braves routed the Phillies 11-3, their fifth straight win.
-    </p>
-  `,
   topPerformances: `
     <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>
       <tr>
@@ -98,7 +87,37 @@ const sampleData: NewsletterData = {
       </tr>
     </tbody></table>
   `,
-  worstPerformances: '',
+  worstPerformances: `
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>
+      <tr>
+        <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap">
+          <span style="font-weight:600;color:#f0f0f0">Kodai Senga</span>
+          <span style="color:rgba(255,255,255,0.35);font-size:11px;margin-left:4px">NYM</span>
+        </td>
+        <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(255,255,255,0.06);color:#f87171;font-size:12px;text-align:right">
+          2.1 IP, 8 H, 7 ER, 3 K
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap">
+          <span style="font-weight:600;color:#f0f0f0">Luis Castillo</span>
+          <span style="color:rgba(255,255,255,0.35);font-size:11px;margin-left:4px">SEA</span>
+        </td>
+        <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(255,255,255,0.06);color:#f87171;font-size:12px;text-align:right">
+          3.1 IP, 10 H, 7 ER, 3 K
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap">
+          <span style="font-weight:600;color:#f0f0f0">Eric Lauer</span>
+          <span style="color:rgba(255,255,255,0.35);font-size:11px;margin-left:4px">TOR</span>
+        </td>
+        <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(255,255,255,0.06);color:#f87171;font-size:12px;text-align:right">
+          5.1 IP, 5 H, 7 ER, 5 BB
+        </td>
+      </tr>
+    </tbody></table>
+  `,
   injuries: `
     <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>
       <tr>
