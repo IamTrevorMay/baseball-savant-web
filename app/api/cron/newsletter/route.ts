@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { buildNewsletterHtml, highlightsToStandouts, fetchLatestSubstackPost, type NewsletterData } from '@/lib/newsletterHtml'
+import { buildNewsletterFromBrief, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
 
 export const maxDuration = 120
 
@@ -51,31 +51,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Brief not found for ' + briefDate, hint: 'Run /api/cron/briefs first' }, { status: 404 })
     }
 
-    const metadata = brief.metadata || {}
-    const claudeSections = metadata.claude_sections || {}
-    const dailyHighlights = metadata.daily_highlights
-
-    // Fetch trends (surges + concerns) + latest Substack post in parallel
-    const currentYear = new Date().getFullYear()
-    const [pitcherTrends, hitterTrends, latestPost] = await Promise.all([
-      fetchTrends(currentYear, 'pitcher'),
-      fetchTrends(currentYear, 'hitter'),
-      fetchLatestSubstackPost(),
-    ])
-
-    // Split trends into surges (good sentiment) and concerns (bad sentiment)
-    const allTrends = [...pitcherTrends, ...hitterTrends]
-    const surges = allTrends
-      .filter(t => t.sentiment === 'good')
-      .sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
-      .slice(0, 5)
-    const concerns = allTrends
-      .filter(t => t.sentiment === 'bad')
-      .sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
-      .slice(0, 5)
-
-    // Build standouts from daily_highlights
-    const standouts = highlightsToStandouts(dailyHighlights)
+    // Fetch latest Substack post (the only thing we add to the brief HTML)
+    const latestPost = await fetchLatestSubstackPost()
 
     // Fetch active subscribers
     const { data: subscribers, error: subError } = await supabaseAdmin
@@ -103,22 +80,12 @@ export async function GET(req: NextRequest) {
       const emails = batch.map(sub => {
         const unsubscribeUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubscribe_token}`
 
-        const newsletterData: NewsletterData = {
+        const html = buildNewsletterFromBrief({
           date: briefDate,
-          title: brief.title || 'Mayday Daily',
-          scores: metadata.scores || [],
-          topPerformances: claudeSections.topPerformances || '',
-          worstPerformances: claudeSections.worstPerformances || '',
-          injuries: claudeSections.injuries || '',
-          transactions: claudeSections.transactions || '',
-          standouts,
-          surges,
-          concerns,
+          briefContent: brief.content || '',
           latestPost,
           unsubscribeUrl,
-        }
-
-        const html = buildNewsletterHtml(newsletterData)
+        })
 
         return {
           from: 'Mayday Daily <noreply@tritonapex.io>',
@@ -161,31 +128,6 @@ export async function GET(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err)
     await upsertSend(briefDate, 0, 'failed', msg)
     return NextResponse.json({ error: msg }, { status: 500 })
-  }
-}
-
-async function fetchTrends(season: number, playerType: 'pitcher' | 'hitter') {
-  try {
-    const resp = await fetch(`${SITE_URL}/api/trends`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season, playerType }),
-    })
-    if (!resp.ok) return []
-    const data = await resp.json()
-    return (data.rows || []) as Array<{
-      player_id: number
-      player_name: string
-      metric_label: string
-      sigma: number
-      direction: 'up' | 'down'
-      sentiment: 'good' | 'bad'
-      season_val: number
-      recent_val: number
-      delta: number
-    }>
-  } catch {
-    return []
   }
 }
 

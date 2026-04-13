@@ -67,12 +67,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch games, news, transactions, and daily highlights in parallel
-    const [gamesData, newsItems, transactions, dailyHighlights] = await Promise.all([
+    // Fetch games, news, transactions, daily highlights, standings, trends, and top start card in parallel
+    const [gamesData, newsItems, transactions, dailyHighlights, standings, trendAlerts, topStartCard] = await Promise.all([
       fetchGamesWithLinescores(briefDate),
       fetchNews(),
       fetchTransactions(briefDate),
       fetchDailyHighlights(briefDate),
+      fetchStandings(briefDate),
+      fetchTrendAlerts(briefDate),
+      fetchTopStartCard(briefDate),
     ])
 
     // Fetch full box scores for finished games (batched)
@@ -131,8 +134,8 @@ export async function GET(req: NextRequest) {
 - "summary": 1-2 sentence summary of the day.
 - "dayRundown": A narrative recap of the day's action, under 500 words. Tell the story of the day — the big wins, comebacks, dominant pitching performances, offensive explosions, and any notable storylines. Write it like a sportswriter's column, flowing naturally from game to game. Use HTML paragraphs with inline styles. Player names should be bold.
 - "aroundBaseball": If notable non-MLB baseball news appears in the headlines (minor leagues, college, high school, international), write a brief HTML paragraph or two covering it. If no non-MLB baseball news is present, return an empty string.
-- "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Use a styled list with player names, teams, and key stats.
-- "worstPerformances": HTML section of the 4-5 worst individual performances. Same format.
+- "topPerformances": HTML section of the 8-10 best individual performances (hitters and pitchers). Each entry MUST include the opponent abbreviation in the format "vs. OPP" (use "vs." for home games, "@" for away games — if the player is on the home team show "vs. AWAY", if on the away team show "@ HOME"). Use a styled list with player names, teams, and key stats.
+- "worstPerformances": HTML section of the 4-5 worst individual performances. Same format with opponent.
 - "injuries": HTML section for official IL placements from the transaction data. Include the IL type (10-Day, 15-Day, 60-Day) and injury description if available in the transaction text. Use color:#fbbf24 accent. If no IL placements, return an empty string.
 - "transactions": HTML section for IL activations (players returning from injury) from the transaction data. Use green accent (#34d399). If no activations, return an empty string.
 
@@ -152,12 +155,13 @@ Return JSON with exactly these fields: title, summary, dayRundown, aroundBasebal
 
 For dayRundown, write a narrative recap of the day under 500 words. Use HTML with inline styles. Format as 3-5 paragraphs wrapped in <p> tags with style="margin-bottom:14px;color:#d4d4d8;font-size:14px;line-height:1.7;". Bold player names using <strong style="color:#f0f0f0">Player Name</strong>. Tell the story of the day like a sportswriter — weave together the biggest moments, comebacks, dominant performances, and storylines.
 
-For topPerformances and worstPerformances, generate HTML using INLINE STYLES (no CSS classes). Each performance entry should be a table row in this exact format:
+For topPerformances and worstPerformances, generate HTML using INLINE STYLES (no CSS classes). Each performance entry should be a table row in this exact format (with opponent shown after the team abbrev):
 
 <tr>
   <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap">
     <span style="font-weight:600;color:#f0f0f0">Player Name</span>
     <span style="color:rgba(255,255,255,0.35);font-size:11px;margin-left:4px">TEA</span>
+    <span style="color:rgba(255,255,255,0.45);font-size:11px;margin-left:4px">vs. OPP</span>
   </td>
   <td style="padding:6px 0 6px 16px;border-bottom:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);font-size:12px;text-align:right">
     3-for-4, 2 HR, 5 RBI
@@ -205,6 +209,9 @@ Return ONLY valid JSON, no markdown fences.`,
       isOffDay,
       playerNameToId: playerNameToIdEarly,
       dailyHighlights,
+      standings,
+      trendAlerts,
+      topStartCard,
     })
 
     // Insert into briefs table
@@ -258,7 +265,7 @@ const S = {
   section: 'margin-bottom:40px;',
   sectionTitle: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.35);margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);',
   // Box score cards
-  cardGrid: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;',
+  cardGrid: 'display:grid;grid-template-columns:repeat(4,1fr);gap:12px;',
   card: 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;overflow:hidden;',
   cardHeader: 'display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06);',
   teamRow: 'display:flex;align-items:center;gap:8px;',
@@ -471,22 +478,15 @@ function assembleBriefHtml(parts: {
   isOffDay: boolean
   playerNameToId: Record<string, number>
   dailyHighlights: DailyHighlightsData | null
+  standings: StandingsData | null
+  trendAlerts: TrendAlertsData | null
+  topStartCard: TopStartCardData | null
 }) {
   const sections: string[] = []
   const halfGrid = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;'
   const noData = '<p style="color:rgba(255,255,255,0.4);font-size:13px">Nothing to report today.</p>'
 
-  // Yesterday's Standouts — daily highlights (always first)
-  const highlightsHtml = buildDailyHighlightsHtml(parts.dailyHighlights)
-  if (highlightsHtml) {
-    sections.push(`
-<div style="${S.section}">
-  <div style="${S.sectionTitle}">Yesterday's Standouts</div>
-  ${highlightsHtml}
-</div>`)
-  }
-
-  // The Day in Baseball — narrative + Around Baseball ("In Other News...") inside
+  // 1. The Day in Baseball — narrative recap (TOP)
   if (parts.dayRundown || parts.aroundBaseball) {
     const aroundBlock = parts.aroundBaseball
       ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.08);">
@@ -501,15 +501,44 @@ function assembleBriefHtml(parts: {
 </div>`)
   }
 
-  if (!parts.isOffDay && parts.boxScoresHtml) {
+  // 2. Yesterday's Pitching Standouts — daily highlights
+  const highlightsHtml = buildDailyHighlightsHtml(parts.dailyHighlights)
+  if (highlightsHtml) {
     sections.push(`
 <div style="${S.section}">
-  <div style="${S.sectionTitle}">Box Scores</div>
-  <div style="${S.cardGrid}">${parts.boxScoresHtml}</div>
+  <div style="${S.sectionTitle}">Yesterday's Pitching Standouts</div>
+  ${highlightsHtml}
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">
+    The top Stuff+ and Cmd+ outings from yesterday's games for both starters and relievers. <strong style="color:rgba(255,255,255,0.6);">Stuff+</strong> measures raw pitch quality (velocity, movement, extension) on a scale where 100 is league average. <strong style="color:rgba(255,255,255,0.6);">Cmd+</strong> measures location accuracy and intent.
+  </div>
 </div>`)
   }
 
-  // Top Performances + Rough Outings side by side
+  // 3. Surges / Concerns — top 5 each from trends
+  const surgesConcernsHtml = buildSurgesConcernsHtml(parts.trendAlerts)
+  if (surgesConcernsHtml) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${halfGrid}">
+    ${surgesConcernsHtml}
+  </div>
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5;">
+    Players whose recent performance deviates significantly from their season average. <strong style="color:#34d399;">Surges</strong> are notable improvements; <strong style="color:#f87171;">Concerns</strong> are notable declines. Each row shows the season average and the recent value to highlight the trend.
+  </div>
+</div>`)
+  }
+
+  // 4. Start of the Day — top-ranked card from the daily_cards top_start bucket
+  const startOfDayHtml = buildStartOfDayHtml(parts.topStartCard)
+  if (startOfDayHtml) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Start of the Day</div>
+  ${startOfDayHtml}
+</div>`)
+  }
+
+  // 5 & 6. Top Performances + Rough Outings side by side
   if (parts.topPerformances || parts.worstPerformances) {
     sections.push(`
 <div style="${S.section}">
@@ -526,7 +555,7 @@ function assembleBriefHtml(parts: {
 </div>`)
   }
 
-  // Injuries + Transactions side by side
+  // 7 & 8. Injuries + Transactions side by side
   sections.push(`
 <div style="${S.section}">
   <div style="${halfGrid}">
@@ -541,11 +570,22 @@ function assembleBriefHtml(parts: {
   </div>
 </div>`)
 
-  if (parts.newsHtml) {
+  // 9. Box Scores (4 per row, near bottom)
+  if (!parts.isOffDay && parts.boxScoresHtml) {
     sections.push(`
 <div style="${S.section}">
-  <div style="${S.sectionTitle}">Headlines</div>
-  <div>${parts.newsHtml}</div>
+  <div style="${S.sectionTitle}">Box Scores</div>
+  <div style="${S.cardGrid}">${parts.boxScoresHtml}</div>
+</div>`)
+  }
+
+  // 10. Standings Snapshot (bottom)
+  const standingsHtml = buildStandingsHtml(parts.standings)
+  if (standingsHtml) {
+    sections.push(`
+<div style="${S.section}">
+  <div style="${S.sectionTitle}">Standings Snapshot</div>
+  ${standingsHtml}
 </div>`)
   }
 
@@ -1116,4 +1156,212 @@ async function fetchTransactions(date: string) {
   } catch {
     return { ilPlacements: [], ilActivations: [] }
   }
+}
+
+// ── Standings ──────────────────────────────────────────────────────────────
+
+interface StandingsTeam { abbrev: string; name: string; w: number; l: number; gb: string; streak: string }
+interface StandingsDivision { name: string; teams: StandingsTeam[] }
+interface StandingsData { divisions: StandingsDivision[] }
+
+const DIVISION_NAMES: Record<number, string> = {
+  200: 'AL West', 201: 'AL East', 202: 'AL Central',
+  203: 'NL West', 204: 'NL East', 205: 'NL Central',
+}
+
+const TEAM_ID_TO_ABBREV: Record<number, string> = {
+  108: 'LAA', 109: 'ARI', 110: 'BAL', 111: 'BOS', 112: 'CHC', 113: 'CIN', 114: 'CLE',
+  115: 'COL', 116: 'DET', 117: 'HOU', 118: 'KC', 119: 'LAD', 120: 'WSH', 121: 'NYM',
+  133: 'ATH', 134: 'PIT', 135: 'SD', 136: 'SEA', 137: 'SF', 138: 'STL', 139: 'TB',
+  140: 'TEX', 141: 'TOR', 142: 'MIN', 143: 'PHI', 144: 'ATL', 145: 'CWS', 146: 'MIA',
+  147: 'NYY', 158: 'MIL',
+}
+
+async function fetchStandings(date: string): Promise<StandingsData | null> {
+  try {
+    const year = date.slice(0, 4)
+    const url = `https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${year}&date=${date}&standingsTypes=regularSeason`
+    const resp = await fetch(url)
+    if (!resp.ok) return null
+    const data = await resp.json()
+    const divisions: StandingsDivision[] = []
+    for (const rec of data?.records || []) {
+      const divId = rec?.division?.id
+      const divName = DIVISION_NAMES[divId] || rec?.division?.name || ''
+      const teams: StandingsTeam[] = (rec?.teamRecords || []).map((t: any) => ({
+        abbrev: TEAM_ID_TO_ABBREV[t.team?.id] || t.team?.name || '',
+        name: t.team?.name || '',
+        w: t.wins || 0,
+        l: t.losses || 0,
+        gb: t.gamesBack || '-',
+        streak: t.streak?.streakCode || '',
+      }))
+      divisions.push({ name: divName, teams })
+    }
+    // Sort divisions by traditional order
+    const order = ['AL East', 'AL Central', 'AL West', 'NL East', 'NL Central', 'NL West']
+    divisions.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name))
+    return { divisions }
+  } catch (err) {
+    console.error('fetchStandings error:', err)
+    return null
+  }
+}
+
+function buildStandingsHtml(data: StandingsData | null): string {
+  if (!data || !data.divisions.length) return ''
+  const divCard = (div: StandingsDivision) => {
+    const rows = div.teams.map((t, i) => {
+      const isLeader = i === 0
+      const streakColor = t.streak.startsWith('W') ? '#34d399' : t.streak.startsWith('L') ? '#f87171' : 'rgba(255,255,255,0.4)'
+      return `
+        <tr>
+          <td style="padding:5px 8px;color:${isLeader ? '#f0f0f0' : 'rgba(255,255,255,0.7)'};font-weight:${isLeader ? '700' : '500'};font-size:11px;">${escapeHtml(t.abbrev)}</td>
+          <td style="padding:5px 8px;text-align:right;color:${isLeader ? '#f0f0f0' : 'rgba(255,255,255,0.6)'};font-size:11px;font-family:monospace;">${t.w}-${t.l}</td>
+          <td style="padding:5px 8px;text-align:right;color:rgba(255,255,255,0.45);font-size:11px;font-family:monospace;">${t.gb === '-' ? '—' : t.gb}</td>
+          <td style="padding:5px 8px;text-align:right;color:${streakColor};font-size:10px;font-family:monospace;font-weight:600;">${escapeHtml(t.streak)}</td>
+        </tr>`
+    }).join('')
+    return `
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;overflow:hidden;">
+        <div style="padding:8px 12px;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:10px;font-weight:700;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(div.name)}</div>
+        <table style="width:100%;border-collapse:collapse;"><tbody>${rows}</tbody></table>
+      </div>`
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">${data.divisions.map(divCard).join('')}</div>`
+}
+
+// ── Trends Surges/Concerns ─────────────────────────────────────────────────
+
+interface TrendAlert {
+  player_id: number; player_name: string
+  metric: string; metric_label: string
+  season_val: number; recent_val: number
+  delta: number; sigma: number
+  direction: 'up' | 'down'
+  sentiment: 'good' | 'bad'
+}
+interface TrendAlertsData { surges: TrendAlert[]; concerns: TrendAlert[] }
+
+async function fetchTrendAlerts(_date: string): Promise<TrendAlertsData | null> {
+  try {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.VERCEL_URL}` || 'https://www.tritonapex.io'
+    const year = new Date().getFullYear()
+    const minPitches = (new Date().getMonth() + 1) <= 4 ? 50 : 200
+    const [pRes, hRes] = await Promise.all([
+      fetch(`${siteUrl}/api/trends`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ season: year, playerType: 'pitcher', minPitches }) }),
+      fetch(`${siteUrl}/api/trends`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ season: year, playerType: 'hitter', minPitches }) }),
+    ])
+    const [pd, hd] = await Promise.all([pRes.json(), hRes.json()])
+    const all: TrendAlert[] = [...(pd.rows || []), ...(hd.rows || [])]
+
+    const pickUnique = (list: TrendAlert[], n: number) => {
+      const seen = new Set<number>()
+      const result: TrendAlert[] = []
+      for (const item of list) {
+        if (!seen.has(item.player_id)) { seen.add(item.player_id); result.push(item) }
+        if (result.length >= n) break
+      }
+      return result
+    }
+
+    const surges = pickUnique(all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma)), 5)
+    const concerns = pickUnique(all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma)), 5)
+    return { surges, concerns }
+  } catch (err) {
+    console.error('fetchTrendAlerts error:', err)
+    return null
+  }
+}
+
+function fmtTrendVal(metric: string, val: number): string {
+  if (metric === 'xwoba') return val.toFixed(3)
+  if (metric === 'spin') return String(Math.round(val))
+  if (metric === 'velo' || metric === 'ev') return val.toFixed(1)
+  return val.toFixed(1) + '%'
+}
+
+function buildSurgesConcernsHtml(data: TrendAlertsData | null): string {
+  if (!data || (!data.surges.length && !data.concerns.length)) return ''
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
+
+  const renderRow = (a: TrendAlert, color: string) => `
+    <tr>
+      <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <a href="${siteUrl}/player/${a.player_id}" style="color:#f0f0f0;text-decoration:none;font-weight:600;font-size:12px;">${escapeHtml(a.player_name)}</a>
+      </td>
+      <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:11px;">${escapeHtml(a.metric_label)}</td>
+      <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right;color:rgba(255,255,255,0.45);font-size:11px;font-family:monospace;">${fmtTrendVal(a.metric, a.season_val)}</td>
+      <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);text-align:right;color:${color};font-size:11px;font-family:monospace;font-weight:700;">${fmtTrendVal(a.metric, a.recent_val)}</td>
+    </tr>`
+
+  const surgeRows = data.surges.map(a => renderRow(a, '#34d399')).join('')
+  const concernRows = data.concerns.map(a => renderRow(a, '#f87171')).join('')
+
+  const surgesSection = data.surges.length ? `
+    <div>
+      <div style="${S.sectionTitle}"><span style="color:#34d399">▲</span> Surges</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="text-align:left;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Player</th>
+          <th style="text-align:left;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Metric</th>
+          <th style="text-align:right;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Season</th>
+          <th style="text-align:right;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Recent</th>
+        </tr></thead>
+        <tbody>${surgeRows}</tbody>
+      </table>
+    </div>` : '<div></div>'
+
+  const concernsSection = data.concerns.length ? `
+    <div>
+      <div style="${S.sectionTitle}"><span style="color:#f87171">▼</span> Concerns</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="text-align:left;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Player</th>
+          <th style="text-align:left;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Metric</th>
+          <th style="text-align:right;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Season</th>
+          <th style="text-align:right;font-size:9px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.05em;padding-bottom:4px;">Recent</th>
+        </tr></thead>
+        <tbody>${concernRows}</tbody>
+      </table>
+    </div>` : '<div></div>'
+
+  return surgesSection + concernsSection
+}
+
+// ── Start of the Day (top-ranked daily card from top_start bucket) ─────────
+
+interface TopStartCardData {
+  id: string
+  pitcher_id: number | null
+  pitcher_name: string | null
+  game_info: string | null
+}
+
+async function fetchTopStartCard(date: string): Promise<TopStartCardData | null> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('daily_cards')
+      .select('id, pitcher_id, pitcher_name, game_info')
+      .eq('date', date)
+      .eq('bucket', 'top_start')
+      .eq('rank', 1)
+      .maybeSingle()
+    if (!data) return null
+    return data as TopStartCardData
+  } catch (err) {
+    console.error('fetchTopStartCard error:', err)
+    return null
+  }
+}
+
+function buildStartOfDayHtml(card: TopStartCardData | null): string {
+  if (!card) return ''
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
+  const imgUrl = `${siteUrl}/api/card-image?id=${card.id}`
+  const playerLink = card.pitcher_id ? `${siteUrl}/player/${card.pitcher_id}` : '#'
+  return `
+  <a href="${playerLink}" style="display:block;text-decoration:none;color:inherit;">
+    <img src="${imgUrl}" alt="${escapeHtml(card.pitcher_name || 'Top Start')}" style="display:block;width:100%;max-width:100%;height:auto;border-radius:12px;border:1px solid rgba(255,255,255,0.08);" />
+  </a>`
 }
