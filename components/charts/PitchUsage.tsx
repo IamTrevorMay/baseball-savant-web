@@ -12,22 +12,24 @@ export default function PitchUsage({ data }: { data: any[] }) {
   const total = f.length
 
   const trace = {
-    x: sorted.map(([name]) => name),
-    y: sorted.map(([, count]) => (count / total * 100)),
-    type: 'bar' as any,
-    marker: { color: sorted.map(([name]) => getPitchColor(name)), line: { width: 0 } },
-    text: sorted.map(([, count]) => `${(count / total * 100).toFixed(1)}%`),
-    textposition: 'outside' as any, textfont: { color: COLORS.textLight, size: 10 },
-    hovertemplate: '%{x}<br>Usage: %{y:.1f}%<br>Count: %{customdata}<extra></extra>',
-    customdata: sorted.map(([, count]) => count),
+    labels: sorted.map(([name]) => name),
+    values: sorted.map(([, count]) => count),
+    type: 'pie' as any,
+    hole: 0.4,
+    marker: { colors: sorted.map(([name]) => getPitchColor(name)), line: { color: COLORS.bg, width: 2 } },
+    textinfo: 'label+percent',
+    textposition: 'outside' as any,
+    textfont: { color: COLORS.textLight, size: 11 },
+    hovertemplate: '%{label}<br>Usage: %{percent}<br>Count: %{value}<extra></extra>',
+    sort: false,
   }
 
   const layout = {
     ...BASE_LAYOUT,
     title: { text: 'Pitch Usage', font: { size: 14, color: COLORS.textLight } },
-    xaxis: { ...BASE_LAYOUT.xaxis, title: '' },
-    yaxis: { ...BASE_LAYOUT.yaxis, title: 'Usage %' },
-    height: 400, showlegend: false,
+    height: 400,
+    showlegend: false,
+    margin: { t: 40, r: 30, b: 30, l: 30 },
   }
 
   return <Plot data={[trace]} layout={layout} config={{ displaylogo: false }} />

@@ -67,7 +67,7 @@ export default function PlayerDashboard() {
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
   const [seasonType, setSeasonType] = useState<'regular'|'spring'|'postseason'|'all'>('regular')
-  const [selectedYear, setSelectedYear] = useState<number | null>(new Date().getFullYear())
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [availableYears, setAvailableYears] = useState<number[]>([])
 
   // Model tabs
@@ -122,10 +122,9 @@ export default function PlayerDashboard() {
       .from('player_summary').select('*').eq('pitcher', pitcherId).single()
     if (pData) setInfo(pData as PlayerInfo)
 
-    // Default to player's latest season (handles retired players correctly)
-    const initialYear = pData?.latest_season || new Date().getFullYear()
-    setSelectedYear(initialYear)
-    await fetchData(initialYear)
+    // Default to all seasons
+    setSelectedYear(null)
+    await fetchData(null)
 
     // Fetch MLB official stats, Lahman data, and SOS scores in parallel
     try {

@@ -2,8 +2,7 @@
 import { useState } from 'react'
 import PitchUsage from '../charts/PitchUsage'
 import PitchMovement from '../charts/PitchMovement'
-import VelocityDistribution from '../charts/VelocityDistribution'
-import StrikeZoneHeatmap from '../charts/StrikeZoneHeatmap'
+import PitchLocationCards from '../charts/PitchLocationCards'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
 import {
   getLeagueBaseline, computePlus, computeCommandPlus, computeRPComPlus,
@@ -452,12 +451,9 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
           <PitchMovement data={data} />
         </div>
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
-          <VelocityDistribution data={data} />
-        </div>
-        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
-          <StrikeZoneHeatmap data={data} />
-        </div>
+      </div>
+      <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
+        <PitchLocationCards data={data} playerName={info?.player_name} />
       </div>
     </div>
   )
