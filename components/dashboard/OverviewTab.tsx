@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
-import PitchUsage from '../charts/PitchUsage'
-import PitchMovement from '../charts/PitchMovement'
+import PercentileRankings from '../charts/PercentileRankings'
+import MovementProfile from '../charts/MovementProfile'
 import PitchLocationCards from '../charts/PitchLocationCards'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA, parseIP } from '@/lib/expected-stats'
 import {
@@ -94,6 +94,13 @@ function calcAdvancedByYear(data: any[]) {
     const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
     const zoneP = pitches.filter(p => p.zone && p.zone >= 1 && p.zone <= 9).length
 
+    // First Pitch Strike %
+    const firstPitches = pitches.filter(p => p.pitch_number === 1)
+    const firstPitchStrikes = firstPitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d === 'called_strike' || d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'foul_tip'
+    }).length
+
     const avg = (arr: number[]) => arr.length ? arr.reduce((a,b) => a+b,0) / arr.length : null
     const f = (v: number | null, d: number = 1) => v != null ? v.toFixed(d) : '—'
     const pct = (n: number, den: number) => den > 0 ? (n / den * 100).toFixed(1) : '—'
@@ -163,6 +170,7 @@ function calcAdvancedByYear(data: any[]) {
       ip: ipDisplay,
       fip: f(fip, 2), xfip: f(xfip, 2), xera: f(xera, 2), siera: f(siera, 2),
       totalRE: f(dres.length ? dres.reduce((a: number, b: number) => a + b, 0) : null, 1),
+      fpsPct: pct(firstPitchStrikes, firstPitches.length),
       commandPlus: cmdWt > 0 ? String(Math.round(cmdWtSum / cmdWt)) : '—',
       rpcomPlus: rpcWt > 0 ? String(Math.round(rpcWtSum / rpcWt)) : '—',
     }
@@ -232,7 +240,7 @@ function calcArsenal(data: any[]) {
 function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
   if (rows.length === 0) return null
   const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","stuffPlus","commandPlus","rpcomPlus","sos"]
+  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","fpsPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","stuffPlus","commandPlus","rpcomPlus","sos"]
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
@@ -328,7 +336,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     { k:"year", l:"Year" }, { k:"pitches", l:"Pitches" }, { k:"ip", l:"IP" },
     { k:"kPct", l:"K%" }, { k:"bbPct", l:"BB%" }, { k:"kbbPct", l:"K-BB%" },
     { k:"whiffPct", l:"Whiff%" }, { k:"swStrPct", l:"SwStr%" },
-    { k:"csPct", l:"CSt%" }, { k:"zonePct", l:"Zone%" },
+    { k:"csPct", l:"CSt%" }, { k:"fpsPct", l:"FPS%" }, { k:"zonePct", l:"Zone%" },
     { k:"avgEV", l:"Avg EV" }, { k:"maxEV", l:"Max EV" }, { k:"avgLA", l:"Avg LA" },
     { k:"gbPct", l:"GB%" }, { k:"fbPct", l:"FB%" }, { k:"ldPct", l:"LD%" },
     { k:"xBA", l:"xBA" }, { k:"xwOBA", l:"xwOBA" }, { k:"xSLG", l:"xSLG" },
@@ -361,7 +369,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (k === 'games' || k === 'pitches' || k === 'pa' || k === 'ip' || k === 'count') return 'text-zinc-400'
     if (['h','2b','3b','hr','bb','k','hbp','usagePct'].includes(k)) return 'text-zinc-300'
     if (['ba','obp','slg','wOBA','xBA','xwOBA','xSLG'].includes(k)) return 'text-rose-400'
-    if (['kPct','kbbPct','whiffPct','swStrPct','csPct'].includes(k)) return 'text-emerald-400'
+    if (['kPct','kbbPct','whiffPct','swStrPct','csPct','fpsPct'].includes(k)) return 'text-emerald-400'
     if (['bbPct'].includes(k)) return 'text-red-400'
     if (['avgVelo','maxVelo'].includes(k)) return 'text-amber-400'
     if (['avgSpin'].includes(k)) return 'text-sky-400'
@@ -416,7 +424,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
                 <tr key={i} className="border-t border-zinc-800/30 hover:bg-zinc-800/30 transition">
                   {activeCols.map(c => (
                     <td key={c.k} className={`px-3 py-2 whitespace-nowrap font-mono text-right first:text-left first:font-sans ${cellColor(c.k, r[c.k])}`}>
-                      {c.k === 'kPct' || c.k === 'bbPct' || c.k === 'kbbPct' || c.k === 'whiffPct' || c.k === 'swStrPct' || c.k === 'csPct' || c.k === 'zonePct' || c.k === 'gbPct' || c.k === 'fbPct' || c.k === 'ldPct' || c.k === 'puPct' || c.k === 'usagePct'
+                      {c.k === 'kPct' || c.k === 'bbPct' || c.k === 'kbbPct' || c.k === 'whiffPct' || c.k === 'swStrPct' || c.k === 'csPct' || c.k === 'fpsPct' || c.k === 'zonePct' || c.k === 'gbPct' || c.k === 'fbPct' || c.k === 'ldPct' || c.k === 'puPct' || c.k === 'usagePct'
                         ? (r[c.k] !== '—' ? r[c.k] + '%' : '—')
                         : (r[c.k] ?? r[c.k] ?? '—')}
                     </td>
@@ -443,13 +451,13 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
         </div>
       </div>
 
-      {/* Charts */}
+      {/* Percentile Rankings + Movement Profile */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
-          <PitchUsage data={data} />
+          <PercentileRankings data={data} />
         </div>
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
-          <PitchMovement data={data} />
+          <MovementProfile data={data} />
         </div>
       </div>
       <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
