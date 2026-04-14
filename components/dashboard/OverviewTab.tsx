@@ -10,6 +10,7 @@ import {
 } from '@/lib/leagueStats'
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 import Tip from '@/components/Tip'
+import { getColumns, formatMetric, getCellColor, calcTotalsFromRegistry } from '@/lib/metricRegistry'
 
 interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[]; sosScores?: Record<number, { sos: number }> }
 
@@ -237,34 +238,6 @@ function calcArsenal(data: any[]) {
   }).sort((a, b) => b.count - a.count)
 }
 
-function calcTotals(rows: any[], cols: {k:string,l:string}[], mode: string): any {
-  if (rows.length === 0) return null
-  const totals: any = {}
-  const pctFields = ["ba","obp","slg","kPct","bbPct","kbbPct","whiffPct","swStrPct","csPct","fpsPct","zonePct","gbPct","fbPct","ldPct","puPct","xBA","xwOBA","xSLG","wOBA","usagePct","avgEV","maxEV","avgLA","avgVelo","maxVelo","avgSpin","hBreak","vBreak","ext","armAngle","era","whip","fip","xfip","xera","siera","k9","bb9","hr9","brink","cluster","brinkPlus","clusterPlus","stuffPlus","commandPlus","rpcomPlus","sos"]
-  cols.forEach(c => {
-    if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
-    const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
-    if (vals.length === 0) { totals[c.k] = "—"; return }
-    if (pctFields.includes(c.k)) {
-      totals[c.k] = (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(
-        ["ba","obp","slg","xBA","xwOBA","xSLG","wOBA"].includes(c.k) ? 3
-        : ["fip","xfip","xera","siera"].includes(c.k) ? 2
-        : 1
-      )
-    } else if (c.k === "ip") {
-      const outs = rows.reduce((sum, r) => { const parts = String(r.ip).split("."); return sum + parseInt(parts[0])*3 + parseInt(parts[1]||"0") }, 0)
-      totals[c.k] = Math.floor(outs/3) + "." + (outs%3)
-    } else if (c.k === "totalRE") {
-      totals[c.k] = vals.reduce((a,b) => a+b, 0).toFixed(1)
-    } else if (c.k === "maxVelo" || c.k === "maxEV") {
-      totals[c.k] = Math.max(...vals).toFixed(1)
-    } else {
-      totals[c.k] = vals.reduce((a,b) => a+b, 0)
-    }
-  })
-  return totals
-}
-
 export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching = [], sosScores = {} }: Props) {
   const [mode, setMode] = useState<StatsMode>('traditional')
 
@@ -323,75 +296,12 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
   })
 
 
-  const tradCols = [
-    { k:"year", l:"Year" }, { k:"w", l:"W" }, { k:"l", l:"L" }, { k:"era", l:"ERA" },
-    { k:"games", l:"G" }, { k:"gs", l:"GS" }, { k:"sv", l:"SV" }, { k:"ip", l:"IP" },
-    { k:"pa", l:"PA" }, { k:"h", l:"H" }, { k:"2b", l:"2B" }, { k:"3b", l:"3B" },
-    { k:"hr", l:"HR" }, { k:"bb", l:"BB" }, { k:"k", l:"K" }, { k:"hbp", l:"HBP" },
-    { k:"ba", l:"BA" }, { k:"obp", l:"OBP" }, { k:"slg", l:"SLG" }, { k:"ops", l:"OPS" }, { k:"whip", l:"WHIP" },
-    { k:"kPct", l:"K%" }, { k:"bbPct", l:"BB%" }, { k:"whiffPct", l:"Whiff%" },
-    { k:"pitches", l:"Pitches" },
-  ]
-  const advCols = [
-    { k:"year", l:"Year" }, { k:"pitches", l:"Pitches" }, { k:"ip", l:"IP" },
-    { k:"kPct", l:"K%" }, { k:"bbPct", l:"BB%" }, { k:"kbbPct", l:"K-BB%" },
-    { k:"whiffPct", l:"Whiff%" }, { k:"swStrPct", l:"SwStr%" },
-    { k:"csPct", l:"CSt%" }, { k:"fpsPct", l:"FPS%" }, { k:"zonePct", l:"Zone%" },
-    { k:"avgEV", l:"Avg EV" }, { k:"maxEV", l:"Max EV" }, { k:"avgLA", l:"Avg LA" },
-    { k:"gbPct", l:"GB%" }, { k:"fbPct", l:"FB%" }, { k:"ldPct", l:"LD%" },
-    { k:"xBA", l:"xBA" }, { k:"xwOBA", l:"xwOBA" }, { k:"xSLG", l:"xSLG" },
-    { k:"wOBA", l:"wOBA" },
-    { k:"fip", l:"FIP" }, { k:"xfip", l:"xFIP" }, { k:"xera", l:"xERA" }, { k:"siera", l:"SIERA" },
-    { k:"k9", l:"K/9" }, { k:"bb9", l:"BB/9" }, { k:"hr9", l:"HR/9" },
-    { k:"totalRE", l:"RE24" },
-    { k:"commandPlus", l:"Cmd+" }, { k:"rpcomPlus", l:"RPCom+" },
-    { k:"sos", l:"SOS" },
-  ]
-  const arsenalCols = [
-    { k:'name', l:'Pitch' }, { k:'count', l:'#' }, { k:'usagePct', l:'Usage%' },
-    { k:'avgVelo', l:'Velo' }, { k:'maxVelo', l:'Max' },
-    { k:'avgSpin', l:'Spin' }, { k:'hBreak', l:'HB' }, { k:'vBreak', l:'IVB' },
-    { k:'ext', l:'Ext' }, { k:'armAngle', l:'Arm°' },
-    { k:'whiffPct', l:'Whiff%' }, { k:'csPct', l:'CSt%' },
-    { k:'avgEV', l:'EV' }, { k:'xBA', l:'xBA' },
-    { k:'brink', l:'Brink' },
-    { k:'cluster', l:'Cluster' },
-    { k:'brinkPlus', l:'Brink+' },
-    { k:'clusterPlus', l:'Cluster+' },
-    { k:'stuffPlus', l:'Stuff+' },
-  ]
+  const tradCols = getColumns('pitcher:traditional')
+  const advCols = getColumns('pitcher:advanced')
+  const arsenalCols = getColumns('pitcher:arsenal')
 
   const activeRows = mode === 'traditional' ? mergedTradRows : mode === 'advanced' ? mergedAdvRows : arsenalRows
   const activeCols = mode === 'traditional' ? tradCols : mode === 'advanced' ? advCols : arsenalCols
-
-  const cellColor = (k: string, v: any) => {
-    if (k === 'year' || k === 'name') return 'text-white font-medium'
-    if (k === 'games' || k === 'pitches' || k === 'pa' || k === 'ip' || k === 'count') return 'text-zinc-400'
-    if (['h','2b','3b','hr','bb','k','hbp','usagePct'].includes(k)) return 'text-zinc-300'
-    if (['ba','obp','slg','wOBA','xBA','xwOBA','xSLG'].includes(k)) return 'text-rose-400'
-    if (['kPct','kbbPct','whiffPct','swStrPct','csPct','fpsPct'].includes(k)) return 'text-emerald-400'
-    if (['bbPct'].includes(k)) return 'text-red-400'
-    if (['avgVelo','maxVelo'].includes(k)) return 'text-amber-400'
-    if (['avgSpin'].includes(k)) return 'text-sky-400'
-    if (['hBreak','vBreak','ext','armAngle'].includes(k)) return 'text-purple-400'
-    if (k === 'brink') return 'text-teal-400'
-    if (k === 'cluster') return 'text-teal-400'
-    if (k === 'sos') {
-      const n = Number(v)
-      if (isNaN(n)) return 'text-zinc-400'
-      return n > 105 ? 'text-emerald-400' : n < 95 ? 'text-orange-400' : 'text-zinc-300'
-    }
-    if (k === 'brinkPlus' || k === 'clusterPlus' || k === 'stuffPlus' || k === 'commandPlus' || k === 'rpcomPlus') {
-      const n = Number(v)
-      if (isNaN(n)) return 'text-zinc-400'
-      return n > 100 ? 'text-teal-400' : n < 100 ? 'text-orange-400' : 'text-zinc-300'
-    }
-    if (['avgEV','maxEV','avgLA','gbPct','fbPct','ldPct','puPct'].includes(k)) return 'text-orange-400'
-    if (['zonePct'].includes(k)) return 'text-sky-400'
-    if (['fip','xfip','xera','siera'].includes(k)) return 'text-cyan-400'
-    if (['totalRE'].includes(k)) return Number(v) < 0 ? 'text-emerald-400' : 'text-red-400'
-    return 'text-zinc-300'
-  }
 
   return (
     <div className="space-y-6">
@@ -423,24 +333,20 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
               {activeRows.map((r: any, i: number) => (
                 <tr key={i} className="border-t border-zinc-800/30 hover:bg-zinc-800/30 transition">
                   {activeCols.map(c => (
-                    <td key={c.k} className={`px-3 py-2 whitespace-nowrap font-mono text-right first:text-left first:font-sans ${cellColor(c.k, r[c.k])}`}>
-                      {c.k === 'kPct' || c.k === 'bbPct' || c.k === 'kbbPct' || c.k === 'whiffPct' || c.k === 'swStrPct' || c.k === 'csPct' || c.k === 'fpsPct' || c.k === 'zonePct' || c.k === 'gbPct' || c.k === 'fbPct' || c.k === 'ldPct' || c.k === 'puPct' || c.k === 'usagePct'
-                        ? (r[c.k] !== '—' ? r[c.k] + '%' : '—')
-                        : (r[c.k] ?? r[c.k] ?? '—')}
+                    <td key={c.k} className={`px-3 py-2 whitespace-nowrap font-mono text-right first:text-left first:font-sans ${getCellColor(c.k, r[c.k])}`}>
+                      {formatMetric(c.k, r[c.k])}
                     </td>
                   ))}
                 </tr>
               ))}
               {(() => {
-                const totals = calcTotals(activeRows, activeCols, mode)
+                const totals = calcTotalsFromRegistry(activeRows, activeCols.map(c => c.k))
                 if (!totals) return null
                 return (
                   <tr className="border-t-2 border-zinc-600 bg-zinc-800/40 font-semibold">
                     {activeCols.map(c => (
-                      <td key={c.k} className={`px-3 py-2 whitespace-nowrap font-mono text-right first:text-left first:font-sans ${cellColor(c.k, totals[c.k])}`}>
-                        {c.k === "kPct" || c.k === "bbPct" || c.k === "kbbPct" || c.k === "whiffPct" || c.k === "swStrPct" || c.k === "csPct" || c.k === "zonePct" || c.k === "gbPct" || c.k === "fbPct" || c.k === "ldPct" || c.k === "puPct" || c.k === "usagePct"
-                          ? (totals[c.k] !== "—" ? totals[c.k] + "%" : "—")
-                          : (totals[c.k] ?? "—")}
+                      <td key={c.k} className={`px-3 py-2 whitespace-nowrap font-mono text-right first:text-left first:font-sans ${getCellColor(c.k, totals[c.k])}`}>
+                        {formatMetric(c.k, totals[c.k])}
                       </td>
                     ))}
                   </tr>

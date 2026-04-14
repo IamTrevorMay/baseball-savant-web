@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { METRIC_REGISTRY, getRegistryTipByLabel } from './metricRegistry'
 
 export interface GlossaryEntry {
   column_name: string
@@ -125,5 +126,5 @@ const METRIC_TIPS: Record<string, string> = {
 
 /** Look up tooltip description by column name or display label */
 export function getTip(key: string): string {
-  return glossaryCache[key]?.description || METRIC_TIPS[key] || ''
+  return glossaryCache[key]?.description || METRIC_TIPS[key] || METRIC_REGISTRY[key]?.tip || getRegistryTipByLabel(key) || ''
 }
