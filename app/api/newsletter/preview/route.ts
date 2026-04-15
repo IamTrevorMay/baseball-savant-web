@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { buildNewsletterFromBrief, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
+import { buildNewsletterHtml, highlightsToStandouts, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   // Fetch the brief
   const { data: brief } = await supabaseAdmin
     .from('briefs')
-    .select('content')
+    .select('title, metadata')
     .eq('date', briefDate)
     .maybeSingle()
 
@@ -29,13 +29,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No brief found for ' + briefDate }, { status: 404 })
   }
 
+  const meta = brief.metadata as any || {}
+
   // Fetch latest Substack post (optional)
   let latestPost = null
   try { latestPost = await fetchLatestSubstackPost() } catch { /* optional */ }
 
-  const html = buildNewsletterFromBrief({
+  const html = buildNewsletterHtml({
     date: briefDate,
-    briefContent: brief.content || '',
+    title: brief.title || 'Mayday Daily',
+    scores: meta.scores || [],
+    standouts: highlightsToStandouts(meta.daily_highlights),
+    surges: meta.trend_alerts?.surges || [],
+    concerns: meta.trend_alerts?.concerns || [],
+    topPerformances: meta.claude_sections?.topPerformances || '',
+    worstPerformances: meta.claude_sections?.worstPerformances || '',
+    injuries: meta.claude_sections?.injuries || '',
+    transactions: meta.claude_sections?.transactions || '',
     latestPost,
     unsubscribeUrl: `${SITE_URL}/api/newsletter/unsubscribe?token=preview`,
   })

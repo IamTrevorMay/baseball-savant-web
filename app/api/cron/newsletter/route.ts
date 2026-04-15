@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { buildNewsletterFromBrief, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
+import { buildNewsletterHtml, highlightsToStandouts, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
 
 export const maxDuration = 120
 
@@ -51,7 +50,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Brief not found for ' + briefDate, hint: 'Run /api/cron/briefs first' }, { status: 404 })
     }
 
-    // Fetch latest Substack post (the only thing we add to the brief HTML)
+    const meta = brief.metadata as any || {}
+
+    // Fetch latest Substack post
     const latestPost = await fetchLatestSubstackPost()
 
     // Fetch active subscribers
@@ -80,9 +81,17 @@ export async function GET(req: NextRequest) {
       const emails = batch.map(sub => {
         const unsubscribeUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubscribe_token}`
 
-        const html = buildNewsletterFromBrief({
+        const html = buildNewsletterHtml({
           date: briefDate,
-          briefContent: brief.content || '',
+          title: brief.title || 'Mayday Daily',
+          scores: meta.scores || [],
+          standouts: highlightsToStandouts(meta.daily_highlights),
+          surges: meta.trend_alerts?.surges || [],
+          concerns: meta.trend_alerts?.concerns || [],
+          topPerformances: meta.claude_sections?.topPerformances || '',
+          worstPerformances: meta.claude_sections?.worstPerformances || '',
+          injuries: meta.claude_sections?.injuries || '',
+          transactions: meta.claude_sections?.transactions || '',
           latestPost,
           unsubscribeUrl,
         })

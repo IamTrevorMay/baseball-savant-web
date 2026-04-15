@@ -227,6 +227,7 @@ Return ONLY valid JSON, no markdown fences.`,
           finished_count: finishedGames.length,
           is_off_day: isOffDay,
           daily_highlights: dailyHighlights,
+          trend_alerts: trendAlerts,
           claude_sections: {
             dayRundown: parsed.dayRundown,
             topPerformances: parsed.topPerformances,
