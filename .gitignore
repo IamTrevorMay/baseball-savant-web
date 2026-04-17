@@ -4,3 +4,8 @@ node_modules/
 .vercel
 .env*.local
 .DS_Store
+
+# MCP server (contains secrets; build artifacts)
+.mcp.json
+mcp-server/build/
+mcp-server/node_modules/
