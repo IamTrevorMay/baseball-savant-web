@@ -14,7 +14,7 @@ import WidgetControlPanel from './widgets/WidgetControlPanel'
 function SegmentProperties() {
   const {
     segments, selectedSegmentId, updateSegment, segmentAssets, assets,
-    updateSegmentAsset,
+    updateSegmentAsset, isReadOnly,
   } = useBroadcast()
   const [recordingHotkey, setRecordingHotkey] = useState(false)
   const segment = segments.find(s => s.id === selectedSegmentId)
@@ -26,6 +26,7 @@ function SegmentProperties() {
   const exitTransitions = getTransitions('exit')
 
   function handleChange(field: string, value: any) {
+    if (isReadOnly) return
     updateSegment(segment!.id, { [field]: value } as any)
     fetch('/api/broadcast/scenes', {
       method: 'PUT',
@@ -69,7 +70,8 @@ function SegmentProperties() {
           <input
             value={segment.name}
             onChange={e => handleChange('name', e.target.value)}
-            className="mt-1 w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white"
+            disabled={isReadOnly}
+            className="mt-1 w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-white disabled:opacity-50"
           />
         </div>
 
@@ -219,7 +221,7 @@ function SegmentProperties() {
 // ── Asset Properties Panel ──────────────────────────────────────────────────
 
 function AssetPropertiesPanel() {
-  const { assets, selectedAssetId, updateAsset, previewAsset, previewingAssetId } = useBroadcast()
+  const { assets, selectedAssetId, updateAsset, previewAsset, previewingAssetId, isReadOnly } = useBroadcast()
   const [recordingHotkey, setRecordingHotkey] = useState(false)
   const asset = assets.find(a => a.id === selectedAssetId)
 
@@ -232,7 +234,7 @@ function AssetPropertiesPanel() {
   }
 
   function handleChange(field: string, value: any) {
-    if (!asset) return
+    if (!asset || isReadOnly) return
     updateAsset(asset.id, { [field]: value } as any)
     fetch('/api/broadcast/assets', {
       method: 'PUT',
@@ -283,7 +285,7 @@ function AssetPropertiesPanel() {
       {asset.asset_type === 'slideshow' && <SlideshowEditor asset={asset} />}
       {asset.template_id && <TemplateDataPanel asset={asset} />}
 
-      <div className="px-4 py-3 space-y-4">
+      <div className={`px-4 py-3 space-y-4 ${isReadOnly ? 'pointer-events-none opacity-60' : ''}`}>
         {/* Name */}
         <div>
           <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">Name</label>

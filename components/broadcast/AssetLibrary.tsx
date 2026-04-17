@@ -27,6 +27,7 @@ export default function AssetLibrary() {
     addSegmentAsset, removeSegmentAsset, reloadSegmentAssets,
     slideshowPrev, slideshowNext, getSlideshowIndex,
     goLive, endSession,
+    isReadOnly,
   } = useBroadcast()
 
   const [showImport, setShowImport] = useState(false)
@@ -849,26 +850,30 @@ export default function AssetLibrary() {
           </button>
         )}
 
-        {/* Duplicate */}
-        <button
-          onClick={e => { e.stopPropagation(); handleDuplicateAsset(asset) }}
-          className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 transition"
-          title="Duplicate"
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-          </svg>
-        </button>
+        {/* Duplicate (editors only) */}
+        {!isReadOnly && (
+          <button
+            onClick={e => { e.stopPropagation(); handleDuplicateAsset(asset) }}
+            className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 transition"
+            title="Duplicate"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+          </button>
+        )}
 
-        {/* Delete */}
-        <button
-          onClick={e => { e.stopPropagation(); handleDelete(asset.id) }}
-          className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
+        {/* Delete (editors only) */}
+        {!isReadOnly && (
+          <button
+            onClick={e => { e.stopPropagation(); handleDelete(asset.id) }}
+            className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
     )
   }
@@ -967,26 +972,30 @@ export default function AssetLibrary() {
             </button>
           )}
 
-          {/* Duplicate */}
-          <button
-            onClick={e => { e.stopPropagation(); handleDuplicateSegment(segment) }}
-            className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 transition"
-            title="Duplicate segment"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
-          </button>
+          {/* Duplicate (editors only) */}
+          {!isReadOnly && (
+            <button
+              onClick={e => { e.stopPropagation(); handleDuplicateSegment(segment) }}
+              className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-zinc-300 transition"
+              title="Duplicate segment"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+              </svg>
+            </button>
+          )}
 
-          {/* Delete */}
-          <button
-            onClick={e => { e.stopPropagation(); handleDeleteSegment(segment.id) }}
-            className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          {/* Delete (editors only) */}
+          {!isReadOnly && (
+            <button
+              onClick={e => { e.stopPropagation(); handleDeleteSegment(segment.id) }}
+              className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Nested assets */}
@@ -1005,44 +1014,48 @@ export default function AssetLibrary() {
       {/* Header */}
       <div className="px-4 py-2 border-b border-zinc-800 flex items-center justify-between">
         <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Assets</h3>
-        <button
-          onClick={handleAddSegment}
-          className="text-[9px] px-1.5 py-0.5 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded hover:bg-emerald-600/30 transition"
-          title="New Segment"
-        >
-          + Segment
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleAddSegment}
+            className="text-[9px] px-1.5 py-0.5 bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded hover:bg-emerald-600/30 transition"
+            title="New Segment"
+          >
+            + Segment
+          </button>
+        )}
       </div>
 
-      {/* Actions */}
-      <div className="px-3 py-1.5 flex flex-col gap-1 border-b border-zinc-800">
-        <div className="flex gap-1.5">
-          <button onClick={() => setShowImport(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/30 rounded hover:bg-red-500/20 transition">
-            Import Scene
-          </button>
-          <button onClick={() => fileInputRef.current?.click()} className="flex-1 px-2 py-1 text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition">
-            Upload Media
-          </button>
+      {/* Actions (hidden for viewers) */}
+      {!isReadOnly && (
+        <div className="px-3 py-1.5 flex flex-col gap-1 border-b border-zinc-800">
+          <div className="flex gap-1.5">
+            <button onClick={() => setShowImport(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/30 rounded hover:bg-red-500/20 transition">
+              Import Scene
+            </button>
+            <button onClick={() => fileInputRef.current?.click()} className="flex-1 px-2 py-1 text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition">
+              Upload Media
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            <button onClick={() => setShowTemplateImport(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition">
+              Template
+            </button>
+            <button onClick={createSlideshow} className="flex-1 px-2 py-1 text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-500/20 transition">
+              Slideshow
+            </button>
+            <button onClick={() => adFileInputRef.current?.click()} disabled={adUploading} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 disabled:opacity-50 transition">
+              {adUploading ? 'Uploading...' : 'Ad'}
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            <button onClick={() => setShowWidgetPicker(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-500/20 transition">
+              Widget
+            </button>
+          </div>
+          <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+          <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleAdSelect} />
         </div>
-        <div className="flex gap-1.5">
-          <button onClick={() => setShowTemplateImport(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded hover:bg-amber-500/20 transition">
-            Template
-          </button>
-          <button onClick={createSlideshow} className="flex-1 px-2 py-1 text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-500/20 transition">
-            Slideshow
-          </button>
-          <button onClick={() => adFileInputRef.current?.click()} disabled={adUploading} className="flex-1 px-2 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded hover:bg-emerald-500/20 disabled:opacity-50 transition">
-            {adUploading ? 'Uploading...' : 'Ad'}
-          </button>
-        </div>
-        <div className="flex gap-1.5">
-          <button onClick={() => setShowWidgetPicker(true)} className="flex-1 px-2 py-1 text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-500/20 transition">
-            Widget
-          </button>
-        </div>
-        <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
-        <input ref={adFileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleAdSelect} />
-      </div>
+      )}
 
       {/* Multi-select action bar */}
       {selectedAssetIds.size >= 2 && (
@@ -1124,32 +1137,34 @@ export default function AssetLibrary() {
         </div>
       )}
 
-      {/* Go Live / Session controls */}
-      <div className="border-t border-zinc-800 px-3 py-2 space-y-1.5">
-        {overlayUrl && (
-          <button onClick={copyUrl} className="w-full px-2 py-1 text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition">
-            {copied ? 'Copied!' : 'Copy OBS URL'}
-          </button>
-        )}
-        {!session ? (
-          <button
-            onClick={handleGoLive}
-            disabled={goingLive || assets.length === 0}
-            className="w-full px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-[11px] font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
-          >
-            <div className="w-2 h-2 rounded-full bg-white" />
-            {goingLive ? 'Starting...' : 'Go Live'}
-          </button>
-        ) : (
-          <button
-            onClick={handleEndSession}
-            className="w-full px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-[11px] font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
-          >
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            End Session
-          </button>
-        )}
-      </div>
+      {/* Go Live / Session controls (editors only) */}
+      {!isReadOnly && (
+        <div className="border-t border-zinc-800 px-3 py-2 space-y-1.5">
+          {overlayUrl && (
+            <button onClick={copyUrl} className="w-full px-2 py-1 text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-700 transition">
+              {copied ? 'Copied!' : 'Copy OBS URL'}
+            </button>
+          )}
+          {!session ? (
+            <button
+              onClick={handleGoLive}
+              disabled={goingLive || assets.length === 0}
+              className="w-full px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-[11px] font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
+            >
+              <div className="w-2 h-2 rounded-full bg-white" />
+              {goingLive ? 'Starting...' : 'Go Live'}
+            </button>
+          ) : (
+            <button
+              onClick={handleEndSession}
+              className="w-full px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-[11px] font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
+            >
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              End Session
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Import Scene Modal */}
       {showImport && (

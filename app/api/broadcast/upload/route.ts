@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { checkProjectAccess, canEdit } from '@/lib/broadcast/checkProjectAccess'
 
 // POST with JSON body to get a signed upload URL (no file in body)
 // POST with FormData to do a proxied upload (small files only, <4.5MB)
@@ -21,15 +22,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'project_id, file_name, and file_type required' }, { status: 400 })
       }
 
-      // Verify project ownership
-      const { data: project } = await supabaseAdmin
-        .from('broadcast_projects')
-        .select('id')
-        .eq('id', project_id)
-        .eq('user_id', user.id)
-        .single()
-
-      if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+      const level = await checkProjectAccess(project_id, user.id)
+      if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
       const isVideo = file_type.startsWith('video/')
       const folder = isVideo ? 'videos' : 'images'
@@ -68,15 +62,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'file and project_id required' }, { status: 400 })
     }
 
-    // Verify project ownership
-    const { data: project } = await supabaseAdmin
-      .from('broadcast_projects')
-      .select('id')
-      .eq('id', projectId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    const level = await checkProjectAccess(projectId, user.id)
+    if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     // Determine folder
     const isVideo = file.type.startsWith('video/')

@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, ReactNode, useEffect } from 'react'
-import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig, OBSConnectionConfig } from '@/lib/broadcastTypes'
+import { BroadcastProject, BroadcastAsset, BroadcastSession, BroadcastProjectSettings, BroadcastSegment, BroadcastSegmentAsset, TemplateDataValues, TransitionConfig, OBSConnectionConfig, ProjectAccessLevel } from '@/lib/broadcastTypes'
 import { WidgetState, DEFAULT_WIDGET_STATE, ChatMessage, Topic, LowerThirdMessage, Notification, TimerPreset } from '@/lib/widgetTypes'
 import { useChatConnection } from '@/lib/useChatConnection'
 import { createClient } from '@supabase/supabase-js'
@@ -23,6 +23,10 @@ interface BroadcastContextValue {
   previewingAssetId: string | null
   loading: boolean
   slideshowSlideIndexes: Map<string, number>
+
+  // Access control
+  userRole: ProjectAccessLevel
+  isReadOnly: boolean
 
   videoTimeRemaining: Map<string, VideoTimeInfo>
 
@@ -122,6 +126,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [project, setProject] = useState<BroadcastProject | null>(null)
   const [assets, setAssets] = useState<BroadcastAsset[]>([])
   const [session, setSession] = useState<BroadcastSession | null>(null)
+  const [userRole, setUserRole] = useState<ProjectAccessLevel>('none')
+  const isReadOnly = userRole === 'viewer'
   const [visibleAssetIds, setVisibleAssetIds] = useState<Set<string>>(new Set())
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
   const [previewingAssetId, setPreviewingAssetId] = useState<string | null>(null)
@@ -269,7 +275,10 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         const segmentsData = await segmentsRes.json()
         const segmentAssetsData = await segmentAssetsRes.json()
 
-        if (projData.project) setProject(projData.project)
+        if (projData.project) {
+          setProject(projData.project)
+          if (projData.project._userRole) setUserRole(projData.project._userRole)
+        }
         if (assetsData.assets) setAssets(assetsData.assets)
         if (segmentsData.scenes) setSegments(segmentsData.scenes)
 
@@ -1327,6 +1336,7 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     <BroadcastCtx.Provider value={{
       project, assets, session, visibleAssetIds, animatingAssets, selectedAssetId, previewingAssetId, loading,
       slideshowSlideIndexes, videoTimeRemaining,
+      userRole, isReadOnly,
       segments, segmentAssets, activeSegmentId, switchingSegment, selectedSegmentId,
       setProject, setAssets, setSelectedAssetId: wrappedSetSelectedAssetId, addAsset, updateAsset, removeAsset,
       toggleAssetVisibility, previewAsset, goLive, endSession, sendEvent,

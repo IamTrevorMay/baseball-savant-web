@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { checkProjectAccess, canEdit } from '@/lib/broadcast/checkProjectAccess'
 
 export async function GET(req: NextRequest) {
   try {
@@ -44,6 +45,9 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
 
+    const level = await checkProjectAccess(body.project_id, user.id)
+    if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const { data, error } = await supabaseAdmin
       .from('broadcast_sessions')
       .insert({
@@ -73,7 +77,17 @@ export async function PUT(req: NextRequest) {
     const { id, ...updates } = body
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-    // All users with broadcast access can interact with live sessions
+    // Resolve project from session
+    const { data: session } = await supabaseAdmin
+      .from('broadcast_sessions')
+      .select('project_id')
+      .eq('id', id)
+      .single()
+    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+
+    const level = await checkProjectAccess(session.project_id, user.id)
+    if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const { error } = await supabaseAdmin
       .from('broadcast_sessions')
       .update(updates)

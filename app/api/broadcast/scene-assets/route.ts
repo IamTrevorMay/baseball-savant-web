@@ -1,18 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { checkProjectAccess, canEdit, resolveProjectId } from '@/lib/broadcast/checkProjectAccess'
 
 export async function GET(req: NextRequest) {
   try {
     const sceneId = req.nextUrl.searchParams.get('scene_id')
     const projectId = req.nextUrl.searchParams.get('project_id')
 
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Determine the project_id for access check
+    let accessProjectId = projectId
+    if (!accessProjectId && sceneId) {
+      accessProjectId = await resolveProjectId('broadcast_scenes', sceneId)
+    }
+    if (!accessProjectId) return NextResponse.json({ error: 'scene_id or project_id required' }, { status: 400 })
+
+    const level = await checkProjectAccess(accessProjectId, user.id)
+    if (level === 'none') return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
     let query = supabaseAdmin.from('broadcast_scene_assets').select('*')
 
     if (sceneId) {
       query = query.eq('scene_id', sceneId)
     } else if (projectId) {
-      // Get all scene assets for all scenes in a project
       const { data: scenes } = await supabaseAdmin
         .from('broadcast_scenes')
         .select('id')
@@ -22,8 +36,6 @@ export async function GET(req: NextRequest) {
 
       const sceneIds = scenes.map(s => s.id)
       query = query.in('scene_id', sceneIds)
-    } else {
-      return NextResponse.json({ error: 'scene_id or project_id required' }, { status: 400 })
     }
 
     const { data, error } = await query
@@ -42,6 +54,13 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
+
+    // Resolve project from scene
+    const projectId = await resolveProjectId('broadcast_scenes', body.scene_id)
+    if (!projectId) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
+
+    const level = await checkProjectAccess(projectId, user.id)
+    if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { data, error } = await supabaseAdmin
       .from('broadcast_scene_assets')
@@ -76,6 +95,12 @@ export async function PUT(req: NextRequest) {
     const { id, ...updates } = body
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
+    const projectId = await resolveProjectId('broadcast_scene_assets', id)
+    if (!projectId) return NextResponse.json({ error: 'Scene asset not found' }, { status: 404 })
+
+    const level = await checkProjectAccess(projectId, user.id)
+    if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
     const { data, error } = await supabaseAdmin
       .from('broadcast_scene_assets')
       .update(updates)
@@ -98,6 +123,12 @@ export async function DELETE(req: NextRequest) {
 
     const body = await req.json()
     if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+    const projectId = await resolveProjectId('broadcast_scene_assets', body.id)
+    if (!projectId) return NextResponse.json({ error: 'Scene asset not found' }, { status: 404 })
+
+    const level = await checkProjectAccess(projectId, user.id)
+    if (!canEdit(level)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const { error } = await supabaseAdmin
       .from('broadcast_scene_assets')

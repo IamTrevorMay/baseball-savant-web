@@ -1,6 +1,10 @@
 import { SceneElement } from './sceneTypes'
 import { WidgetConfig } from './widgetTypes'
 
+// ── Project Access ─────────────────────────────────────────────────────────
+
+export type ProjectAccessLevel = 'owner' | 'producer' | 'viewer' | 'none'
+
 // ── OBS WebSocket ──────────────────────────────────────────────────────────
 
 export interface OBSConnectionConfig {
@@ -28,6 +32,7 @@ export interface BroadcastProject {
   settings: BroadcastProjectSettings
   created_at: string
   updated_at: string
+  _userRole?: ProjectAccessLevel
 }
 
 // ── Broadcast Asset ─────────────────────────────────────────────────────────
