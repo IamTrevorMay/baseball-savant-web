@@ -1015,7 +1015,7 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       }
     }
 
-    // New pitch alerts
+    // New pitch alerts (scope prior_types to current season to avoid full-table scan)
     const newPitchRes = await qAdmin(`
       WITH today_types AS (
         SELECT pitcher, pitch_name, COUNT(*) AS count,
@@ -1027,7 +1027,7 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       ),
       prior_types AS (
         SELECT DISTINCT pitcher, pitch_name FROM pitches
-        WHERE game_date < '${prevDay}' AND pitch_name IS NOT NULL
+        WHERE game_year = ${briefYear} AND game_date < '${prevDay}' AND pitch_name IS NOT NULL
           AND pitcher IN (SELECT DISTINCT pitcher FROM pitches WHERE game_date = '${prevDay}')
       )
       SELECT t.pitcher AS player_id, pl.name AS player_name, pl.team,
