@@ -9,7 +9,6 @@ import AssetPreview from './AssetPreview'
 const CANVAS_W = 1920
 const CANVAS_H = 1080
 const SNAP_THRESHOLD = 6
-const GRID_SIZE = 20
 
 // ── Snap Guides ──────────────────────────────────────────────────────────────
 
@@ -24,10 +23,12 @@ function computeAssetSnapGuides(
   newW: number, newH: number,
   allAssets: BroadcastAsset[],
   canvasW: number, canvasH: number,
+  gridSize: number,
 ): { x: number; y: number; guides: SnapGuide[] } {
   const guides: SnapGuide[] = []
   let snapX = newX
   let snapY = newY
+  let snappedX = false, snappedY = false
 
   // Edges and center of the dragging asset
   const myL = newX, myR = newX + newW, myCX = newX + newW / 2
@@ -36,54 +37,92 @@ function computeAssetSnapGuides(
   // Canvas center
   const cx = canvasW / 2, cy = canvasH / 2
 
-  // Snap to canvas center
+  // 1. Snap to canvas center (highest priority)
   if (Math.abs(myCX - cx) < SNAP_THRESHOLD) {
-    snapX = cx - newW / 2; guides.push({ axis: 'x', position: cx })
+    snapX = cx - newW / 2; guides.push({ axis: 'x', position: cx }); snappedX = true
   }
   if (Math.abs(myCY - cy) < SNAP_THRESHOLD) {
-    snapY = cy - newH / 2; guides.push({ axis: 'y', position: cy })
+    snapY = cy - newH / 2; guides.push({ axis: 'y', position: cy }); snappedY = true
   }
 
-  // Snap to grid
-  const gridSnapX = Math.round(newX / GRID_SIZE) * GRID_SIZE
-  const gridSnapY = Math.round(newY / GRID_SIZE) * GRID_SIZE
-  if (guides.filter(g => g.axis === 'x').length === 0 && Math.abs(newX - gridSnapX) < SNAP_THRESHOLD) {
-    snapX = gridSnapX
+  // 2. Snap to canvas edges
+  if (!snappedX) {
+    const edgeXSnaps = [
+      { my: myL, target: 0 }, { my: myR, target: canvasW },
+    ]
+    for (const s of edgeXSnaps) {
+      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+        snapX = newX + (s.target - s.my)
+        guides.push({ axis: 'x', position: s.target })
+        snappedX = true
+        break
+      }
+    }
   }
-  if (guides.filter(g => g.axis === 'y').length === 0 && Math.abs(newY - gridSnapY) < SNAP_THRESHOLD) {
-    snapY = gridSnapY
+  if (!snappedY) {
+    const edgeYSnaps = [
+      { my: myT, target: 0 }, { my: myB, target: canvasH },
+    ]
+    for (const s of edgeYSnaps) {
+      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+        snapY = newY + (s.target - s.my)
+        guides.push({ axis: 'y', position: s.target })
+        snappedY = true
+        break
+      }
+    }
   }
 
-  // Snap to other assets
+  // 3. Snap to other assets
   for (const other of allAssets) {
     if (other.id === currentId) continue
     const oL = other.canvas_x, oR = other.canvas_x + other.canvas_width, oCX = other.canvas_x + other.canvas_width / 2
     const oT = other.canvas_y, oB = other.canvas_y + other.canvas_height, oCY = other.canvas_y + other.canvas_height / 2
 
-    const xSnaps = [
-      { my: myL, target: oL }, { my: myR, target: oR },
-      { my: myL, target: oR }, { my: myR, target: oL },
-      { my: myCX, target: oCX },
-    ]
-    for (const s of xSnaps) {
-      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
-        snapX = newX + (s.target - s.my)
-        guides.push({ axis: 'x', position: s.target })
-        break
+    if (!snappedX) {
+      const xSnaps = [
+        { my: myL, target: oL }, { my: myR, target: oR },
+        { my: myL, target: oR }, { my: myR, target: oL },
+        { my: myCX, target: oCX },
+      ]
+      for (const s of xSnaps) {
+        if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+          snapX = newX + (s.target - s.my)
+          guides.push({ axis: 'x', position: s.target })
+          snappedX = true
+          break
+        }
       }
     }
 
-    const ySnaps = [
-      { my: myT, target: oT }, { my: myB, target: oB },
-      { my: myT, target: oB }, { my: myB, target: oT },
-      { my: myCY, target: oCY },
-    ]
-    for (const s of ySnaps) {
-      if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
-        snapY = newY + (s.target - s.my)
-        guides.push({ axis: 'y', position: s.target })
-        break
+    if (!snappedY) {
+      const ySnaps = [
+        { my: myT, target: oT }, { my: myB, target: oB },
+        { my: myT, target: oB }, { my: myB, target: oT },
+        { my: myCY, target: oCY },
+      ]
+      for (const s of ySnaps) {
+        if (Math.abs(s.my - s.target) < SNAP_THRESHOLD) {
+          snapY = newY + (s.target - s.my)
+          guides.push({ axis: 'y', position: s.target })
+          snappedY = true
+          break
+        }
       }
+    }
+  }
+
+  // 4. Snap to grid (lowest priority)
+  if (!snappedX) {
+    const gridSnapX = Math.round(newX / gridSize) * gridSize
+    if (Math.abs(newX - gridSnapX) < SNAP_THRESHOLD) {
+      snapX = gridSnapX
+    }
+  }
+  if (!snappedY) {
+    const gridSnapY = Math.round(newY / gridSize) * gridSize
+    if (Math.abs(newY - gridSnapY) < SNAP_THRESHOLD) {
+      snapY = gridSnapY
     }
   }
 
@@ -142,9 +181,12 @@ interface BroadcastCanvasProps {
   referenceImage?: string
   referenceImageOpacity?: number
   showReferenceImage?: boolean
+  gridSize?: number
+  snapEnabled?: boolean
+  showGrid?: boolean
 }
 
-export default function BroadcastCanvas({ referenceImage, referenceImageOpacity = 50, showReferenceImage = false }: BroadcastCanvasProps) {
+export default function BroadcastCanvas({ referenceImage, referenceImageOpacity = 50, showReferenceImage = false, gridSize = 20, snapEnabled = true, showGrid = true }: BroadcastCanvasProps) {
   const { assets, visibleAssetIds, selectedAssetId, setSelectedAssetId, updateAsset, previewingAssetId } = useBroadcast()
   const containerRef = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; assetX: number; assetY: number } | null>(null)
@@ -191,12 +233,11 @@ export default function BroadcastCanvas({ referenceImage, referenceImageOpacity 
         const w = currentAsset?.canvas_width || 100
         const h = currentAsset?.canvas_height || 100
 
-        if (me.altKey) {
-          // Alt held — no snapping
+        if (!snapEnabled || me.altKey) {
           updateAsset(prev.id, { canvas_x: rawX, canvas_y: rawY })
           setSnapGuides([])
         } else {
-          const snap = computeAssetSnapGuides(prev.id, rawX, rawY, w, h, assetsRef.current, CANVAS_W, CANVAS_H)
+          const snap = computeAssetSnapGuides(prev.id, rawX, rawY, w, h, assetsRef.current, CANVAS_W, CANVAS_H, gridSize)
           updateAsset(prev.id, { canvas_x: snap.x, canvas_y: snap.y })
           setSnapGuides(snap.guides)
         }
@@ -218,9 +259,9 @@ export default function BroadcastCanvas({ referenceImage, referenceImageOpacity 
         const currentAsset = assetsRef.current.find(a => a.id === prev.id)
         const w = currentAsset?.canvas_width || 100
         const h = currentAsset?.canvas_height || 100
-        const snap = me.altKey
+        const snap = (!snapEnabled || me.altKey)
           ? { x: rawX, y: rawY }
-          : computeAssetSnapGuides(prev.id, rawX, rawY, w, h, assetsRef.current, CANVAS_W, CANVAS_H)
+          : computeAssetSnapGuides(prev.id, rawX, rawY, w, h, assetsRef.current, CANVAS_W, CANVAS_H, gridSize)
         fetch('/api/broadcast/assets', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -270,9 +311,9 @@ export default function BroadcastCanvas({ referenceImage, referenceImageOpacity 
         }
       }
 
-      // Snap resized edges (unless Alt held)
-      if (!me.altKey) {
-        const snap = computeAssetSnapGuides(asset.id, newX, newY, newW, newH, assetsRef.current, CANVAS_W, CANVAS_H)
+      // Snap resized edges (unless Alt held or snap disabled)
+      if (snapEnabled && !me.altKey) {
+        const snap = computeAssetSnapGuides(asset.id, newX, newY, newW, newH, assetsRef.current, CANVAS_W, CANVAS_H, gridSize)
         // Apply snapped position (adjusting width/height to match)
         const dxSnap = snap.x - newX, dySnap = snap.y - newY
         if (handle.includes('w')) { newX = snap.x; newW -= dxSnap }
@@ -333,14 +374,16 @@ export default function BroadcastCanvas({ referenceImage, referenceImageOpacity 
         )}
 
         {/* Grid */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
-            backgroundSize: '80px 80px',
-          }}
-        />
+        {showGrid && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
+              backgroundSize: `${gridSize}px ${gridSize}px`,
+            }}
+          />
+        )}
 
         {/* Snap guides */}
         {snapGuides.map((guide, i) => (

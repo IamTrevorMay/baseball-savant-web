@@ -13,6 +13,7 @@ import ClipMarkerPanel from '@/components/broadcast/ClipMarkerPanel'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
 import StreamDeckSetup from '@/components/broadcast/StreamDeckSetup'
 import OBSSettings from '@/components/broadcast/OBSSettings'
+import ShareDialog from '@/components/broadcast/ShareDialog'
 import { useStreamDeck } from '@/lib/useStreamDeck'
 import type { ButtonEntry } from '@/lib/streamDeckProfile'
 
@@ -24,6 +25,7 @@ function BroadcastManagerInner() {
     assets, visibleAssetIds, activeSegmentId, segments,
     toggleAssetVisibility, slideshowNext, slideshowPrev, switchSegment,
     markClipIn, markClipOut, clipMarkers,
+    userRole, isReadOnly,
   } = useBroadcast()
   const [viewMode, setViewMode] = useState<ViewMode>('canvas')
   const [showRefImage, setShowRefImage] = useState(true)
@@ -31,6 +33,10 @@ function BroadcastManagerInner() {
   const [uploading, setUploading] = useState(false)
   const [showStreamDeckSetup, setShowStreamDeckSetup] = useState(false)
   const [showOBSSetup, setShowOBSSetup] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [showGrid, setShowGrid] = useState(true)
+  const [gridSize, setGridSize] = useState(20)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Stream Deck button layout state (persists across modal open/close)
@@ -144,6 +150,9 @@ function BroadcastManagerInner() {
     referenceImage,
     referenceImageOpacity: refImageOpacity,
     showReferenceImage: showRefImage && !!referenceImage,
+    snapEnabled,
+    showGrid,
+    gridSize,
   }
 
   return (
@@ -164,29 +173,81 @@ function BroadcastManagerInner() {
           </button>
         ))}
 
-        <div className="w-px h-4 bg-zinc-700 mx-1" />
-        <button
-          onClick={() => setShowStreamDeckSetup(true)}
-          className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
-        >
-          Stream Deck
-          {streamDeck.isConnected && (
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          )}
-        </button>
-        <button
-          onClick={() => setShowOBSSetup(true)}
-          className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
-        >
-          OBS
-          {isOBSConnected && (
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          )}
-        </button>
+        {!isReadOnly && (
+          <>
+            <div className="w-px h-4 bg-zinc-700 mx-1" />
+            <button
+              onClick={() => setShowStreamDeckSetup(true)}
+              className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
+            >
+              Stream Deck
+              {streamDeck.isConnected && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+            <button
+              onClick={() => setShowOBSSetup(true)}
+              className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
+            >
+              OBS
+              {isOBSConnected && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+          </>
+        )}
 
-        {/* Right side: reference image controls */}
-        {viewMode === 'canvas' && (
+        {userRole === 'owner' && (
+          <>
+            <div className="w-px h-4 bg-zinc-700 mx-1" />
+            <button
+              onClick={() => setShowShareDialog(true)}
+              className="px-2.5 py-0.5 text-[11px] font-medium rounded text-zinc-500 hover:text-zinc-300 transition flex items-center gap-1.5"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="8.5" cy="7" r="4" />
+                <line x1="20" y1="8" x2="20" y2="14" />
+                <line x1="23" y1="11" x2="17" y2="11" />
+              </svg>
+              Share
+            </button>
+          </>
+        )}
+
+        {/* Right side: snap/grid + reference image controls (editors only) */}
+        {viewMode === 'canvas' && !isReadOnly && (
           <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setSnapEnabled(!snapEnabled)}
+              className={`px-2 py-0.5 text-[10px] font-medium rounded transition ${
+                snapEnabled
+                  ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-600/40'
+                  : 'bg-zinc-800 text-zinc-500 border border-zinc-700/50'
+              }`}
+            >
+              Snap
+            </button>
+            <button
+              onClick={() => setShowGrid(!showGrid)}
+              className={`px-2 py-0.5 text-[10px] font-medium rounded transition ${
+                showGrid
+                  ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-600/40'
+                  : 'bg-zinc-800 text-zinc-500 border border-zinc-700/50'
+              }`}
+            >
+              Grid
+            </button>
+            <select
+              value={gridSize}
+              onChange={e => setGridSize(Number(e.target.value))}
+              className="h-5 px-1 text-[10px] font-medium rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50 outline-none"
+            >
+              {[10, 20, 40, 80, 160].map(s => (
+                <option key={s} value={s}>{s}px</option>
+              ))}
+            </select>
+            <div className="w-px h-4 bg-zinc-700" />
             {referenceImage ? (
               <>
                 <button
@@ -298,6 +359,7 @@ function BroadcastManagerInner() {
         />
       )}
       {showOBSSetup && <OBSSettings onClose={() => setShowOBSSetup(false)} />}
+      {showShareDialog && project && <ShareDialog projectId={project.id} onClose={() => setShowShareDialog(false)} />}
     </div>
   )
 }
