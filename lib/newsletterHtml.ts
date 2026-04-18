@@ -310,11 +310,9 @@ export function buildNewsletterHtml(data: NewsletterData): string {
 
             <!-- Header -->
             <tr>
-              <td style="padding:32px 0 24px;text-align:center;">
-                <p style="margin:0;font-size:28px;font-weight:800;letter-spacing:0.04em;color:${TEXT_BRIGHT};">
-                  MAYDAY DAILY
-                </p>
-                <p style="margin:6px 0 0;font-size:12px;color:${TEXT_MUTED};letter-spacing:0.06em;text-transform:uppercase;">
+              <td style="padding:24px 0 16px;text-align:center;">
+                <img src="${SITE_URL}/mayday-daily-banner.png" alt="Mayday Daily" width="640" style="width:100%;max-width:640px;height:auto;display:block;margin:0 auto;" />
+                <p style="margin:12px 0 0;font-size:12px;color:${TEXT_MUTED};letter-spacing:0.06em;text-transform:uppercase;">
                   ${escapeHtml(dateFormatted)}
                 </p>
               </td>
