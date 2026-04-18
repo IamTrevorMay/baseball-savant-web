@@ -4,6 +4,7 @@ import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { createClient } from '@supabase/supabase-js'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
+import { computeTrendAlerts, type TrendAlertRow } from '@/lib/trendAlerts'
 
 export const maxDuration = 300
 
@@ -913,22 +914,37 @@ async function fetchNews() {
 const qAdmin = (sql: string) => supabaseAdmin.rpc('run_query', { query_text: sql.trim() })
 
 async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsData | null> {
+  // Preconditions — if these fail, we can't produce anything meaningful, so bail.
+  let prevDay: string
+  let briefYear: number
   try {
-    // Determine if regular season has started — if so, exclude Spring Training
-    const briefYear = new Date(briefDate).getFullYear()
+    briefYear = new Date(briefDate).getFullYear()
     const regCheck = await qAdmin(`SELECT 1 FROM pitches WHERE game_year = ${briefYear} AND game_type = 'R' LIMIT 1`)
     const hasRS = (regCheck.data || []).length > 0
     const gtFilter = hasRS ? "AND game_type = 'R'" : ''
 
-    // Find the most recent game date on or before briefDate
     const dateRes = await qAdmin(`
       SELECT MAX(game_date::text) AS gd FROM pitches
       WHERE game_date <= '${briefDate}' AND game_year = ${briefYear} ${gtFilter}
     `)
-    const prevDay = dateRes.data?.[0]?.gd
-    if (!prevDay) return null
+    const gd = dateRes.data?.[0]?.gd
+    if (!gd) {
+      console.warn('[highlights] no prevDay for', briefDate)
+      return null
+    }
+    prevDay = gd
+  } catch (err) {
+    console.error('[highlights] precondition failed:', err)
+    return null
+  }
 
-    // Best Stuff+ pitch (starter vs reliever)
+  // Each subsequent step is independent — if one fails, the others still run and we
+  // return a partial highlights object rather than nuking the whole section.
+
+  // Step 1 — Best Stuff+ pitch (starter + reliever)
+  let stuffStarter: any = null
+  let stuffReliever: any = null
+  try {
     const stuffRes = await qAdmin(`
       WITH starters AS (
         SELECT DISTINCT pitcher, game_pk FROM pitches
@@ -952,8 +968,17 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       )
       SELECT * FROM ranked WHERE rn = 1
     `)
+    if (stuffRes.error) throw new Error(stuffRes.error.message)
+    stuffStarter = (stuffRes.data || []).find((r: any) => r.role === 'starter') || null
+    stuffReliever = (stuffRes.data || []).find((r: any) => r.role === 'reliever') || null
+  } catch (err) {
+    console.error('[highlights] stuff query failed:', err)
+  }
 
-    // Fetch all pitches for Cmd+ computation
+  // Step 2 — Outing pitches + player map (feeds Cmd+ computation and new-pitch enrichment)
+  const outingGroups: Record<string, { playerId: number; gamePk: number; pitches: PitchRow[]; isStarter: boolean }> = {}
+  const playerMap: Record<number, { name: string; team: string }> = {}
+  try {
     const [outingPitchesRes, outingPlayerRes] = await Promise.all([
       qAdmin(`
         SELECT p.pitcher AS player_id, p.game_pk,
@@ -969,14 +994,12 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
         WHERE p.game_date = '${prevDay}'
       `),
     ])
+    if (outingPitchesRes.error) throw new Error(`outingPitches: ${outingPitchesRes.error.message}`)
+    if (outingPlayerRes.error) throw new Error(`outingPlayer: ${outingPlayerRes.error.message}`)
 
-    const playerMap: Record<number, { name: string; team: string }> = {}
     for (const r of (outingPlayerRes.data || [])) {
       playerMap[r.player_id] = { name: r.player_name, team: r.team || '??' }
     }
-
-    // Group pitches by pitcher+game_pk
-    const outingGroups: Record<string, { playerId: number; gamePk: number; pitches: PitchRow[]; isStarter: boolean }> = {}
     for (const r of (outingPitchesRes.data || [])) {
       const key = `${r.player_id}-${r.game_pk}`
       if (!outingGroups[key]) {
@@ -990,12 +1013,16 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       })
       if (Number(r.inning) === 1) outingGroups[key].isStarter = true
     }
+  } catch (err) {
+    console.error('[highlights] outing pitches query failed:', err)
+  }
 
-    // Best Cmd+ outing
-    let bestCmdStarter: DailyHighlightsData['cmd_starter'] = null
-    let bestCmdReliever: DailyHighlightsData['cmd_reliever'] = null
-    for (const outing of Object.values(outingGroups)) {
-      if (outing.pitches.length < 15) continue
+  // Step 3 — Best Cmd+ outing (CPU — guard each outing; one bad outing shouldn't kill the rest)
+  let bestCmdStarter: DailyHighlightsData['cmd_starter'] = null
+  let bestCmdReliever: DailyHighlightsData['cmd_reliever'] = null
+  for (const outing of Object.values(outingGroups)) {
+    if (outing.pitches.length < 15) continue
+    try {
       const cmd = computeOutingCommand(outing.pitches)
       const cmdPlus = cmd.overall_cmd_plus
       if (cmdPlus == null) continue
@@ -1013,9 +1040,14 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       } else {
         if (!bestCmdReliever || cmdPlus > bestCmdReliever.cmd_plus) bestCmdReliever = entry
       }
+    } catch (err) {
+      console.error(`[highlights] computeOutingCommand failed for player ${outing.playerId} game ${outing.gamePk}:`, err)
     }
+  }
 
-    // New pitch alerts (scope prior_types to current season to avoid full-table scan)
+  // Step 4 — New pitch alerts
+  const newPitches: DailyHighlightsData['new_pitches'] = []
+  try {
     const newPitchRes = await qAdmin(`
       WITH today_types AS (
         SELECT pitcher, pitch_name, COUNT(*) AS count,
@@ -1038,15 +1070,17 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
       WHERE pr.pitcher IS NULL AND t.count >= 3
       ORDER BY t.count DESC
     `)
+    if (newPitchRes.error) throw new Error(newPitchRes.error.message)
 
-    const newPitches: DailyHighlightsData['new_pitches'] = []
     for (const r of (newPitchRes.data || [])) {
       let cmdData: { avg_brink?: number | null; avg_cluster?: number | null; avg_missfire?: number | null; cmd_plus?: number | null } = {}
       const outingKey = Object.keys(outingGroups).find(k => k.startsWith(`${r.player_id}-`))
       if (outingKey) {
-        const cmd = computeOutingCommand(outingGroups[outingKey].pitches)
-        const ptCmd = cmd.byPitch[r.pitch_name]
-        if (ptCmd) cmdData = { avg_brink: ptCmd.avg_brink, avg_cluster: ptCmd.avg_cluster, avg_missfire: ptCmd.avg_missfire, cmd_plus: ptCmd.cmd_plus }
+        try {
+          const cmd = computeOutingCommand(outingGroups[outingKey].pitches)
+          const ptCmd = cmd.byPitch[r.pitch_name]
+          if (ptCmd) cmdData = { avg_brink: ptCmd.avg_brink, avg_cluster: ptCmd.avg_cluster, avg_missfire: ptCmd.avg_missfire, cmd_plus: ptCmd.cmd_plus }
+        } catch { /* enrichment is optional */ }
       }
       newPitches.push({
         player_id: r.player_id, player_name: r.player_name, team: r.team || '??',
@@ -1057,72 +1091,81 @@ async function fetchDailyHighlights(briefDate: string): Promise<DailyHighlightsD
         ...cmdData as any,
       })
     }
-
-    const stuffStarter = (stuffRes.data || []).find((r: any) => r.role === 'starter')
-    const stuffReliever = (stuffRes.data || []).find((r: any) => r.role === 'reliever')
-
-    // Fetch game lines from MLB boxscore API
-    const fetchLine = async (gamePk: number, pid: number): Promise<BriefGameLine | null> => {
-      try {
-        const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`)
-        if (!res.ok) return null
-        const box = await res.json()
-        for (const side of ['home', 'away'] as const) {
-          const pitchers = box?.teams?.[side]?.pitchers || []
-          if (pitchers.includes(pid)) {
-            const s = box?.teams?.[side]?.players?.[`ID${pid}`]?.stats?.pitching
-            if (!s) return null
-            let decision = 'ND'
-            const note: string = s.note || ''
-            if (s.wins >= 1 || note.includes('W')) decision = 'W'
-            else if (s.losses >= 1 || note.includes('L')) decision = 'L'
-            else if (s.holds >= 1 || note.includes('H')) decision = 'HLD'
-            else if (s.saves >= 1 || note.includes('S')) decision = 'SV'
-            return { ip: s.inningsPitched || '0.0', h: s.hits ?? 0, r: s.runs ?? 0, er: s.earnedRuns ?? 0, bb: s.baseOnBalls ?? 0, k: s.strikeOuts ?? 0, pitches: s.numberOfPitches ?? 0, decision }
-          }
-        }
-        return null
-      } catch { return null }
-    }
-
-    // Fetch all game lines in parallel
-    const linePromises: Record<string, Promise<BriefGameLine | null>> = {}
-    if (stuffStarter) linePromises['ss'] = fetchLine(stuffStarter.game_pk, stuffStarter.player_id)
-    if (stuffReliever) linePromises['sr'] = fetchLine(stuffReliever.game_pk, stuffReliever.player_id)
-    // For cmd, find the game_pk from outingGroups
-    const cmdStarterGpk = bestCmdStarter ? Object.values(outingGroups).find(o => o.playerId === bestCmdStarter!.player_id && o.isStarter)?.gamePk : undefined
-    const cmdRelieverGpk = bestCmdReliever ? Object.values(outingGroups).find(o => o.playerId === bestCmdReliever!.player_id && !o.isStarter)?.gamePk : undefined
-    if (bestCmdStarter && cmdStarterGpk) linePromises['cs'] = fetchLine(cmdStarterGpk, bestCmdStarter.player_id)
-    if (bestCmdReliever && cmdRelieverGpk) linePromises['cr'] = fetchLine(cmdRelieverGpk, bestCmdReliever.player_id)
-
-    const lineKeys = Object.keys(linePromises)
-    const lineResults = await Promise.all(lineKeys.map(k => linePromises[k]))
-    const lines: Record<string, BriefGameLine | null> = {}
-    lineKeys.forEach((k, i) => { lines[k] = lineResults[i] })
-
-    const mapStuff = (r: any, lineKey: string) => r ? {
-      player_id: r.player_id, player_name: r.player_name, team: r.team,
-      pitch_name: r.pitch_name, stuff_plus: Number(r.stuff_plus),
-      velo: r.velo != null ? Number(r.velo) : null,
-      hbreak_in: r.hbreak_in != null ? Number(r.hbreak_in) : null,
-      ivb_in: r.ivb_in != null ? Number(r.ivb_in) : null,
-      game_line: lines[lineKey] || null,
-    } : null
-
-    if (bestCmdStarter) bestCmdStarter.game_line = lines['cs'] || null
-    if (bestCmdReliever) bestCmdReliever.game_line = lines['cr'] || null
-
-    return {
-      date: prevDay,
-      stuff_starter: mapStuff(stuffStarter, 'ss'),
-      stuff_reliever: mapStuff(stuffReliever, 'sr'),
-      cmd_starter: bestCmdStarter,
-      cmd_reliever: bestCmdReliever,
-      new_pitches: newPitches,
-    }
   } catch (err) {
-    console.error('fetchDailyHighlights error:', err)
+    console.error('[highlights] new pitches query failed:', err)
+  }
+
+  // Step 5 — Game lines from MLB boxscore API (each already wrapped; we Promise.allSettled the batch)
+  const fetchLine = async (gamePk: number, pid: number): Promise<BriefGameLine | null> => {
+    try {
+      const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`)
+      if (!res.ok) return null
+      const box = await res.json()
+      for (const side of ['home', 'away'] as const) {
+        const pitchers = box?.teams?.[side]?.pitchers || []
+        if (pitchers.includes(pid)) {
+          const s = box?.teams?.[side]?.players?.[`ID${pid}`]?.stats?.pitching
+          if (!s) return null
+          let decision = 'ND'
+          const note: string = s.note || ''
+          if (s.wins >= 1 || note.includes('W')) decision = 'W'
+          else if (s.losses >= 1 || note.includes('L')) decision = 'L'
+          else if (s.holds >= 1 || note.includes('H')) decision = 'HLD'
+          else if (s.saves >= 1 || note.includes('S')) decision = 'SV'
+          return { ip: s.inningsPitched || '0.0', h: s.hits ?? 0, r: s.runs ?? 0, er: s.earnedRuns ?? 0, bb: s.baseOnBalls ?? 0, k: s.strikeOuts ?? 0, pitches: s.numberOfPitches ?? 0, decision }
+        }
+      }
+      return null
+    } catch (err) {
+      console.error(`[highlights] fetchLine failed for ${pid}@${gamePk}:`, err)
+      return null
+    }
+  }
+
+  const lineKeys: string[] = []
+  const linePromises: Promise<BriefGameLine | null>[] = []
+  if (stuffStarter) { lineKeys.push('ss'); linePromises.push(fetchLine(stuffStarter.game_pk, stuffStarter.player_id)) }
+  if (stuffReliever) { lineKeys.push('sr'); linePromises.push(fetchLine(stuffReliever.game_pk, stuffReliever.player_id)) }
+  const cmdStarterGpk = bestCmdStarter ? Object.values(outingGroups).find(o => o.playerId === bestCmdStarter!.player_id && o.isStarter)?.gamePk : undefined
+  const cmdRelieverGpk = bestCmdReliever ? Object.values(outingGroups).find(o => o.playerId === bestCmdReliever!.player_id && !o.isStarter)?.gamePk : undefined
+  if (bestCmdStarter && cmdStarterGpk) { lineKeys.push('cs'); linePromises.push(fetchLine(cmdStarterGpk, bestCmdStarter.player_id)) }
+  if (bestCmdReliever && cmdRelieverGpk) { lineKeys.push('cr'); linePromises.push(fetchLine(cmdRelieverGpk, bestCmdReliever.player_id)) }
+
+  const lineResults = await Promise.allSettled(linePromises)
+  const lines: Record<string, BriefGameLine | null> = {}
+  lineKeys.forEach((k, i) => {
+    const r = lineResults[i]
+    lines[k] = r.status === 'fulfilled' ? r.value : null
+  })
+
+  // Step 6 — Assemble. If every step failed, return null (nothing to show); otherwise return partial.
+  const mapStuff = (r: any, lineKey: string) => r ? {
+    player_id: r.player_id, player_name: r.player_name, team: r.team,
+    pitch_name: r.pitch_name, stuff_plus: Number(r.stuff_plus),
+    velo: r.velo != null ? Number(r.velo) : null,
+    hbreak_in: r.hbreak_in != null ? Number(r.hbreak_in) : null,
+    ivb_in: r.ivb_in != null ? Number(r.ivb_in) : null,
+    game_line: lines[lineKey] || null,
+  } : null
+
+  if (bestCmdStarter) bestCmdStarter.game_line = lines['cs'] || null
+  if (bestCmdReliever) bestCmdReliever.game_line = lines['cr'] || null
+
+  const mappedStuffStarter = mapStuff(stuffStarter, 'ss')
+  const mappedStuffReliever = mapStuff(stuffReliever, 'sr')
+
+  if (!mappedStuffStarter && !mappedStuffReliever && !bestCmdStarter && !bestCmdReliever && newPitches.length === 0) {
+    console.warn('[highlights] all sub-steps returned empty for', prevDay)
     return null
+  }
+
+  return {
+    date: prevDay,
+    stuff_starter: mappedStuffStarter,
+    stuff_reliever: mappedStuffReliever,
+    cmd_starter: bestCmdStarter,
+    cmd_reliever: bestCmdReliever,
+    new_pitches: newPitches,
   }
 }
 
@@ -1234,45 +1277,47 @@ function buildStandingsHtml(data: StandingsData | null): string {
 
 // ── Trends Surges/Concerns ─────────────────────────────────────────────────
 
-interface TrendAlert {
-  player_id: number; player_name: string
-  metric: string; metric_label: string
-  season_val: number; recent_val: number
-  delta: number; sigma: number
-  direction: 'up' | 'down'
-  sentiment: 'good' | 'bad'
-}
+type TrendAlert = TrendAlertRow
 interface TrendAlertsData { surges: TrendAlert[]; concerns: TrendAlert[] }
 
 async function fetchTrendAlerts(_date: string): Promise<TrendAlertsData | null> {
-  try {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.VERCEL_URL}` || 'https://www.tritonapex.io'
-    const year = new Date().getFullYear()
-    const minPitches = (new Date().getMonth() + 1) <= 4 ? 50 : 200
-    const [pRes, hRes] = await Promise.all([
-      fetch(`${siteUrl}/api/trends`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ season: year, playerType: 'pitcher', minPitches }) }),
-      fetch(`${siteUrl}/api/trends`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ season: year, playerType: 'hitter', minPitches }) }),
-    ])
-    const [pd, hd] = await Promise.all([pRes.json(), hRes.json()])
-    const all: TrendAlert[] = [...(pd.rows || []), ...(hd.rows || [])]
+  const year = new Date().getFullYear()
+  const minPitches = (new Date().getMonth() + 1) <= 4 ? 50 : 200
 
-    const pickUnique = (list: TrendAlert[], n: number) => {
-      const seen = new Set<number>()
-      const result: TrendAlert[] = []
-      for (const item of list) {
-        if (!seen.has(item.player_id)) { seen.add(item.player_id); result.push(item) }
-        if (result.length >= n) break
-      }
-      return result
+  // Call trendAlerts lib directly instead of self-fetching /api/trends — the self-fetch
+  // was failing silently on cron runs (cold start / deploy race) and producing empty
+  // surges/concerns. See feedback_trend_alerts_direct.md in memory.
+  let pitcherRows: TrendAlertRow[] = []
+  let hitterRows: TrendAlertRow[] = []
+  const [pResult, hResult] = await Promise.allSettled([
+    computeTrendAlerts({ supabase: supabaseAdmin, season: year, playerType: 'pitcher', minPitches }),
+    computeTrendAlerts({ supabase: supabaseAdmin, season: year, playerType: 'hitter', minPitches }),
+  ])
+
+  if (pResult.status === 'fulfilled') pitcherRows = pResult.value.rows
+  else console.error('fetchTrendAlerts pitcher failed:', pResult.reason)
+
+  if (hResult.status === 'fulfilled') hitterRows = hResult.value.rows
+  else console.error('fetchTrendAlerts hitter failed:', hResult.reason)
+
+  // If BOTH sides failed, return null so caller can distinguish error from "no alerts"
+  if (pResult.status === 'rejected' && hResult.status === 'rejected') return null
+
+  const all: TrendAlert[] = [...pitcherRows, ...hitterRows]
+
+  const pickUnique = (list: TrendAlert[], n: number) => {
+    const seen = new Set<number>()
+    const result: TrendAlert[] = []
+    for (const item of list) {
+      if (!seen.has(item.player_id)) { seen.add(item.player_id); result.push(item) }
+      if (result.length >= n) break
     }
-
-    const surges = pickUnique(all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma)), 5)
-    const concerns = pickUnique(all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma)), 5)
-    return { surges, concerns }
-  } catch (err) {
-    console.error('fetchTrendAlerts error:', err)
-    return null
+    return result
   }
+
+  const surges = pickUnique(all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma)), 5)
+  const concerns = pickUnique(all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma)), 5)
+  return { surges, concerns }
 }
 
 function fmtTrendVal(metric: string, val: number): string {
