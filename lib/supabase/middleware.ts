@@ -31,6 +31,15 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
+  // Public paths and API routes skip auth entirely — no cookie manipulation
+  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay', '/newsletter']
+  const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
+  const isApiRoute = pathname.startsWith('/api/')
+
+  if (isPublicPath || isApiRoute) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -56,17 +65,10 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Public paths that don't require auth
-  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay', '/newsletter']
-  const isPublicPath = publicPaths.some(p => request.nextUrl.pathname.startsWith(p))
-
-  // API routes: auth checked individually in each handler
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
-
-  if (!user && !isPublicPath && !isApiRoute) {
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('redirectTo', request.nextUrl.pathname)
+    url.searchParams.set('redirectTo', pathname)
     return NextResponse.redirect(url)
   }
 
