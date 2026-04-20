@@ -71,6 +71,9 @@ Key columns available for formulas:
 - estimated_woba_using_speedangle (REAL) - xwOBA
 - woba_value (REAL), delta_run_exp (REAL)
 - bat_speed (REAL), swing_length (REAL)
+- attack_angle (REAL) - vertical angle of bat at impact, degrees
+- attack_direction (REAL) - directional angle at impact, degrees
+- swing_path_tilt (REAL) - tilt of swing path, degrees
 - vx0, vy0, vz0, ax, ay, az (REAL) - trajectory components
 - zone (REAL) - strike zone region 1-14
 - pitch_type (TEXT) - FF, SL, CH, CU, SI, FC, ST, FS, KC, KN
@@ -130,6 +133,9 @@ Key columns:
 - estimated_slg_using_speedangle (REAL) - xSLG
 - woba_value (REAL), babip_value (REAL), iso_value (REAL)
 - bat_speed (REAL), swing_length (REAL)
+- attack_angle (REAL) - vertical angle of bat at impact, degrees
+- attack_direction (REAL) - directional angle at impact, degrees
+- swing_path_tilt (REAL) - tilt of swing path, degrees
 - home_team (TEXT), away_team (TEXT) - 3 letter codes
 - home_score (INT), away_score (INT)
 - delta_run_exp (REAL), delta_home_win_exp (REAL)

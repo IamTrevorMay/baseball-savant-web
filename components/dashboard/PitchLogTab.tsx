@@ -9,7 +9,7 @@ const BASE_COLS = [
   'plate_x','plate_z','zone','description','events',
   'launch_speed','launch_angle','hit_distance_sc','bb_type',
   'estimated_ba_using_speedangle','estimated_woba_using_speedangle',
-  'bat_speed','swing_length','stand'
+  'bat_speed','swing_length','attack_angle','attack_direction','swing_path_tilt','stand'
 ]
 
 type SortDir = 'asc' | 'desc'
