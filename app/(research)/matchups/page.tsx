@@ -3,37 +3,20 @@ import { useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import ResearchNav from '@/components/ResearchNav'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
+import { PITCH_COLORS } from '@/components/chartConfig'
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false })
 
-interface PlayerResult {
-  player_name: string
-  pitcher?: number
-  batter?: number
-  total_pitches: number
-  team: string
-}
+import type { PlayerResult, PitchBreakdown } from '@/lib/types'
 
 interface Summary {
   pa: number; ba: number | null; obp: number | null; slg: number | null
   k_pct: number | null; bb_pct: number | null; pitches: number
 }
 
-interface PitchBreakdown {
-  pitch_name: string; pitches: number; usage_pct: number
-  whiff_pct: number | null; xwoba: number | null; ba: number | null; avg_ev: number | null
-}
-
 interface Location {
   plate_x: number; plate_z: number; pitch_name: string
   description: string; events: string | null; velo: number
-}
-
-const PITCH_COLORS: Record<string, string> = {
-  '4-Seam Fastball': '#ef4444', 'Sinker': '#f97316', 'Cutter': '#eab308',
-  'Slider': '#22c55e', 'Sweeper': '#14b8a6', 'Curveball': '#3b82f6',
-  'Changeup': '#a855f7', 'Split-Finger': '#ec4899', 'Knuckle Curve': '#6366f1',
-  'Slurve': '#06b6d4',
 }
 
 const SEASONS = ['all', '2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015']

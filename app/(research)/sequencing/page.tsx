@@ -5,14 +5,8 @@ import PlayerSearchInput from '@/components/PlayerSearchInput'
 import SequenceReplayCanvas, { type SequenceReplayHandle, type ReplayPitch } from '@/components/sequencing/SequenceReplayCanvas'
 import AtBatSelector, { type AtBatGroup } from '@/components/sequencing/AtBatSelector'
 import { exportSequenceReplayMP4 } from '@/lib/exportSequenceReplay'
-
-interface PlayerResult {
-  player_name: string
-  pitcher?: number
-  batter?: number
-  total_pitches: number
-  team: string
-}
+import { PITCH_COLORS } from '@/components/chartConfig'
+import type { PlayerResult } from '@/lib/types'
 
 interface Transition {
   from_pitch: string; to_pitch: string
@@ -23,13 +17,6 @@ interface Transition {
 interface ArsenalRow {
   pitch_name: string; pitches: number; usage_pct: number
   avg_velo: number | null; whiff_pct: number | null
-}
-
-const PITCH_COLORS: Record<string, string> = {
-  '4-Seam Fastball': '#ef4444', 'Sinker': '#f97316', 'Cutter': '#eab308',
-  'Slider': '#22c55e', 'Sweeper': '#14b8a6', 'Curveball': '#3b82f6',
-  'Changeup': '#a855f7', 'Split-Finger': '#ec4899', 'Knuckle Curve': '#6366f1',
-  'Slurve': '#06b6d4',
 }
 
 const SEASONS = ['2025', '2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016', '2015']

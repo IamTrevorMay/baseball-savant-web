@@ -3,14 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { GameCallPanel } from '@/components/models/GameCallPanel'
 import type { GameCallData } from '@/lib/engines/types'
-
-interface PlayerResult {
-  player_name: string
-  pitcher?: number
-  batter?: number
-  total_pitches: number
-  team: string
-}
+import type { PlayerResult } from '@/lib/types'
 
 const SEASONS = [2025, 2024, 2023, 2022, 2021, 2020]
 

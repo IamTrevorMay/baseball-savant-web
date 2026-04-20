@@ -3,28 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import MilbNav from '@/components/MilbNav'
-
-interface PlayerResult {
-  player_name: string
-  pitcher: number
-  total_pitches: number
-  games: number
-  last_date: string
-  avg_velo: number
-  team: string
-  pitch_types: string[]
-  latest_season: number
-}
-
-const TEAM_COLORS: Record<string, string> = {
-  ARI:'#A71930',ATH:'#003831',ATL:'#CE1141',BAL:'#DF4601',BOS:'#BD3039',
-  CHC:'#0E3386',CIN:'#C6011F',CLE:'#00385D',COL:'#333366',CWS:'#27251F',
-  DET:'#0C2340',HOU:'#002D62',KC:'#004687',LAA:'#BA0021',LAD:'#005A9C',
-  MIA:'#00A3E0',MIL:'#FFC52F',MIN:'#002B5C',NYM:'#002D72',NYY:'#003087',
-  OAK:'#003831',PHI:'#E81828',PIT:'#27251F',SD:'#2F241D',SEA:'#0C2C56',
-  SF:'#FD5A1E',STL:'#C41E3A',TB:'#092C5C',TEX:'#003278',TOR:'#134A8E',
-  WSH:'#AB0003',
-}
+import { TEAM_COLORS } from '@/lib/constants'
+import type { PlayerResult } from '@/lib/types'
 
 export default function MilbPitchersPage() {
   const [query, setQuery] = useState('')
@@ -100,7 +80,7 @@ export default function MilbPitchersPage() {
           {results.length > 0 && query && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl z-50">
               {results.map(p => (
-                <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher)}
+                <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher!)}
                   className="px-4 py-3 flex items-center justify-between hover:bg-zinc-800 cursor-pointer transition border-b border-zinc-800 last:border-0">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
@@ -109,7 +89,7 @@ export default function MilbPitchersPage() {
                     </div>
                     <div>
                       <div className="text-white font-medium text-sm">{p.player_name}</div>
-                      <div className="text-zinc-500 text-xs">{p.pitch_types?.slice(0, 4).join(', ')}{p.pitch_types?.length > 4 ? ` +${p.pitch_types.length - 4}` : ''}</div>
+                      <div className="text-zinc-500 text-xs">{p.pitch_types?.slice(0, 4).join(', ')}{(p.pitch_types?.length ?? 0) > 4 ? ` +${p.pitch_types!.length - 4}` : ''}</div>
                     </div>
                   </div>
                   <div className="text-right">
@@ -128,7 +108,7 @@ export default function MilbPitchersPage() {
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">Most Data Available</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {recentPlayers.map(p => (
-            <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher)}
+            <div key={p.pitcher} onClick={() => goToPlayer(p.pitcher!)}
               className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer transition group">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
@@ -139,7 +119,7 @@ export default function MilbPitchersPage() {
               </div>
               <div className="flex justify-between text-[11px] text-zinc-500">
                 <span>{p.avg_velo} mph</span>
-                <span>{p.games.toLocaleString()} G</span>
+                <span>{p.games?.toLocaleString()} G</span>
               </div>
               <div className="text-[11px] text-zinc-600 mt-1">{p.total_pitches.toLocaleString()} pitches</div>
             </div>

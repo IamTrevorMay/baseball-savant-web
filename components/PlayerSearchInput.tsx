@@ -1,14 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-
-interface PlayerResult {
-  player_name: string
-  pitcher?: number
-  batter?: number
-  total_pitches: number
-  team: string
-}
+import type { PlayerResult } from '@/lib/types'
 
 interface Props {
   type: 'pitcher' | 'batter' | 'all'

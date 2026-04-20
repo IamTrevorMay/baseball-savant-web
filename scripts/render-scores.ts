@@ -5,20 +5,7 @@
 import { createCanvas } from '@napi-rs/canvas'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
-
-// ── Team colors (inline to avoid alias resolution issues) ────────────────
-const TEAM_COLORS: Record<string, { primary: string }> = {
-  ARI: { primary: '#A71930' }, ATL: { primary: '#CE1141' }, BAL: { primary: '#DF4601' },
-  BOS: { primary: '#BD3039' }, CHC: { primary: '#0E3386' }, CWS: { primary: '#27251F' },
-  CIN: { primary: '#C6011F' }, CLE: { primary: '#00385D' }, COL: { primary: '#33006F' },
-  DET: { primary: '#0C2340' }, HOU: { primary: '#002D62' }, KC: { primary: '#004687' },
-  LAA: { primary: '#BA0021' }, LAD: { primary: '#005A9C' }, MIA: { primary: '#00A3E0' },
-  MIL: { primary: '#FFC52F' }, MIN: { primary: '#002B5C' }, NYM: { primary: '#002D72' },
-  NYY: { primary: '#003087' }, OAK: { primary: '#003831' }, PHI: { primary: '#E81828' },
-  PIT: { primary: '#27251F' }, SD: { primary: '#2F241D' }, SF: { primary: '#FD5A1E' },
-  SEA: { primary: '#0C2C56' }, STL: { primary: '#C41E3A' }, TB: { primary: '#092C5C' },
-  TEX: { primary: '#003278' }, TOR: { primary: '#134A8E' }, WSH: { primary: '#AB0003' },
-}
+import { TEAM_COLORS } from '../lib/constants'
 
 // ── Fetch scores from MLB API ────────────────────────────────────────────
 async function fetchScores(date: string) {
@@ -133,8 +120,8 @@ async function render(scores: { date: string; dateFormatted: string; games: any[
       ctx.stroke()
 
       // Team color bars
-      const awayColor = TEAM_COLORS[g.awayAbbrev]?.primary || '#52525b'
-      const homeColor = TEAM_COLORS[g.homeAbbrev]?.primary || '#52525b'
+      const awayColor = TEAM_COLORS[g.awayAbbrev] || '#52525b'
+      const homeColor = TEAM_COLORS[g.homeAbbrev] || '#52525b'
 
       ctx.fillStyle = awayColor
       roundRect(ctx, x + 12, y + 14, 5, 24, 3)

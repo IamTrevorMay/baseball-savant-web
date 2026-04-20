@@ -30,20 +30,7 @@ const WBC_TEAM_COLORS: Record<string, string> = {
   WSH:'#AB0003',
 }
 
-/* ─── Types ─── */
-interface GameTeam {
-  id: number; name: string; abbrev: string; score: number | null
-}
-interface PlayerRef { id: number; name: string }
-interface Game {
-  gamePk: number; gameDate: string; gameType: string; seriesDescription: string
-  state: string; detailedState: string
-  away: GameTeam; home: GameTeam
-  inning: number | null; inningOrdinal: string | null; inningHalf: string | null
-  outs: number | null; onFirst: boolean; onSecond: boolean; onThird: boolean
-  pitcher: PlayerRef | null; batter: PlayerRef | null
-  probableAway: PlayerRef | null; probableHome: PlayerRef | null
-}
+import type { GameTeam, PlayerRef, Game } from '@/lib/types'
 interface BoxBatter {
   id: number; name: string; boxName: string; pos: string
   ab: number; r: number; h: number; rbi: number; bb: number; so: number

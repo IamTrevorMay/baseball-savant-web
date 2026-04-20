@@ -4,13 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { computePURI } from '@/lib/engines/puri'
 import { RiskDashboard } from '@/components/models/RiskDashboard'
 import type { RiskData, PURIOutput } from '@/lib/engines/types'
-
-interface PlayerResult {
-  player_name: string
-  pitcher?: number
-  total_pitches: number
-  team: string
-}
+import type { PlayerResult } from '@/lib/types'
 
 const SEASONS = [2025, 2024, 2023, 2022, 2021, 2020]
 

@@ -6,14 +6,7 @@ import { computeHAIE } from '@/lib/engines/haie'
 import { MatchupPanel } from '@/components/models/MatchupPanel'
 import { HitterPanel } from '@/components/models/HitterPanel'
 import type { MatchupData, PAIEOutput, HAIEOutput } from '@/lib/engines/types'
-
-interface PlayerResult {
-  player_name: string
-  pitcher?: number
-  batter?: number
-  total_pitches: number
-  team: string
-}
+import type { PlayerResult } from '@/lib/types'
 
 const COUNTS = [
   '0-0', '1-0', '2-0', '3-0',

@@ -6,6 +6,7 @@ import {
 import {
   computeTrajectory, projectToScreen, type PitchKinematics, type Camera, type TrajectoryPoint,
 } from '@/lib/trajectoryPhysics'
+import { PITCH_COLORS } from '@/components/chartConfig'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -37,13 +38,6 @@ interface Props {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
-
-const PITCH_COLORS: Record<string, string> = {
-  '4-Seam Fastball': '#ef4444', 'Sinker': '#f97316', 'Cutter': '#eab308',
-  'Slider': '#22c55e', 'Sweeper': '#14b8a6', 'Curveball': '#3b82f6',
-  'Changeup': '#a855f7', 'Split-Finger': '#ec4899', 'Knuckle Curve': '#6366f1',
-  'Slurve': '#06b6d4',
-}
 
 const ZONE_LEFT = -17 / 24
 const ZONE_RIGHT = 17 / 24

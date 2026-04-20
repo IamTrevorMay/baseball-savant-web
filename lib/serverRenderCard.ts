@@ -4,6 +4,7 @@
  *   player-image, rc-table, rc-stat-box, rc-bar-chart, rc-donut-chart, rc-movement-plot
  */
 import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D, type Canvas, type Image } from '@napi-rs/canvas'
+import { getPitchColor } from '@/components/chartConfig'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -107,28 +108,8 @@ async function fetchImage(url: string): Promise<Image | null> {
   }
 }
 
-// ── Pitch type colors ───────────────────────────────────────────────────────
-
-const PITCH_COLORS: Record<string, string> = {
-  '4-Seam Fastball': '#ef4444',
-  'Fastball': '#ef4444',
-  'Sinker': '#f97316',
-  'Cutter': '#eab308',
-  'Changeup': '#22c55e',
-  'Split-Finger': '#14b8a6',
-  'Splitter': '#14b8a6',
-  'Slider': '#8b5cf6',
-  'Sweeper': '#a855f7',
-  'Curveball': '#3b82f6',
-  'Knuckle Curve': '#60a5fa',
-  'Slurve': '#818cf8',
-  'Screwball': '#10b981',
-  'Knuckleball': '#d946ef',
-}
-
-function pitchColor(name: string): string {
-  return PITCH_COLORS[name] || '#a1a1aa'
-}
+// ── Pitch type colors (canonical source: components/chartConfig.ts) ──────
+const pitchColor = getPitchColor
 
 // ── Element renderers ───────────────────────────────────────────────────────
 
