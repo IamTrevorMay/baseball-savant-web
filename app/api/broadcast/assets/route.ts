@@ -8,12 +8,13 @@ export async function GET(req: NextRequest) {
     const projectId = req.nextUrl.searchParams.get('project_id')
     if (!projectId) return NextResponse.json({ error: 'project_id required' }, { status: 400 })
 
+    // Auth check — skip for overlay consumers (no cookies)
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const level = await checkProjectAccess(projectId, user.id)
-    if (level === 'none') return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (user) {
+      const level = await checkProjectAccess(projectId, user.id)
+      if (level === 'none') return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
 
     const { data, error } = await supabaseAdmin
       .from('broadcast_assets')
