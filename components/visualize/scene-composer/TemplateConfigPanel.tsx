@@ -13,7 +13,7 @@ const PITCH_TYPES = [
   { value: 'ST', label: 'Sweeper' }, { value: 'SV', label: 'Slurve' },
 ]
 
-const YEARS = Array.from({ length: 11 }, (_, i) => 2025 - i) // 2025 down to 2015
+const YEARS = Array.from({ length: 12 }, (_, i) => 2026 - i) // 2026 down to 2015
 
 // Metrics more relevant for batters vs pitchers
 const BATTER_METRICS = new Set([

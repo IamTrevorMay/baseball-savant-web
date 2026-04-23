@@ -19,7 +19,7 @@ interface Props {
   loading: boolean
 }
 
-const YEARS = Array.from({ length: 11 }, (_, i) => 2025 - i)
+const YEARS = Array.from({ length: 12 }, (_, i) => 2026 - i)
 
 export default function OutingConfigPanel({ config, onUpdateConfig, onRefresh, loading }: Props) {
   const [query, setQuery] = useState('')

@@ -20,7 +20,7 @@ const PITCH_TYPES = [
   { value: 'ST', label: 'Sweeper' }, { value: 'SV', label: 'Slurve' },
 ]
 
-const YEARS = Array.from({ length: 11 }, (_, i) => 2025 - i)
+const YEARS = Array.from({ length: 12 }, (_, i) => 2026 - i)
 
 const ELEMENT_ICONS: Record<string, string> = {
   'stat-card': '#', 'text': 'T', 'shape': '\u25a1', 'player-image': '\u25c9',

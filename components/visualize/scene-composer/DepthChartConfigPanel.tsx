@@ -8,7 +8,7 @@ const MLB_TEAMS = [
   'PHI','PIT','SD','SF','SEA','STL','TB','TEX','TOR','WSH',
 ]
 
-const YEARS = Array.from({ length: 11 }, (_, i) => 2025 - i)
+const YEARS = Array.from({ length: 12 }, (_, i) => 2026 - i)
 
 interface Props {
   config: TemplateConfig

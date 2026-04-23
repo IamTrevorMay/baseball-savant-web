@@ -1284,7 +1284,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
       sortDir: 'desc',
       count: 5,
     },
@@ -1409,7 +1409,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
     },
     rebuild: (config: TemplateConfig, data: OutingData | null): Scene => {
       _z = 100
@@ -1607,7 +1607,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
     },
     rebuild: (config: TemplateConfig, data: StarterCardData | null): Scene => {
       _z = 100
@@ -1971,7 +1971,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
     },
     rebuild: (config: TemplateConfig, data: any): Scene => {
       _z = 100
@@ -2060,7 +2060,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'away_score',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
     },
     rebuild: (_config: TemplateConfig, data: any): Scene => {
       _z = 100
@@ -2112,7 +2112,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
     },
     rebuild: (_config: TemplateConfig, data: any): Scene => {
       _z = 100
@@ -2169,7 +2169,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
       teamAbbrev: 'NYY',
     },
     rebuild: (_config: TemplateConfig, data: any): Scene => {
@@ -2303,7 +2303,7 @@ export const DATA_DRIVEN_TEMPLATES: DataDrivenTemplate[] = [
     defaultConfig: {
       playerType: 'pitcher',
       primaryStat: 'avg_velo',
-      dateRange: { type: 'season', year: 2025 },
+      dateRange: { type: 'season', year: 2026 },
       teamAbbrev: 'NYY',
     },
     rebuild: (_config: TemplateConfig, data: any): Scene => {

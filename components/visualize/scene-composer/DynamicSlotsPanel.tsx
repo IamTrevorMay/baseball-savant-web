@@ -91,7 +91,7 @@ export default function DynamicSlotsPanel({ slots, onUpdateSlot, onAddSlot, onRe
               onChange={e => onUpdateSlot(slot.id, { gameYear: Number(e.target.value) })}
               className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:border-cyan-600 outline-none"
             >
-              {Array.from({ length: 11 }, (_, i) => 2025 - i).map(y => (
+              {Array.from({ length: 12 }, (_, i) => 2026 - i).map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
