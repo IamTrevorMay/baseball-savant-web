@@ -318,12 +318,15 @@ export async function GET(req: NextRequest) {
 
       if (!metric) return NextResponse.json({ error: 'metric required' }, { status: 400 })
 
-      // Build pitcher role subquery filter (starter = pitched inning 1 in >50% of games)
+      // Build pitcher role subquery filter
+      // Starter = has ≥3 games with 50+ pitches in the season
+      // Reliever = has <3 games with 50+ pitches
       const pitcherRoleYear = parseInt(gameYear || '2026')
+      const roleSubquery = `SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
       const starterSubquery = pitcherRole === 'starter'
-        ? `AND pitcher IN (SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) > 0.5)`
+        ? `AND pitcher IN (SELECT pitcher FROM (${roleSubquery}) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
         : pitcherRole === 'reliever'
-        ? `AND pitcher IN (SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) <= 0.5)`
+        ? `AND pitcher NOT IN (SELECT pitcher FROM (${roleSubquery}) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
         : ''
 
       // Determine which source each metric needs
@@ -356,9 +359,10 @@ export async function GET(req: NextRequest) {
 
         // Apply pitcher role filter
         if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
-          const roleRes = await q(`SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) ${pitcherRole === 'starter' ? '>' : '<='} 0.5`)
-          const roleIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
-          rows = rows.filter(r => roleIds.has(r.player_id))
+          const rsq = `SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
+          const roleRes = await q(`SELECT pitcher FROM (${rsq}) gs GROUP BY pitcher HAVING COUNT(*) >= 3`)
+          const starterIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
+          rows = rows.filter(r => pitcherRole === 'starter' ? starterIds.has(r.player_id) : !starterIds.has(r.player_id))
         }
 
         const jsSortDir = sortDir === 'ASC' ? 1 : -1
@@ -463,9 +467,10 @@ export async function GET(req: NextRequest) {
 
         // Apply pitcher role filter
         if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
-          const roleRes = await q(`SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) ${pitcherRole === 'starter' ? '>' : '<='} 0.5`)
-          const roleIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
-          rows = rows.filter(r => roleIds.has(r.player_id))
+          const rsq = `SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
+          const roleRes = await q(`SELECT pitcher FROM (${rsq}) gs GROUP BY pitcher HAVING COUNT(*) >= 3`)
+          const starterIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
+          rows = rows.filter(r => pitcherRole === 'starter' ? starterIds.has(r.player_id) : !starterIds.has(r.player_id))
         }
 
         const DEC_COL: Record<string, string> = { deception_score: 'deception_score', unique_score: 'unique_score', xdeception_score: 'xdeception_score' }
