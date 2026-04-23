@@ -118,6 +118,28 @@ export default function TemplateConfigPanel({ config, onUpdateConfig, onRefresh,
         </div>
       </div>
 
+      {/* Pitcher Role (only when pitcher) */}
+      {config.playerType === 'pitcher' && (
+        <div>
+          <label className="text-[11px] text-zinc-500 block mb-1.5">Role</label>
+          <div className="flex gap-1">
+            {(['all', 'starter', 'reliever'] as const).map(role => (
+              <button
+                key={role}
+                onClick={() => onUpdateConfig({ pitcherRole: role === 'all' ? undefined : role })}
+                className={`flex-1 px-2 py-1.5 rounded text-[11px] font-medium transition border ${
+                  (config.pitcherRole || 'all') === role
+                    ? 'bg-emerald-600/20 border-emerald-600/50 text-emerald-300'
+                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {role === 'all' ? 'All' : role === 'starter' ? 'SP' : 'RP'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Primary Stat */}
       <div>
         <label className="text-[11px] text-zinc-500 block mb-1">Primary Stat</label>
@@ -164,8 +186,8 @@ export default function TemplateConfigPanel({ config, onUpdateConfig, onRefresh,
             <button
               key={dt}
               onClick={() => {
-                if (dt === 'season') onUpdateConfig({ dateRange: { type: 'season', year: 2025 } })
-                else onUpdateConfig({ dateRange: { type: 'custom', from: '2025-03-27', to: '2025-09-28' } })
+                if (dt === 'season') onUpdateConfig({ dateRange: { type: 'season', year: 2026 } })
+                else onUpdateConfig({ dateRange: { type: 'custom', from: '2026-03-26', to: '2026-09-27' } })
               }}
               className={`flex-1 px-2 py-1.5 rounded text-[11px] font-medium transition border ${
                 config.dateRange.type === dt

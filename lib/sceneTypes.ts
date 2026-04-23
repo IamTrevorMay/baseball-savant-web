@@ -232,6 +232,7 @@ export interface TemplateConfig {
     | { type: 'season'; year: number }
     | { type: 'custom'; from: string; to: string }
   pitchType?: string
+  pitcherRole?: 'all' | 'starter' | 'reliever'  // filter by role (pitcher only)
   title?: string
   sortDir?: 'asc' | 'desc'       // default 'desc'
   count?: number                  // default 5

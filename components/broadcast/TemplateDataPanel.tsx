@@ -209,6 +209,7 @@ export default function TemplateDataPanel({ asset }: Props) {
         params.set('playerType', primaryData.playerType || primarySection?.playerType || 'pitcher')
         params.set('gameYear', String(resolvedGameYear))
         if (primaryData.pitchType || primarySection?.pitchType) params.set('pitchType', (primaryData.pitchType || primarySection?.pitchType)!)
+        if (primaryData.pitcherRole && primaryData.pitcherRole !== 'all') params.set('pitcherRole', primaryData.pitcherRole)
         if (primaryData.secondaryStat || primarySection?.secondaryStat) params.set('secondaryMetric', (primaryData.secondaryStat || primarySection?.secondaryStat)!)
         if (primaryData.tertiaryStat || primarySection?.tertiaryStat) params.set('tertiaryMetric', (primaryData.tertiaryStat || primarySection?.tertiaryStat)!)
         if (primaryData.sortDir || primarySection?.sortDir) params.set('sortDir', primaryData.sortDir || primarySection?.sortDir || 'desc')
@@ -578,6 +579,27 @@ function GlobalInputControls({
             </div>
           </div>
           <PlayerTypeToggle sectionId={section.id} value={data.playerType || section.playerType || 'pitcher'} updateSection={updateSection} />
+          {/* Pitcher Role filter (SP/RP) */}
+          {(data.playerType || section.playerType || 'pitcher') === 'pitcher' && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[9px] text-zinc-600 shrink-0">Role</span>
+              <div className="flex rounded overflow-hidden border border-zinc-700">
+                {(['all', 'starter', 'reliever'] as const).map(role => (
+                  <button
+                    key={role}
+                    onClick={() => updateSection(section.id, { pitcherRole: role === 'all' ? undefined : role })}
+                    className={`px-2 py-0.5 text-[10px] transition ${
+                      (data.pitcherRole || 'all') === role
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {role === 'all' ? 'All' : role === 'starter' ? 'SP' : 'RP'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <DateRangeInputs sectionId={section.id} data={data} section={section} updateSection={updateSection} />
           <PitchTypeSelect sectionId={section.id} value={data.pitchType || section.pitchType} updateSection={updateSection} />
           <MetricSelect label="Primary Stat" value={data.primaryStat || section.primaryStat} onChange={v => updateSection(section.id, { primaryStat: v })} />

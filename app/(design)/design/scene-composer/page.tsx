@@ -1003,6 +1003,7 @@ export default function SceneComposerPage() {
           params.set('dateTo', config.dateRange.to)
         }
         if (config.pitchType) params.set('pitchType', config.pitchType)
+        if (config.pitcherRole && config.pitcherRole !== 'all') params.set('pitcherRole', config.pitcherRole)
         if (config.secondaryStat) params.set('secondaryMetric', config.secondaryStat)
         if (config.tertiaryStat) params.set('tertiaryMetric', config.tertiaryStat)
 

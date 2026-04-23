@@ -85,6 +85,7 @@ export interface TemplateDataValues {
     playerType?: 'pitcher' | 'batter'
     gameYear?: number
     pitchType?: string
+    pitcherRole?: 'all' | 'starter' | 'reliever'
     primaryStat?: string
     secondaryStat?: string
     tertiaryStat?: string

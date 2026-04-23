@@ -310,12 +310,21 @@ export async function GET(req: NextRequest) {
       const dateFrom = sp.get('dateFrom')
       const dateTo = sp.get('dateTo')
       const pitchType = sp.get('pitchType')
+      const pitcherRole = sp.get('pitcherRole') // 'starter' | 'reliever' | null
       const limit = Math.min(parseInt(sp.get('limit') || '5'), 25)
       const sortDir = sp.get('sortDir') === 'asc' ? 'ASC' : 'DESC'
       const secondaryMetric = sp.get('secondaryMetric')
       const tertiaryMetric = sp.get('tertiaryMetric')
 
       if (!metric) return NextResponse.json({ error: 'metric required' }, { status: 400 })
+
+      // Build pitcher role subquery filter (starter = pitched inning 1 in >50% of games)
+      const pitcherRoleYear = parseInt(gameYear || '2026')
+      const starterSubquery = pitcherRole === 'starter'
+        ? `AND pitcher IN (SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) > 0.5)`
+        : pitcherRole === 'reliever'
+        ? `AND pitcher IN (SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) <= 0.5)`
+        : ''
 
       // Determine which source each metric needs
       const allMetrics = [
@@ -344,6 +353,13 @@ export async function GET(req: NextRequest) {
         const tMap = pivotTritonRows((data || []) as any[])
         let rows: Record<string, any>[] = Array.from(tMap.entries()).map(([id, p]) => ({ player_id: id, ...p }))
         rows = rows.filter(r => r.pitches >= minPitches)
+
+        // Apply pitcher role filter
+        if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
+          const roleRes = await q(`SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) ${pitcherRole === 'starter' ? '>' : '<='} 0.5`)
+          const roleIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
+          rows = rows.filter(r => roleIds.has(r.player_id))
+        }
 
         const jsSortDir = sortDir === 'ASC' ? 1 : -1
         const primaryCol = TRITON_COL[metric] || metric
@@ -445,6 +461,13 @@ export async function GET(req: NextRequest) {
         }
         rows = rows.filter(r => r.pitches >= minPitches)
 
+        // Apply pitcher role filter
+        if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
+          const roleRes = await q(`SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher HAVING COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::float / NULLIF(COUNT(DISTINCT game_pk), 0) ${pitcherRole === 'starter' ? '>' : '<='} 0.5`)
+          const roleIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
+          rows = rows.filter(r => roleIds.has(r.player_id))
+        }
+
         const DEC_COL: Record<string, string> = { deception_score: 'deception_score', unique_score: 'unique_score', xdeception_score: 'xdeception_score' }
         const primaryCol = DEC_COL[metric] || metric
         const jsSortDir = sortDir === 'ASC' ? 1 : -1
@@ -544,7 +567,7 @@ export async function GET(req: NextRequest) {
           SELECT p.pitcher as player_id, pl.name as player_name, COUNT(*) as pitches,
             ${ERA_COMPONENTS_SQL}
           FROM pitches p JOIN players pl ON pl.id = p.pitcher
-          WHERE ${where.join(' AND ')}
+          WHERE ${where.join(' AND ')} ${starterSubquery}
           GROUP BY p.pitcher, pl.name HAVING COUNT(*) >= ${minPitches}
         `
 
@@ -612,7 +635,7 @@ export async function GET(req: NextRequest) {
           ${selects.join(',\n          ')}
         FROM pitches p
         JOIN players pl ON pl.id = p.${groupCol}
-        WHERE ${where.join(' AND ')}
+        WHERE ${where.join(' AND ')} ${playerType === 'pitcher' ? starterSubquery : ''}
         GROUP BY p.${groupCol}, pl.name
         HAVING COUNT(*) >= ${minSample}
         ORDER BY primary_value ${sortDir} NULLS LAST
