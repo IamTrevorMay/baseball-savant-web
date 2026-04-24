@@ -2,7 +2,9 @@
 -- Populates league_averages for one season across both MLB and MiLB, for roles
 -- hitter / SP / RP. Qualification is 20% of the role's counting-stat leader,
 -- with a hard floor of 25 AB (hitters) or 5 IP (pitchers). SP vs RP is
--- determined by first-inning game share > 0.5 (mirrors app/api/game/puzzle/route.ts).
+-- determined by pitch-count-per-game: a pitcher is SP if they have >= 3 games
+-- with 50+ pitches thrown (excluding pitch_type PO/IN). Mirrors the convention
+-- in app/api/scene-stats/route.ts.
 --
 -- Scope (Phase 1): metrics directly derivable from pitches / milb_pitches.
 -- Excludes anything ending in `_plus`, counting stats, and metrics sourced from
@@ -275,15 +277,25 @@ BEGIN
         FROM %I
         WHERE game_date >= %L AND game_date < %L
       ),
+      per_game AS (
+        SELECT pitcher, game_pk, COUNT(*) AS pc
+        FROM src
+        WHERE pitcher IS NOT NULL AND pitch_type NOT IN ('PO','IN')
+        GROUP BY pitcher, game_pk
+      ),
+      roles AS (
+        SELECT pitcher,
+          CASE WHEN COUNT(*) FILTER (WHERE pc >= 50) >= 3 THEN 'SP' ELSE 'RP' END AS role
+        FROM per_game GROUP BY pitcher
+      ),
       per_pitcher AS (
-        SELECT pitcher AS pid,
+        SELECT s.pitcher AS pid,
           COUNT(*) FILTER (
             WHERE events_n IN ('strikeout','strikeout_double_play','field_out','double_play',
                                'grounded_into_double_play','force_out','fielders_choice',
                                'fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play')
           )::numeric / 3.0 AS _ip,
-          CASE WHEN COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::numeric
-                    / NULLIF(COUNT(DISTINCT game_pk), 0) > 0.5 THEN 'SP' ELSE 'RP' END AS role,
+          r.role,
           AVG(release_speed)       AS avg_velo,
           MAX(release_speed)       AS max_velo,
           AVG(release_spin_rate)   AS avg_spin,
@@ -335,9 +347,10 @@ BEGIN
           AVG(estimated_woba_using_speedangle)  AS avg_xwoba,
           %s                                    AS avg_xslg,
           AVG(woba_value)                       AS avg_woba
-        FROM src
-        WHERE pitcher IS NOT NULL
-        GROUP BY pitcher
+        FROM src s
+        JOIN roles r ON r.pitcher = s.pitcher
+        WHERE s.pitcher IS NOT NULL
+        GROUP BY s.pitcher, r.role
       ),
       with_ops AS (
         SELECT p.*, p.slg + p.obp AS ops FROM per_pitcher p
@@ -413,18 +426,32 @@ BEGIN
     -- ═════════════════════════════════════════════════════════════════════
     IF v_level = 'MLB' THEN
       EXECUTE format($sql$
-        WITH per_pitcher AS (
-          SELECT pitcher AS pid,
+        WITH season_pitches AS (
+          SELECT * FROM pitches
+          WHERE game_date >= %L AND game_date < %L AND pitcher IS NOT NULL
+        ),
+        per_game AS (
+          SELECT pitcher, game_pk, COUNT(*) AS pc
+          FROM season_pitches
+          WHERE pitch_type NOT IN ('PO','IN')
+          GROUP BY pitcher, game_pk
+        ),
+        roles AS (
+          SELECT pitcher,
+            CASE WHEN COUNT(*) FILTER (WHERE pc >= 50) >= 3 THEN 'SP' ELSE 'RP' END AS role
+          FROM per_game GROUP BY pitcher
+        ),
+        per_pitcher AS (
+          SELECT s.pitcher AS pid,
             COUNT(*) FILTER (
               WHERE events IN ('strikeout','strikeout_double_play','field_out','double_play',
                                'grounded_into_double_play','force_out','fielders_choice',
                                'fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play')
             )::numeric / 3.0 AS _ip,
-            CASE WHEN COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::numeric
-                      / NULLIF(COUNT(DISTINCT game_pk), 0) > 0.5 THEN 'SP' ELSE 'RP' END AS role
-          FROM pitches
-          WHERE game_date >= %L AND game_date < %L AND pitcher IS NOT NULL
-          GROUP BY pitcher
+            r.role
+          FROM season_pitches s
+          JOIN roles r ON r.pitcher = s.pitcher
+          GROUP BY s.pitcher, r.role
         ),
         triton AS (
           SELECT pitcher,
@@ -549,15 +576,25 @@ BEGIN
         FROM %I
         WHERE game_date >= %L AND game_date < %L
       ),
+      per_game AS (
+        SELECT pitcher, game_pk, COUNT(*) AS pc
+        FROM src
+        WHERE pitcher IS NOT NULL AND pitch_type NOT IN ('PO','IN')
+        GROUP BY pitcher, game_pk
+      ),
+      roles AS (
+        SELECT pitcher,
+          CASE WHEN COUNT(*) FILTER (WHERE pc >= 50) >= 3 THEN 'SP' ELSE 'RP' END AS role
+        FROM per_game GROUP BY pitcher
+      ),
       per_pitcher AS (
-        SELECT pitcher AS pid,
+        SELECT s.pitcher AS pid,
           COUNT(*) FILTER (
             WHERE events_n IN ('strikeout','strikeout_double_play','field_out','double_play',
                                'grounded_into_double_play','force_out','fielders_choice',
                                'fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play')
           )::numeric / 3.0 AS _ip,
-          CASE WHEN COUNT(DISTINCT CASE WHEN inning = 1 THEN game_pk END)::numeric
-                    / NULLIF(COUNT(DISTINCT game_pk), 0) > 0.5 THEN 'SP' ELSE 'RP' END AS role,
+          r.role,
           COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) AS _k,
           COUNT(*) FILTER (WHERE events_n = 'walk')          AS _bb,
           COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch')  AS _hbp,
@@ -567,7 +604,9 @@ BEGIN
           COUNT(*) FILTER (WHERE bb_type = 'popup')          AS _pu,
           COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) AS _pa,
           AVG(estimated_woba_using_speedangle) AS _xwoba
-        FROM src WHERE pitcher IS NOT NULL GROUP BY pitcher
+        FROM src s JOIN roles r ON r.pitcher = s.pitcher
+        WHERE s.pitcher IS NOT NULL
+        GROUP BY s.pitcher, r.role
       ),
       leaders AS (
         SELECT MAX(_ip) FILTER (WHERE role='SP') AS sp_lead,
