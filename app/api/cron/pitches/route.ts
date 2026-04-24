@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncPitches } from '@/app/api/update/route'
 import { invalidateCache, purgeExpired } from '@/lib/queryCache'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
@@ -56,6 +57,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Refresh league_averages for the current season (covers MLB + MiLB).
+    // Idempotent: deletes and reinserts rows for this season.
+    let leagueAveragesResult: { ok: true } | { error: string }
+    try {
+      const { error } = await supabaseAdmin.rpc('refresh_league_averages', { p_season: year })
+      leagueAveragesResult = error ? { error: error.message } : { ok: true }
+    } catch (e: any) {
+      leagueAveragesResult = { error: e.message }
+    }
+
     // Invalidate query caches after fresh data sync
     await Promise.all([
       invalidateCache('trends:'),
@@ -69,6 +80,7 @@ export async function GET(req: NextRequest) {
       end: fmt(end),
       results,
       computeResults,
+      leagueAverages: leagueAveragesResult,
     })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
