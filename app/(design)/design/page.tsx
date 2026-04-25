@@ -13,6 +13,34 @@ export default function DesignPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Imagine card */}
+        <button
+          onClick={() => router.push('/design/imagine')}
+          className="
+            group text-left bg-zinc-900 border border-zinc-800 rounded-xl p-5
+            hover:border-cyan-600/50 hover:bg-zinc-800/60 transition
+            flex flex-col gap-2
+          "
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-sm font-semibold text-zinc-100 group-hover:text-cyan-300 transition leading-snug">
+              Imagine
+            </span>
+            <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">
+              New
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">Pick a widget, tweak filters, export PNG. A simple front-end for data-driven templates with persistent history.</p>
+          <div className="mt-auto pt-1 flex items-center gap-1.5">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-500">
+              Widgets
+            </span>
+            <span className="ml-auto text-[10px] text-zinc-600 group-hover:text-cyan-500/60 transition">
+              Open &rarr;
+            </span>
+          </div>
+        </button>
+
         {/* Asset Designer card */}
         <button
           onClick={() => router.push('/design/asset-designer')}

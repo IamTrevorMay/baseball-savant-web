@@ -197,6 +197,58 @@ function drawRCStatBox(ctx: SKRSContext2D, el: SceneElement) {
   ctx.restore()
 }
 
+// Scene Composer "stat-card" element. Similar to rc-stat-box but supports
+// transparent backgrounds, an optional sublabel, and centered "glass" variant.
+function drawStatCard(ctx: SKRSContext2D, el: SceneElement) {
+  const p = el.props
+  const { x, y, width: w, height: h } = el
+  const radius = p.borderRadius ?? 12
+  const color = p.color || '#06b6d4'
+  const bg = p.bgColor || 'transparent'
+  const pad = 14
+
+  ctx.save()
+  if (bg && bg !== 'transparent') {
+    ctx.fillStyle = bg
+    roundRect(ctx, x, y, w, h, radius)
+    ctx.fill()
+  }
+  if (p.borderWidth > 0) {
+    ctx.strokeStyle = p.borderColor || color
+    ctx.lineWidth = p.borderWidth
+    roundRect(ctx, x, y, w, h, radius)
+    ctx.stroke()
+  }
+
+  const valueSize = p.fontSize || 44
+  const labelSize = Math.max(10, valueSize * 0.28)
+  const sublabelSize = Math.max(10, valueSize * 0.24)
+  const hasSublabel = !!p.sublabel
+
+  // Stack: label (top) → value (middle) → sublabel (bottom)
+  const valueText = String(p.value ?? '--')
+  const labelText = (p.label || '').toUpperCase()
+
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+
+  ctx.font = `600 ${labelSize}px ${FONT()}`
+  ctx.fillStyle = '#a1a1aa'
+  ctx.fillText(labelText, x + pad, y + pad)
+
+  ctx.font = `bold ${valueSize}px ${FONT()}`
+  ctx.fillStyle = color
+  ctx.fillText(valueText, x + pad, y + pad + labelSize + 4)
+
+  if (hasSublabel) {
+    ctx.font = `400 ${sublabelSize}px ${FONT()}`
+    ctx.fillStyle = '#71717a'
+    ctx.fillText(String(p.sublabel), x + pad, y + pad + labelSize + 4 + valueSize + 4)
+  }
+
+  ctx.restore()
+}
+
 function drawRCTable(ctx: SKRSContext2D, el: SceneElement) {
   const p = el.props
   const { x, y, width: w, height: h } = el
@@ -818,6 +870,9 @@ export async function renderCardToPNG(scene: Scene): Promise<Buffer> {
         break
       case 'rc-stat-box':
         drawRCStatBox(ctx, el)
+        break
+      case 'stat-card':
+        drawStatCard(ctx, el)
         break
       case 'rc-table':
         drawRCTable(ctx, el)
