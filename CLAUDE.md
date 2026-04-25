@@ -25,6 +25,10 @@ TruMedia-style baseball analytics platform for scouting reports and media conten
 - `scripts/create-league-averages.sql` — `league_averages` table DDL
 - `scripts/create-refresh-league-averages.sql` — `refresh_league_averages(p_season)` function DDL
 - `lib/supabase.ts` — Supabase client
+- `app/(compete)/compete/performance/page.tsx` — TrackMan CSV upload + persistent session browser
+- `app/api/compete/performance/{upload,sessions,pitches}/route.ts` — ingest + query routes for TrackMan pitch data
+- `lib/compete/pitchSchema.ts` — `PitchRow` type plus `parseCsvRow` / `rowToDb` / `dbToRow` mappers
+- `scripts/create-compete-pitches.sql` — `compete_pitch_sessions` + `compete_pitches` DDL and RLS
 
 ## Database
 - `pitches` table: 7.4M+ Statcast rows (2015–2026), 90+ columns
@@ -35,7 +39,8 @@ TruMedia-style baseball analytics platform for scouting reports and media conten
 - `pitcher_season_command` table: per pitcher × pitch_type × year. Raw Triton command metrics + plus stats. Pitch-weighted aggregate for season-level values.
 - `pitcher_season_deception` table: per pitcher × pitch_type × year. `deception_score`, `unique_score` (2017+).
 - `league_averages` table: 50th-percentile benchmarks per (season, level, role, metric) for qualified players. Populated by `refresh_league_averages(p_season int)` — idempotent, called nightly by `/api/cron/pitches` for the current season. Consumers: percentile rankings and color-scale midpoints in heatmaps.
-- Key RPCs: `run_query`, `search_players`, `search_all_players`, `refresh_league_averages`
+- `compete_pitch_sessions` / `compete_pitches` tables: TrackMan pitch data uploaded via the Compete → Performance page. One session row per upload, one pitch row per CSV line with all 73 TrackMan columns promoted. `tm_pitch_uid` is unique → idempotent re-uploads. RLS: admin/owner see all, others see `uploaded_by = auth.uid()`. See `docs/compete-performance.md`.
+- Key RPCs: `run_query`, `search_players`, `search_all_players`, `refresh_league_averages`, `is_compete_admin`
 - Indexes on: pitcher, batter, game_date
 
 ## Conventions
