@@ -8,8 +8,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Widget, SizePreset, FilterControl } from '@/lib/imagine/types'
+import type { Widget, SizePreset, FilterControl, PlayerSearchValue } from '@/lib/imagine/types'
 import { IMAGINE_WIDGETS, getWidget } from '@/lib/imagine/registry'
+import { PANEL_REGISTRY } from '@/lib/imagine/panelRegistry'
+import PlayerSearchField from '@/components/imagine/PlayerSearchField'
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
@@ -83,8 +85,16 @@ export default function ImaginePage() {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>(IMAGINE_WIDGETS[0]?.id || '')
   const widget = getWidget(selectedWidgetId)
 
-  const [filters, setFilters] = useState<Record<string, any>>(widget?.defaultFilters ?? {})
+  const [filters, setFiltersRaw] = useState<Record<string, any>>(widget?.defaultFilters ?? {})
   const [size, setSize] = useState<SizePreset>(widget?.defaultSize ?? { label: '', width: 1920, height: 1080 })
+
+  /** Patch filters and run the active widget's normalizer for cross-field invariants. */
+  const setFilters = useCallback((next: Record<string, any> | ((prev: Record<string, any>) => Record<string, any>)) => {
+    setFiltersRaw(prev => {
+      const proposed = typeof next === 'function' ? next(prev) : next
+      return widget?.normalizeFilters ? (widget.normalizeFilters as any)(proposed, prev) : proposed
+    })
+  }, [widget])
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null)
@@ -94,12 +104,12 @@ export default function ImaginePage() {
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [exporting, setExporting] = useState(false)
 
-  /* Reset filters/size when switching widget */
+  /* Reset filters/size when switching widget — bypass normalizer (not a within-widget edit) */
   const switchWidget = (id: string) => {
     const w = getWidget(id)
     if (!w) return
     setSelectedWidgetId(id)
-    setFilters(w.defaultFilters)
+    setFiltersRaw(w.defaultFilters)
     setSize(w.defaultSize)
   }
 
@@ -167,7 +177,11 @@ export default function ImaginePage() {
     if (!widget || !previewBlob) return
     setExporting(true)
     try {
-      const suggestedName = `${safeFilename(effectiveTitle)}.png`
+      const userTitle = (filters.title || '').trim()
+      const filenameStem = userTitle
+        ? safeFilename(userTitle)
+        : (widget.autoFilename ? widget.autoFilename(filters as any) : safeFilename(effectiveTitle))
+      const suggestedName = `${filenameStem}.png`
       const result = await saveBlobToDisk(previewBlob, suggestedName)
       if (result === 'cancelled') return
 
@@ -195,12 +209,12 @@ export default function ImaginePage() {
     }
   }, [widget, previewBlob, effectiveTitle, filters, size])
 
-  /* History — restore */
+  /* History — restore. Bypass normalizer so the saved state is reproduced exactly. */
   const onRestoreHistory = (row: HistoryRow) => {
     if (row.widget_id !== selectedWidgetId) {
       setSelectedWidgetId(row.widget_id)
     }
-    setFilters(row.filters)
+    setFiltersRaw(row.filters)
     setSize(row.size)
   }
 
@@ -213,53 +227,66 @@ export default function ImaginePage() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] bg-zinc-950 text-zinc-200 overflow-hidden">
-      {/* ── Left: Widget list ──────────────────────────── */}
+      {/* ── Left: Widgets (top 2/3) + History (bottom 1/3) ──────── */}
       <aside className="w-60 shrink-0 border-r border-zinc-800 flex flex-col">
-        <div className="px-4 pt-4 pb-2">
-          <h2 className="text-[10px] uppercase tracking-wider text-zinc-500">Widgets</h2>
+        {/* Widgets */}
+        <div className="flex-[2] flex flex-col min-h-0">
+          <div className="px-4 pt-4 pb-2">
+            <h2 className="text-[10px] uppercase tracking-wider text-zinc-500">Widgets</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-2">
+            {IMAGINE_WIDGETS.map(w => (
+              <button
+                key={w.id}
+                onClick={() => switchWidget(w.id)}
+                className={`w-full text-left px-3 py-2.5 rounded-md mb-1 transition ${
+                  selectedWidgetId === w.id
+                    ? 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-200'
+                    : 'border border-transparent hover:bg-zinc-900 text-zinc-300'
+                }`}
+              >
+                <div className="text-sm font-medium">{w.name}</div>
+                <div className="text-[11px] text-zinc-500 mt-0.5 leading-snug">{w.description}</div>
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-2">
-          {IMAGINE_WIDGETS.map(w => (
-            <button
-              key={w.id}
-              onClick={() => switchWidget(w.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-md mb-1 transition ${
-                selectedWidgetId === w.id
-                  ? 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-200'
-                  : 'border border-transparent hover:bg-zinc-900 text-zinc-300'
-              }`}
-            >
-              <div className="text-sm font-medium">{w.name}</div>
-              <div className="text-[11px] text-zinc-500 mt-0.5 leading-snug">{w.description}</div>
-            </button>
-          ))}
+        {/* History (bottom 1/3) */}
+        <div className="flex-[1] flex flex-col min-h-0 border-t border-zinc-800">
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+            <h2 className="text-[10px] uppercase tracking-wider text-zinc-500">History</h2>
+            <span className="text-[10px] text-zinc-600">{history.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-3">
+            {history.length === 0 ? (
+              <div className="text-[11px] text-zinc-600 px-2 py-4">
+                Exported renders show up here.
+              </div>
+            ) : (
+              history.map(row => (
+                <HistoryRowCard
+                  key={row.id}
+                  row={row}
+                  onRestore={() => onRestoreHistory(row)}
+                  onDelete={() => onDeleteHistory(row.id)}
+                />
+              ))
+            )}
+          </div>
         </div>
       </aside>
 
-      {/* ── Center: Filter bar + preview ─────────────────────── */}
+      {/* ── Center: Preview ─────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0">
         {widget ? (
-          <>
-            <FilterBar
-              schema={widget.filterSchema}
-              filters={filters}
-              onChange={setFilters}
+          <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-zinc-900/30">
+            <PreviewArea
+              url={previewUrl}
+              loading={previewLoading}
+              error={previewError}
               size={size}
-              onSizeChange={setSize}
-              sizePresets={widget.sizePresets}
-              onExport={onExport}
-              exportDisabled={exporting || previewLoading || !previewBlob}
-              exporting={exporting}
             />
-            <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-zinc-900/30">
-              <PreviewArea
-                url={previewUrl}
-                loading={previewLoading}
-                error={previewError}
-                size={size}
-              />
-            </div>
-          </>
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
             Pick a widget to start.
@@ -267,36 +294,39 @@ export default function ImaginePage() {
         )}
       </main>
 
-      {/* ── Right: History ──────────────────────────────────── */}
-      <aside className="w-72 shrink-0 border-l border-zinc-800 flex flex-col">
-        <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-          <h2 className="text-[10px] uppercase tracking-wider text-zinc-500">History</h2>
-          <span className="text-[10px] text-zinc-600">{history.length}</span>
-        </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-3">
-          {history.length === 0 ? (
-            <div className="text-[11px] text-zinc-600 px-2 py-4">
-              Exported renders show up here.
-            </div>
+      {/* ── Right: Filters + Output ──────────────────────────── */}
+      <aside className="w-80 shrink-0 border-l border-zinc-800 flex flex-col">
+        {widget && (() => {
+          const CustomPanel = widget.renderPanel || PANEL_REGISTRY[widget.id]
+          const panelProps = {
+            filters,
+            onChange: setFilters,
+            size,
+            onSizeChange: setSize,
+            sizePresets: widget.sizePresets,
+            onExport,
+            exportDisabled: exporting || previewLoading || !previewBlob,
+            exporting,
+          }
+          return CustomPanel ? (
+            <CustomPanel {...panelProps as any} />
           ) : (
-            history.map(row => (
-              <HistoryRowCard
-                key={row.id}
-                row={row}
-                onRestore={() => onRestoreHistory(row)}
-                onDelete={() => onDeleteHistory(row.id)}
-              />
-            ))
-          )}
-        </div>
+            <FilterPanel
+              schema={widget.filterSchema}
+              {...panelProps}
+            />
+          )
+        })()}
       </aside>
     </div>
   )
 }
 
-/* ── FilterBar ─────────────────────────────────────────────────────────── */
+/* ── FilterPanel ───────────────────────────────────────────────────────── */
 
-function FilterBar({
+const SECTION_TITLES: Record<number, string> = { 1: 'Scope', 2: 'Data', 3: 'Stats' }
+
+function FilterPanel({
   schema, filters, onChange,
   size, onSizeChange, sizePresets,
   onExport, exportDisabled, exporting,
@@ -313,22 +343,49 @@ function FilterBar({
 }) {
   const patch = (key: string, value: any) => onChange({ ...filters, [key]: value })
 
+  // Group controls by their `column` field (now repurposed as a section
+  // index since the panel is vertical). Declaration order within a section
+  // = top-to-bottom render order. Controls whose `visibleWhen` predicate
+  // returns false are dropped entirely.
+  const sections: FilterControl[][] = [[], [], []]
+  for (const ctrl of schema) {
+    if (ctrl.visibleWhen && !ctrl.visibleWhen(filters)) continue
+    const s = (ctrl.column ?? 1) - 1
+    if (s >= 0 && s < 3) sections[s].push(ctrl)
+  }
+
+  const renderField = (ctrl: FilterControl) => (
+    <div key={ctrl.key}>
+      <FieldLabel>{ctrl.label}</FieldLabel>
+      <FilterControlField
+        ctrl={ctrl}
+        value={filters[ctrl.key]}
+        filters={filters}
+        onChange={(v) => patch(ctrl.key, v)}
+      />
+    </div>
+  )
+
   return (
-    <div className="border-b border-zinc-800 bg-zinc-950">
-      <div className="px-4 pt-3 pb-3">
-        <div className="grid grid-cols-4 gap-3">
-          {schema.map(ctrl => (
-            <div key={ctrl.key} className={spanClass(ctrl.span)}>
-              <FieldLabel>{ctrl.label}</FieldLabel>
-              <FilterControlField
-                ctrl={ctrl}
-                value={filters[ctrl.key]}
-                onChange={(v) => patch(ctrl.key, v)}
-              />
-            </div>
-          ))}
-          {/* Size selector — always last, on its own row if needed */}
-          <div className="col-span-2">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 space-y-5">
+        {sections.map((controls, idx) => (
+          controls.length > 0 && (
+            <section key={idx}>
+              <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2.5">
+                {SECTION_TITLES[idx + 1]}
+              </h3>
+              <div className="space-y-2.5">
+                {controls.map(renderField)}
+              </div>
+            </section>
+          )
+        ))}
+        {/* Output section — Size/Aspect lives with the filters; Export is
+            pinned to the bottom of the panel below the scroll area. */}
+        <section>
+          <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2.5">Output</h3>
+          <div>
             <FieldLabel>Size / Aspect</FieldLabel>
             <select
               className={selectCls}
@@ -345,29 +402,20 @@ function FilterBar({
               ))}
             </select>
           </div>
-          <div className="col-span-2 flex items-end">
-            <button
-              onClick={onExport}
-              disabled={exportDisabled}
-              className="ml-auto px-4 py-2 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              {exporting ? 'Exporting…' : 'Export PNG'}
-            </button>
-          </div>
-        </div>
+        </section>
+      </div>
+      {/* Export pinned to bottom */}
+      <div className="border-t border-zinc-800 p-3">
+        <button
+          onClick={onExport}
+          disabled={exportDisabled}
+          className="w-full px-4 py-2 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+        >
+          {exporting ? 'Exporting…' : 'Export PNG'}
+        </button>
       </div>
     </div>
   )
-}
-
-function spanClass(span?: 1 | 2 | 3 | 4): string {
-  switch (span) {
-    case 1: return 'col-span-1'
-    case 2: return 'col-span-2'
-    case 3: return 'col-span-3'
-    case 4: return 'col-span-4'
-    default: return 'col-span-2'
-  }
 }
 
 /* ── Individual control renderers ──────────────────────────────────────── */
@@ -382,23 +430,26 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 function FilterControlField({
-  ctrl, value, onChange,
+  ctrl, value, filters, onChange,
 }: {
   ctrl: FilterControl
   value: any
+  filters: Record<string, any>
   onChange: (v: any) => void
 }) {
   switch (ctrl.type) {
-    case 'text':
+    case 'text': {
+      const placeholder = ctrl.dynamicPlaceholder ? ctrl.dynamicPlaceholder(filters) : ctrl.placeholder
       return (
         <input
           type="text"
           className={inputCls}
           value={value ?? ''}
-          placeholder={ctrl.placeholder}
+          placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
         />
       )
+    }
 
     case 'segmented':
       return (
@@ -470,6 +521,21 @@ function FilterControlField({
             </select>
           )}
         </div>
+      )
+    }
+
+    case 'player-search': {
+      const v: PlayerSearchValue = value && typeof value === 'object'
+        ? value
+        : { playerId: null, playerName: '' }
+      const playerType = ctrl.playerTypeKey ? filters[ctrl.playerTypeKey] : 'all'
+      return (
+        <PlayerSearchField
+          value={v}
+          playerType={playerType === 'pitcher' ? 'pitcher' : playerType === 'batter' ? 'batter' : 'all'}
+          placeholder={ctrl.placeholder}
+          onChange={onChange}
+        />
       )
     }
 

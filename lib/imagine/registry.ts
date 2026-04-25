@@ -7,9 +7,13 @@
  */
 import type { Widget } from '@/lib/imagine/types'
 import topFiveLeaderboard from '@/lib/imagine/widgets/topFiveLeaderboard'
+import playerStats from '@/lib/imagine/widgets/playerStats'
+import heatMaps from '@/lib/imagine/widgets/heatMaps'
 
 export const IMAGINE_WIDGETS: Widget[] = [
   topFiveLeaderboard as unknown as Widget,
+  playerStats as unknown as Widget,
+  heatMaps as unknown as Widget,
 ]
 
 export function getWidget(id: string): Widget | undefined {

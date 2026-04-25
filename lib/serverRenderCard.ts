@@ -661,14 +661,147 @@ function drawRCStatline(ctx: SKRSContext2D, el: SceneElement) {
   ctx.restore()
 }
 
+/* ── Heatmap helpers (shared by both legacy count mode and spectrum mode) ── */
+
+// Spectrum stops matching components/reports/TileViz.tsx — same look as the
+// Reports page heatmap so Imagine output reads identically.
+const HEATMAP_SPECTRUM: [number, [number, number, number]][] = [
+  [0.00, [0x1a, 0x3d, 0x7c]], [0.05, [0x21, 0x66, 0xac]],
+  [0.15, [0x33, 0x88, 0xb8]], [0.25, [0x4b, 0xa8, 0xc4]],
+  [0.35, [0x6c, 0xc4, 0xa0]], [0.45, [0xc8, 0xe6, 0x4a]],
+  [0.55, [0xf0, 0xe8, 0x30]], [0.65, [0xf5, 0xa0, 0x20]],
+  [0.75, [0xe0, 0x60, 0x10]], [0.85, [0xc4, 0x2a, 0x0c]],
+  [0.92, [0x9e, 0x00, 0x00]], [1.00, [0x7a, 0x00, 0x00]],
+]
+
+function spectrumColor(t: number): string {
+  const x = Math.max(0, Math.min(1, t))
+  for (let i = 1; i < HEATMAP_SPECTRUM.length; i++) {
+    const [s1, c1] = HEATMAP_SPECTRUM[i]
+    if (x <= s1) {
+      const [s0, c0] = HEATMAP_SPECTRUM[i - 1]
+      const k = (x - s0) / (s1 - s0)
+      const r = Math.round(c0[0] + (c1[0] - c0[0]) * k)
+      const g = Math.round(c0[1] + (c1[1] - c0[1]) * k)
+      const b = Math.round(c0[2] + (c1[2] - c0[2]) * k)
+      return `rgb(${r},${g},${b})`
+    }
+  }
+  const [, last] = HEATMAP_SPECTRUM[HEATMAP_SPECTRUM.length - 1]
+  return `rgb(${last[0]},${last[1]},${last[2]})`
+}
+
+// EV baselines mirror components/reports/TileViz.tsx.
+const HEATMAP_EV_BASELINES: Record<number, { mean: number; std: number }> = {
+  2026: { mean: 82.8, std: 15.5 }, 2025: { mean: 83.1, std: 15.4 },
+  2024: { mean: 82.5, std: 15.2 }, 2023: { mean: 82.6, std: 15.2 },
+  2022: { mean: 82.4, std: 15.1 }, 2021: { mean: 82.5, std: 15.0 },
+  2020: { mean: 82.3, std: 14.9 }, 2019: { mean: 82.3, std: 15.0 },
+  2018: { mean: 82.1, std: 14.9 }, 2017: { mean: 82.2, std: 15.0 },
+  2016: { mean: 82.0, std: 14.8 }, 2015: { mean: 81.8, std: 14.7 },
+}
+
+function getEvRange(locations: any[]): { zmin: number; zmax: number } | null {
+  const years = locations.map(d => d?.game_year).filter(Boolean)
+  const maxYear = years.length ? Math.max(...years) : new Date().getFullYear()
+  const refYear = maxYear - 1
+  const bl = HEATMAP_EV_BASELINES[refYear] || HEATMAP_EV_BASELINES[2025] || { mean: 83, std: 15.3 }
+  return { zmin: bl.mean - 3 * bl.std, zmax: bl.mean + 3 * bl.std }
+}
+
+const HM_HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run'])
+const HM_NON_AB_EVENTS = new Set(['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt', 'catcher_interf'])
+
+function calcHeatmapMetric(pitches: any[], metric: string): number | null {
+  if (!pitches.length) return null
+  const avg = (vals: number[]) => vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+  const isSwing = (d: string) => d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+  switch (metric) {
+    case 'frequency': return pitches.length
+    case 'ba': {
+      const ab = pitches.filter(p => p.events && !HM_NON_AB_EVENTS.has(p.events))
+      const h = ab.filter(p => HM_HIT_EVENTS.has(p.events))
+      return ab.length ? h.length / ab.length : null
+    }
+    case 'slg': {
+      const ab = pitches.filter(p => p.events && !HM_NON_AB_EVENTS.has(p.events))
+      if (!ab.length) return null
+      const tb = ab.reduce((s, p) => s + (p.events === 'single' ? 1 : p.events === 'double' ? 2 : p.events === 'triple' ? 3 : p.events === 'home_run' ? 4 : 0), 0)
+      return tb / ab.length
+    }
+    case 'woba': return avg(pitches.map(p => p.woba_value).filter((x: any) => x != null))
+    case 'xba': return avg(pitches.map(p => p.estimated_ba_using_speedangle).filter((x: any) => x != null))
+    case 'xwoba': return avg(pitches.map(p => p.estimated_woba_using_speedangle).filter((x: any) => x != null))
+    case 'xslg': return avg(pitches.map(p => p.estimated_slg_using_speedangle).filter((x: any) => x != null))
+    case 'ev': return avg(pitches.map(p => p.launch_speed).filter((x: any) => x != null))
+    case 'whiff_pct': {
+      const sw = pitches.filter(p => isSwing(((p.description || '') as string).toLowerCase()))
+      const wh = pitches.filter(p => ((p.description || '') as string).toLowerCase().includes('swinging_strike'))
+      return sw.length ? wh.length / sw.length : null
+    }
+    case 'chase_pct': {
+      const oz = pitches.filter(p => p.zone > 9)
+      const sw = oz.filter(p => {
+        const s = ((p.description || '') as string).toLowerCase()
+        return s.includes('swinging_strike') || s.includes('foul') || s.includes('hit_into_play')
+      })
+      return oz.length ? sw.length / oz.length : null
+    }
+    default: return null
+  }
+}
+
+function fmtHeatmapValue(v: number, metric: string): string {
+  if (metric === 'frequency') return String(Math.round(v))
+  if (['ba', 'slg', 'woba', 'xba', 'xwoba', 'xslg'].includes(metric)) return v.toFixed(3)
+  if (metric === 'ev') return v.toFixed(1)
+  if (metric === 'whiff_pct' || metric === 'chase_pct') return (v * 100).toFixed(1) + '%'
+  return v.toFixed(2)
+}
+
+function drawHeatmapLegend(
+  ctx: SKRSContext2D,
+  x: number, y: number, w: number, h: number,
+  zMin: number, zMax: number, metric: string,
+) {
+  const labelW = 56
+  const barX = x + labelW
+  const barW = Math.max(20, w - labelW * 2)
+  const barH = Math.min(h - 4, 8)
+  const barY = y + (h - barH) / 2
+
+  // Color bar
+  const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0)
+  for (const [stop, [r, g, b]] of HEATMAP_SPECTRUM) {
+    grad.addColorStop(stop, `rgb(${r},${g},${b})`)
+  }
+  ctx.fillStyle = grad
+  roundRect(ctx, barX, barY, barW, barH, barH / 2)
+  ctx.fill()
+
+  // Min / max labels
+  ctx.fillStyle = '#a1a1aa'
+  ctx.font = `400 10px ${FONT()}`
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'right'
+  ctx.fillText(fmtHeatmapValue(zMin, metric), barX - 6, y + h / 2)
+  ctx.textAlign = 'left'
+  ctx.fillText(fmtHeatmapValue(zMax, metric), barX + barW + 6, y + h / 2)
+}
+
 function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
   const p = el.props
   const { x: ex, y: ey, width: w, height: h } = el
-  const locations: { plate_x: number; plate_z: number }[] = p.locations || []
-  const binsX = p.binsX || 5
-  const binsY = p.binsY || 5
+  const locations: any[] = p.locations || []
   const radius = p.borderRadius ?? 8
   const title = p.title || ''
+  // metric:
+  //   'count' (or undefined)  → legacy 5×5 cell-count rendering (preserves
+  //                              existing report-card usages).
+  //   'frequency' | 'ba' | 'slg' | 'woba' | 'xba' | 'xwoba' | 'xslg' |
+  //   'ev' | 'whiff_pct' | 'chase_pct'  → 16×16 spectrum heatmap, neighbor-
+  //                              interpolated, optional bottom legend.
+  const metric: string = p.metric || 'count'
 
   ctx.save()
   ctx.fillStyle = p.bgColor || '#09090b'
@@ -685,6 +818,123 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
     ctx.fillText(title, ex + w / 2, ey + 6)
   }
 
+  if (metric === 'count') {
+    drawRCHeatmapLegacy(ctx, el, ex, ey, w, h, locations, titleOffset)
+    ctx.restore()
+    return
+  }
+
+  // Spectrum mode — 16×16 with neighbor interpolation.
+  const showLegend = p.showLegend !== false
+  const legendH = showLegend ? 22 : 0
+  const pad = 16
+  const plotX = ex + pad
+  const plotY = ey + pad + titleOffset
+  const plotW = w - pad * 2
+  const plotH = h - pad * 2 - titleOffset - legendH
+
+  const VXM = -1.76, VXX = 1.76, VZM = 0.24, VZX = 4.06
+  const nb = 16
+  const xS = (VXX - VXM) / nb
+  const yS = (VZX - VZM) / nb
+
+  // Bin pitches.
+  const bins: any[][][] = Array.from({ length: nb }, () => Array.from({ length: nb }, () => []))
+  for (const loc of locations) {
+    if (loc?.plate_x == null || loc?.plate_z == null) continue
+    const xi = Math.floor((loc.plate_x - VXM) / xS)
+    const yi = Math.floor((VZX - loc.plate_z) / yS)
+    if (xi >= 0 && xi < nb && yi >= 0 && yi < nb) bins[yi][xi].push(loc)
+  }
+
+  // Per-bin metric.
+  const z: (number | null)[][] = bins.map(row => row.map(cell => calcHeatmapMetric(cell, metric)))
+
+  // chase_pct: null inside the strike zone (no chase by definition).
+  if (metric === 'chase_pct') {
+    for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
+      const bx = VXM + (c + 0.5) * xS, by = VZX - (r + 0.5) * yS
+      if (bx >= -0.708 && bx <= 0.708 && by >= 1.5 && by <= 3.5) z[r][c] = null
+    }
+  }
+
+  // 2 passes of neighbor interpolation to smooth empty bins.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
+      if (z[r][c] !== null) continue
+      if (metric === 'chase_pct') {
+        const bx = VXM + (c + 0.5) * xS, by = VZX - (r + 0.5) * yS
+        if (bx >= -0.708 && bx <= 0.708 && by >= 1.5 && by <= 3.5) continue
+      }
+      const neighbors: number[] = []
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue
+        const nr = r + dr, nc = c + dc
+        if (nr >= 0 && nr < nb && nc >= 0 && nc < nb && z[nr][nc] !== null) neighbors.push(z[nr][nc] as number)
+      }
+      if (neighbors.length >= 2) z[r][c] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length
+    }
+  }
+
+  // zMin / zMax. EV uses the league baseline (mean ± 3σ); everything else
+  // uses the data range so colors span the spectrum even on small samples.
+  let zMin = 0, zMax = 1
+  if (metric === 'ev') {
+    const ev = getEvRange(locations)
+    if (ev) { zMin = ev.zmin; zMax = ev.zmax }
+  } else {
+    const vals = z.flat().filter((v): v is number => v !== null)
+    if (vals.length) {
+      zMin = Math.min(...vals)
+      zMax = Math.max(...vals)
+    }
+  }
+  const zRange = zMax - zMin || 1
+
+  const cellW = plotW / nb
+  const cellH = plotH / nb
+  for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
+    const v = z[r][c]
+    if (v === null) continue
+    const t = (v - zMin) / zRange
+    ctx.fillStyle = spectrumColor(t)
+    ctx.fillRect(plotX + c * cellW, plotY + r * cellH, cellW + 0.5, cellH + 0.5)
+  }
+
+  if (p.showZone !== false) {
+    const toX = (px: number) => plotX + ((px - VXM) / (VXX - VXM)) * plotW
+    const toY = (pz: number) => plotY + ((VZX - pz) / (VZX - VZM)) * plotH
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2
+    ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
+    // Home plate at the bottom for orientation.
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(toX(-0.708), toY(0.15))
+    ctx.lineTo(toX(0), toY(0))
+    ctx.lineTo(toX(0.708), toY(0.15))
+    ctx.stroke()
+  }
+
+  if (showLegend) {
+    drawHeatmapLegend(ctx, ex + pad, ey + h - legendH - 2, w - pad * 2, legendH, zMin, zMax, metric)
+  }
+
+  ctx.restore()
+}
+
+/** Original cell-count rendering used by legacy report-card heatmaps. */
+function drawRCHeatmapLegacy(
+  ctx: SKRSContext2D,
+  el: SceneElement,
+  ex: number, ey: number, w: number, h: number,
+  locations: { plate_x: number; plate_z: number }[],
+  titleOffset: number,
+) {
+  const p = el.props
+  const binsX = p.binsX || 5
+  const binsY = p.binsY || 5
   const pad = 20
   const plotW = w - pad * 2
   const plotH = h - pad * 2 - titleOffset
@@ -737,8 +987,6 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
     ctx.lineWidth = 2
     ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
   }
-
-  ctx.restore()
 }
 
 function drawRCZonePlot(ctx: SKRSContext2D, el: SceneElement) {

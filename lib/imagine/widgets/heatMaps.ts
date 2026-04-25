@@ -1,0 +1,446 @@
+/**
+ * Heat Maps widget for Imagine.
+ *
+ * Up to 3 fully-independent strike-zone heatmaps in one card. Each map has
+ * its own scope (a player or a team-side), its own filter set (full Reports
+ * filter catalog), its own heatmap metric (frequency, BA, wOBA, EV, etc.),
+ * and an optional custom title/subtitle (auto-generated when blank).
+ *
+ * Layout:
+ *   1 map  → full canvas
+ *   2 maps → side-by-side (landscape) / stacked (vertical)
+ *   3 maps → 3 across (landscape) / 3 stacked (vertical)
+ *
+ * When two or more active maps share the same scope, the player/team
+ * photo + name appears once in a deduped "scope header" row above the
+ * map tiles, instead of being repeated per tile.
+ *
+ * NOTE: this file must stay server-safe. The widget's right-panel UI lives
+ * in HeatMapsPanel.tsx (a 'use client' component) and is wired into the
+ * Imagine page through lib/imagine/panelRegistry.ts.
+ */
+import type { Scene, SceneElement } from '@/lib/sceneTypes'
+import type { Widget, SizePreset } from '@/lib/imagine/types'
+import type { ActiveFilter } from '@/components/FilterEngine'
+import { applyFiltersToData } from '@/components/FilterEngine'
+
+/* ── Types ─────────────────────────────────────────────────────────────── */
+
+export type HeatmapMetric =
+  | 'frequency' | 'ba' | 'slg' | 'woba' | 'xba' | 'xwoba' | 'xslg'
+  | 'ev' | 'whiff_pct' | 'chase_pct'
+
+export type PlayerScope = {
+  type: 'player'
+  playerId: number | null
+  playerName: string
+  /** Which side of the pitch table the player id should match. */
+  col: 'pitcher' | 'batter'
+}
+
+export type TeamScope = {
+  type: 'team'
+  teamCode: string
+  side: 'pitching' | 'hitting'
+}
+
+export type MapScope = PlayerScope | TeamScope
+
+export type MapConfig = {
+  active: boolean
+  scope: MapScope
+  /** Empty string = use the auto-generated value. */
+  customTitle: string
+  customSubtitle: string
+  metric: HeatmapMetric
+  filters: ActiveFilter[]
+}
+
+export type HeatMapsFilters = {
+  /** Optional overall card title (auto when blank). */
+  title?: string
+  maps: MapConfig[]   // always length 3
+}
+
+/* ── Constants ─────────────────────────────────────────────────────────── */
+
+const CURRENT_YEAR = new Date().getFullYear()
+
+const HEATMAP_METRIC_LABELS: Record<HeatmapMetric, string> = {
+  frequency: 'Frequency',
+  ba: 'BA',
+  slg: 'SLG',
+  woba: 'wOBA',
+  xba: 'xBA',
+  xwoba: 'xwOBA',
+  xslg: 'xSLG',
+  ev: 'Exit Velo',
+  whiff_pct: 'Whiff %',
+  chase_pct: 'Chase %',
+}
+
+export const HEATMAP_METRIC_OPTIONS: { value: HeatmapMetric; label: string }[] =
+  (Object.keys(HEATMAP_METRIC_LABELS) as HeatmapMetric[]).map(v => ({ value: v, label: HEATMAP_METRIC_LABELS[v] }))
+
+const SIZE_PRESETS: SizePreset[] = [
+  { label: '1920×1080 (16:9)', width: 1920, height: 1080 },
+  { label: '1080×1920 (9:16 Story)', width: 1080, height: 1920 },
+  { label: '1080×1080 (1:1 Square)', width: 1080, height: 1080 },
+  { label: '1080×1350 (4:5 IG Portrait)', width: 1080, height: 1350 },
+  { label: '1200×630 (Twitter/OG)', width: 1200, height: 630 },
+]
+
+const BG_COLOR = '#09090b'
+
+/* ── Helpers ───────────────────────────────────────────────────────────── */
+
+function emptyPlayerScope(col: 'pitcher' | 'batter' = 'pitcher'): PlayerScope {
+  return { type: 'player', playerId: null, playerName: '', col }
+}
+
+function defaultMap(active: boolean): MapConfig {
+  return {
+    active,
+    scope: emptyPlayerScope('pitcher'),
+    customTitle: '',
+    customSubtitle: '',
+    metric: 'frequency',
+    filters: [],
+  }
+}
+
+/** Identity key for a scope — used to dedupe fetches and dedupe display. */
+export function scopeKey(s: MapScope): string {
+  if (s.type === 'player') return `p:${s.playerId ?? 'none'}:${s.col}`
+  return `t:${s.teamCode || 'none'}:${s.side}`
+}
+
+/** Display label for a scope (used in auto-titles + scope header). */
+export function scopeLabel(s: MapScope): string {
+  if (s.type === 'player') return s.playerName || 'Player'
+  return `${s.teamCode || '—'} ${s.side === 'pitching' ? 'Pitching' : 'Hitting'}`
+}
+
+function isScopeReady(s: MapScope): boolean {
+  if (s.type === 'player') return !!s.playerId
+  return !!s.teamCode
+}
+
+/** Auto-title for a map: scope label + metric. */
+function autoMapTitle(m: MapConfig): string {
+  return scopeLabel(m.scope)
+}
+
+/** Auto-subtitle: heatmap metric label + a short filter summary. */
+function autoMapSubtitle(m: MapConfig): string {
+  const parts: string[] = [HEATMAP_METRIC_LABELS[m.metric]]
+  // Inline a short filter summary (first 2 active filters) so the user
+  // can tell two same-scope maps apart at a glance.
+  const summarized = m.filters
+    .map(f => filterSummary(f))
+    .filter(Boolean)
+    .slice(0, 2)
+  if (summarized.length) parts.push(summarized.join(' · '))
+  return parts.join(' · ')
+}
+
+function filterSummary(f: ActiveFilter): string {
+  if (f.def.type === 'multi' && f.values && f.values.length) {
+    return `${f.def.label}: ${f.values.slice(0, 3).join(',')}${f.values.length > 3 ? '…' : ''}`
+  }
+  if (f.def.type === 'range' && (f.min || f.max)) {
+    return `${f.def.label} ${f.min || ''}–${f.max || ''}`
+  }
+  if (f.def.type === 'date' && (f.startDate || f.endDate)) {
+    return `${f.startDate || ''} – ${f.endDate || ''}`
+  }
+  return ''
+}
+
+function buildAutoTitle(f: HeatMapsFilters): string {
+  const active = f.maps.filter(m => m.active)
+  const labels = active.map(m => scopeLabel(m.scope)).filter(Boolean)
+  const unique = Array.from(new Set(labels))
+  if (unique.length === 0) return 'Heat Maps'
+  if (unique.length === 1) return `${unique[0]} — Heat Maps`
+  return `${unique.join(' vs ')}`
+}
+
+function slug(s: string): string {
+  return s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'heatmaps'
+}
+
+function buildAutoFilename(f: HeatMapsFilters): string {
+  const parts: string[] = ['heatmaps']
+  const active = f.maps.filter(m => m.active)
+  for (const m of active) parts.push(slug(scopeLabel(m.scope)))
+  return parts.join('-')
+}
+
+/* ── Data fetch helpers ────────────────────────────────────────────────── */
+
+async function fetchScope(scope: MapScope, origin: string): Promise<any[]> {
+  if (!isScopeReady(scope)) return []
+  const params = new URLSearchParams()
+  if (scope.type === 'player') {
+    params.set('scope', 'player')
+    params.set('id', String(scope.playerId))
+    params.set('col', scope.col)
+  } else {
+    params.set('scope', 'team')
+    params.set('team', scope.teamCode)
+    params.set('side', scope.side)
+  }
+  const res = await fetch(`${origin}/api/imagine/heatmap-data?${params}`, {
+    headers: { 'cache-control': 'no-store' },
+  })
+  if (!res.ok) throw new Error(`heatmap-data fetch failed: ${res.status}`)
+  const json = await res.json()
+  return json.rows || []
+}
+
+/* ── Layout primitives ─────────────────────────────────────────────────── */
+
+function makeEl(
+  z: { current: number },
+  type: SceneElement['type'],
+  x: number, y: number, w: number, h: number,
+  props: Record<string, any>,
+): SceneElement {
+  return {
+    id: Math.random().toString(36).slice(2, 10),
+    type,
+    x: Math.round(x), y: Math.round(y),
+    width: Math.round(w), height: Math.round(h),
+    rotation: 0, opacity: 1,
+    zIndex: ++z.current,
+    locked: false,
+    props,
+  }
+}
+
+/* ── Scene builder ─────────────────────────────────────────────────────── */
+
+type MapResult = {
+  mapIndex: number
+  scope: MapScope
+  pitches: any[]
+  metric: HeatmapMetric
+  customTitle: string
+  customSubtitle: string
+}
+
+function buildSceneInternal(
+  filters: HeatMapsFilters,
+  data: { mapResults: MapResult[] },
+  size: SizePreset,
+): Scene {
+  const { width, height } = size
+  const aspect = width / height
+  const isLandscape = aspect >= 1.5
+
+  const z = { current: 100 }
+  const elements: SceneElement[] = []
+
+  const userTitle = (filters.title || '').trim()
+  const title = userTitle || buildAutoTitle(filters)
+
+  const padX = Math.max(36, Math.round(width * 0.030))
+  const titleY = Math.round(height * 0.022)
+  const titleFs = Math.max(28, Math.round(Math.min(width, height * 1.5) * 0.038))
+  const titleH = Math.round(titleFs * 1.3)
+
+  // ── Card title ──
+  elements.push(makeEl(z, 'text', padX, titleY, width - padX * 2, titleH, {
+    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent',
+  }))
+
+  const results = data?.mapResults || []
+  if (results.length === 0) {
+    return finalize(elements, title, size)
+  }
+
+  // ── Deduped scope header row ──
+  // Group by scopeKey so the same player/team appears once even if used
+  // by multiple maps. Photo + name once per unique scope.
+  const seen = new Set<string>()
+  const uniqueScopes: MapScope[] = []
+  for (const r of results) {
+    if (!isScopeReady(r.scope)) continue
+    const k = scopeKey(r.scope)
+    if (seen.has(k)) continue
+    seen.add(k)
+    uniqueScopes.push(r.scope)
+  }
+
+  const headerTop = titleY + titleH + Math.round(height * 0.014)
+  const headerH = uniqueScopes.length > 0 ? Math.round(height * (isLandscape ? 0.18 : 0.10)) : 0
+
+  if (uniqueScopes.length > 0) {
+    const slotW = Math.floor((width - padX * 2) / uniqueScopes.length)
+    const photoH = Math.round(headerH * 0.78)
+    const photoW = Math.round(photoH * 0.83)
+    const labelFs = Math.max(13, Math.round(headerH * 0.16))
+
+    uniqueScopes.forEach((s, i) => {
+      const slotX = padX + i * slotW
+      const groupX = slotX + Math.round((slotW - (photoW + Math.round(slotW * 0.02) + slotW * 0.4)) / 2)
+      const photoX = groupX
+      const photoY = headerTop
+
+      if (s.type === 'player' && s.playerId) {
+        elements.push(makeEl(z, 'player-image', photoX, photoY, photoW, photoH, {
+          playerId: s.playerId, playerName: s.playerName,
+          borderColor: '#27272a', borderRadius: 8, showLabel: false, bgColor: 'transparent',
+        }))
+      }
+
+      // Name (and side hint for team scope) sits to the right of the photo.
+      const labelX = photoX + photoW + Math.round(slotW * 0.025)
+      const labelW = (slotX + slotW) - labelX
+      elements.push(makeEl(z, 'text', labelX, photoY + Math.round(photoH * 0.20), labelW, labelFs * 1.5, {
+        text: s.type === 'player' ? (s.playerName || 'Player') : (s.teamCode || '—'),
+        fontSize: labelFs, fontWeight: 700, color: '#ffffff', textAlign: 'left', bgColor: 'transparent',
+      }))
+      elements.push(makeEl(z, 'text', labelX, photoY + Math.round(photoH * 0.50), labelW, labelFs * 1.4, {
+        text: s.type === 'player' ? (s.col === 'batter' ? 'Hitting' : 'Pitching') : (s.side === 'pitching' ? 'Pitching' : 'Hitting'),
+        fontSize: Math.round(labelFs * 0.78), fontWeight: 500, color: '#71717a', textAlign: 'left', bgColor: 'transparent',
+      }))
+    })
+  }
+
+  // ── Map tiles ──
+  const tilesTop = headerTop + headerH + Math.round(height * 0.018)
+  const tilesBottom = height - Math.round(height * 0.025)
+  const tilesAreaH = Math.max(160, tilesBottom - tilesTop)
+  const tilesAreaW = width - padX * 2
+  const N = results.length
+
+  const cols = isLandscape ? N : 1
+  const rows = isLandscape ? 1 : N
+  const gutter = Math.max(14, Math.round(Math.min(width, height) * 0.014))
+  const tileW = Math.floor((tilesAreaW - gutter * (cols - 1)) / cols)
+  const tileH = Math.floor((tilesAreaH - gutter * (rows - 1)) / rows)
+
+  // Each tile: caption (top) + heatmap (rest).
+  const captionH = Math.max(36, Math.round(tileH * 0.13))
+  const captionFs = Math.max(13, Math.round(captionH * 0.42))
+  const sublineFs = Math.max(10, Math.round(captionH * 0.26))
+
+  for (let i = 0; i < N; i++) {
+    const r = results[i]
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const tileX = padX + col * (tileW + gutter)
+    const tileY = tilesTop + row * (tileH + gutter)
+
+    const captionTitle = (r.customTitle.trim() || autoMapTitle({ ...defaultMap(true), scope: r.scope, metric: r.metric, customTitle: '', customSubtitle: '', filters: [] }))
+    const captionSubtitle = (r.customSubtitle.trim() || autoMapSubtitle({ active: true, scope: r.scope, metric: r.metric, customTitle: '', customSubtitle: '', filters: [] }))
+
+    // Caption block
+    elements.push(makeEl(z, 'text', tileX, tileY, tileW, Math.round(captionFs * 1.5), {
+      text: captionTitle, fontSize: captionFs, fontWeight: 700, color: '#ffffff', textAlign: 'center', bgColor: 'transparent',
+    }))
+    elements.push(makeEl(z, 'text', tileX, tileY + Math.round(captionFs * 1.5) + 2, tileW, Math.round(sublineFs * 1.6), {
+      text: captionSubtitle, fontSize: sublineFs, fontWeight: 500, color: '#71717a', textAlign: 'center', bgColor: 'transparent',
+    }))
+
+    // Heatmap element
+    const mapTop = tileY + captionH
+    const mapH = tileH - captionH
+    elements.push(makeEl(z, 'rc-heatmap', tileX, mapTop, tileW, mapH, {
+      locations: r.pitches.map((p: any) => ({
+        plate_x: p.plate_x, plate_z: p.plate_z,
+        // metric calc fields (used by the extended drawRCHeatmap)
+        events: p.events, description: p.description, type: p.type, zone: p.zone,
+        launch_speed: p.launch_speed,
+        estimated_ba_using_speedangle: p.estimated_ba_using_speedangle,
+        estimated_woba_using_speedangle: p.estimated_woba_using_speedangle,
+        estimated_slg_using_speedangle: p.estimated_slg_using_speedangle,
+        woba_value: p.woba_value, game_year: p.game_year,
+      })),
+      metric: r.metric,
+      bgColor: '#0f0f12',
+      borderRadius: 10,
+      showZone: true,
+      showLegend: true,
+      title: '',
+    }))
+  }
+
+  return finalize(elements, title, size)
+}
+
+function finalize(elements: SceneElement[], title: string, size: SizePreset): Scene {
+  return {
+    id: Math.random().toString(36).slice(2, 10),
+    name: title,
+    width: size.width,
+    height: size.height,
+    background: BG_COLOR,
+    elements,
+    duration: 5,
+    fps: 30,
+  }
+}
+
+/* ── Widget definition ─────────────────────────────────────────────────── */
+
+const heatMaps: Widget<HeatMapsFilters> = {
+  id: 'heat-maps',
+  name: 'Heat Maps',
+  description: 'Up to 3 strike-zone heatmaps, each with its own scope and filters.',
+
+  // The Heat Maps panel is rendered via the client-only PANEL_REGISTRY in
+  // lib/imagine/panelRegistry.ts (HeatMapsPanel.tsx). filterSchema stays
+  // empty here so the standard FilterPanel is never used for this widget.
+  filterSchema: [],
+
+  defaultFilters: {
+    title: '',
+    maps: [defaultMap(true), defaultMap(false), defaultMap(false)],
+  },
+
+  sizePresets: SIZE_PRESETS,
+  defaultSize: SIZE_PRESETS[0],
+
+  autoTitle: buildAutoTitle,
+  autoFilename: buildAutoFilename,
+
+  async fetchData(filters, origin) {
+    const active = filters.maps.map((m, i) => ({ m, i })).filter(({ m }) => m.active && isScopeReady(m.scope))
+    if (active.length === 0) return { mapResults: [] }
+
+    // Dedupe scopes so we fetch each unique one exactly once.
+    const fetchByKey = new Map<string, Promise<any[]>>()
+    for (const { m } of active) {
+      const k = scopeKey(m.scope)
+      if (!fetchByKey.has(k)) fetchByKey.set(k, fetchScope(m.scope, origin))
+    }
+    const resolved = new Map<string, any[]>()
+    await Promise.all(Array.from(fetchByKey.entries()).map(async ([k, p]) => {
+      try { resolved.set(k, await p) } catch { resolved.set(k, []) }
+    }))
+
+    const mapResults: MapResult[] = active.map(({ m, i }) => {
+      const k = scopeKey(m.scope)
+      const raw = resolved.get(k) || []
+      const filtered = m.filters.length ? applyFiltersToData(raw, m.filters) : raw
+      return {
+        mapIndex: i,
+        scope: m.scope,
+        pitches: filtered,
+        metric: m.metric,
+        customTitle: m.customTitle,
+        customSubtitle: m.customSubtitle,
+      }
+    })
+    return { mapResults }
+  },
+
+  buildScene(filters, data, size) {
+    return buildSceneInternal(filters, data || { mapResults: [] }, size)
+  },
+}
+
+export default heatMaps
