@@ -47,6 +47,7 @@ TruMedia-style baseball analytics platform for scouting reports and media conten
 - **SP/RP classification** (canonical, used by `app/api/scene-stats/route.ts` and `refresh_league_averages`): a pitcher is **SP** if they have ≥3 games with 50+ pitches thrown (excluding `pitch_type` in `'PO','IN'`) in the season; **RP** otherwise.
 - **League-average qualification**: hitter `AB >= max(25, 0.20 * AB_leader)`; SP/RP `IP >= max(5, 0.20 * IP_leader_for_role)`.
 - **Plus-stats exclusion**: any metric name ending in `_plus` (Stuff+, Cmd+, Brink+, etc.) is excluded from `league_averages` — these already normalize to 100.
+- **Variables glossary**: `docs/VARIABLES.md` is the canonical glossary of every metric key, query param, and schema type used in stats queries. **When you add or change anything in `lib/reportMetrics.ts`, `lib/sql.ts`, `lib/sceneTypes.ts`, or a new query param in a stats route, update `docs/VARIABLES.md` in the same commit.** See its §0 Maintenance section for the section-by-section mapping.
 
 ## Derived Fields (computed client-side in fetchData)
 - VAA/HAA (approach angles from trajectory data)
