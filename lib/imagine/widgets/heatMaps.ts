@@ -165,7 +165,9 @@ function filterSummary(f: ActiveFilter): string {
 }
 
 function buildAutoTitle(f: HeatMapsFilters): string {
-  const active = f.maps.filter(m => m.active)
+  // Only ready scopes contribute to the auto-title — otherwise empty tabs
+  // would render as "Skenes vs Player vs Player".
+  const active = f.maps.filter(m => m.active && isScopeReady(m.scope))
   const labels = active.map(m => scopeLabel(m.scope)).filter(Boolean)
   const unique = Array.from(new Set(labels))
   if (unique.length === 0) return 'Heat Maps'
@@ -179,7 +181,7 @@ function slug(s: string): string {
 
 function buildAutoFilename(f: HeatMapsFilters): string {
   const parts: string[] = ['heatmaps']
-  const active = f.maps.filter(m => m.active)
+  const active = f.maps.filter(m => m.active && isScopeReady(m.scope))
   for (const m of active) parts.push(slug(scopeLabel(m.scope)))
   return parts.join('-')
 }
@@ -377,28 +379,42 @@ function buildSceneInternal(
 
   for (let i = 0; i < N; i++) {
     const r = results[i]
+    const ready = isScopeReady(r.scope)
     const col = i % cols
     const row = Math.floor(i / cols)
     const tileX = padX + col * (tileW + gutter)
     const tileY = tilesTop + row * (tileH + gutter)
 
-    const synthMap: MapConfig = { active: true, scope: r.scope, metric: r.metric, colorMode: r.colorMode, customTitle: '', customSubtitle: '', filters: [] }
-    const captionTitle = (r.customTitle.trim() || autoMapTitle(synthMap))
-    const captionSubtitle = (r.customSubtitle.trim() || autoMapSubtitle(synthMap))
+    let captionTitle: string
+    let captionSubtitle: string
+    if (ready) {
+      const synthMap: MapConfig = { active: true, scope: r.scope, metric: r.metric, colorMode: r.colorMode, customTitle: '', customSubtitle: '', filters: [] }
+      captionTitle = (r.customTitle.trim() || autoMapTitle(synthMap))
+      captionSubtitle = (r.customSubtitle.trim() || autoMapSubtitle(synthMap))
+    } else {
+      captionTitle = `Map ${r.mapIndex + 1}`
+      captionSubtitle = 'Pick a player or team'
+    }
 
     // Caption block
     elements.push(makeEl(z, 'text', tileX, tileY, tileW, Math.round(captionFs * 1.5), {
-      text: captionTitle, fontSize: captionFs, fontWeight: 700, color: '#ffffff', textAlign: 'center', bgColor: 'transparent',
+      text: captionTitle, fontSize: captionFs, fontWeight: 700,
+      color: ready ? '#ffffff' : '#52525b',
+      textAlign: 'center', bgColor: 'transparent',
     }))
     elements.push(makeEl(z, 'text', tileX, tileY + Math.round(captionFs * 1.5) + 2, tileW, Math.round(sublineFs * 1.6), {
-      text: captionSubtitle, fontSize: sublineFs, fontWeight: 500, color: '#71717a', textAlign: 'center', bgColor: 'transparent',
+      text: captionSubtitle, fontSize: sublineFs, fontWeight: 500,
+      color: ready ? '#71717a' : '#3f3f46',
+      textAlign: 'center', bgColor: 'transparent',
     }))
 
-    // Heatmap element
+    // Heatmap element. Not-ready scopes render an empty tile — the strike-
+    // zone outline still draws (placeholder) and the legend is hidden so
+    // there's no garbage 0–1 scale under it.
     const mapTop = tileY + captionH
     const mapH = tileH - captionH
     elements.push(makeEl(z, 'rc-heatmap', tileX, mapTop, tileW, mapH, {
-      locations: r.pitches.map((p: any) => ({
+      locations: ready ? r.pitches.map((p: any) => ({
         plate_x: p.plate_x, plate_z: p.plate_z,
         // metric calc fields (used by the extended drawRCHeatmap)
         events: p.events, description: p.description, type: p.type, zone: p.zone,
@@ -407,7 +423,7 @@ function buildSceneInternal(
         estimated_woba_using_speedangle: p.estimated_woba_using_speedangle,
         estimated_slg_using_speedangle: p.estimated_slg_using_speedangle,
         woba_value: p.woba_value, game_year: p.game_year,
-      })),
+      })) : [],
       metric: r.metric,
       colorMode: r.colorMode,
       // League baseline drives spectrum midpoint + ±3σ extremes. When
@@ -417,7 +433,7 @@ function buildSceneInternal(
       bgColor: '#0f0f12',
       borderRadius: 10,
       showZone: true,
-      showLegend: true,
+      showLegend: ready,
       title: '',
     }))
   }
@@ -462,12 +478,18 @@ const heatMaps: Widget<HeatMapsFilters> = {
   autoFilename: buildAutoFilename,
 
   async fetchData(filters, origin) {
-    const active = filters.maps.map((m, i) => ({ m, i })).filter(({ m }) => m.active && isScopeReady(m.scope))
+    // Every active map gets a tile in the output, even if its scope isn't
+    // ready yet — the panel and preview need to stay in sync so the user
+    // can see *which* tabs they activated. Only the ready ones actually
+    // fetch pitch data and league baselines; the rest render as
+    // placeholder tiles in buildSceneInternal.
+    const active = filters.maps.map((m, i) => ({ m, i })).filter(({ m }) => m.active)
     if (active.length === 0) return { mapResults: [] }
+    const ready = active.filter(({ m }) => isScopeReady(m.scope))
 
     // Dedupe scopes so we fetch each unique one exactly once.
     const fetchByKey = new Map<string, Promise<any[]>>()
-    for (const { m } of active) {
+    for (const { m } of ready) {
       const k = scopeKey(m.scope)
       if (!fetchByKey.has(k)) fetchByKey.set(k, fetchScope(m.scope, origin))
     }
@@ -482,7 +504,7 @@ const heatMaps: Widget<HeatMapsFilters> = {
     const season = CURRENT_YEAR
     const baselineKey = (s: MapScope, metric: string) => `${scopeRole(s)}:${metric}`
     const baselineFetches = new Map<string, Promise<{ zMid: number; zSpan: number } | null>>()
-    for (const { m } of active) {
+    for (const { m } of ready) {
       const k = baselineKey(m.scope, m.metric)
       if (!baselineFetches.has(k)) {
         baselineFetches.set(k, fetchLeagueBaseline(origin, season, m.scope, m.metric))
@@ -494,10 +516,11 @@ const heatMaps: Widget<HeatMapsFilters> = {
     }))
 
     const mapResults: MapResult[] = active.map(({ m, i }) => {
+      const isReady = isScopeReady(m.scope)
       const k = scopeKey(m.scope)
-      const raw = resolved.get(k) || []
-      const filtered = m.filters.length ? applyFiltersToData(raw, m.filters) : raw
-      const baseline = baselines.get(baselineKey(m.scope, m.metric)) || null
+      const raw = isReady ? (resolved.get(k) || []) : []
+      const filtered = isReady && m.filters.length ? applyFiltersToData(raw, m.filters) : raw
+      const baseline = isReady ? (baselines.get(baselineKey(m.scope, m.metric)) || null) : null
       return {
         mapIndex: i,
         scope: m.scope,
