@@ -332,11 +332,27 @@ function buildSceneInternal(
     const photoW = Math.round(photoH * 0.83)
     const labelFs = Math.max(13, Math.round(headerH * 0.16))
 
+    const gap = Math.round(slotW * 0.025)
+
     uniqueScopes.forEach((s, i) => {
       const slotX = padX + i * slotW
-      const groupX = slotX + Math.round((slotW - (photoW + Math.round(slotW * 0.02) + slotW * 0.4)) / 2)
-      const photoX = groupX
       const photoY = headerTop
+
+      const nameText = s.type === 'player' ? (s.playerName || 'Player') : (s.teamCode || '—')
+      const roleText = s.type === 'player'
+        ? (s.col === 'batter' ? 'Hitting' : 'Pitching')
+        : (s.side === 'pitching' ? 'Pitching' : 'Hitting')
+      // Rough label width from char count × glyph width — tighter than the
+      // old slotW * 0.4 estimate, so the photo+label group actually centers
+      // under the card title (esp. when there's only one unique scope).
+      const nameTextW = Math.ceil(nameText.length * labelFs * 0.55)
+      const roleTextW = Math.ceil(roleText.length * labelFs * 0.78 * 0.55)
+      const labelW = Math.max(nameTextW, roleTextW)
+
+      // Center the (photo + gap + label) group inside the slot.
+      const groupW = photoW + gap + labelW
+      const photoX = slotX + Math.round((slotW - groupW) / 2)
+      const labelX = photoX + photoW + gap
 
       if (s.type === 'player' && s.playerId) {
         elements.push(makeEl(z, 'player-image', photoX, photoY, photoW, photoH, {
@@ -345,15 +361,12 @@ function buildSceneInternal(
         }))
       }
 
-      // Name (and side hint for team scope) sits to the right of the photo.
-      const labelX = photoX + photoW + Math.round(slotW * 0.025)
-      const labelW = (slotX + slotW) - labelX
       elements.push(makeEl(z, 'text', labelX, photoY + Math.round(photoH * 0.20), labelW, labelFs * 1.5, {
-        text: s.type === 'player' ? (s.playerName || 'Player') : (s.teamCode || '—'),
+        text: nameText,
         fontSize: labelFs, fontWeight: 700, color: '#ffffff', textAlign: 'left', bgColor: 'transparent',
       }))
       elements.push(makeEl(z, 'text', labelX, photoY + Math.round(photoH * 0.50), labelW, labelFs * 1.4, {
-        text: s.type === 'player' ? (s.col === 'batter' ? 'Hitting' : 'Pitching') : (s.side === 'pitching' ? 'Pitching' : 'Hitting'),
+        text: roleText,
         fontSize: Math.round(labelFs * 0.78), fontWeight: 500, color: '#71717a', textAlign: 'left', bgColor: 'transparent',
       }))
     })
