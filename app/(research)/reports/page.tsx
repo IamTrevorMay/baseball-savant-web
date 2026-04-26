@@ -901,6 +901,8 @@ function ReportsPageInner() {
                   optionsCache={optionsCache}
                   onUpdate={c => updateTile(tile.id, c)}
                   onRemove={() => removeTile(tile.id)}
+                  subjectType={subjectType}
+                  level="MLB"
                 />
               </div>
             ))}

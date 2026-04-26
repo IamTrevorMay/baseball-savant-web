@@ -21,14 +21,18 @@
  */
 import type { Scene, SceneElement } from '@/lib/sceneTypes'
 import type { Widget, SizePreset } from '@/lib/imagine/types'
-import type { ActiveFilter } from '@/components/FilterEngine'
-import { applyFiltersToData } from '@/components/FilterEngine'
+// Pure (server-safe) re-exports — components/FilterEngine.tsx is 'use
+// client' and can't be imported by the render API server route.
+import type { ActiveFilter } from '@/lib/filterEngineCore'
+import { applyFiltersToData } from '@/lib/filterEngineCore'
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
 export type HeatmapMetric =
   | 'frequency' | 'ba' | 'slg' | 'woba' | 'xba' | 'xwoba' | 'xslg'
   | 'ev' | 'whiff_pct' | 'chase_pct'
+
+export type HeatmapColorMode = 'rainbow' | 'hotcold'
 
 export type PlayerScope = {
   type: 'player'
@@ -53,6 +57,8 @@ export type MapConfig = {
   customTitle: string
   customSubtitle: string
   metric: HeatmapMetric
+  /** 'rainbow' = full-spectrum (default); 'hotcold' = diverging blue→gray→red. */
+  colorMode: HeatmapColorMode
   filters: ActiveFilter[]
 }
 
@@ -105,6 +111,7 @@ function defaultMap(active: boolean): MapConfig {
     customTitle: '',
     customSubtitle: '',
     metric: 'frequency',
+    colorMode: 'rainbow',
     filters: [],
   }
 }
@@ -179,6 +186,40 @@ function buildAutoFilename(f: HeatMapsFilters): string {
 
 /* ── Data fetch helpers ────────────────────────────────────────────────── */
 
+/** Map a scope onto the role used by league_averages. */
+function scopeRole(scope: MapScope): 'hitter' | 'pitching' {
+  if (scope.type === 'player') return scope.col === 'batter' ? 'hitter' : 'pitching'
+  return scope.side === 'hitting' ? 'hitter' : 'pitching'
+}
+
+async function fetchLeagueBaseline(
+  origin: string,
+  season: number,
+  scope: MapScope,
+  metric: HeatmapMetric,
+): Promise<{ zMid: number; zSpan: number } | null> {
+  // Frequency has no league baseline — fall through to data range.
+  if (metric === 'frequency') return null
+  const params = new URLSearchParams({
+    season: String(season),
+    level: 'MLB',
+    role: scopeRole(scope),
+    metric,
+  })
+  try {
+    const res = await fetch(`${origin}/api/league-baseline?${params}`, {
+      headers: { 'cache-control': 'no-store' },
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    const b = json?.baseline
+    if (!b || b.value == null || b.stddev == null) return null
+    return { zMid: Number(b.value), zSpan: 3 * Number(b.stddev) }
+  } catch {
+    return null
+  }
+}
+
 async function fetchScope(scope: MapScope, origin: string): Promise<any[]> {
   if (!isScopeReady(scope)) return []
   const params = new URLSearchParams()
@@ -226,8 +267,15 @@ type MapResult = {
   scope: MapScope
   pitches: any[]
   metric: HeatmapMetric
+  colorMode: HeatmapColorMode
   customTitle: string
   customSubtitle: string
+  /** League baseline for this (scope, metric) — drives the spectrum
+   *  midpoint and ±3σ extremes. Null when no baseline is available
+   *  (e.g. metric='frequency' or no league row populated yet); the
+   *  renderer falls back to data range in that case. */
+  zMid: number | null
+  zSpan: number | null
 }
 
 function buildSceneInternal(
@@ -334,8 +382,9 @@ function buildSceneInternal(
     const tileX = padX + col * (tileW + gutter)
     const tileY = tilesTop + row * (tileH + gutter)
 
-    const captionTitle = (r.customTitle.trim() || autoMapTitle({ ...defaultMap(true), scope: r.scope, metric: r.metric, customTitle: '', customSubtitle: '', filters: [] }))
-    const captionSubtitle = (r.customSubtitle.trim() || autoMapSubtitle({ active: true, scope: r.scope, metric: r.metric, customTitle: '', customSubtitle: '', filters: [] }))
+    const synthMap: MapConfig = { active: true, scope: r.scope, metric: r.metric, colorMode: r.colorMode, customTitle: '', customSubtitle: '', filters: [] }
+    const captionTitle = (r.customTitle.trim() || autoMapTitle(synthMap))
+    const captionSubtitle = (r.customSubtitle.trim() || autoMapSubtitle(synthMap))
 
     // Caption block
     elements.push(makeEl(z, 'text', tileX, tileY, tileW, Math.round(captionFs * 1.5), {
@@ -360,6 +409,11 @@ function buildSceneInternal(
         woba_value: p.woba_value, game_year: p.game_year,
       })),
       metric: r.metric,
+      colorMode: r.colorMode,
+      // League baseline drives spectrum midpoint + ±3σ extremes. When
+      // null, the renderer falls back to data range.
+      zMid: r.zMid,
+      zSpan: r.zSpan,
       bgColor: '#0f0f12',
       borderRadius: 10,
       showZone: true,
@@ -422,17 +476,38 @@ const heatMaps: Widget<HeatMapsFilters> = {
       try { resolved.set(k, await p) } catch { resolved.set(k, []) }
     }))
 
+    // League baseline lookup, deduped by (role, metric) — heatmap-relevant
+    // metrics (BA / wOBA / EV / whiff% / etc.) center on the league mean,
+    // with hot/cold extremes at ±3σ. Frequency has no baseline.
+    const season = CURRENT_YEAR
+    const baselineKey = (s: MapScope, metric: string) => `${scopeRole(s)}:${metric}`
+    const baselineFetches = new Map<string, Promise<{ zMid: number; zSpan: number } | null>>()
+    for (const { m } of active) {
+      const k = baselineKey(m.scope, m.metric)
+      if (!baselineFetches.has(k)) {
+        baselineFetches.set(k, fetchLeagueBaseline(origin, season, m.scope, m.metric))
+      }
+    }
+    const baselines = new Map<string, { zMid: number; zSpan: number } | null>()
+    await Promise.all(Array.from(baselineFetches.entries()).map(async ([k, p]) => {
+      baselines.set(k, await p)
+    }))
+
     const mapResults: MapResult[] = active.map(({ m, i }) => {
       const k = scopeKey(m.scope)
       const raw = resolved.get(k) || []
       const filtered = m.filters.length ? applyFiltersToData(raw, m.filters) : raw
+      const baseline = baselines.get(baselineKey(m.scope, m.metric)) || null
       return {
         mapIndex: i,
         scope: m.scope,
         pitches: filtered,
         metric: m.metric,
+        colorMode: m.colorMode || 'rainbow',
         customTitle: m.customTitle,
         customSubtitle: m.customSubtitle,
+        zMid: baseline?.zMid ?? null,
+        zSpan: baseline?.zSpan ?? null,
       }
     })
     return { mapResults }

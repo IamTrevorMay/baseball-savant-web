@@ -2,8 +2,15 @@
 import { useState, useMemo } from 'react'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor, ZONE_SHAPES } from '../chartConfig'
+import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
 
-interface Props { data: any[] }
+interface Props {
+  data: any[]
+  /** Subject side — when present, the heatmap centers its color scale on
+   *  the league_averages baseline (mean ± 3σ) for that role + metric. */
+  subjectType?: 'hitting' | 'pitching'
+  level?: 'MLB' | 'MiLB'
+}
 
 type SplitMode = 'all' | 'count' | 'pitch_type' | 'stand' | 'inning' | 'outs'
 type VizMode = 'heatmap' | 'scatter' | 'zone_grid'
@@ -103,8 +110,26 @@ function fmtMetric(v: number | null, metric: MetricMode): string {
   return v.toFixed(2)
 }
 
-function MiniHeatmap({ data, title, metric, size = 220 }: { data: any[]; title: string; metric: MetricMode; size?: number }) {
+function MiniHeatmap({
+  data, title, metric, size = 220,
+  subjectType, level = 'MLB',
+}: {
+  data: any[]
+  title: string
+  metric: MetricMode
+  size?: number
+  subjectType?: 'hitting' | 'pitching'
+  level?: 'MLB' | 'MiLB'
+}) {
   const f = data.filter(d => d.plate_x != null && d.plate_z != null)
+  // League baseline lookup — when scope is known and metric isn't
+  // frequency, override zMin/zMax with mean ± 3σ.
+  const role = subjectType === 'pitching' ? 'pitching' : subjectType === 'hitting' ? 'hitter' : null
+  const season = (() => {
+    const years = data.map(d => d.game_year).filter(Boolean) as number[]
+    return years.length ? Math.max(...years) : new Date().getFullYear()
+  })()
+  const baseline = useLeagueBaseline(season, level, role, metric === 'frequency' ? null : metric)
 
   if (f.length < 5) return (
     <div className="flex flex-col items-center">
@@ -175,6 +200,10 @@ function MiniHeatmap({ data, title, metric, size = 220 }: { data: any[]; title: 
       zsmooth: 'best',
       hoverongaps: false,
       hovertemplate: `${metricLabel}: %{z:.3f}<extra></extra>`,
+    }
+    if (baseline) {
+      trace.zmin = baseline.value - 3 * baseline.stddev
+      trace.zmax = baseline.value + 3 * baseline.stddev
     }
   }
 
@@ -309,15 +338,16 @@ function ZoneGrid({ data, title, metric }: { data: any[]; title: string; metric:
   )
 }
 
-const VizComponent = ({ data, title, mode, metric, size }: {
+const VizComponent = ({ data, title, mode, metric, size, subjectType, level }: {
   data: any[]; title: string; mode: VizMode; metric: MetricMode; size?: number
+  subjectType?: 'hitting' | 'pitching'; level?: 'MLB' | 'MiLB'
 }) => {
-  if (mode === 'heatmap') return <MiniHeatmap data={data} title={title} metric={metric} size={size} />
+  if (mode === 'heatmap') return <MiniHeatmap data={data} title={title} metric={metric} size={size} subjectType={subjectType} level={level} />
   if (mode === 'scatter') return <MiniScatter data={data} title={title} size={size} />
   return <ZoneGrid data={data} title={title} metric={metric} />
 }
 
-export default function LocationTab({ data }: Props) {
+export default function LocationTab({ data, subjectType, level }: Props) {
   const [split, setSplit] = useState<SplitMode>('count')
   const [viz, setViz] = useState<VizMode>('heatmap')
   const [metric, setMetric] = useState<MetricMode>('frequency')
@@ -422,7 +452,7 @@ export default function LocationTab({ data }: Props) {
       {/* Visualization Grid */}
       {split === 'all' && (
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-6 flex justify-center">
-          <VizComponent data={f} title="All Pitches" mode={viz} metric={metric} size={400} />
+          <VizComponent data={f} title="All Pitches" mode={viz} metric={metric} subjectType={subjectType} level={level} size={400} />
         </div>
       )}
 
@@ -431,7 +461,7 @@ export default function LocationTab({ data }: Props) {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 justify-items-center">
             {COUNTS.flat().map(c => {
               const [b, s] = c.split('-').map(Number)
-              return <VizComponent key={c} data={filterByCount(b, s)} title={c} mode={viz} metric={metric} />
+              return <VizComponent key={c} data={filterByCount(b, s)} title={c} mode={viz} metric={metric} subjectType={subjectType} level={level} />
             })}
           </div>
         </div>
@@ -441,7 +471,7 @@ export default function LocationTab({ data }: Props) {
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 justify-items-center">
             {pitchTypes.map(pt => (
-              <VizComponent key={pt} data={f.filter(d => d.pitch_name === pt)} title={pt} mode={viz} metric={metric} />
+              <VizComponent key={pt} data={f.filter(d => d.pitch_name === pt)} title={pt} mode={viz} metric={metric} subjectType={subjectType} level={level} />
             ))}
           </div>
         </div>
@@ -450,8 +480,8 @@ export default function LocationTab({ data }: Props) {
       {split === 'stand' && (
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 justify-items-center">
-            <VizComponent data={f.filter(d => d.stand === 'L')} title="vs LHH" mode={viz} metric={metric} size={320} />
-            <VizComponent data={f.filter(d => d.stand === 'R')} title="vs RHH" mode={viz} metric={metric} size={320} />
+            <VizComponent data={f.filter(d => d.stand === 'L')} title="vs LHH" mode={viz} metric={metric} subjectType={subjectType} level={level} size={320} />
+            <VizComponent data={f.filter(d => d.stand === 'R')} title="vs RHH" mode={viz} metric={metric} subjectType={subjectType} level={level} size={320} />
           </div>
         </div>
       )}
@@ -462,7 +492,7 @@ export default function LocationTab({ data }: Props) {
             {Array.from({ length: 9 }, (_, i) => i + 1).map(inn => {
               const innData = f.filter(d => d.inning === inn)
               if (innData.length === 0) return null
-              return <VizComponent key={inn} data={innData} title={`Inning ${inn}`} mode={viz} metric={metric} />
+              return <VizComponent key={inn} data={innData} title={`Inning ${inn}`} mode={viz} metric={metric} subjectType={subjectType} level={level} />
             })}
           </div>
         </div>
@@ -472,7 +502,7 @@ export default function LocationTab({ data }: Props) {
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 justify-items-center">
             {[0, 1, 2].map(o => (
-              <VizComponent key={o} data={f.filter(d => d.outs_when_up === o)} title={`${o} Outs`} mode={viz} metric={metric} size={280} />
+              <VizComponent key={o} data={f.filter(d => d.outs_when_up === o)} title={`${o} Outs`} mode={viz} metric={metric} subjectType={subjectType} level={level} size={280} />
             ))}
           </div>
         </div>

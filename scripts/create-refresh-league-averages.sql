@@ -197,44 +197,74 @@ BEGIN
       agg AS (
         SELECT
           COUNT(*) AS n,
-          AVG(avg_ev) AS avg_ev, AVG(max_ev) AS max_ev, AVG(avg_la) AS avg_la, AVG(avg_dist) AS avg_dist,
-          AVG(avg_bat_speed) AS avg_bat_speed, AVG(avg_swing_length) AS avg_swing_length,
-          AVG(avg_attack_angle) AS avg_attack_angle, AVG(avg_attack_direction) AS avg_attack_direction,
-          AVG(avg_swing_path_tilt) AS avg_swing_path_tilt,
-          AVG(k_pct) AS k_pct, AVG(bb_pct) AS bb_pct, AVG(k_minus_bb) AS k_minus_bb,
-          AVG(whiff_pct) AS whiff_pct, AVG(swstr_pct) AS swstr_pct, AVG(csw_pct) AS csw_pct,
-          AVG(chase_pct) AS chase_pct, AVG(contact_pct) AS contact_pct,
-          AVG(z_swing_pct) AS z_swing_pct, AVG(o_contact_pct) AS o_contact_pct,
-          AVG(hard_hit_pct) AS hard_hit_pct, AVG(barrel_pct) AS barrel_pct,
-          AVG(fast_swing_rate) AS fast_swing_rate, AVG(squared_up_rate) AS squared_up_rate,
-          AVG(blast_rate) AS blast_rate, AVG(ideal_attack_angle_rate) AS ideal_attack_angle_rate,
-          AVG(gb_pct) AS gb_pct, AVG(fb_pct) AS fb_pct, AVG(ld_pct) AS ld_pct, AVG(pu_pct) AS pu_pct,
-          AVG(ba) AS ba, AVG(obp) AS obp, AVG(slg) AS slg, AVG(ops) AS ops,
-          AVG(avg_xba) AS avg_xba, AVG(avg_xwoba) AS avg_xwoba,
-          AVG(avg_xslg) AS avg_xslg, AVG(avg_woba) AS avg_woba
+          AVG(avg_ev) AS avg_ev,                             STDDEV_SAMP(avg_ev) AS avg_ev_std,
+          AVG(max_ev) AS max_ev,                             STDDEV_SAMP(max_ev) AS max_ev_std,
+          AVG(avg_la) AS avg_la,                             STDDEV_SAMP(avg_la) AS avg_la_std,
+          AVG(avg_dist) AS avg_dist,                         STDDEV_SAMP(avg_dist) AS avg_dist_std,
+          AVG(avg_bat_speed) AS avg_bat_speed,               STDDEV_SAMP(avg_bat_speed) AS avg_bat_speed_std,
+          AVG(avg_swing_length) AS avg_swing_length,         STDDEV_SAMP(avg_swing_length) AS avg_swing_length_std,
+          AVG(avg_attack_angle) AS avg_attack_angle,         STDDEV_SAMP(avg_attack_angle) AS avg_attack_angle_std,
+          AVG(avg_attack_direction) AS avg_attack_direction, STDDEV_SAMP(avg_attack_direction) AS avg_attack_direction_std,
+          AVG(avg_swing_path_tilt) AS avg_swing_path_tilt,   STDDEV_SAMP(avg_swing_path_tilt) AS avg_swing_path_tilt_std,
+          AVG(k_pct) AS k_pct,                               STDDEV_SAMP(k_pct) AS k_pct_std,
+          AVG(bb_pct) AS bb_pct,                             STDDEV_SAMP(bb_pct) AS bb_pct_std,
+          AVG(k_minus_bb) AS k_minus_bb,                     STDDEV_SAMP(k_minus_bb) AS k_minus_bb_std,
+          AVG(whiff_pct) AS whiff_pct,                       STDDEV_SAMP(whiff_pct) AS whiff_pct_std,
+          AVG(swstr_pct) AS swstr_pct,                       STDDEV_SAMP(swstr_pct) AS swstr_pct_std,
+          AVG(csw_pct) AS csw_pct,                           STDDEV_SAMP(csw_pct) AS csw_pct_std,
+          AVG(chase_pct) AS chase_pct,                       STDDEV_SAMP(chase_pct) AS chase_pct_std,
+          AVG(contact_pct) AS contact_pct,                   STDDEV_SAMP(contact_pct) AS contact_pct_std,
+          AVG(z_swing_pct) AS z_swing_pct,                   STDDEV_SAMP(z_swing_pct) AS z_swing_pct_std,
+          AVG(o_contact_pct) AS o_contact_pct,               STDDEV_SAMP(o_contact_pct) AS o_contact_pct_std,
+          AVG(hard_hit_pct) AS hard_hit_pct,                 STDDEV_SAMP(hard_hit_pct) AS hard_hit_pct_std,
+          AVG(barrel_pct) AS barrel_pct,                     STDDEV_SAMP(barrel_pct) AS barrel_pct_std,
+          AVG(fast_swing_rate) AS fast_swing_rate,           STDDEV_SAMP(fast_swing_rate) AS fast_swing_rate_std,
+          AVG(squared_up_rate) AS squared_up_rate,           STDDEV_SAMP(squared_up_rate) AS squared_up_rate_std,
+          AVG(blast_rate) AS blast_rate,                     STDDEV_SAMP(blast_rate) AS blast_rate_std,
+          AVG(ideal_attack_angle_rate) AS ideal_attack_angle_rate, STDDEV_SAMP(ideal_attack_angle_rate) AS ideal_attack_angle_rate_std,
+          AVG(gb_pct) AS gb_pct,                             STDDEV_SAMP(gb_pct) AS gb_pct_std,
+          AVG(fb_pct) AS fb_pct,                             STDDEV_SAMP(fb_pct) AS fb_pct_std,
+          AVG(ld_pct) AS ld_pct,                             STDDEV_SAMP(ld_pct) AS ld_pct_std,
+          AVG(pu_pct) AS pu_pct,                             STDDEV_SAMP(pu_pct) AS pu_pct_std,
+          AVG(ba) AS ba,                                     STDDEV_SAMP(ba) AS ba_std,
+          AVG(obp) AS obp,                                   STDDEV_SAMP(obp) AS obp_std,
+          AVG(slg) AS slg,                                   STDDEV_SAMP(slg) AS slg_std,
+          AVG(ops) AS ops,                                   STDDEV_SAMP(ops) AS ops_std,
+          AVG(avg_xba) AS avg_xba,                           STDDEV_SAMP(avg_xba) AS avg_xba_std,
+          AVG(avg_xwoba) AS avg_xwoba,                       STDDEV_SAMP(avg_xwoba) AS avg_xwoba_std,
+          AVG(avg_xslg) AS avg_xslg,                         STDDEV_SAMP(avg_xslg) AS avg_xslg_std,
+          AVG(avg_woba) AS avg_woba,                         STDDEV_SAMP(avg_woba) AS avg_woba_std
         FROM qualified
       )
-      INSERT INTO league_averages (season, level, role, metric, value, n_qualified, leader_value, qual_floor, updated_at)
-      SELECT %L, %L, 'hitter', m.metric, m.val,
+      INSERT INTO league_averages (season, level, role, metric, value, stddev, n_qualified, leader_value, qual_floor, updated_at)
+      SELECT %L, %L, 'hitter', m.metric, m.val, m.val_std,
              a.n, (SELECT v FROM lead_ab), (SELECT v FROM floor_ab), now()
       FROM agg a
       CROSS JOIN LATERAL (VALUES
-        ('avg_ev', a.avg_ev), ('max_ev', a.max_ev), ('avg_la', a.avg_la), ('avg_dist', a.avg_dist),
-        ('avg_bat_speed', a.avg_bat_speed), ('avg_swing_length', a.avg_swing_length),
-        ('avg_attack_angle', a.avg_attack_angle), ('avg_attack_direction', a.avg_attack_direction),
-        ('avg_swing_path_tilt', a.avg_swing_path_tilt),
-        ('k_pct', a.k_pct), ('bb_pct', a.bb_pct), ('k_minus_bb', a.k_minus_bb),
-        ('whiff_pct', a.whiff_pct), ('swstr_pct', a.swstr_pct), ('csw_pct', a.csw_pct),
-        ('chase_pct', a.chase_pct), ('contact_pct', a.contact_pct),
-        ('z_swing_pct', a.z_swing_pct), ('o_contact_pct', a.o_contact_pct),
-        ('hard_hit_pct', a.hard_hit_pct), ('barrel_pct', a.barrel_pct),
-        ('fast_swing_rate', a.fast_swing_rate), ('squared_up_rate', a.squared_up_rate),
-        ('blast_rate', a.blast_rate), ('ideal_attack_angle_rate', a.ideal_attack_angle_rate),
-        ('gb_pct', a.gb_pct), ('fb_pct', a.fb_pct), ('ld_pct', a.ld_pct), ('pu_pct', a.pu_pct),
-        ('ba', a.ba), ('obp', a.obp), ('slg', a.slg), ('ops', a.ops),
-        ('avg_xba', a.avg_xba), ('avg_xwoba', a.avg_xwoba),
-        ('avg_xslg', a.avg_xslg), ('avg_woba', a.avg_woba)
-      ) m(metric, val)
+        ('avg_ev', a.avg_ev, a.avg_ev_std), ('max_ev', a.max_ev, a.max_ev_std),
+        ('avg_la', a.avg_la, a.avg_la_std), ('avg_dist', a.avg_dist, a.avg_dist_std),
+        ('avg_bat_speed', a.avg_bat_speed, a.avg_bat_speed_std), ('avg_swing_length', a.avg_swing_length, a.avg_swing_length_std),
+        ('avg_attack_angle', a.avg_attack_angle, a.avg_attack_angle_std),
+        ('avg_attack_direction', a.avg_attack_direction, a.avg_attack_direction_std),
+        ('avg_swing_path_tilt', a.avg_swing_path_tilt, a.avg_swing_path_tilt_std),
+        ('k_pct', a.k_pct, a.k_pct_std), ('bb_pct', a.bb_pct, a.bb_pct_std),
+        ('k_minus_bb', a.k_minus_bb, a.k_minus_bb_std),
+        ('whiff_pct', a.whiff_pct, a.whiff_pct_std), ('swstr_pct', a.swstr_pct, a.swstr_pct_std),
+        ('csw_pct', a.csw_pct, a.csw_pct_std),
+        ('chase_pct', a.chase_pct, a.chase_pct_std), ('contact_pct', a.contact_pct, a.contact_pct_std),
+        ('z_swing_pct', a.z_swing_pct, a.z_swing_pct_std), ('o_contact_pct', a.o_contact_pct, a.o_contact_pct_std),
+        ('hard_hit_pct', a.hard_hit_pct, a.hard_hit_pct_std), ('barrel_pct', a.barrel_pct, a.barrel_pct_std),
+        ('fast_swing_rate', a.fast_swing_rate, a.fast_swing_rate_std),
+        ('squared_up_rate', a.squared_up_rate, a.squared_up_rate_std),
+        ('blast_rate', a.blast_rate, a.blast_rate_std),
+        ('ideal_attack_angle_rate', a.ideal_attack_angle_rate, a.ideal_attack_angle_rate_std),
+        ('gb_pct', a.gb_pct, a.gb_pct_std), ('fb_pct', a.fb_pct, a.fb_pct_std),
+        ('ld_pct', a.ld_pct, a.ld_pct_std), ('pu_pct', a.pu_pct, a.pu_pct_std),
+        ('ba', a.ba, a.ba_std), ('obp', a.obp, a.obp_std),
+        ('slg', a.slg, a.slg_std), ('ops', a.ops, a.ops_std),
+        ('avg_xba', a.avg_xba, a.avg_xba_std), ('avg_xwoba', a.avg_xwoba, a.avg_xwoba_std),
+        ('avg_xslg', a.avg_xslg, a.avg_xslg_std), ('avg_woba', a.avg_woba, a.avg_woba_std)
+      ) m(metric, val, val_std)
       WHERE m.val IS NOT NULL;
     $sql$, v_table, v_start, v_end,
            e_attack_angle, e_attack_dir, e_swing_tilt, e_ideal_aa_rate, e_xslg,
@@ -376,42 +406,71 @@ BEGIN
       agg AS (
         SELECT role,
           COUNT(*) AS n,
-          AVG(avg_velo) AS avg_velo, AVG(max_velo) AS max_velo, AVG(avg_spin) AS avg_spin,
-          AVG(avg_ext) AS avg_ext, AVG(avg_arm_angle) AS avg_arm_angle,
-          AVG(avg_hbreak_in) AS avg_hbreak_in, AVG(avg_ivb_in) AS avg_ivb_in,
-          AVG(k_pct) AS k_pct, AVG(bb_pct) AS bb_pct, AVG(k_minus_bb) AS k_minus_bb,
-          AVG(whiff_pct) AS whiff_pct, AVG(swstr_pct) AS swstr_pct, AVG(csw_pct) AS csw_pct,
-          AVG(zone_pct) AS zone_pct, AVG(chase_pct) AS chase_pct, AVG(contact_pct) AS contact_pct,
-          AVG(z_swing_pct) AS z_swing_pct, AVG(o_contact_pct) AS o_contact_pct,
-          AVG(hard_hit_pct) AS hard_hit_pct, AVG(barrel_pct) AS barrel_pct,
-          AVG(gb_pct) AS gb_pct, AVG(fb_pct) AS fb_pct, AVG(ld_pct) AS ld_pct, AVG(pu_pct) AS pu_pct,
-          AVG(ba) AS ba, AVG(obp) AS obp, AVG(slg) AS slg, AVG(ops) AS ops,
-          AVG(avg_xba) AS avg_xba, AVG(avg_xwoba) AS avg_xwoba,
-          AVG(avg_xslg) AS avg_xslg, AVG(avg_woba) AS avg_woba
+          AVG(avg_velo) AS avg_velo,             STDDEV_SAMP(avg_velo) AS avg_velo_std,
+          AVG(max_velo) AS max_velo,             STDDEV_SAMP(max_velo) AS max_velo_std,
+          AVG(avg_spin) AS avg_spin,             STDDEV_SAMP(avg_spin) AS avg_spin_std,
+          AVG(avg_ext) AS avg_ext,               STDDEV_SAMP(avg_ext) AS avg_ext_std,
+          AVG(avg_arm_angle) AS avg_arm_angle,   STDDEV_SAMP(avg_arm_angle) AS avg_arm_angle_std,
+          AVG(avg_hbreak_in) AS avg_hbreak_in,   STDDEV_SAMP(avg_hbreak_in) AS avg_hbreak_in_std,
+          AVG(avg_ivb_in) AS avg_ivb_in,         STDDEV_SAMP(avg_ivb_in) AS avg_ivb_in_std,
+          AVG(k_pct) AS k_pct,                   STDDEV_SAMP(k_pct) AS k_pct_std,
+          AVG(bb_pct) AS bb_pct,                 STDDEV_SAMP(bb_pct) AS bb_pct_std,
+          AVG(k_minus_bb) AS k_minus_bb,         STDDEV_SAMP(k_minus_bb) AS k_minus_bb_std,
+          AVG(whiff_pct) AS whiff_pct,           STDDEV_SAMP(whiff_pct) AS whiff_pct_std,
+          AVG(swstr_pct) AS swstr_pct,           STDDEV_SAMP(swstr_pct) AS swstr_pct_std,
+          AVG(csw_pct) AS csw_pct,               STDDEV_SAMP(csw_pct) AS csw_pct_std,
+          AVG(zone_pct) AS zone_pct,             STDDEV_SAMP(zone_pct) AS zone_pct_std,
+          AVG(chase_pct) AS chase_pct,           STDDEV_SAMP(chase_pct) AS chase_pct_std,
+          AVG(contact_pct) AS contact_pct,       STDDEV_SAMP(contact_pct) AS contact_pct_std,
+          AVG(z_swing_pct) AS z_swing_pct,       STDDEV_SAMP(z_swing_pct) AS z_swing_pct_std,
+          AVG(o_contact_pct) AS o_contact_pct,   STDDEV_SAMP(o_contact_pct) AS o_contact_pct_std,
+          AVG(hard_hit_pct) AS hard_hit_pct,     STDDEV_SAMP(hard_hit_pct) AS hard_hit_pct_std,
+          AVG(barrel_pct) AS barrel_pct,         STDDEV_SAMP(barrel_pct) AS barrel_pct_std,
+          AVG(gb_pct) AS gb_pct,                 STDDEV_SAMP(gb_pct) AS gb_pct_std,
+          AVG(fb_pct) AS fb_pct,                 STDDEV_SAMP(fb_pct) AS fb_pct_std,
+          AVG(ld_pct) AS ld_pct,                 STDDEV_SAMP(ld_pct) AS ld_pct_std,
+          AVG(pu_pct) AS pu_pct,                 STDDEV_SAMP(pu_pct) AS pu_pct_std,
+          AVG(ba) AS ba,                         STDDEV_SAMP(ba) AS ba_std,
+          AVG(obp) AS obp,                       STDDEV_SAMP(obp) AS obp_std,
+          AVG(slg) AS slg,                       STDDEV_SAMP(slg) AS slg_std,
+          AVG(ops) AS ops,                       STDDEV_SAMP(ops) AS ops_std,
+          AVG(avg_xba) AS avg_xba,               STDDEV_SAMP(avg_xba) AS avg_xba_std,
+          AVG(avg_xwoba) AS avg_xwoba,           STDDEV_SAMP(avg_xwoba) AS avg_xwoba_std,
+          AVG(avg_xslg) AS avg_xslg,             STDDEV_SAMP(avg_xslg) AS avg_xslg_std,
+          AVG(avg_woba) AS avg_woba,             STDDEV_SAMP(avg_woba) AS avg_woba_std
         FROM qual
         WHERE qualified
         GROUP BY role
       )
-      INSERT INTO league_averages (season, level, role, metric, value, n_qualified, leader_value, qual_floor, updated_at)
-      SELECT %L, %L, a.role, m.metric, m.val, a.n,
+      INSERT INTO league_averages (season, level, role, metric, value, stddev, n_qualified, leader_value, qual_floor, updated_at)
+      SELECT %L, %L, a.role, m.metric, m.val, m.val_std, a.n,
              CASE WHEN a.role='SP' THEN (SELECT sp_lead FROM floors) ELSE (SELECT rp_lead FROM floors) END,
              CASE WHEN a.role='SP' THEN (SELECT sp_floor FROM floors) ELSE (SELECT rp_floor FROM floors) END,
              now()
       FROM agg a
       CROSS JOIN LATERAL (VALUES
-        ('avg_velo', a.avg_velo), ('max_velo', a.max_velo), ('avg_spin', a.avg_spin),
-        ('avg_ext', a.avg_ext), ('avg_arm_angle', a.avg_arm_angle),
-        ('avg_hbreak_in', a.avg_hbreak_in), ('avg_ivb_in', a.avg_ivb_in),
-        ('k_pct', a.k_pct), ('bb_pct', a.bb_pct), ('k_minus_bb', a.k_minus_bb),
-        ('whiff_pct', a.whiff_pct), ('swstr_pct', a.swstr_pct), ('csw_pct', a.csw_pct),
-        ('zone_pct', a.zone_pct), ('chase_pct', a.chase_pct), ('contact_pct', a.contact_pct),
-        ('z_swing_pct', a.z_swing_pct), ('o_contact_pct', a.o_contact_pct),
-        ('hard_hit_pct', a.hard_hit_pct), ('barrel_pct', a.barrel_pct),
-        ('gb_pct', a.gb_pct), ('fb_pct', a.fb_pct), ('ld_pct', a.ld_pct), ('pu_pct', a.pu_pct),
-        ('ba', a.ba), ('obp', a.obp), ('slg', a.slg), ('ops', a.ops),
-        ('avg_xba', a.avg_xba), ('avg_xwoba', a.avg_xwoba),
-        ('avg_xslg', a.avg_xslg), ('avg_woba', a.avg_woba)
-      ) m(metric, val)
+        ('avg_velo', a.avg_velo, a.avg_velo_std), ('max_velo', a.max_velo, a.max_velo_std),
+        ('avg_spin', a.avg_spin, a.avg_spin_std),
+        ('avg_ext', a.avg_ext, a.avg_ext_std), ('avg_arm_angle', a.avg_arm_angle, a.avg_arm_angle_std),
+        ('avg_hbreak_in', a.avg_hbreak_in, a.avg_hbreak_in_std),
+        ('avg_ivb_in', a.avg_ivb_in, a.avg_ivb_in_std),
+        ('k_pct', a.k_pct, a.k_pct_std), ('bb_pct', a.bb_pct, a.bb_pct_std),
+        ('k_minus_bb', a.k_minus_bb, a.k_minus_bb_std),
+        ('whiff_pct', a.whiff_pct, a.whiff_pct_std), ('swstr_pct', a.swstr_pct, a.swstr_pct_std),
+        ('csw_pct', a.csw_pct, a.csw_pct_std),
+        ('zone_pct', a.zone_pct, a.zone_pct_std), ('chase_pct', a.chase_pct, a.chase_pct_std),
+        ('contact_pct', a.contact_pct, a.contact_pct_std),
+        ('z_swing_pct', a.z_swing_pct, a.z_swing_pct_std),
+        ('o_contact_pct', a.o_contact_pct, a.o_contact_pct_std),
+        ('hard_hit_pct', a.hard_hit_pct, a.hard_hit_pct_std),
+        ('barrel_pct', a.barrel_pct, a.barrel_pct_std),
+        ('gb_pct', a.gb_pct, a.gb_pct_std), ('fb_pct', a.fb_pct, a.fb_pct_std),
+        ('ld_pct', a.ld_pct, a.ld_pct_std), ('pu_pct', a.pu_pct, a.pu_pct_std),
+        ('ba', a.ba, a.ba_std), ('obp', a.obp, a.obp_std),
+        ('slg', a.slg, a.slg_std), ('ops', a.ops, a.ops_std),
+        ('avg_xba', a.avg_xba, a.avg_xba_std), ('avg_xwoba', a.avg_xwoba, a.avg_xwoba_std),
+        ('avg_xslg', a.avg_xslg, a.avg_xslg_std), ('avg_woba', a.avg_woba, a.avg_woba_std)
+      ) m(metric, val, val_std)
       WHERE m.val IS NOT NULL;
     $sql$, v_table, v_start, v_end,
            e_arm_angle, e_xslg,
@@ -505,33 +564,38 @@ BEGIN
         ),
         agg AS (
           SELECT role, COUNT(*) AS n,
-            AVG(avg_brink)       AS avg_brink,
-            AVG(avg_cluster)     AS avg_cluster,
-            AVG(avg_cluster_r)   AS avg_cluster_r,
-            AVG(avg_cluster_l)   AS avg_cluster_l,
-            AVG(avg_hdev)        AS avg_hdev,
-            AVG(avg_vdev)        AS avg_vdev,
-            AVG(avg_missfire)    AS avg_missfire,
-            AVG(close_pct)       AS close_pct,
-            AVG(waste_pct)       AS waste_pct,
-            AVG(deception_score) AS deception_score,
-            AVG(unique_score)    AS unique_score
+            AVG(avg_brink)       AS avg_brink,       STDDEV_SAMP(avg_brink)       AS avg_brink_std,
+            AVG(avg_cluster)     AS avg_cluster,     STDDEV_SAMP(avg_cluster)     AS avg_cluster_std,
+            AVG(avg_cluster_r)   AS avg_cluster_r,   STDDEV_SAMP(avg_cluster_r)   AS avg_cluster_r_std,
+            AVG(avg_cluster_l)   AS avg_cluster_l,   STDDEV_SAMP(avg_cluster_l)   AS avg_cluster_l_std,
+            AVG(avg_hdev)        AS avg_hdev,        STDDEV_SAMP(avg_hdev)        AS avg_hdev_std,
+            AVG(avg_vdev)        AS avg_vdev,        STDDEV_SAMP(avg_vdev)        AS avg_vdev_std,
+            AVG(avg_missfire)    AS avg_missfire,    STDDEV_SAMP(avg_missfire)    AS avg_missfire_std,
+            AVG(close_pct)       AS close_pct,       STDDEV_SAMP(close_pct)       AS close_pct_std,
+            AVG(waste_pct)       AS waste_pct,       STDDEV_SAMP(waste_pct)       AS waste_pct_std,
+            AVG(deception_score) AS deception_score, STDDEV_SAMP(deception_score) AS deception_score_std,
+            AVG(unique_score)    AS unique_score,    STDDEV_SAMP(unique_score)    AS unique_score_std
           FROM qual WHERE qualified GROUP BY role
         )
-        INSERT INTO league_averages (season, level, role, metric, value, n_qualified, leader_value, qual_floor, updated_at)
-        SELECT %L, %L, a.role, m.metric, m.val, a.n,
+        INSERT INTO league_averages (season, level, role, metric, value, stddev, n_qualified, leader_value, qual_floor, updated_at)
+        SELECT %L, %L, a.role, m.metric, m.val, m.val_std, a.n,
           CASE WHEN a.role='SP' THEN (SELECT sp_lead FROM floors) ELSE (SELECT rp_lead FROM floors) END,
           CASE WHEN a.role='SP' THEN (SELECT sp_floor FROM floors) ELSE (SELECT rp_floor FROM floors) END,
           now()
         FROM agg a
         CROSS JOIN LATERAL (VALUES
-          ('avg_brink', a.avg_brink), ('avg_cluster', a.avg_cluster),
-          ('avg_cluster_r', a.avg_cluster_r), ('avg_cluster_l', a.avg_cluster_l),
-          ('avg_hdev', a.avg_hdev), ('avg_vdev', a.avg_vdev),
-          ('avg_missfire', a.avg_missfire),
-          ('close_pct', a.close_pct), ('waste_pct', a.waste_pct),
-          ('deception_score', a.deception_score), ('unique_score', a.unique_score)
-        ) m(metric, val)
+          ('avg_brink', a.avg_brink, a.avg_brink_std),
+          ('avg_cluster', a.avg_cluster, a.avg_cluster_std),
+          ('avg_cluster_r', a.avg_cluster_r, a.avg_cluster_r_std),
+          ('avg_cluster_l', a.avg_cluster_l, a.avg_cluster_l_std),
+          ('avg_hdev', a.avg_hdev, a.avg_hdev_std),
+          ('avg_vdev', a.avg_vdev, a.avg_vdev_std),
+          ('avg_missfire', a.avg_missfire, a.avg_missfire_std),
+          ('close_pct', a.close_pct, a.close_pct_std),
+          ('waste_pct', a.waste_pct, a.waste_pct_std),
+          ('deception_score', a.deception_score, a.deception_score_std),
+          ('unique_score', a.unique_score, a.unique_score_std)
+        ) m(metric, val, val_std)
         WHERE m.val IS NOT NULL;
       $sql$, v_start, v_end, p_season, p_season, p_season, v_level);
     END IF;
@@ -652,21 +716,22 @@ BEGIN
       ),
       agg AS (
         SELECT role, COUNT(*) AS n,
-          AVG(fip)   AS fip,
-          AVG(xfip)  AS xfip,
-          AVG(xera)  AS xera,
-          AVG(siera) AS siera
+          AVG(fip)   AS fip,   STDDEV_SAMP(fip)   AS fip_std,
+          AVG(xfip)  AS xfip,  STDDEV_SAMP(xfip)  AS xfip_std,
+          AVG(xera)  AS xera,  STDDEV_SAMP(xera)  AS xera_std,
+          AVG(siera) AS siera, STDDEV_SAMP(siera) AS siera_std
         FROM qual WHERE qualified GROUP BY role
       )
-      INSERT INTO league_averages (season, level, role, metric, value, n_qualified, leader_value, qual_floor, updated_at)
-      SELECT %L, %L, a.role, m.metric, m.val, a.n,
+      INSERT INTO league_averages (season, level, role, metric, value, stddev, n_qualified, leader_value, qual_floor, updated_at)
+      SELECT %L, %L, a.role, m.metric, m.val, m.val_std, a.n,
         CASE WHEN a.role='SP' THEN (SELECT sp_lead FROM floors) ELSE (SELECT rp_lead FROM floors) END,
         CASE WHEN a.role='SP' THEN (SELECT sp_floor FROM floors) ELSE (SELECT rp_floor FROM floors) END,
         now()
       FROM agg a
       CROSS JOIN LATERAL (VALUES
-        ('fip', a.fip), ('xfip', a.xfip), ('xera', a.xera), ('siera', a.siera)
-      ) m(metric, val)
+        ('fip', a.fip, a.fip_std), ('xfip', a.xfip, a.xfip_std),
+        ('xera', a.xera, a.xera_std), ('siera', a.siera, a.siera_std)
+      ) m(metric, val, val_std)
       WHERE m.val IS NOT NULL;
     $sql$, v_table, v_start, v_end,
            v_cfip, v_lg_hr_fb, v_cfip, v_lg_woba, v_woba_scale, v_lg_era,

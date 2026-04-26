@@ -228,7 +228,7 @@ export default function CompeteReportViewer() {
                   )}
                   {/* Visualization */}
                   <div className="flex-1 p-1 min-h-0" style={{ minHeight: '280px' }}>
-                    {tile.viz === 'heatmap' && <TileHeatmap data={tileData} metric={tile.metric || 'frequency'} stand={dominantStand} />}
+                    {tile.viz === 'heatmap' && <TileHeatmap data={tileData} metric={tile.metric || 'frequency'} stand={dominantStand} subjectType={report?.subject_type === 'pitching' ? 'pitching' : report?.subject_type === 'hitting' ? 'hitting' : undefined} level="MLB" />}
                     {tile.viz === 'scatter' && <TileScatter data={tileData} mode={tile.scatterMode || 'location'} />}
                     {tile.viz === 'bar' && <TileBar data={tileData} metric={tile.barMetric || 'usage'} />}
                     {tile.viz === 'strike_zone' && <TileStrikeZone data={tileData} stand={dominantStand} />}

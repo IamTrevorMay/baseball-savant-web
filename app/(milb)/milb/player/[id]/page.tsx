@@ -338,7 +338,7 @@ export default function MilbPlayerDashboard() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={[]} sosScores={sosScores} />}
           {tab === 'movement' && <MovementTab data={data} />}
-          {tab === 'viz' && <LocationTab data={data} />}
+          {tab === 'viz' && <LocationTab data={data} subjectType="pitching" level="MiLB" />}
           {tab === 'velocity' && <VelocityTab data={data} />}
           {tab === 'results' && <ResultsTab data={data} />}
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}

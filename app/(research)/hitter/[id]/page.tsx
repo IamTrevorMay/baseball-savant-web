@@ -276,7 +276,7 @@ export default function HitterDashboard() {
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6">
           {tab === 'overview' && <HitterOverviewTab data={data} info={info} lahmanBatting={lahmanData?.batting} />}
-          {tab === 'viz' && <LocationTab data={data} />}
+          {tab === 'viz' && <LocationTab data={data} subjectType="hitting" level="MLB" />}
           {tab === 'results' && <ResultsTab data={data} />}
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="hitter" />}
           {tab === 'splits' && <HitterSplitsTab data={data} />}

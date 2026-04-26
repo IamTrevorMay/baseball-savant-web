@@ -41,11 +41,19 @@ interface Props {
   onUpdate: (config: TileConfig) => void
   onRemove: () => void
   extraColumns?: CustomColDef[]
+  /** Scope hints forwarded to TileHeatmap so it can pick the right
+   *  league_averages baseline (mean ± 3σ for color-scale extremes). */
+  subjectType?: 'hitting' | 'pitching'
+  level?: 'MLB' | 'MiLB'
+  season?: number
 }
 
 const DEFAULT_CUSTOM_COLS = ['n', 'pct', 'velo', 'spin', 'whiff', 'ev']
 
-export default function ReportTile({ config, data, optionsCache, onUpdate, onRemove, extraColumns = [] }: Props) {
+export default function ReportTile({
+  config, data, optionsCache, onUpdate, onRemove, extraColumns = [],
+  subjectType, level, season,
+}: Props) {
   const [showConfig, setShowConfig] = useState(config.viz === 'empty')
   const [filterSearch, setFilterSearch] = useState('')
   const [showTileFilters, setShowTileFilters] = useState(false)
@@ -361,7 +369,7 @@ export default function ReportTile({ config, data, optionsCache, onUpdate, onRem
 
       {/* Visualization */}
       <div className="flex-1 p-1 min-h-0">
-        {config.viz === 'heatmap' && <TileHeatmap data={filtered} metric={config.metric || 'frequency'} stand={dominantStand} />}
+        {config.viz === 'heatmap' && <TileHeatmap data={filtered} metric={config.metric || 'frequency'} stand={dominantStand} subjectType={subjectType} level={level} season={season} />}
         {config.viz === 'scatter' && <TileScatter data={filtered} mode={config.scatterMode || 'location'} />}
         {config.viz === 'bar' && <TileBar data={filtered} metric={config.barMetric || 'usage'} />}
         {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} stand={dominantStand} />}

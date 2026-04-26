@@ -333,7 +333,7 @@ export default function PlayerDashboard() {
         <div className="max-w-7xl mx-auto px-6 py-6">
           {tab === 'overview' && <OverviewTab data={data} info={info} mlbStats={mlbStats} lahmanPitching={lahmanData?.pitching} sosScores={sosScores} />}
           {tab === 'movement' && <MovementTab data={data} />}
-          {tab === 'viz' && <LocationTab data={data} />}
+          {tab === 'viz' && <LocationTab data={data} subjectType="pitching" level="MLB" />}
           {tab === 'velocity' && <VelocityTab data={data} />}
           {tab === 'results' && <ResultsTab data={data} />}
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}

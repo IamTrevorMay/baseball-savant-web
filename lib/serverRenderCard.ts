@@ -663,9 +663,9 @@ function drawRCStatline(ctx: SKRSContext2D, el: SceneElement) {
 
 /* ── Heatmap helpers (shared by both legacy count mode and spectrum mode) ── */
 
-// Spectrum stops matching components/reports/TileViz.tsx — same look as the
-// Reports page heatmap so Imagine output reads identically.
-const HEATMAP_SPECTRUM: [number, [number, number, number]][] = [
+// Rainbow spectrum — matches components/reports/TileViz.tsx so Imagine
+// output reads identically to the Reports page heatmap.
+const HEATMAP_SPECTRUM_RAINBOW: [number, [number, number, number]][] = [
   [0.00, [0x1a, 0x3d, 0x7c]], [0.05, [0x21, 0x66, 0xac]],
   [0.15, [0x33, 0x88, 0xb8]], [0.25, [0x4b, 0xa8, 0xc4]],
   [0.35, [0x6c, 0xc4, 0xa0]], [0.45, [0xc8, 0xe6, 0x4a]],
@@ -674,39 +674,47 @@ const HEATMAP_SPECTRUM: [number, [number, number, number]][] = [
   [0.92, [0x9e, 0x00, 0x00]], [1.00, [0x7a, 0x00, 0x00]],
 ]
 
-function spectrumColor(t: number): string {
+// Diverging palette — deep blue at low, mid gray at the middle, deep red
+// at high. Endpoints match the rainbow palette so the legend bar reads
+// the same at both ends across modes.
+const HEATMAP_SPECTRUM_HOTCOLD: [number, [number, number, number]][] = [
+  [0.00, [0x1a, 0x3d, 0x7c]],
+  [0.20, [0x4b, 0x80, 0xb4]],
+  [0.38, [0x9c, 0xae, 0xbe]],
+  [0.50, [0x6b, 0x6b, 0x73]],
+  [0.62, [0xbe, 0xa6, 0xa6]],
+  [0.80, [0xc4, 0x4a, 0x2a]],
+  [1.00, [0x7a, 0x00, 0x00]],
+]
+
+type HeatmapColorMode = 'rainbow' | 'hotcold'
+
+function getSpectrum(mode: HeatmapColorMode): [number, [number, number, number]][] {
+  return mode === 'hotcold' ? HEATMAP_SPECTRUM_HOTCOLD : HEATMAP_SPECTRUM_RAINBOW
+}
+
+function sampleSpectrumRGB(t: number, mode: HeatmapColorMode = 'rainbow'): [number, number, number] {
+  const stops = getSpectrum(mode)
   const x = Math.max(0, Math.min(1, t))
-  for (let i = 1; i < HEATMAP_SPECTRUM.length; i++) {
-    const [s1, c1] = HEATMAP_SPECTRUM[i]
+  for (let i = 1; i < stops.length; i++) {
+    const [s1, c1] = stops[i]
     if (x <= s1) {
-      const [s0, c0] = HEATMAP_SPECTRUM[i - 1]
+      const [s0, c0] = stops[i - 1]
       const k = (x - s0) / (s1 - s0)
-      const r = Math.round(c0[0] + (c1[0] - c0[0]) * k)
-      const g = Math.round(c0[1] + (c1[1] - c0[1]) * k)
-      const b = Math.round(c0[2] + (c1[2] - c0[2]) * k)
-      return `rgb(${r},${g},${b})`
+      return [
+        Math.round(c0[0] + (c1[0] - c0[0]) * k),
+        Math.round(c0[1] + (c1[1] - c0[1]) * k),
+        Math.round(c0[2] + (c1[2] - c0[2]) * k),
+      ]
     }
   }
-  const [, last] = HEATMAP_SPECTRUM[HEATMAP_SPECTRUM.length - 1]
-  return `rgb(${last[0]},${last[1]},${last[2]})`
+  const [, last] = stops[stops.length - 1]
+  return last
 }
 
-// EV baselines mirror components/reports/TileViz.tsx.
-const HEATMAP_EV_BASELINES: Record<number, { mean: number; std: number }> = {
-  2026: { mean: 82.8, std: 15.5 }, 2025: { mean: 83.1, std: 15.4 },
-  2024: { mean: 82.5, std: 15.2 }, 2023: { mean: 82.6, std: 15.2 },
-  2022: { mean: 82.4, std: 15.1 }, 2021: { mean: 82.5, std: 15.0 },
-  2020: { mean: 82.3, std: 14.9 }, 2019: { mean: 82.3, std: 15.0 },
-  2018: { mean: 82.1, std: 14.9 }, 2017: { mean: 82.2, std: 15.0 },
-  2016: { mean: 82.0, std: 14.8 }, 2015: { mean: 81.8, std: 14.7 },
-}
-
-function getEvRange(locations: any[]): { zmin: number; zmax: number } | null {
-  const years = locations.map(d => d?.game_year).filter(Boolean)
-  const maxYear = years.length ? Math.max(...years) : new Date().getFullYear()
-  const refYear = maxYear - 1
-  const bl = HEATMAP_EV_BASELINES[refYear] || HEATMAP_EV_BASELINES[2025] || { mean: 83, std: 15.3 }
-  return { zmin: bl.mean - 3 * bl.std, zmax: bl.mean + 3 * bl.std }
+function spectrumColor(t: number, mode: HeatmapColorMode = 'rainbow'): string {
+  const [r, g, b] = sampleSpectrumRGB(t, mode)
+  return `rgb(${r},${g},${b})`
 }
 
 const HM_HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run'])
@@ -753,9 +761,15 @@ function calcHeatmapMetric(pitches: any[], metric: string): number | null {
 
 function fmtHeatmapValue(v: number, metric: string): string {
   if (metric === 'frequency') return String(Math.round(v))
-  if (['ba', 'slg', 'woba', 'xba', 'xwoba', 'xslg'].includes(metric)) return v.toFixed(3)
-  if (metric === 'ev') return v.toFixed(1)
-  if (metric === 'whiff_pct' || metric === 'chase_pct') return (v * 100).toFixed(1) + '%'
+  if (['ba', 'slg', 'woba', 'xba', 'xwoba', 'xslg'].includes(metric)) {
+    // Baseball convention: ".300" rather than "0.300" when |v| < 1.
+    if (Math.abs(v) >= 1) return v.toFixed(3)
+    const sign = v < 0 ? '-' : ''
+    const abs = Math.abs(v)
+    return `${sign}.${Math.round(abs * 1000).toString().padStart(3, '0')}`
+  }
+  if (metric === 'ev') return `${v.toFixed(1)} mph`
+  if (metric === 'whiff_pct' || metric === 'chase_pct') return `${(v * 100).toFixed(1)}%`
   return v.toFixed(2)
 }
 
@@ -763,6 +777,7 @@ function drawHeatmapLegend(
   ctx: SKRSContext2D,
   x: number, y: number, w: number, h: number,
   zMin: number, zMax: number, metric: string,
+  colorMode: HeatmapColorMode = 'rainbow',
 ) {
   const labelW = 56
   const barX = x + labelW
@@ -772,7 +787,7 @@ function drawHeatmapLegend(
 
   // Color bar
   const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0)
-  for (const [stop, [r, g, b]] of HEATMAP_SPECTRUM) {
+  for (const [stop, [r, g, b]] of getSpectrum(colorMode)) {
     grad.addColorStop(stop, `rgb(${r},${g},${b})`)
   }
   ctx.fillStyle = grad
@@ -802,6 +817,8 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
   //   'ev' | 'whiff_pct' | 'chase_pct'  → 16×16 spectrum heatmap, neighbor-
   //                              interpolated, optional bottom legend.
   const metric: string = p.metric || 'count'
+  // colorMode: 'rainbow' (default) or 'hotcold' (diverging blue→gray→red).
+  const colorMode: HeatmapColorMode = p.colorMode === 'hotcold' ? 'hotcold' : 'rainbow'
 
   ctx.save()
   ctx.fillStyle = p.bgColor || '#09090b'
@@ -828,12 +845,26 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
   const showLegend = p.showLegend !== false
   const legendH = showLegend ? 22 : 0
   const pad = 16
-  const plotX = ex + pad
-  const plotY = ey + pad + titleOffset
-  const plotW = w - pad * 2
-  const plotH = h - pad * 2 - titleOffset - legendH
+  const availX = ex + pad
+  const availY = ey + pad + titleOffset
+  const availW = w - pad * 2
+  const availH = h - pad * 2 - titleOffset - legendH
 
+  // Plot bounds (feet): width = 3.52, height = 3.82 → natural aspect ~0.921.
+  // We constrain the plot rect to that aspect inside the available area
+  // and center it, so the strike zone never looks stretched. Mirrors the
+  // Plotly `scaleanchor:'x'` behavior on the Reports page.
   const VXM = -1.76, VXX = 1.76, VZM = 0.24, VZX = 4.06
+  const PLOT_ASPECT = (VXX - VXM) / (VZX - VZM)
+  let plotW = availW
+  let plotH = plotW / PLOT_ASPECT
+  if (plotH > availH) {
+    plotH = availH
+    plotW = plotH * PLOT_ASPECT
+  }
+  const plotX = availX + (availW - plotW) / 2
+  const plotY = availY + (availH - plotH) / 2
+
   const nb = 16
   const xS = (VXX - VXM) / nb
   const yS = (VZX - VZM) / nb
@@ -876,12 +907,16 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
     }
   }
 
-  // zMin / zMax. EV uses the league baseline (mean ± 3σ); everything else
-  // uses the data range so colors span the spectrum even on small samples.
+  // zMin / zMax. League baseline (zMid + zSpan from league_averages,
+  // span = 3σ) takes precedence — center spectrum on league mean, hot
+  // and cold extremes at ±3σ. Falls back to data range when no league
+  // row is available (e.g. metric='frequency' or unpopulated).
   let zMin = 0, zMax = 1
-  if (metric === 'ev') {
-    const ev = getEvRange(locations)
-    if (ev) { zMin = ev.zmin; zMax = ev.zmax }
+  const propMid = typeof p.zMid === 'number' && Number.isFinite(p.zMid) ? p.zMid : null
+  const propSpan = typeof p.zSpan === 'number' && Number.isFinite(p.zSpan) && p.zSpan > 0 ? p.zSpan : null
+  if (propMid != null && propSpan != null) {
+    zMin = propMid - propSpan
+    zMax = propMid + propSpan
   } else {
     const vals = z.flat().filter((v): v is number => v !== null)
     if (vals.length) {
@@ -891,19 +926,71 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
   }
   const zRange = zMax - zMin || 1
 
-  const cellW = plotW / nb
-  const cellH = plotH / nb
-  for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
-    const v = z[r][c]
-    if (v === null) continue
-    const t = (v - zMin) / zRange
-    ctx.fillStyle = spectrumColor(t)
-    ctx.fillRect(plotX + c * cellW, plotY + r * cellH, cellW + 0.5, cellH + 0.5)
+  // Per-pixel bilinear interpolation at the target plot resolution. Skia's
+  // `imageSmoothingQuality: 'high'` uses a wide multi-tap filter (Mitchell/
+  // Lanczos-ish) which over a 37× upscale reads like a heavy Gaussian
+  // blur — too soft for our heatmap. Doing the bilinear ourselves and
+  // drawing 1:1 with smoothing disabled keeps the segment blend but
+  // keeps boundaries crisp.
+  const targetW = Math.max(1, Math.round(plotW))
+  const targetH = Math.max(1, Math.round(plotH))
+  const off = createCanvas(targetW, targetH)
+  const offCtx = off.getContext('2d')
+  const imgData = offCtx.createImageData(targetW, targetH)
+  const buf = imgData.data
+  const xRange = VXX - VXM
+  const zRangePlate = VZX - VZM
+  for (let py = 0; py < targetH; py++) {
+    const plate_z = VZX - ((py + 0.5) / targetH) * zRangePlate
+    const gy = (VZX - plate_z) / yS - 0.5
+    const iy0 = Math.floor(gy)
+    const fy = gy - iy0
+    const cy0 = iy0 < 0 ? 0 : iy0 >= nb ? nb - 1 : iy0
+    const cy1 = (iy0 + 1) < 0 ? 0 : (iy0 + 1) >= nb ? nb - 1 : (iy0 + 1)
+    for (let px = 0; px < targetW; px++) {
+      const plate_x = VXM + ((px + 0.5) / targetW) * xRange
+      const idx = (py * targetW + px) * 4
+      if (metric === 'chase_pct' && plate_x >= -0.708 && plate_x <= 0.708 && plate_z >= 1.5 && plate_z <= 3.5) {
+        buf[idx + 3] = 0
+        continue
+      }
+      const gx = (plate_x - VXM) / xS - 0.5
+      const ix0 = Math.floor(gx)
+      const fx = gx - ix0
+      const cx0 = ix0 < 0 ? 0 : ix0 >= nb ? nb - 1 : ix0
+      const cx1 = (ix0 + 1) < 0 ? 0 : (ix0 + 1) >= nb ? nb - 1 : (ix0 + 1)
+      const v00 = z[cy0][cx0], v10 = z[cy0][cx1], v01 = z[cy1][cx0], v11 = z[cy1][cx1]
+      const w00 = (1 - fx) * (1 - fy)
+      const w10 = fx * (1 - fy)
+      const w01 = (1 - fx) * fy
+      const w11 = fx * fy
+      let total = 0, weight = 0
+      if (v00 !== null) { total += v00 * w00; weight += w00 }
+      if (v10 !== null) { total += v10 * w10; weight += w10 }
+      if (v01 !== null) { total += v01 * w01; weight += w01 }
+      if (v11 !== null) { total += v11 * w11; weight += w11 }
+      if (weight === 0) { buf[idx + 3] = 0; continue }
+      const v = total / weight
+      const t = (v - zMin) / zRange
+      const [rr, gg, bb] = sampleSpectrumRGB(t, colorMode)
+      buf[idx] = rr; buf[idx + 1] = gg; buf[idx + 2] = bb; buf[idx + 3] = 255
+    }
   }
+  offCtx.putImageData(imgData, 0, 0)
+  ctx.save()
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(off, Math.round(plotX), Math.round(plotY), targetW, targetH)
+  ctx.restore()
 
   if (p.showZone !== false) {
     const toX = (px: number) => plotX + ((px - VXM) / (VXX - VXM)) * plotW
     const toY = (pz: number) => plotY + ((VZX - pz) / (VZX - VZM)) * plotH
+    // chase_pct mask — fill the in-zone area with the tile bg so the
+    // bilinear blend doesn't bleed colored pixels into the strike zone.
+    if (metric === 'chase_pct') {
+      ctx.fillStyle = p.bgColor || '#0f0f12'
+      ctx.fillRect(toX(-0.708), toY(3.5), toX(0.708) - toX(-0.708), toY(1.5) - toY(3.5))
+    }
     ctx.strokeStyle = '#ffffff'
     ctx.lineWidth = 2
     ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
@@ -918,7 +1005,10 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
   }
 
   if (showLegend) {
-    drawHeatmapLegend(ctx, ex + pad, ey + h - legendH - 2, w - pad * 2, legendH, zMin, zMax, metric)
+    // Legend width matches the colored plot width — never wider than the
+    // heatmap itself, so it sits flush under it instead of stretching to
+    // the tile edges.
+    drawHeatmapLegend(ctx, plotX, ey + h - legendH - 2, plotW, legendH, zMin, zMax, metric, colorMode)
   }
 
   ctx.restore()

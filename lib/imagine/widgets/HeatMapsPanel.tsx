@@ -13,7 +13,7 @@ import { useState } from 'react'
 import FilterEngine from '@/components/FilterEngine'
 import PlayerSearchField from '@/components/imagine/PlayerSearchField'
 import type { WidgetPanelProps } from '@/lib/imagine/types'
-import type { HeatMapsFilters, MapConfig, HeatmapMetric } from '@/lib/imagine/widgets/heatMaps'
+import type { HeatMapsFilters, MapConfig, HeatmapMetric, HeatmapColorMode } from '@/lib/imagine/widgets/heatMaps'
 import { HEATMAP_METRIC_OPTIONS } from '@/lib/imagine/widgets/heatMaps'
 
 const TEAMS = ['AZ','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SF','SEA','STL','TB','TEX','TOR','WSH']
@@ -218,16 +218,34 @@ function MapEditor({ map, onChange }: { map: MapConfig; onChange: (partial: Part
         )}
       </section>
 
-      {/* ── Heatmap metric ── */}
+      {/* ── Heatmap metric + color mode ── */}
       <section>
-        <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Heatmap Metric</h3>
-        <select
-          className={inputCls}
-          value={map.metric}
-          onChange={(e) => onChange({ metric: e.target.value as HeatmapMetric })}
-        >
-          {HEATMAP_METRIC_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Heatmap</h3>
+        <div className="space-y-2">
+          <div>
+            <span className={labelCls}>Metric</span>
+            <select
+              className={inputCls}
+              value={map.metric}
+              onChange={(e) => onChange({ metric: e.target.value as HeatmapMetric })}
+            >
+              {HEATMAP_METRIC_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <span className={labelCls}>Color Mode</span>
+            <div className="grid grid-cols-2 gap-1">
+              <SegBtn
+                active={(map.colorMode || 'rainbow') === 'rainbow'}
+                onClick={() => onChange({ colorMode: 'rainbow' as HeatmapColorMode })}
+              >Rainbow</SegBtn>
+              <SegBtn
+                active={map.colorMode === 'hotcold'}
+                onClick={() => onChange({ colorMode: 'hotcold' as HeatmapColorMode })}
+              >Hot/Cold</SegBtn>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ── Caption overrides ── */}

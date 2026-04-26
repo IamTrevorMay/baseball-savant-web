@@ -3,6 +3,7 @@ import { useMemo, useState, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
+import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
 
 interface TemplateProps {
   data: any[]
@@ -147,6 +148,34 @@ export default function StrikeZoneHeatmapViz({
     [data]
   )
 
+  // Infer subject role from the data: a single pitcher across most rows
+  // → 'pitching'; a single batter across most rows → 'hitter'. Falls
+  // back to null when ambiguous (no league baseline applied).
+  const role = useMemo(() => {
+    if (!filtered.length) return null
+    const pCounts: Record<string, number> = {}
+    const bCounts: Record<string, number> = {}
+    for (const d of filtered.slice(0, 200)) {
+      if (d.pitcher) pCounts[d.pitcher] = (pCounts[d.pitcher] || 0) + 1
+      if (d.batter)  bCounts[d.batter]  = (bCounts[d.batter]  || 0) + 1
+    }
+    const pMax = Math.max(0, ...Object.values(pCounts))
+    const bMax = Math.max(0, ...Object.values(bCounts))
+    const total = Math.min(filtered.length, 200)
+    if (pMax > total * 0.7) return 'pitching' as const
+    if (bMax > total * 0.7) return 'hitter'   as const
+    return null
+  }, [filtered])
+
+  const season = useMemo(() => {
+    const years = filtered.map(d => d.game_year).filter(Boolean) as number[]
+    return years.length ? Math.max(...years) : new Date().getFullYear()
+  }, [filtered])
+
+  // Skip baseline lookup for density (no league mean concept).
+  const baselineMetric = metric === 'density' ? null : metric
+  const baseline = useLeagueBaseline(season, 'MLB', role, baselineMetric)
+
   const { trace, zMin, zMax } = useMemo(() => {
     if (!filtered.length) return { trace: null, zMin: 0, zMax: 1 }
 
@@ -174,8 +203,12 @@ export default function StrikeZoneHeatmapViz({
     const z = neighborFill(rawZ)
 
     const flatVals = z.flat().filter((v): v is number => v !== null)
-    const zMinVal = flatVals.length ? Math.min(...flatVals) : 0
-    const zMaxVal = flatVals.length ? Math.max(...flatVals) : 1
+    // League baseline (mean ± 3σ) takes precedence over the data range
+    // when available — keeps colors comparable across players.
+    const baseMin = baseline ? baseline.value - 3 * baseline.stddev : null
+    const baseMax = baseline ? baseline.value + 3 * baseline.stddev : null
+    const zMinVal = baseMin != null ? baseMin : (flatVals.length ? Math.min(...flatVals) : 0)
+    const zMaxVal = baseMax != null ? baseMax : (flatVals.length ? Math.max(...flatVals) : 1)
 
     const xCenters = Array.from({ length: NB }, (_, i) => X_RANGE[0] + (i + 0.5) * X_STEP)
     const yCenters = Array.from({ length: NB }, (_, i) => Y_RANGE[0] + (i + 0.5) * Y_STEP)
@@ -205,7 +238,7 @@ export default function StrikeZoneHeatmapViz({
     }
 
     return { trace: t, zMin: zMinVal, zMax: zMaxVal }
-  }, [filtered, metric])
+  }, [filtered, metric, baseline])
 
   if (!filtered.length) {
     return (
