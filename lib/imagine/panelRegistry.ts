@@ -10,7 +10,9 @@
 import type { ComponentType } from 'react'
 import type { WidgetPanelProps } from '@/lib/imagine/types'
 import HeatMapsPanel from '@/lib/imagine/widgets/HeatMapsPanel'
+import HeatMapOverlaysPanel from '@/lib/imagine/widgets/HeatMapOverlaysPanel'
 
 export const PANEL_REGISTRY: Record<string, ComponentType<WidgetPanelProps<any>>> = {
   'heat-maps': HeatMapsPanel,
+  'heat-map-overlays': HeatMapOverlaysPanel,
 }

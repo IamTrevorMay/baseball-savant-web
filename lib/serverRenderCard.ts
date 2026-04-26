@@ -770,6 +770,9 @@ function fmtHeatmapValue(v: number, metric: string): string {
   }
   if (metric === 'ev') return `${v.toFixed(1)} mph`
   if (metric === 'whiff_pct' || metric === 'chase_pct') return `${(v * 100).toFixed(1)}%`
+  // Overlap (Heat Map Overlays): unitless [0,1] product of normalized grids;
+  // legend just tags the ends as Low / High.
+  if (metric === 'overlap') return v <= 0.001 ? 'Low' : v >= 0.999 ? 'High' : v.toFixed(2)
   return v.toFixed(2)
 }
 
@@ -869,41 +872,54 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
   const xS = (VXX - VXM) / nb
   const yS = (VZX - VZM) / nb
 
-  // Bin pitches.
-  const bins: any[][][] = Array.from({ length: nb }, () => Array.from({ length: nb }, () => []))
-  for (const loc of locations) {
-    if (loc?.plate_x == null || loc?.plate_z == null) continue
-    const xi = Math.floor((loc.plate_x - VXM) / xS)
-    const yi = Math.floor((VZX - loc.plate_z) / yS)
-    if (xi >= 0 && xi < nb && yi >= 0 && yi < nb) bins[yi][xi].push(loc)
-  }
+  // Optional precomputed 16×16 grid (used by the Heat Map Overlays widget,
+  // which has to do its own binning + multiply before render). When given,
+  // skip binning + per-bin metric + neighbor-interp entirely.
+  const providedGrid: (number | null)[][] | null =
+    Array.isArray(p.gridZ) && p.gridZ.length === nb && Array.isArray(p.gridZ[0]) && p.gridZ[0].length === nb
+      ? p.gridZ
+      : null
 
-  // Per-bin metric.
-  const z: (number | null)[][] = bins.map(row => row.map(cell => calcHeatmapMetric(cell, metric)))
-
-  // chase_pct: null inside the strike zone (no chase by definition).
-  if (metric === 'chase_pct') {
-    for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
-      const bx = VXM + (c + 0.5) * xS, by = VZX - (r + 0.5) * yS
-      if (bx >= -0.708 && bx <= 0.708 && by >= 1.5 && by <= 3.5) z[r][c] = null
+  let z: (number | null)[][]
+  if (providedGrid) {
+    z = providedGrid
+  } else {
+    // Bin pitches.
+    const bins: any[][][] = Array.from({ length: nb }, () => Array.from({ length: nb }, () => []))
+    for (const loc of locations) {
+      if (loc?.plate_x == null || loc?.plate_z == null) continue
+      const xi = Math.floor((loc.plate_x - VXM) / xS)
+      const yi = Math.floor((VZX - loc.plate_z) / yS)
+      if (xi >= 0 && xi < nb && yi >= 0 && yi < nb) bins[yi][xi].push(loc)
     }
-  }
 
-  // 2 passes of neighbor interpolation to smooth empty bins.
-  for (let pass = 0; pass < 2; pass++) {
-    for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
-      if (z[r][c] !== null) continue
-      if (metric === 'chase_pct') {
+    // Per-bin metric.
+    z = bins.map(row => row.map(cell => calcHeatmapMetric(cell, metric)))
+
+    // chase_pct: null inside the strike zone (no chase by definition).
+    if (metric === 'chase_pct') {
+      for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
         const bx = VXM + (c + 0.5) * xS, by = VZX - (r + 0.5) * yS
-        if (bx >= -0.708 && bx <= 0.708 && by >= 1.5 && by <= 3.5) continue
+        if (bx >= -0.708 && bx <= 0.708 && by >= 1.5 && by <= 3.5) z[r][c] = null
       }
-      const neighbors: number[] = []
-      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue
-        const nr = r + dr, nc = c + dc
-        if (nr >= 0 && nr < nb && nc >= 0 && nc < nb && z[nr][nc] !== null) neighbors.push(z[nr][nc] as number)
+    }
+
+    // 2 passes of neighbor interpolation to smooth empty bins.
+    for (let pass = 0; pass < 2; pass++) {
+      for (let r = 0; r < nb; r++) for (let c = 0; c < nb; c++) {
+        if (z[r][c] !== null) continue
+        if (metric === 'chase_pct') {
+          const bx = VXM + (c + 0.5) * xS, by = VZX - (r + 0.5) * yS
+          if (bx >= -0.708 && bx <= 0.708 && by >= 1.5 && by <= 3.5) continue
+        }
+        const neighbors: number[] = []
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue
+          const nr = r + dr, nc = c + dc
+          if (nr >= 0 && nr < nb && nc >= 0 && nc < nb && z[nr][nc] !== null) neighbors.push(z[nr][nc] as number)
+        }
+        if (neighbors.length >= 2) z[r][c] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length
       }
-      if (neighbors.length >= 2) z[r][c] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length
     }
   }
 
