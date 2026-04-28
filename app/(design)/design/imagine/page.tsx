@@ -294,7 +294,7 @@ export default function ImaginePage() {
         )}
       </main>
 
-      {/* ── Right: Filters + Output ──────────────────────────── */}
+      {/* ── Right: Filters + Style + Output ─────────────────── */}
       <aside className="w-80 shrink-0 border-l border-zinc-800 flex flex-col">
         {widget && (() => {
           const CustomPanel = widget.renderPanel || PANEL_REGISTRY[widget.id]
@@ -307,12 +307,14 @@ export default function ImaginePage() {
             onExport,
             exportDisabled: exporting || previewLoading || !previewBlob,
             exporting,
+            autoTitle: widget.autoTitle(filters as any),
           }
           return CustomPanel ? (
             <CustomPanel {...panelProps as any} />
           ) : (
             <FilterPanel
               schema={widget.filterSchema}
+              widgetId={widget.id}
               {...panelProps}
             />
           )
@@ -326,10 +328,19 @@ export default function ImaginePage() {
 
 const SECTION_TITLES: Record<number, string> = { 1: 'Scope', 2: 'Data', 3: 'Stats' }
 
+const FONT_OPTIONS = [
+  { value: '', label: 'Inter (Default)' },
+  { value: 'Helvetica', label: 'Helvetica' },
+  { value: 'Arial', label: 'Arial' },
+  { value: 'Georgia', label: 'Georgia' },
+  { value: 'Times New Roman', label: 'Times New Roman' },
+]
+
 function FilterPanel({
   schema, filters, onChange,
   size, onSizeChange, sizePresets,
   onExport, exportDisabled, exporting,
+  autoTitle, widgetId,
 }: {
   schema: FilterControl[]
   filters: Record<string, any>
@@ -340,6 +351,8 @@ function FilterPanel({
   onExport: () => void
   exportDisabled: boolean
   exporting: boolean
+  autoTitle?: string
+  widgetId?: string
 }) {
   const patch = (key: string, value: any) => onChange({ ...filters, [key]: value })
 
@@ -368,7 +381,8 @@ function FilterPanel({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-4 space-y-5">
+      {/* ── Filters (scrollable, flex-[2]) ── */}
+      <div className="flex-[2] overflow-y-auto px-4 pt-4 pb-4 space-y-5 min-h-0">
         {sections.map((controls, idx) => (
           controls.length > 0 && (
             <section key={idx}>
@@ -381,37 +395,150 @@ function FilterPanel({
             </section>
           )
         ))}
-        {/* Output section — Size/Aspect lives with the filters; Export is
-            pinned to the bottom of the panel below the scroll area. */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2.5">Output</h3>
-          <div>
-            <FieldLabel>Size / Aspect</FieldLabel>
-            <select
-              className={selectCls}
-              value={`${size.width}x${size.height}`}
-              onChange={(e) => {
-                const found = sizePresets.find(p => `${p.width}x${p.height}` === e.target.value)
-                if (found) onSizeChange(found)
-              }}
-            >
-              {sizePresets.map(p => (
-                <option key={`${p.width}x${p.height}`} value={`${p.width}x${p.height}`}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </section>
       </div>
-      {/* Export pinned to bottom */}
-      <div className="border-t border-zinc-800 p-3">
+
+      {/* ── Custom Data (shown in custom mode, replaces empty Stats section) ── */}
+      {filters.customMode === 'custom' && (
+        <div className="border-t border-zinc-800 px-4 pt-3 pb-3 space-y-2.5 overflow-y-auto max-h-[40vh]">
+          <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Custom Data</h3>
+          {widgetId === 'player-stats' && (
+            <PlayerStatsCustomEditor
+              data={filters.customData || []}
+              onChange={(d) => onChange({ ...filters, customData: d })}
+            />
+          )}
+          {widgetId === 'team-stats' && (
+            <TeamStatsCustomEditor
+              data={filters.customData || []}
+              onChange={(d) => onChange({ ...filters, customData: d })}
+            />
+          )}
+          {widgetId === 'top-5-leaderboard' && (
+            <LeaderboardCustomEditor
+              rows={filters.customRows || []}
+              primaryLabel={filters.customPrimaryLabel || ''}
+              secondaryLabel={filters.customSecondaryLabel || ''}
+              tertiaryLabel={filters.customTertiaryLabel || ''}
+              onChange={(rows, pl, sl, tl) => onChange({
+                ...filters,
+                customRows: rows,
+                customPrimaryLabel: pl,
+                customSecondaryLabel: sl,
+                customTertiaryLabel: tl,
+              })}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Style (scrollable, flex-[1]) ── */}
+      <div className="flex-[1] overflow-y-auto border-t border-zinc-800 px-4 pt-3 pb-3 space-y-2.5 min-h-0">
+        <h3 className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Style</h3>
+        <div>
+          <FieldLabel>Title</FieldLabel>
+          <input
+            type="text"
+            className={inputCls}
+            value={filters.title ?? ''}
+            placeholder={autoTitle || 'Auto-generated'}
+            onChange={(e) => patch('title', e.target.value)}
+          />
+        </div>
+        <div>
+          <FieldLabel>Subtitle</FieldLabel>
+          <input
+            type="text"
+            className={inputCls}
+            value={filters.subtitle ?? ''}
+            placeholder="Auto-generated"
+            onChange={(e) => patch('subtitle', e.target.value)}
+          />
+        </div>
+        <div>
+          <FieldLabel>Font</FieldLabel>
+          <select
+            className={selectCls}
+            value={filters.styleFontFamily ?? ''}
+            onChange={(e) => patch('styleFontFamily', e.target.value)}
+          >
+            {FONT_OPTIONS.map(f => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <FieldLabel>Title Size</FieldLabel>
+            <input
+              type="number"
+              className={inputCls}
+              value={filters.styleTitleSize || ''}
+              placeholder="Auto"
+              min={0}
+              onChange={(e) => patch('styleTitleSize', e.target.value === '' ? 0 : +e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Subtitle Size</FieldLabel>
+            <input
+              type="number"
+              className={inputCls}
+              value={filters.styleSubtitleSize || ''}
+              placeholder="Auto"
+              min={0}
+              onChange={(e) => patch('styleSubtitleSize', e.target.value === '' ? 0 : +e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Metrics Size</FieldLabel>
+            <input
+              type="number"
+              className={inputCls}
+              value={filters.styleMetricValueSize || ''}
+              placeholder="Auto"
+              min={0}
+              onChange={(e) => patch('styleMetricValueSize', e.target.value === '' ? 0 : +e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Label Size</FieldLabel>
+            <input
+              type="number"
+              className={inputCls}
+              value={filters.styleMetricLabelSize || ''}
+              placeholder="Auto"
+              min={0}
+              onChange={(e) => patch('styleMetricLabelSize', e.target.value === '' ? 0 : +e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Output (pinned bottom) ── */}
+      <div className="border-t border-zinc-800 p-3 space-y-2.5">
+        <div>
+          <FieldLabel>Size / Aspect</FieldLabel>
+          <select
+            className={selectCls}
+            value={`${size.width}x${size.height}`}
+            onChange={(e) => {
+              const found = sizePresets.find(p => `${p.width}x${p.height}` === e.target.value)
+              if (found) onSizeChange(found)
+            }}
+          >
+            {sizePresets.map(p => (
+              <option key={`${p.width}x${p.height}`} value={`${p.width}x${p.height}`}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={onExport}
           disabled={exportDisabled}
           className="w-full px-4 py-2 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
         >
-          {exporting ? 'Exporting…' : 'Export PNG'}
+          {exporting ? 'Exporting...' : 'Export PNG'}
         </button>
       </div>
     </div>
@@ -592,6 +719,221 @@ function FilterControlField({
       )
     }
   }
+}
+
+/* ── Custom Data Editors ───────────────────────────────────────────────── */
+
+function PlayerStatsCustomEditor({
+  data,
+  onChange,
+}: {
+  data: { label: string; value: string }[]
+  onChange: (d: { label: string; value: string }[]) => void
+}) {
+  const update = (i: number, field: 'label' | 'value', val: string) => {
+    const next = data.map((d, j) => j === i ? { ...d, [field]: val } : d)
+    onChange(next)
+  }
+  const add = () => {
+    if (data.length < 8) onChange([...data, { label: '', value: '' }])
+  }
+  const remove = (i: number) => {
+    if (data.length > 1) onChange(data.filter((_, j) => j !== i))
+  }
+  return (
+    <div className="space-y-1.5">
+      {data.map((entry, i) => (
+        <div key={i} className="flex gap-1 items-center">
+          <input
+            type="text"
+            className={inputCls + ' flex-1'}
+            value={entry.label}
+            placeholder="Label"
+            onChange={(e) => update(i, 'label', e.target.value)}
+          />
+          <input
+            type="text"
+            className={inputCls + ' w-20'}
+            value={entry.value}
+            placeholder="Value"
+            onChange={(e) => update(i, 'value', e.target.value)}
+          />
+          <button
+            onClick={() => remove(i)}
+            disabled={data.length <= 1}
+            className="px-1.5 py-1 text-[10px] text-zinc-500 hover:text-red-400 disabled:opacity-30 transition"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {data.length < 8 && (
+        <button
+          onClick={add}
+          className="text-[11px] text-emerald-400 hover:text-emerald-300 transition"
+        >
+          + Add Stat
+        </button>
+      )}
+    </div>
+  )
+}
+
+function TeamStatsCustomEditor({
+  data,
+  onChange,
+}: {
+  data: { label: string; value: string; rank: string }[]
+  onChange: (d: { label: string; value: string; rank: string }[]) => void
+}) {
+  const update = (i: number, field: 'label' | 'value' | 'rank', val: string) => {
+    const next = data.map((d, j) => j === i ? { ...d, [field]: val } : d)
+    onChange(next)
+  }
+  const add = () => {
+    if (data.length < 8) onChange([...data, { label: '', value: '', rank: '' }])
+  }
+  const remove = (i: number) => {
+    if (data.length > 1) onChange(data.filter((_, j) => j !== i))
+  }
+  return (
+    <div className="space-y-1.5">
+      {data.map((entry, i) => (
+        <div key={i} className="flex gap-1 items-center">
+          <input
+            type="text"
+            className={inputCls + ' flex-1'}
+            value={entry.label}
+            placeholder="Label"
+            onChange={(e) => update(i, 'label', e.target.value)}
+          />
+          <input
+            type="text"
+            className={inputCls + ' w-16'}
+            value={entry.value}
+            placeholder="Value"
+            onChange={(e) => update(i, 'value', e.target.value)}
+          />
+          <input
+            type="text"
+            className={inputCls + ' w-20'}
+            value={entry.rank}
+            placeholder="5th of 30"
+            onChange={(e) => update(i, 'rank', e.target.value)}
+          />
+          <button
+            onClick={() => remove(i)}
+            disabled={data.length <= 1}
+            className="px-1.5 py-1 text-[10px] text-zinc-500 hover:text-red-400 disabled:opacity-30 transition"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {data.length < 8 && (
+        <button
+          onClick={add}
+          className="text-[11px] text-emerald-400 hover:text-emerald-300 transition"
+        >
+          + Add Stat
+        </button>
+      )}
+    </div>
+  )
+}
+
+function LeaderboardCustomEditor({
+  rows,
+  primaryLabel, secondaryLabel, tertiaryLabel,
+  onChange,
+}: {
+  rows: { playerId?: number; playerName: string; primary: string; secondary: string; tertiary: string }[]
+  primaryLabel: string
+  secondaryLabel: string
+  tertiaryLabel: string
+  onChange: (
+    rows: { playerId?: number; playerName: string; primary: string; secondary: string; tertiary: string }[],
+    pl: string, sl: string, tl: string,
+  ) => void
+}) {
+  const updateRow = (i: number, field: string, val: any) => {
+    const next = rows.map((r, j) => j === i ? { ...r, [field]: val } : r)
+    onChange(next, primaryLabel, secondaryLabel, tertiaryLabel)
+  }
+  return (
+    <div className="space-y-3">
+      <div>
+        <span className={labelCls}>Column Labels</span>
+        <div className="grid grid-cols-3 gap-1">
+          <input
+            type="text"
+            className={inputCls}
+            value={primaryLabel}
+            placeholder="Primary"
+            onChange={(e) => onChange(rows, e.target.value, secondaryLabel, tertiaryLabel)}
+          />
+          <input
+            type="text"
+            className={inputCls}
+            value={secondaryLabel}
+            placeholder="Secondary"
+            onChange={(e) => onChange(rows, primaryLabel, e.target.value, tertiaryLabel)}
+          />
+          <input
+            type="text"
+            className={inputCls}
+            value={tertiaryLabel}
+            placeholder="Tertiary"
+            onChange={(e) => onChange(rows, primaryLabel, secondaryLabel, e.target.value)}
+          />
+        </div>
+      </div>
+      {rows.slice(0, 5).map((row, i) => (
+        <div key={i} className="space-y-1">
+          <div className="flex gap-1 items-center">
+            <span className="text-[10px] text-zinc-500 font-bold w-5 shrink-0">#{i + 1}</span>
+            <input
+              type="text"
+              className={inputCls + ' flex-1'}
+              value={row.playerName}
+              placeholder="Player Name"
+              onChange={(e) => updateRow(i, 'playerName', e.target.value)}
+            />
+            <input
+              type="number"
+              className={inputCls + ' w-16'}
+              value={row.playerId || ''}
+              placeholder="ID"
+              onChange={(e) => updateRow(i, 'playerId', e.target.value === '' ? undefined : +e.target.value)}
+            />
+          </div>
+          <div className="flex gap-1 ml-5">
+            <input
+              type="text"
+              className={inputCls + ' flex-1'}
+              value={row.primary}
+              placeholder={primaryLabel || 'Primary'}
+              onChange={(e) => updateRow(i, 'primary', e.target.value)}
+            />
+            <input
+              type="text"
+              className={inputCls + ' flex-1'}
+              value={row.secondary}
+              placeholder={secondaryLabel || 'Secondary'}
+              onChange={(e) => updateRow(i, 'secondary', e.target.value)}
+            />
+            <input
+              type="text"
+              className={inputCls + ' flex-1'}
+              value={row.tertiary}
+              placeholder={tertiaryLabel || 'Tertiary'}
+              onChange={(e) => updateRow(i, 'tertiary', e.target.value)}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function renderGroupedOptions(options: { value: string; label: string; group?: string }[]) {

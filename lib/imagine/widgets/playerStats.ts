@@ -24,6 +24,7 @@ import type { Widget, SizePreset, FilterOption, PlayerSearchValue } from '@/lib/
 
 export type PlayerStatsFilters = {
   title?: string
+  subtitle?: string
   player: PlayerSearchValue
   playerType: 'pitcher' | 'batter'
   dateRange:
@@ -39,6 +40,15 @@ export type PlayerStatsFilters = {
   metric6: string
   metric7: string
   metric8: string
+  // Custom mode — manual labels/values instead of API-fetched data
+  customMode: string          // 'dynamic' | 'custom'
+  customData: { label: string; value: string }[]
+  // Style overrides (0 = auto, '' = default font)
+  styleFontFamily?: string
+  styleTitleSize?: number
+  styleSubtitleSize?: number
+  styleMetricValueSize?: number
+  styleMetricLabelSize?: number
 }
 
 const METRIC_KEYS = ['metric1','metric2','metric3','metric4','metric5','metric6','metric7','metric8'] as const
@@ -176,6 +186,7 @@ function buildSceneInternal(
   filters: PlayerStatsFilters,
   data: { stats: Record<string, any>; player_name?: string },
   size: SizePreset,
+  labelOverrides?: Record<string, string>,
 ): Scene {
   const { width, height } = size
   const aspect = width / height
@@ -186,22 +197,23 @@ function buildSceneInternal(
 
   const userTitle = (filters.title || '').trim()
   const title = userTitle || buildAutoTitle(filters)
-  const subtitle = buildSubtitle(filters)
+  const subtitle = (filters.subtitle || '').trim() || buildSubtitle(filters)
+  const ff = filters.styleFontFamily || undefined
 
   // ── Header (title + subtitle) ──
   const padX = Math.max(36, Math.round(width * 0.037))
   const titleY = Math.round(height * 0.025)
-  const titleFs = Math.max(32, Math.round(Math.min(width, height * 1.5) * 0.045))
+  const titleFs = filters.styleTitleSize || Math.max(32, Math.round(Math.min(width, height * 1.5) * 0.045))
   const titleH = Math.round(titleFs * 1.3)
   const subtitleY = titleY + titleH + 4
-  const subtitleFs = Math.max(14, Math.round(Math.min(width, height * 1.5) * 0.020))
+  const subtitleFs = filters.styleSubtitleSize || Math.max(14, Math.round(Math.min(width, height * 1.5) * 0.020))
   const subtitleH = Math.round(subtitleFs * 1.5)
 
   elements.push(makeEl(z, 'text', padX, titleY, width - padX * 2, titleH, {
-    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent',
+    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
   }))
   elements.push(makeEl(z, 'text', padX, subtitleY, width - padX * 2, subtitleH, {
-    text: subtitle, fontSize: subtitleFs, fontWeight: 400, color: '#71717a', textAlign: 'center', bgColor: 'transparent',
+    text: subtitle, fontSize: subtitleFs, fontWeight: 400, color: '#71717a', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
   }))
 
   // ── Hero region (everything from below the header to the start of the grid) ──
@@ -269,9 +281,9 @@ function buildSceneInternal(
   const cellW = Math.floor((gridAreaW - gutter * (numCols - 1)) / numCols)
   const cellH = Math.floor((gridAreaH - gutter * (numRows - 1)) / numRows)
 
-  // Cell font sizing — value font scales with cell height; label font fixed.
-  const valueFs = Math.max(28, Math.round(cellH * 0.42))
-  const labelFs = Math.max(11, Math.round(cellH * 0.10))
+  // Cell font sizing — value font scales with cell height, capped to avoid overlap.
+  const valueFs = filters.styleMetricValueSize || Math.min(72, Math.max(28, Math.round(cellH * 0.42)))
+  const labelFs = filters.styleMetricLabelSize || Math.min(24, Math.max(11, Math.round(cellH * 0.10)))
   const labelH = Math.round(labelFs * 1.6)
 
   for (let i = 0; i < N; i++) {
@@ -290,15 +302,15 @@ function buildSceneInternal(
 
     const color = STAT_COLORS[i % STAT_COLORS.length]
     const value = formatStatValue(data?.stats?.[m])
-    const label = metricLabel(m).toUpperCase()
+    const label = (labelOverrides?.[m] || metricLabel(m)).toUpperCase()
 
     // Label (top of cell)
     elements.push(makeEl(z, 'text', x, y + Math.round(cellH * 0.10), cellW, labelH, {
-      text: label, fontSize: labelFs, fontWeight: 600, color: '#a1a1aa', textAlign: 'center', bgColor: 'transparent',
+      text: label, fontSize: labelFs, fontWeight: 600, color: '#a1a1aa', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
     }))
     // Value (bottom of cell, big)
     elements.push(makeEl(z, 'text', x, y + Math.round(cellH * 0.32), cellW, Math.round(cellH * 0.6), {
-      text: value, fontSize: valueFs, fontWeight: 800, color, textAlign: 'center', bgColor: 'transparent',
+      text: value, fontSize: valueFs, fontWeight: 800, color, textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
     }))
   }
 
@@ -328,11 +340,13 @@ const playerStats: Widget<PlayerStatsFilters> = {
   filterSchema: [
     // ── Column 1: scope ──
     {
-      key: 'title',
-      type: 'text',
-      label: 'Title (optional)',
-      placeholder: 'Auto-generated',
-      dynamicPlaceholder: (f) => buildAutoTitle(f as PlayerStatsFilters),
+      key: 'customMode',
+      type: 'segmented',
+      label: 'Mode',
+      options: [
+        { value: 'dynamic', label: 'Dynamic' },
+        { value: 'custom', label: 'Custom' },
+      ],
       column: 1,
     },
     {
@@ -354,26 +368,27 @@ const playerStats: Widget<PlayerStatsFilters> = {
       column: 1,
     },
     // ── Column 2: data filters ──
-    { key: 'dateRange', type: 'date-range-season-or-custom', label: 'Date Range', years: YEARS, column: 2 },
-    { key: 'pitchType', type: 'select', label: 'Pitch Type (optional)', options: PITCH_TYPE_OPTIONS, column: 2 },
+    { key: 'dateRange', type: 'date-range-season-or-custom', label: 'Date Range', years: YEARS, column: 2, visibleWhen: (f) => f.customMode !== 'custom' },
+    { key: 'pitchType', type: 'select', label: 'Pitch Type (optional)', options: PITCH_TYPE_OPTIONS, column: 2, visibleWhen: (f) => f.customMode !== 'custom' },
     // ── Column 3: stat slots — progressive disclosure ──
     // Slots 1 and 2 are always shown. Each subsequent slot is revealed only
     // once the previous slot has a value, so the UI grows as the user adds
     // stats and stops at whatever they picked. The re-shuffle in
     // normalizeFilters ensures empty slots always sit at the end, so a
     // hidden slot can never carry a stale value.
-    { key: 'metric1', type: 'select',        label: 'Stat 1', options: STAT_OPTIONS, column: 3 },
-    { key: 'metric2', type: 'toggle-select', label: 'Stat 2', options: STAT_OPTIONS, column: 3 },
-    { key: 'metric3', type: 'toggle-select', label: 'Stat 3', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => !!f.metric2 },
-    { key: 'metric4', type: 'toggle-select', label: 'Stat 4', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => !!f.metric3 },
-    { key: 'metric5', type: 'toggle-select', label: 'Stat 5', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => !!f.metric4 },
-    { key: 'metric6', type: 'toggle-select', label: 'Stat 6', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => !!f.metric5 },
-    { key: 'metric7', type: 'toggle-select', label: 'Stat 7', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => !!f.metric6 },
-    { key: 'metric8', type: 'toggle-select', label: 'Stat 8', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => !!f.metric7 },
+    { key: 'metric1', type: 'select',        label: 'Stat 1', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' },
+    { key: 'metric2', type: 'toggle-select', label: 'Stat 2', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' },
+    { key: 'metric3', type: 'toggle-select', label: 'Stat 3', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' && !!f.metric2 },
+    { key: 'metric4', type: 'toggle-select', label: 'Stat 4', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' && !!f.metric3 },
+    { key: 'metric5', type: 'toggle-select', label: 'Stat 5', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' && !!f.metric4 },
+    { key: 'metric6', type: 'toggle-select', label: 'Stat 6', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' && !!f.metric5 },
+    { key: 'metric7', type: 'toggle-select', label: 'Stat 7', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' && !!f.metric6 },
+    { key: 'metric8', type: 'toggle-select', label: 'Stat 8', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' && !!f.metric7 },
   ],
 
   defaultFilters: {
     title: '',
+    subtitle: '',
     player: { playerId: null, playerName: '' },
     playerType: 'pitcher',
     dateRange: { type: 'season', year: CURRENT_YEAR },
@@ -386,6 +401,13 @@ const playerStats: Widget<PlayerStatsFilters> = {
     metric6: '',
     metric7: '',
     metric8: '',
+    customMode: 'dynamic',
+    customData: [{ label: '', value: '' }, { label: '', value: '' }, { label: '', value: '' }, { label: '', value: '' }],
+    styleFontFamily: '',
+    styleTitleSize: 0,
+    styleSubtitleSize: 0,
+    styleMetricValueSize: 0,
+    styleMetricLabelSize: 0,
   },
 
   sizePresets: SIZE_PRESETS,
@@ -395,6 +417,14 @@ const playerStats: Widget<PlayerStatsFilters> = {
   autoFilename: buildAutoFilename,
 
   async fetchData(filters, origin) {
+    if (filters.customMode === 'custom') {
+      const stats: Record<string, any> = {}
+      for (let i = 0; i < (filters.customData || []).length; i++) {
+        const e = filters.customData[i]
+        if (e.label || e.value) stats[`_c${i}`] = e.value || '--'
+      }
+      return { stats, player_name: filters.player?.playerName }
+    }
     if (!filters.player.playerId) {
       return { stats: {}, player_name: '' }
     }
@@ -426,6 +456,9 @@ const playerStats: Widget<PlayerStatsFilters> = {
   normalizeFilters(next, prev) {
     const out: PlayerStatsFilters = { ...next }
 
+    // Custom mode skips all dynamic-mode normalization
+    if (next.customMode === 'custom') return out
+
     // Player type change: clear incompatible stats and reset the player
     // (their id may not exist in the new type's search index).
     if (next.playerType !== prev.playerType) {
@@ -450,6 +483,17 @@ const playerStats: Widget<PlayerStatsFilters> = {
   },
 
   buildScene(filters, data, size) {
+    if (filters.customMode === 'custom') {
+      const entries = (filters.customData || []).filter((e: any) => e.label || e.value)
+      const synth = { ...filters } as any
+      const overrides: Record<string, string> = {}
+      entries.forEach((e: any, i: number) => {
+        synth[`metric${i + 1}`] = `_c${i}`
+        overrides[`_c${i}`] = e.label || `Stat ${i + 1}`
+      })
+      for (let i = entries.length; i < 8; i++) synth[`metric${i + 1}`] = ''
+      return buildSceneInternal(synth, data || { stats: {} }, size, overrides)
+    }
     return buildSceneInternal(filters, data || { stats: {} }, size)
   },
 }

@@ -13,6 +13,7 @@ import type { Widget, SizePreset, FilterOption } from '@/lib/imagine/types'
 
 export type LeaderboardFilters = {
   title?: string
+  subtitle?: string
   playerType: 'pitcher' | 'batter'
   role: 'all' | 'starter' | 'reliever'
   primaryStat: string
@@ -24,6 +25,18 @@ export type LeaderboardFilters = {
   minSample: number
   secondaryStat?: string
   tertiaryStat?: string
+  // Custom mode — manual rows instead of API-fetched data
+  customMode: string          // 'dynamic' | 'custom'
+  customRows: { playerId?: number; playerName: string; primary: string; secondary: string; tertiary: string }[]
+  customPrimaryLabel: string
+  customSecondaryLabel: string
+  customTertiaryLabel: string
+  // Style overrides (0 = auto, '' = default font)
+  styleFontFamily?: string
+  styleTitleSize?: number
+  styleSubtitleSize?: number
+  styleMetricValueSize?: number
+  styleMetricLabelSize?: number
 }
 
 /* ── Constants ─────────────────────────────────────────────────────────── */
@@ -151,6 +164,12 @@ interface LayoutCtx {
   height: number
   title: string
   subtitle: string
+  ff?: string  // fontFamily override
+  titleFs?: number
+  subtitleFs?: number
+  valueFs?: number
+  labelFs?: number
+  customStatLabels?: { primary: string; secondary?: string; tertiary?: string }
 }
 
 function makeEl(
@@ -200,25 +219,25 @@ function playerImageEl(
    header label row at the top.                                            */
 
 function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
-  const { width, height, rows, filters, title, subtitle } = ctx
+  const { width, height, rows, filters, title, subtitle, ff } = ctx
   const z = { current: 100 }
   const elements: SceneElement[] = []
 
   const padX = Math.max(40, Math.round(width * 0.042))
   const titleY = Math.round(height * 0.037)
-  const titleFs = Math.max(28, Math.round(height * 0.048))
+  const titleFs = ctx.titleFs || Math.max(28, Math.round(height * 0.048))
   const titleH = Math.round(titleFs * 1.35)
   const subtitleY = titleY + titleH + Math.round(height * 0.005)
-  const subtitleFs = Math.max(14, Math.round(height * 0.020))
+  const subtitleFs = ctx.subtitleFs || Math.max(14, Math.round(height * 0.020))
   const subtitleH = Math.round(subtitleFs * 1.6)
   const dividerY = subtitleY + subtitleH + Math.round(height * 0.014)
 
   // Title + subtitle + divider — centered
   elements.push(makeEl(z, 'text', padX, titleY, width - padX * 2, titleH, {
-    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent',
+    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
   }))
   elements.push(makeEl(z, 'text', padX, subtitleY, width - padX * 2, subtitleH, {
-    text: subtitle, fontSize: subtitleFs, fontWeight: 400, color: '#71717a', textAlign: 'center', bgColor: 'transparent',
+    text: subtitle, fontSize: subtitleFs, fontWeight: 400, color: '#71717a', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
   }))
   elements.push(makeEl(z, 'shape', padX, dividerY, width - padX * 2, 2, {
     shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
@@ -226,10 +245,10 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
 
   // Build column specs (primary/secondary/tertiary).
   const cols: { label: string; color: string; valueKey: 'primary_value' | 'secondary_value' | 'tertiary_value' }[] = [
-    { label: metricLabel(filters.primaryStat), color: STAT_COLORS[0], valueKey: 'primary_value' },
+    { label: ctx.customStatLabels?.primary || metricLabel(filters.primaryStat), color: STAT_COLORS[0], valueKey: 'primary_value' },
   ]
-  if (filters.secondaryStat) cols.push({ label: metricLabel(filters.secondaryStat), color: STAT_COLORS[1], valueKey: 'secondary_value' })
-  if (filters.tertiaryStat)  cols.push({ label: metricLabel(filters.tertiaryStat),  color: STAT_COLORS[2], valueKey: 'tertiary_value' })
+  if (ctx.customStatLabels ? ctx.customStatLabels.secondary : filters.secondaryStat) cols.push({ label: ctx.customStatLabels?.secondary || metricLabel(filters.secondaryStat!), color: STAT_COLORS[1], valueKey: 'secondary_value' })
+  if (ctx.customStatLabels ? ctx.customStatLabels.tertiary : filters.tertiaryStat)   cols.push({ label: ctx.customStatLabels?.tertiary || metricLabel(filters.tertiaryStat!),   color: STAT_COLORS[2], valueKey: 'tertiary_value' })
 
   // Centered block of (N + 1) equal cells, separated by a uniform gutter.
   // Cell width is locked to the 4-column division of the canvas, so:
@@ -248,13 +267,13 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
   const statCellX = (i: number) => blockStartX + (i + 1) * (cellW + gutter)
 
   // Stat header row — labels once at the top, dim/uppercase, like a table head.
-  const statLabelFs = Math.max(11, Math.round(height * 0.020))
+  const statLabelFs = ctx.labelFs || Math.max(11, Math.round(height * 0.020))
   const headerRowY = dividerY + Math.round(height * 0.014)
   const headerRowH = Math.round(statLabelFs * 1.7)
   for (let i = 0; i < cols.length; i++) {
     elements.push(makeEl(z, 'text',
       statCellX(i), headerRowY, statCellW, headerRowH,
-      { text: cols[i].label.toUpperCase(), fontSize: statLabelFs, fontWeight: 600, color: '#a1a1aa', textAlign: 'center', bgColor: 'transparent' },
+      { text: cols[i].label.toUpperCase(), fontSize: statLabelFs, fontWeight: 600, color: '#a1a1aa', textAlign: 'center', bgColor: 'transparent', fontFamily: ff },
     ))
   }
 
@@ -272,7 +291,7 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
   const rankFs = Math.max(20, Math.round(rowH * 0.34))
   const nameFs = Math.max(16, Math.round(rowH * 0.18))
   const yearFs = Math.max(11, Math.round(rowH * 0.10))
-  const statValueFs = Math.max(20, Math.round(rowH * 0.32))
+  const statValueFs = ctx.valueFs || Math.max(20, Math.round(rowH * 0.32))
 
   for (let i = 0; i < 5; i++) {
     const row = rows[i]
@@ -291,7 +310,7 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
     // Player cell: rank | image | name+year (horizontal flow within the cell)
     elements.push(makeEl(z, 'text',
       playerX, yTop + Math.round(rowH * 0.18), rankW, rowH * 0.6,
-      { text: `${i + 1}`, fontSize: rankFs, fontWeight: 800, color: rankColor(i), textAlign: 'center', bgColor: 'transparent' },
+      { text: `${i + 1}`, fontSize: rankFs, fontWeight: 800, color: rankColor(i), textAlign: 'center', bgColor: 'transparent', fontFamily: ff },
     ))
 
     const imgX = playerX + rankW
@@ -302,12 +321,12 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
     const nameW = Math.max(60, (playerX + playerColW) - nameStartX)
     elements.push(makeEl(z, 'text',
       nameStartX, yTop + Math.round(rowH * 0.13), nameW, nameFs * 1.4,
-      { text: playerName || 'Player Name', fontSize: nameFs, fontWeight: 700, color: '#ffffff', textAlign: 'left', bgColor: 'transparent' },
+      { text: playerName || 'Player Name', fontSize: nameFs, fontWeight: 700, color: '#ffffff', textAlign: 'left', bgColor: 'transparent', fontFamily: ff },
     ))
     if (filters.dateRange.type === 'season') {
       elements.push(makeEl(z, 'text',
         nameStartX, yTop + Math.round(rowH * 0.42), nameW, yearFs * 1.5,
-        { text: String(filters.dateRange.year), fontSize: yearFs, fontWeight: 400, color: '#52525b', textAlign: 'left', bgColor: 'transparent' },
+        { text: String(filters.dateRange.year), fontSize: yearFs, fontWeight: 400, color: '#52525b', textAlign: 'left', bgColor: 'transparent', fontFamily: ff },
       ))
     }
 
@@ -317,7 +336,7 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
       const valStr = v != null ? String(v) : '--'
       elements.push(makeEl(z, 'text',
         statCellX(c), imgY, statCellW, imgH,
-        { text: valStr, fontSize: statValueFs, fontWeight: 700, color: cols[c].color, textAlign: 'center', bgColor: 'transparent' },
+        { text: valStr, fontSize: statValueFs, fontWeight: 700, color: cols[c].color, textAlign: 'center', bgColor: 'transparent', fontFamily: ff },
       ))
     }
   }
@@ -331,25 +350,25 @@ function layoutLandscape(ctx: LayoutCtx): SceneElement[] {
    stacked over name; stat values to the right (no per-row labels). */
 
 function layoutVertical(ctx: LayoutCtx): SceneElement[] {
-  const { width, height, rows, filters, title, subtitle } = ctx
+  const { width, height, rows, filters, title, subtitle, ff } = ctx
   const z = { current: 100 }
   const elements: SceneElement[] = []
 
   const padX = Math.max(30, Math.round(width * 0.037))
   const titleY = Math.round(height * 0.022)
-  const titleFs = Math.max(28, Math.round(width * 0.05))
+  const titleFs = ctx.titleFs || Math.max(28, Math.round(width * 0.05))
   const titleH = Math.round(titleFs * 1.3)
   const subtitleY = titleY + titleH + 5
-  const subtitleFs = Math.max(14, Math.round(width * 0.022))
+  const subtitleFs = ctx.subtitleFs || Math.max(14, Math.round(width * 0.022))
   const subtitleH = Math.round(subtitleFs * 1.5)
   const dividerY = subtitleY + subtitleH + 8
 
   // Title + subtitle + divider — centered
   elements.push(makeEl(z, 'text', padX, titleY, width - padX * 2, titleH, {
-    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent',
+    text: title, fontSize: titleFs, fontWeight: 800, color: '#ffffff', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
   }))
   elements.push(makeEl(z, 'text', padX, subtitleY, width - padX * 2, subtitleH, {
-    text: subtitle, fontSize: subtitleFs, fontWeight: 400, color: '#71717a', textAlign: 'center', bgColor: 'transparent',
+    text: subtitle, fontSize: subtitleFs, fontWeight: 400, color: '#71717a', textAlign: 'center', bgColor: 'transparent', fontFamily: ff,
   }))
   elements.push(makeEl(z, 'shape', padX, dividerY, width - padX * 2, 2, {
     shape: 'rect', fill: '#27272a', stroke: 'transparent', strokeWidth: 0, borderRadius: 0,
@@ -357,10 +376,10 @@ function layoutVertical(ctx: LayoutCtx): SceneElement[] {
 
   // Build the column specs (primary/secondary/tertiary) once.
   const cols: { label: string; color: string; valueKey: 'primary_value' | 'secondary_value' | 'tertiary_value' }[] = [
-    { label: metricLabel(filters.primaryStat), color: STAT_COLORS[0], valueKey: 'primary_value' },
+    { label: ctx.customStatLabels?.primary || metricLabel(filters.primaryStat), color: STAT_COLORS[0], valueKey: 'primary_value' },
   ]
-  if (filters.secondaryStat) cols.push({ label: metricLabel(filters.secondaryStat), color: STAT_COLORS[1], valueKey: 'secondary_value' })
-  if (filters.tertiaryStat)  cols.push({ label: metricLabel(filters.tertiaryStat),  color: STAT_COLORS[2], valueKey: 'tertiary_value' })
+  if (ctx.customStatLabels ? ctx.customStatLabels.secondary : filters.secondaryStat) cols.push({ label: ctx.customStatLabels?.secondary || metricLabel(filters.secondaryStat!), color: STAT_COLORS[1], valueKey: 'secondary_value' })
+  if (ctx.customStatLabels ? ctx.customStatLabels.tertiary : filters.tertiaryStat)   cols.push({ label: ctx.customStatLabels?.tertiary || metricLabel(filters.tertiaryStat!),   color: STAT_COLORS[2], valueKey: 'tertiary_value' })
 
   // Layout model: one dynamic block of (N + 1) equal cells — player column
   // + N stat cells — separated by uniform gutters and centered horizontally
@@ -388,8 +407,8 @@ function layoutVertical(ctx: LayoutCtx): SceneElement[] {
   const rankFs = Math.max(22, Math.round(width * 0.045))
   const nameFs = Math.max(18, Math.round(width * 0.026))
   const yearFs = Math.max(11, Math.round(width * 0.016))
-  const statValueFs = Math.max(28, Math.round(width * 0.046))
-  const statLabelFs = Math.max(11, Math.round(width * 0.014))
+  const statValueFs = ctx.valueFs || Math.max(28, Math.round(width * 0.046))
+  const statLabelFs = ctx.labelFs || Math.max(11, Math.round(width * 0.014))
 
   // Column header row — labels once at the top, dim/uppercase, like a table head.
   const headerRowY = dividerY + Math.round(height * 0.020)
@@ -413,7 +432,7 @@ function layoutVertical(ctx: LayoutCtx): SceneElement[] {
   for (let i = 0; i < cols.length; i++) {
     elements.push(makeEl(z, 'text',
       statCellX(i), headerRowY, statCellW, headerRowH,
-      { text: cols[i].label.toUpperCase(), fontSize: statLabelFs, fontWeight: 600, color: '#a1a1aa', textAlign: 'center', bgColor: 'transparent' },
+      { text: cols[i].label.toUpperCase(), fontSize: statLabelFs, fontWeight: 600, color: '#a1a1aa', textAlign: 'center', bgColor: 'transparent', fontFamily: ff },
     ))
   }
 
@@ -426,7 +445,7 @@ function layoutVertical(ctx: LayoutCtx): SceneElement[] {
     // Player column: rank on the left, image filling the rest.
     elements.push(makeEl(z, 'text',
       playerX, yTop + Math.round(rowH * 0.04), rankW, rankFs * 1.2,
-      { text: `${i + 1}`, fontSize: rankFs, fontWeight: 800, color: rankColor(i), textAlign: 'left', bgColor: 'transparent' },
+      { text: `${i + 1}`, fontSize: rankFs, fontWeight: 800, color: rankColor(i), textAlign: 'left', bgColor: 'transparent', fontFamily: ff },
     ))
 
     const imgX = playerX + rankW
@@ -439,12 +458,12 @@ function layoutVertical(ctx: LayoutCtx): SceneElement[] {
     const nameW = (playerX + playerColW) - imgX
     elements.push(makeEl(z, 'text',
       imgX, nameY, nameW, nameFs * 1.3,
-      { text: playerName || 'Player Name', fontSize: nameFs, fontWeight: 700, color: '#ffffff', textAlign: 'left', bgColor: 'transparent' },
+      { text: playerName || 'Player Name', fontSize: nameFs, fontWeight: 700, color: '#ffffff', textAlign: 'left', bgColor: 'transparent', fontFamily: ff },
     ))
     if (filters.dateRange.type === 'season') {
       elements.push(makeEl(z, 'text',
         imgX, nameY + Math.round(nameFs * 1.35), nameW, yearFs * 1.5,
-        { text: String(filters.dateRange.year), fontSize: yearFs, fontWeight: 400, color: '#52525b', textAlign: 'left', bgColor: 'transparent' },
+        { text: String(filters.dateRange.year), fontSize: yearFs, fontWeight: 400, color: '#52525b', textAlign: 'left', bgColor: 'transparent', fontFamily: ff },
       ))
     }
 
@@ -455,7 +474,7 @@ function layoutVertical(ctx: LayoutCtx): SceneElement[] {
       const valStr = v != null ? String(v) : '--'
       elements.push(makeEl(z, 'text',
         statCellX(c), imgY, statCellW, imgH,
-        { text: valStr, fontSize: statValueFs, fontWeight: 700, color: cols[c].color, textAlign: 'center', bgColor: 'transparent' },
+        { text: valStr, fontSize: statValueFs, fontWeight: 700, color: cols[c].color, textAlign: 'center', bgColor: 'transparent', fontFamily: ff },
       ))
     }
   }
@@ -473,11 +492,13 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
   filterSchema: [
     // ── Column 1: scope ──
     {
-      key: 'title',
-      type: 'text',
-      label: 'Title (optional)',
-      placeholder: 'Auto-generated',
-      dynamicPlaceholder: (f) => buildAutoTitle(f as LeaderboardFilters),
+      key: 'customMode',
+      type: 'segmented',
+      label: 'Mode',
+      options: [
+        { value: 'dynamic', label: 'Dynamic' },
+        { value: 'custom', label: 'Custom' },
+      ],
       column: 1,
     },
     {
@@ -489,6 +510,7 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
         { value: 'batter', label: 'Batter' },
       ],
       column: 1,
+      visibleWhen: (f) => f.customMode !== 'custom',
     },
     {
       key: 'role',
@@ -500,7 +522,7 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
         { value: 'reliever', label: 'RP' },
       ],
       column: 1,
-      visibleWhen: (f) => f.playerType !== 'batter',
+      visibleWhen: (f) => f.customMode !== 'custom' && f.playerType !== 'batter',
     },
     // ── Column 2: data filters ──
     {
@@ -512,6 +534,7 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
         { value: 'asc', label: 'Ascending' },
       ],
       column: 2,
+      visibleWhen: (f) => f.customMode !== 'custom',
     },
     {
       key: 'dateRange',
@@ -519,17 +542,19 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
       label: 'Date Range',
       years: YEARS,
       column: 2,
+      visibleWhen: (f) => f.customMode !== 'custom',
     },
-    { key: 'pitchType', type: 'select', label: 'Pitch Type (optional)', options: PITCH_TYPE_OPTIONS, column: 2 },
-    { key: 'minSample', type: 'number', label: 'Min Pitches (qualifier)', min: 1, column: 2 },
+    { key: 'pitchType', type: 'select', label: 'Pitch Type (optional)', options: PITCH_TYPE_OPTIONS, column: 2, visibleWhen: (f) => f.customMode !== 'custom' },
+    { key: 'minSample', type: 'number', label: 'Min Pitches (qualifier)', min: 1, column: 2, visibleWhen: (f) => f.customMode !== 'custom' },
     // ── Column 3: viewable stats (size/aspect appended by FilterBar) ──
-    { key: 'primaryStat', type: 'select', label: 'Primary Stat', options: STAT_OPTIONS, column: 3 },
-    { key: 'secondaryStat', type: 'toggle-select', label: 'Secondary Stat', options: STAT_OPTIONS, column: 3 },
-    { key: 'tertiaryStat', type: 'toggle-select', label: 'Tertiary Stat', options: STAT_OPTIONS, column: 3 },
+    { key: 'primaryStat', type: 'select', label: 'Primary Stat', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' },
+    { key: 'secondaryStat', type: 'toggle-select', label: 'Secondary Stat', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' },
+    { key: 'tertiaryStat', type: 'toggle-select', label: 'Tertiary Stat', options: STAT_OPTIONS, column: 3, visibleWhen: (f) => f.customMode !== 'custom' },
   ],
 
   defaultFilters: {
     title: '',
+    subtitle: '',
     playerType: 'pitcher',
     role: 'all',
     primaryStat: 'avg_velo',
@@ -539,6 +564,22 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
     minSample: defaultMinSample('pitcher'),
     secondaryStat: '',
     tertiaryStat: '',
+    customMode: 'dynamic',
+    customRows: [
+      { playerName: '', primary: '', secondary: '', tertiary: '' },
+      { playerName: '', primary: '', secondary: '', tertiary: '' },
+      { playerName: '', primary: '', secondary: '', tertiary: '' },
+      { playerName: '', primary: '', secondary: '', tertiary: '' },
+      { playerName: '', primary: '', secondary: '', tertiary: '' },
+    ],
+    customPrimaryLabel: '',
+    customSecondaryLabel: '',
+    customTertiaryLabel: '',
+    styleFontFamily: '',
+    styleTitleSize: 0,
+    styleSubtitleSize: 0,
+    styleMetricValueSize: 0,
+    styleMetricLabelSize: 0,
   },
 
   sizePresets: SIZE_PRESETS,
@@ -548,6 +589,15 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
   autoFilename: buildAutoFilename,
 
   async fetchData(filters, origin) {
+    if (filters.customMode === 'custom') {
+      return (filters.customRows || []).slice(0, 5).map((r: any) => ({
+        player_id: r.playerId || 0,
+        player_name: r.playerName || '',
+        primary_value: r.primary || null,
+        secondary_value: r.secondary || null,
+        tertiary_value: r.tertiary || null,
+      })) as TemplateDataRow[]
+    }
     const params = new URLSearchParams({
       leaderboard: 'true',
       metric: filters.primaryStat,
@@ -576,6 +626,9 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
   },
 
   normalizeFilters(next, prev) {
+    // Custom mode skips all dynamic-mode normalization
+    if (next.customMode === 'custom') return next
+
     // Only react to playerType flips; everything else passes through.
     if (next.playerType === prev.playerType) return next
 
@@ -609,10 +662,22 @@ const topFiveLeaderboard: Widget<LeaderboardFilters> = {
   buildScene(filters, rows: TemplateDataRow[], size: SizePreset): Scene {
     const userTitle = (filters.title || '').trim()
     const title = userTitle || buildAutoTitle(filters)
-    const subtitle = buildSubtitle(filters)
+    const subtitle = (filters.subtitle || '').trim() || buildSubtitle(filters)
 
     const layoutCtx: LayoutCtx = {
       filters, rows, width: size.width, height: size.height, title, subtitle,
+      ff: filters.styleFontFamily || undefined,
+      titleFs: filters.styleTitleSize || undefined,
+      subtitleFs: filters.styleSubtitleSize || undefined,
+      valueFs: filters.styleMetricValueSize || undefined,
+      labelFs: filters.styleMetricLabelSize || undefined,
+      customStatLabels: filters.customMode === 'custom'
+        ? {
+            primary: filters.customPrimaryLabel || 'Stat',
+            secondary: filters.customSecondaryLabel || undefined,
+            tertiary: filters.customTertiaryLabel || undefined,
+          }
+        : undefined,
     }
 
     // Bucket selection: only true wide aspects (≥ 1.5) use the row-flow
