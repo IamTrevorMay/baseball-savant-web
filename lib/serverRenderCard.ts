@@ -129,9 +129,9 @@ async function drawPlayerImage(ctx: SKRSContext2D, el: SceneElement) {
     ctx.stroke()
   }
 
-  // Image
-  if (p.playerId) {
-    const imgUrl = `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`
+  // Image (supports customImageUrl for team logos etc.)
+  if (p.customImageUrl || p.playerId) {
+    const imgUrl = p.customImageUrl || `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${p.playerId}/headshot/67/current`
     const img = await fetchImage(imgUrl)
     if (img) {
       ctx.save()

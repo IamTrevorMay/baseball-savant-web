@@ -3,8 +3,8 @@
 Canonical reference for every metric variable, filter parameter, and source column used in stats queries across Triton. Use these exact labels (the **key** column) when writing models, prompts, or new queries — they're the same strings the API and Scene Composer pass around internally.
 
 **Canonical sources:**
-- `lib/reportMetrics.ts` — `METRICS`, `SCENE_METRICS`, `GAME_METRICS`, `TRITON_PLUS_METRIC_KEYS`, `DECEPTION_METRIC_KEYS`, `ERA_METRIC_KEYS`
-- `lib/sql.ts` — `TRITON_COLUMNS`, `IP_ESTIMATE_SQL`, `ERA_COMPONENTS_SQL`, `computeFIP()`, `computeXERA()`
+- `lib/reportMetrics.ts` — `METRICS`, `SCENE_METRICS`, `GAME_METRICS`, `TRITON_PLUS_METRIC_KEYS`, `DECEPTION_METRIC_KEYS`, `ERA_METRIC_KEYS`, `COMPUTED_METRIC_KEYS`
+- `lib/sql.ts` — `TRITON_COLUMNS`, `IP_ESTIMATE_SQL`, `ERA_COMPONENTS_SQL`, `computeFIP()`, `computeXERA()`, `computeWRCPlus()`
 - `lib/sceneTypes.ts` — `DataSchemaType`, `GlobalFilterType`, `ElementType`
 - `app/api/scene-stats/route.ts` — primary consumer of all of the above
 
@@ -115,6 +115,7 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 | `obp` | OBP | reached / non-bunt PAs |
 | `slg` | SLG | total bases / at-bats |
 | `ops` | OPS | `obp + slg` |
+| `wrc_plus` | wRC+ | Computed in JS: `(((wOBA - lgwOBA) / wOBA_scale + r_pa) / (parkFactor/100 * r_pa)) * 100`. Uses `SEASON_CONSTANTS` + `PARK_FACTORS`. In `COMPUTED_METRIC_KEYS`, not in `METRICS`. |
 
 ### 1.5 Expected (Statcast)
 
@@ -216,11 +217,12 @@ Not in `METRICS`. Built in `/api/scene-stats` via `backfillEraMetrics()` from `E
 
 | Key | Label | Helper |
 |---|---|---|
-| `era` | ERA | direct from componentized aggregation |
+| `era` | ERA | `player_season_stats` table (populated by `/api/cron/player-stats`). Fallback: `computeFIP()`. |
 | `fip` | FIP | `computeFIP({k, bb, hbp, hr, ip}, {cfip})` |
 | `xera` | xERA | `computeXERA({ip, pa, xwoba}, {woba, woba_scale, lg_era})` |
 
 Membership set: `ERA_METRIC_KEYS` (lib/reportMetrics.ts:231).
+Also: `COMPUTED_METRIC_KEYS` — `wrc_plus` (see §1.4).
 
 ---
 
@@ -347,6 +349,7 @@ For value rendering: `raw` · `1f` · `2f` · `3f` · `integer` · `percent`
 | `pitcher_season_command` | pitcher × pitch_type × year | — | Raw + plus command metrics; pitch-weighted aggregate for season |
 | `pitcher_season_deception` | pitcher × pitch_type × year | 2017+ | `deception_score`, `unique_score` |
 | `league_averages` | (season, level, role, metric) | — | 50th-percentile benchmarks for qualified players |
+| `player_season_stats` | player × season × stat_group | 2015+ | ERA, W, L, SV, HLD, IP, ER, R, RBI, SB from MLB Stats API. Populated by `/api/cron/player-stats` nightly. |
 | `glossary` | metric definitions | — | UI tooltips |
 | `filter_templates` | saved filter configs | — | |
 

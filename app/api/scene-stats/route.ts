@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
-import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS } from '@/lib/reportMetrics'
-import { SEASON_CONSTANTS, LATEST_SEASON_YEAR } from '@/lib/constants-data'
+import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS, COMPUTED_METRIC_KEYS } from '@/lib/reportMetrics'
+import { SEASON_CONSTANTS, LATEST_SEASON_YEAR, PARK_FACTORS } from '@/lib/constants-data'
 import { computeXDeceptionScore, isFastball } from '@/lib/leagueStats'
 import {
   TRITON_COLUMNS, TRITON_COL,
   ERA_COMPONENTS_SQL,
-  computeFIP, computeXERA,
+  computeFIP, computeXERA, computeWRCPlus,
   pivotTritonRows, backfillFromLookup,
   backfillPitchesMetrics, backfillTritonMetrics, backfillEraMetrics,
 } from '@/lib/sql'
@@ -21,6 +21,400 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
+
+    // ── Team Stats mode (team-level aggregation with league ranks) ──────
+    if (sp.get('teamStats') === 'true') {
+      const team = sp.get('team')
+      const statScope = sp.get('statScope') || 'pitching'
+      const pitcherRole = sp.get('pitcherRole') // 'starter' | 'reliever' | null (all)
+      const metricList = (sp.get('metrics') || '').split(',').filter(Boolean)
+      const gameYear = sp.get('gameYear')
+      const dateFrom = sp.get('dateFrom')
+      const dateTo = sp.get('dateTo')
+
+      if (!team || metricList.length === 0) {
+        return NextResponse.json({ error: 'team and metrics required' }, { status: 400 })
+      }
+
+      // Team column: derived from home_team/away_team + inning_topbot
+      // Pitching team = fielding team; Batting team = at-bat team
+      const teamExpr = statScope === 'hitting'
+        ? "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
+        : "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END"
+
+      const where: string[] = ["p.pitch_type NOT IN ('PO', 'IN')", "p.game_type = 'R'"]
+      if (gameYear) where.push(`p.game_year = ${parseInt(gameYear)}`)
+      if (dateFrom) where.push(`p.game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+      if (dateTo) where.push(`p.game_date <= '${dateTo.replace(/'/g, "''")}'`)
+
+      // SP/RP filter: pre-fetch starter IDs then filter in JavaScript.
+      // Embedding pitcher filters (IN/CTE/JOIN) into the main pitches
+      // aggregation query exceeds Supabase statement timeouts, so we
+      // run unfiltered per-pitcher queries and post-filter in JS.
+      let starterIds: Set<number> | null = null
+      if (statScope === 'pitching' && (pitcherRole === 'starter' || pitcherRole === 'reliever')) {
+        const roleYear = parseInt(gameYear || String(new Date().getFullYear()))
+        // Identify starters from player_season_stats (tiny table, instant).
+        // Heuristic: IP >= 10 with no saves/holds → starter.
+        const { data: sid, error: se } = await q(
+          `SELECT player_id as pitcher FROM player_season_stats WHERE season = ${roleYear} AND stat_group = 'pitching' AND innings_pitched >= 10 AND COALESCE(saves, 0) = 0 AND COALESCE(holds, 0) = 0`
+        )
+        if (se) throw new Error(se.message)
+        starterIds = new Set((sid || []).map((r: any) => Number(r.pitcher)))
+      }
+      const keepPitcher = (pid: number) =>
+        !starterIds ? true : pitcherRole === 'starter' ? starterIds.has(pid) : !starterIds.has(pid)
+
+      // Split metrics by source: pitches-table vs ERA vs computed (wRC+)
+      const pitchesMetrics = metricList.filter(m => METRICS[m] && !ERA_METRIC_KEYS.has(m))
+      const eraMetrics = metricList.filter(m => ERA_METRIC_KEYS.has(m))
+      const computedMetrics = metricList.filter(m => COMPUTED_METRIC_KEYS.has(m))
+      const validMetrics = [...pitchesMetrics, ...eraMetrics, ...computedMetrics]
+
+      if (validMetrics.length === 0) {
+        return NextResponse.json({ error: 'No valid metrics' }, { status: 400 })
+      }
+
+      // Run pitches-table query and ERA components query in parallel
+      const tasks: Promise<void>[] = []
+      let allTeams: Record<string, any>[] = []
+
+      // 1. Standard pitches-table metrics
+      if (pitchesMetrics.length > 0) {
+        const selects = pitchesMetrics.map(m => `${METRICS[m]} as ${m}`)
+        if (starterIds) {
+          // Per-pitcher aggregation → JS filter + re-aggregate by team
+          // Additive metrics (like IP) are summed; rate metrics use weighted average.
+          const ADDITIVE = new Set(['ip'])
+          const sql = `
+            SELECT p.pitcher, (${teamExpr}) as team, COUNT(*) as n, ${selects.join(', ')}
+            FROM pitches p
+            WHERE ${where.join(' AND ')}
+            GROUP BY p.pitcher, (${teamExpr})
+          `
+          tasks.push((async () => {
+            const { data, error: err } = await q(sql)
+            if (err) throw new Error(err.message)
+            const teamMap = new Map<string, { n: number; sums: Record<string, number> }>()
+            for (const row of (data || []) as any[]) {
+              if (!keepPitcher(Number(row.pitcher))) continue
+              if (!teamMap.has(row.team)) teamMap.set(row.team, { n: 0, sums: {} })
+              const agg = teamMap.get(row.team)!
+              const cnt = Number(row.n)
+              agg.n += cnt
+              for (const m of pitchesMetrics) {
+                if (row[m] != null) {
+                  agg.sums[m] = (agg.sums[m] || 0) + (ADDITIVE.has(m) ? Number(row[m]) : Number(row[m]) * cnt)
+                }
+              }
+            }
+            allTeams = Array.from(teamMap.entries())
+              .filter(([, a]) => a.n >= 100)
+              .map(([t, a]) => {
+                const r: Record<string, any> = { team: t }
+                for (const m of pitchesMetrics) {
+                  r[m] = a.sums[m] != null ? (ADDITIVE.has(m) ? a.sums[m] : a.sums[m] / a.n) : null
+                }
+                return r
+              })
+          })())
+        } else {
+          // Direct team aggregation (no role filter)
+          const sql = `
+            SELECT (${teamExpr}) as team, ${selects.join(', ')}
+            FROM pitches p
+            WHERE ${where.join(' AND ')}
+            GROUP BY (${teamExpr})
+            HAVING COUNT(*) >= 100
+          `
+          tasks.push((async () => {
+            const { data, error: err } = await q(sql)
+            if (err) throw new Error(err.message)
+            allTeams = (data || []) as Record<string, any>[]
+          })())
+        }
+      }
+
+      // 2. ERA/FIP/xERA: compute from components per team
+      const eraByTeam = new Map<string, Record<string, any>>()
+      if (eraMetrics.length > 0) {
+        if (starterIds) {
+          // Per-pitcher ERA components → JS filter + sum components by team
+          const eraSql = `
+            SELECT p.pitcher, (${teamExpr}) as team,
+              ${ERA_COMPONENTS_SQL},
+              COUNT(estimated_woba_using_speedangle) as xwoba_n
+            FROM pitches p
+            WHERE ${where.join(' AND ')}
+            GROUP BY p.pitcher, (${teamExpr})
+          `
+          tasks.push((async () => {
+            const { data, error: err } = await q(eraSql)
+            if (err) throw new Error(err.message)
+            const yr = parseInt(gameYear || String(new Date().getFullYear()))
+            const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+            // Sum ERA components per team (counts are additive; xwoba needs weighted avg)
+            const tc = new Map<string, { k: number; bb: number; hbp: number; hr: number; ip: number; pa: number; xwoba_sum: number; xwoba_n: number }>()
+            for (const row of (data || []) as any[]) {
+              if (!keepPitcher(Number(row.pitcher))) continue
+              const t = row.team
+              if (!tc.has(t)) tc.set(t, { k: 0, bb: 0, hbp: 0, hr: 0, ip: 0, pa: 0, xwoba_sum: 0, xwoba_n: 0 })
+              const c = tc.get(t)!
+              c.k += Number(row.k) || 0
+              c.bb += Number(row.bb) || 0
+              c.hbp += Number(row.hbp) || 0
+              c.hr += Number(row.hr) || 0
+              c.ip += Number(row.ip) || 0
+              c.pa += Number(row.pa) || 0
+              const xn = Number(row.xwoba_n) || 0
+              if (row.xwoba != null && xn > 0) { c.xwoba_sum += Number(row.xwoba) * xn; c.xwoba_n += xn }
+            }
+            for (const [t, c] of tc) {
+              const xwoba = c.xwoba_n > 0 ? c.xwoba_sum / c.xwoba_n : null
+              const comps = { k: c.k, bb: c.bb, hbp: c.hbp, hr: c.hr, ip: c.ip, pa: c.pa, xwoba }
+              const fip = computeFIP(comps, constants)
+              const xera = computeXERA(comps, constants)
+              eraByTeam.set(t, { era: fip, fip, xera })
+            }
+          })())
+        } else {
+          const eraSql = `
+            SELECT (${teamExpr}) as team, ${ERA_COMPONENTS_SQL}
+            FROM pitches p
+            WHERE ${where.join(' AND ')}
+            GROUP BY (${teamExpr})
+            HAVING COUNT(*) >= 100
+          `
+          tasks.push((async () => {
+            const { data, error: err } = await q(eraSql)
+            if (err) throw new Error(err.message)
+            const yr = parseInt(gameYear || String(new Date().getFullYear()))
+            const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+            for (const row of (data || []) as Record<string, any>[]) {
+              const fip = computeFIP(row as any, constants)
+              const xera = computeXERA(row as any, constants)
+              eraByTeam.set(row.team, { era: fip, fip, xera })
+            }
+          })())
+        }
+      }
+
+      // 3. Runs: sum player_season_stats.runs grouped by team derived from pitches
+      const runsByTeam = new Map<string, Record<string, any>>()
+      if (computedMetrics.includes('runs')) {
+        const yr = parseInt(gameYear || String(new Date().getFullYear()))
+        const group = statScope === 'hitting' ? 'hitting' : 'pitching'
+        const playerCol = statScope === 'hitting' ? 'batter' : 'pitcher'
+        if (starterIds) {
+          // Per-pitcher runs → JS filter + sum by team
+          const runsSql = `
+            SELECT pss.player_id, pt.team, pss.runs
+            FROM player_season_stats pss
+            JOIN (
+              SELECT ${playerCol} as pid,
+                MODE() WITHIN GROUP (ORDER BY (${teamExpr})) as team
+              FROM pitches p
+              WHERE ${where.join(' AND ')}
+              GROUP BY ${playerCol}
+            ) pt ON pt.pid = pss.player_id
+            WHERE pss.season = ${yr} AND pss.stat_group = '${group}'
+          `
+          tasks.push((async () => {
+            const { data, error: err } = await q(runsSql)
+            if (err) throw new Error(err.message)
+            for (const row of (data || []) as any[]) {
+              if (!keepPitcher(Number(row.player_id))) continue
+              const prev = runsByTeam.get(row.team)?.runs || 0
+              runsByTeam.set(row.team, { runs: prev + Number(row.runs || 0) })
+            }
+          })())
+        } else {
+          const runsSql = `
+            SELECT pt.team, SUM(pss.runs) as runs
+            FROM player_season_stats pss
+            JOIN (
+              SELECT ${playerCol} as pid,
+                MODE() WITHIN GROUP (ORDER BY (${teamExpr})) as team
+              FROM pitches p
+              WHERE ${where.join(' AND ')}
+              GROUP BY ${playerCol}
+            ) pt ON pt.pid = pss.player_id
+            WHERE pss.season = ${yr} AND pss.stat_group = '${group}'
+            GROUP BY pt.team
+          `
+          tasks.push((async () => {
+            const { data, error: err } = await q(runsSql)
+            if (err) throw new Error(err.message)
+            for (const row of (data || []) as Record<string, any>[]) {
+              runsByTeam.set(row.team, { runs: Number(row.runs) })
+            }
+          })())
+        }
+      }
+
+      // 4. wRC+: compute per team from wOBA + park factors (no role filter)
+      const wrcByTeam = new Map<string, Record<string, any>>()
+      if (computedMetrics.includes('wrc_plus')) {
+        // For team wRC+ we always use the batting team perspective
+        const battingTeamExpr = "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
+        const wrcSql = `
+          SELECT (${battingTeamExpr}) as team,
+            AVG(woba_value) as woba,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa
+          FROM pitches p
+          WHERE ${where.join(' AND ')}
+          GROUP BY (${battingTeamExpr})
+          HAVING COUNT(*) >= 100
+        `
+        tasks.push((async () => {
+          const { data, error: err } = await q(wrcSql)
+          if (err) throw new Error(err.message)
+          const yr = parseInt(gameYear || String(new Date().getFullYear()))
+          const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+          for (const row of (data || []) as Record<string, any>[]) {
+            const woba = row.woba != null ? Number(row.woba) : null
+            if (woba == null) continue
+            const pf = PARK_FACTORS[row.team]?.basic || 100
+            const wrcPlus = computeWRCPlus(woba, constants, pf)
+            wrcByTeam.set(row.team, { wrc_plus: wrcPlus })
+          }
+        })())
+      }
+
+      // When role-filtered, per-pitcher queries are heavier — run sequentially
+      // to avoid Supabase resource contention that causes statement timeouts.
+      if (starterIds) {
+        for (const task of tasks) await task
+      } else {
+        await Promise.all(tasks)
+      }
+
+      // Merge ERA values into allTeams
+      if (eraByTeam.size > 0) {
+        if (allTeams.length === 0) {
+          allTeams = Array.from(eraByTeam.entries()).map(([t, vals]) => ({ team: t, ...vals }))
+        } else {
+          for (const row of allTeams) {
+            const eraVals = eraByTeam.get(row.team)
+            if (eraVals) Object.assign(row, eraVals)
+          }
+          for (const [t, vals] of eraByTeam) {
+            if (!allTeams.find(r => r.team === t)) {
+              allTeams.push({ team: t, ...vals })
+            }
+          }
+        }
+      }
+
+      // Merge wRC+ values into allTeams
+      if (wrcByTeam.size > 0) {
+        if (allTeams.length === 0) {
+          allTeams = Array.from(wrcByTeam.entries()).map(([t, vals]) => ({ team: t, ...vals }))
+        } else {
+          for (const row of allTeams) {
+            const wrcVals = wrcByTeam.get(row.team)
+            if (wrcVals) Object.assign(row, wrcVals)
+          }
+          for (const [t, vals] of wrcByTeam) {
+            if (!allTeams.find(r => r.team === t)) {
+              allTeams.push({ team: t, ...vals })
+            }
+          }
+        }
+      }
+
+      // Merge runs values into allTeams
+      if (runsByTeam.size > 0) {
+        if (allTeams.length === 0) {
+          allTeams = Array.from(runsByTeam.entries()).map(([t, vals]) => ({ team: t, ...vals }))
+        } else {
+          for (const row of allTeams) {
+            const runsVals = runsByTeam.get(row.team)
+            if (runsVals) Object.assign(row, runsVals)
+          }
+          for (const [t, vals] of runsByTeam) {
+            if (!allTeams.find(r => r.team === t)) {
+              allTeams.push({ team: t, ...vals })
+            }
+          }
+        }
+      }
+      const thisTeam = allTeams.find(r => r.team === team)
+
+      // Compute rank for each metric
+      // Determine sort direction per metric (higher is better for most rate stats)
+      const LOWER_IS_BETTER = new Set(['bb_pct', 'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'era', 'fip', 'xera'])
+      const ranks: Record<string, { rank: number; total: number }> = {}
+
+      for (const m of validMetrics) {
+        const vals = allTeams
+          .filter(r => r[m] != null)
+          .map(r => ({ team: r.team, val: Number(r[m]) }))
+          .sort((a, b) => LOWER_IS_BETTER.has(m)
+            ? a.val - b.val   // lower is better → ascending
+            : b.val - a.val   // higher is better → descending
+          )
+
+        const idx = vals.findIndex(v => v.team === team)
+        ranks[m] = { rank: idx >= 0 ? idx + 1 : vals.length + 1, total: vals.length }
+      }
+
+      // For pitching context, invert certain metrics (lower is better for pitchers)
+      if (statScope === 'pitching') {
+        const PITCHER_LOWER_BETTER = new Set(['ba', 'slg', 'obp', 'ops', 'avg_ev', 'max_ev', 'avg_la', 'avg_dist', 'hard_hit_pct', 'barrel_pct', 'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'bb_pct'])
+        for (const m of validMetrics) {
+          if (PITCHER_LOWER_BETTER.has(m) && !LOWER_IS_BETTER.has(m)) {
+            // Re-rank: lower is better for pitchers on these batting-against metrics
+            const vals = allTeams
+              .filter(r => r[m] != null)
+              .map(r => ({ team: r.team, val: Number(r[m]) }))
+              .sort((a, b) => a.val - b.val)
+            const idx = vals.findIndex(v => v.team === team)
+            ranks[m] = { rank: idx >= 0 ? idx + 1 : vals.length + 1, total: vals.length }
+          }
+        }
+      }
+
+      // For hitting context, invert certain metrics (lower is better for hitters)
+      if (statScope === 'hitting') {
+        const HITTER_LOWER_BETTER = new Set(['k_pct', 'chase_pct', 'whiff_pct', 'swstr_pct'])
+        for (const m of validMetrics) {
+          if (HITTER_LOWER_BETTER.has(m)) {
+            const vals = allTeams
+              .filter(r => r[m] != null)
+              .map(r => ({ team: r.team, val: Number(r[m]) }))
+              .sort((a, b) => a.val - b.val)
+            const idx = vals.findIndex(v => v.team === team)
+            ranks[m] = { rank: idx >= 0 ? idx + 1 : vals.length + 1, total: vals.length }
+          }
+        }
+      }
+
+      const TEAM_NAMES: Record<string, string> = {
+        ARI:'Arizona Diamondbacks',ATL:'Atlanta Braves',BAL:'Baltimore Orioles',BOS:'Boston Red Sox',
+        CHC:'Chicago Cubs',CWS:'Chicago White Sox',CIN:'Cincinnati Reds',CLE:'Cleveland Guardians',
+        COL:'Colorado Rockies',DET:'Detroit Tigers',HOU:'Houston Astros',KC:'Kansas City Royals',
+        LAA:'Los Angeles Angels',LAD:'Los Angeles Dodgers',MIA:'Miami Marlins',MIL:'Milwaukee Brewers',
+        MIN:'Minnesota Twins',NYM:'New York Mets',NYY:'New York Yankees',OAK:'Oakland Athletics',
+        PHI:'Philadelphia Phillies',PIT:'Pittsburgh Pirates',SD:'San Diego Padres',SF:'San Francisco Giants',
+        SEA:'Seattle Mariners',STL:'St. Louis Cardinals',TB:'Tampa Bay Rays',TEX:'Texas Rangers',
+        TOR:'Toronto Blue Jays',WSH:'Washington Nationals',
+      }
+
+      const stats: Record<string, any> = {}
+      if (thisTeam) {
+        for (const m of validMetrics) stats[m] = thisTeam[m] ?? null
+      }
+
+      return NextResponse.json({
+        teamStats: {
+          team,
+          teamName: TEAM_NAMES[team] || team,
+          stats,
+          ranks,
+        },
+      })
+    }
 
     // ── Trends mode (Surges & Concerns from /api/trends) ────────────────
     if (sp.get('trends') === 'true') {
@@ -252,19 +646,21 @@ export async function GET(req: NextRequest) {
       const { data: rows, error } = await q(sql)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-      // Also fetch ERA + R from MLB Stats API for pitchers
+      // Fetch ERA + R from player_season_stats table
       const mlbStats: Record<number, { era: string; r: number }> = {}
-      await Promise.all(playerIds.map(async (id) => {
-        try {
-          const group = playerType === 'batter' ? 'hitting' : 'pitching'
-          const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=season&season=${gameYear}&group=${group}`, { signal: AbortSignal.timeout(5000) })
-          if (res.ok) {
-            const d = await res.json()
-            const s = d.stats?.[0]?.splits?.[0]?.stat
-            if (s) mlbStats[id] = { era: s.era || '0.00', r: s.runs || 0 }
-          }
-        } catch {}
-      }))
+      const group = playerType === 'batter' ? 'hitting' : 'pitching'
+      const { data: pssData } = await supabase
+        .from('player_season_stats')
+        .select('player_id, era, runs')
+        .in('player_id', playerIds)
+        .eq('season', gameYear)
+        .eq('stat_group', group)
+      for (const row of (pssData || []) as any[]) {
+        mlbStats[row.player_id] = {
+          era: row.era != null ? Number(row.era).toFixed(2) : '0.00',
+          r: row.runs ?? 0,
+        }
+      }
 
       // Build player data in the order requested
       const playerMap = new Map((rows as any[]).map((r: any) => [r.player_id, r]))
@@ -510,31 +906,139 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ leaderboard: result })
       }
 
-      // ── ERA from MLB Stats API ──────────────────────────────────────────
-      if (metric === 'era') {
+      // ── Runs leaderboard (from player_season_stats) ──────────────────────
+      if (metric === 'runs') {
         const year = parseInt(gameYear || '2025')
-        // Fetch 50 leaders to have room after filtering; MLB API handles qualifying IP
-        const mlbUrl = `https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=earnedRunAverage&season=${year}&statGroup=pitching&limit=50`
-        const mlbResp = await fetch(mlbUrl, { next: { revalidate: 3600 } })
-        if (!mlbResp.ok) return NextResponse.json({ error: 'MLB API error' }, { status: 502 })
-        const mlbData = await mlbResp.json()
-        const leaders = mlbData?.leagueLeaders?.[0]?.leaders || []
+        const group = playerType === 'batter' ? 'hitting' : 'pitching'
 
-        let rows = leaders.map((l: any) => ({
-          player_id: l.person?.id,
-          player_name: l.person?.fullName || '',
-          era: parseFloat(l.value) || null,
+        const runsSql = `
+          SELECT pss.player_id, pl.name as player_name, pss.runs
+          FROM player_season_stats pss
+          JOIN players pl ON pl.id = pss.player_id
+          WHERE pss.season = ${year}
+            AND pss.stat_group = '${group}'
+            AND pss.runs IS NOT NULL
+        `
+        const { data, error } = await q(runsSql)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+        let rows = ((data || []) as any[]).map(r => ({
+          player_id: r.player_id, player_name: r.player_name, runs: Number(r.runs),
         }))
 
         const jsSortDir = sortDir === 'ASC' ? 1 : -1
-        rows.sort((a: any, b: any) => {
+        rows.sort((a, b) => (a.runs - b.runs) * jsSortDir)
+        rows = rows.slice(0, limit)
+
+        const result = rows.map(r => {
+          const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name, primary_value: r.runs }
+          for (const m of allMetrics) { if (m.alias !== 'primary_value') out[m.alias] = null }
+          return out
+        })
+
+        // Backfill secondary/tertiary from pitches
+        const pitchesBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !COMPUTED_METRIC_KEYS.has(m.key))
+        const extraWhereRuns = [`game_year = ${year}`, ...(pitchType ? [`pitch_type = '${pitchType.replace(/'/g, "''")}'`] : [])]
+        await backfillPitchesMetrics(q, result, pitchesBackfill, playerType === 'batter' ? 'batter' : 'pitcher', extraWhereRuns)
+
+        return NextResponse.json({ leaderboard: result })
+      }
+
+      // ── wRC+ leaderboard (computed from wOBA + park factors) ────────────
+      if (metric === 'wrc_plus') {
+        const year = parseInt(gameYear || '2025')
+        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+        const minSample = parseInt(sp.get('minSample') || '150')
+
+        const where: string[] = ["pitch_type NOT IN ('PO', 'IN')", "game_type = 'R'"]
+        if (gameYear) where.push(`game_year = ${year}`)
+        if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+        if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
+
+        // Query all batters' wOBA, PA, and primary team
+        const wrcSql = `
+          SELECT p.batter as player_id, pl.name as player_name,
+            AVG(woba_value) as woba,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+            MODE() WITHIN GROUP (ORDER BY CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END) as primary_team
+          FROM pitches p
+          JOIN players pl ON pl.id = p.batter
+          WHERE ${where.join(' AND ')}
+          GROUP BY p.batter, pl.name
+          HAVING COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) >= ${minSample}
+        `
+        const { data, error } = await q(wrcSql)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+        let rows = ((data || []) as any[]).map(r => {
+          const woba = r.woba != null ? Number(r.woba) : null
+          const pf = PARK_FACTORS[r.primary_team]?.basic || 100
+          const wrcPlus = woba != null ? computeWRCPlus(woba, constants, pf) : null
+          return { player_id: r.player_id, player_name: r.player_name, wrc_plus: wrcPlus }
+        }).filter(r => r.wrc_plus != null)
+
+        const jsSortDir = sortDir === 'ASC' ? 1 : -1
+        rows.sort((a, b) => {
+          if (a.wrc_plus == null && b.wrc_plus == null) return 0
+          if (a.wrc_plus == null) return 1; if (b.wrc_plus == null) return -1
+          return (a.wrc_plus - b.wrc_plus) * jsSortDir
+        })
+        rows = rows.slice(0, limit)
+
+        const result = rows.map(r => {
+          const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name, primary_value: r.wrc_plus }
+          for (const m of allMetrics) { if (m.alias !== 'primary_value') out[m.alias] = null }
+          return out
+        })
+
+        // Backfill secondary/tertiary from pitches
+        const pitchesBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !COMPUTED_METRIC_KEYS.has(m.key))
+        const extraWhereWrc = [`game_year = ${year}`, ...(pitchType ? [`pitch_type = '${pitchType.replace(/'/g, "''")}'`] : [])]
+        await backfillPitchesMetrics(q, result, pitchesBackfill, 'batter', extraWhereWrc)
+
+        return NextResponse.json({ leaderboard: result })
+      }
+
+      // ── ERA from player_season_stats table ─────────────────────────────
+      if (metric === 'era') {
+        const year = parseInt(gameYear || '2025')
+        const minIP = parseFloat(sp.get('minSample') || '30')
+
+        // Query player_season_stats joined with players for name,
+        // filtered by IP qualification and pitcher role
+        let eraSql = `
+          SELECT pss.player_id, pl.name as player_name, pss.era,
+            pss.innings_pitched as ip
+          FROM player_season_stats pss
+          JOIN players pl ON pl.id = pss.player_id
+          WHERE pss.season = ${year}
+            AND pss.stat_group = 'pitching'
+            AND pss.era IS NOT NULL
+            AND pss.innings_pitched >= ${minIP}
+        `
+        // Apply pitcher role filter
+        if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
+          eraSql += ` AND pss.player_id ${pitcherRole === 'starter' ? 'IN' : 'NOT IN'} (SELECT pitcher FROM (${roleSubquery}) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+        }
+
+        const { data, error } = await q(eraSql)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+        let rows = ((data || []) as any[]).map(r => ({
+          player_id: r.player_id,
+          player_name: r.player_name,
+          era: Number(r.era),
+        }))
+
+        const jsSortDir = sortDir === 'ASC' ? 1 : -1
+        rows.sort((a, b) => {
           if (a.era == null && b.era == null) return 0
           if (a.era == null) return 1; if (b.era == null) return -1
           return (a.era - b.era) * jsSortDir
         })
         rows = rows.slice(0, limit)
 
-        const result = rows.map((r: any) => {
+        const result = rows.map(r => {
           const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name, primary_value: r.era }
           for (const m of allMetrics) { if (m.alias !== 'primary_value') out[m.alias] = null }
           return out
@@ -834,14 +1338,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ kinematics: data })
     }
 
-    // Stats mode — supports pitches, ERA, Triton+, and Deception metrics
+    // Stats mode — supports pitches, ERA, Triton+, Deception, and computed metrics
     const metricList = (sp.get('metrics') || 'avg_velo,whiff_pct').split(',')
     const pitchesMetrics = metricList.filter(m => METRICS[m] && !ERA_METRIC_KEYS.has(m) && !TRITON_PLUS_METRIC_KEYS.has(m) && !DECEPTION_METRIC_KEYS.has(m))
     const eraMetrics = metricList.filter(m => ERA_METRIC_KEYS.has(m))
     const tritonMetrics = metricList.filter(m => TRITON_PLUS_METRIC_KEYS.has(m))
     const deceptionMetrics = metricList.filter(m => DECEPTION_METRIC_KEYS.has(m))
+    const computedMetrics = metricList.filter(m => COMPUTED_METRIC_KEYS.has(m))
 
-    const hasAny = pitchesMetrics.length + eraMetrics.length + tritonMetrics.length + deceptionMetrics.length > 0
+    const hasAny = pitchesMetrics.length + eraMetrics.length + tritonMetrics.length + deceptionMetrics.length + computedMetrics.length > 0
     if (!hasAny) return NextResponse.json({ error: 'No valid metrics' }, { status: 400 })
 
     const pid = parseInt(playerId)
@@ -874,17 +1379,16 @@ export async function GET(req: NextRequest) {
           if (eraMetrics.includes('fip')) stats.fip = computeFIP(row, constants)
           if (eraMetrics.includes('xera')) stats.xera = computeXERA(row, constants)
           if (eraMetrics.includes('era')) {
-            // ERA from MLB Stats API for accuracy
+            // ERA from player_season_stats table (populated by cron), FIP fallback
             try {
-              const mlbUrl = `https://statsapi.mlb.com/api/v1/people/${pid}/stats?stats=season&season=${year}&group=pitching`
-              const mlbResp = await fetch(mlbUrl, { next: { revalidate: 3600 } })
-              if (mlbResp.ok) {
-                const mlbData = await mlbResp.json()
-                const split = mlbData?.stats?.[0]?.splits?.[0]?.stat
-                stats.era = split?.era != null ? parseFloat(split.era) : computeFIP(row, constants)
-              } else {
-                stats.era = computeFIP(row, constants)
-              }
+              const { data: eraData } = await supabase
+                .from('player_season_stats')
+                .select('era')
+                .eq('player_id', pid)
+                .eq('season', year)
+                .eq('stat_group', 'pitching')
+                .single()
+              stats.era = eraData?.era != null ? Number(eraData.era) : computeFIP(row, constants)
             } catch {
               stats.era = computeFIP(row, constants)
             }
@@ -941,6 +1445,44 @@ export async function GET(req: NextRequest) {
               stats.xdeception_score = Math.round(computeXDeceptionScore(fb, os) * 1000) / 1000
             } else { stats.xdeception_score = null }
           }
+        }
+      })())
+    }
+
+    // 5. Runs (from player_season_stats)
+    if (computedMetrics.includes('runs')) {
+      tasks.push((async () => {
+        const group = playerType === 'batter' ? 'hitting' : 'pitching'
+        const { data: d } = await supabase
+          .from('player_season_stats')
+          .select('runs')
+          .eq('player_id', pid)
+          .eq('season', year)
+          .eq('stat_group', group)
+          .single()
+        stats.runs = d?.runs ?? null
+      })())
+    }
+
+    // 6. wRC+ (computed from wOBA + park factors)
+    if (computedMetrics.includes('wrc_plus')) {
+      tasks.push((async () => {
+        const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+        // Get wOBA and derive primary team for park factor
+        const col = playerType === 'batter' ? 'batter' : 'pitcher'
+        const teamCol = playerType === 'batter'
+          ? "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
+          : "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END"
+        const wrcSql = `SELECT AVG(woba_value) as woba,
+          MODE() WITHIN GROUP (ORDER BY (${teamCol})) as primary_team
+          FROM pitches WHERE ${col} = ${pid} AND pitch_type NOT IN ('PO','IN')${gameYear ? ` AND game_year = ${year}` : ''}`
+        const { data: d } = await q(wrcSql)
+        if (d?.[0]?.woba != null) {
+          const woba = Number(d[0].woba)
+          const pf = PARK_FACTORS[d[0].primary_team]?.basic || 100
+          stats.wrc_plus = computeWRCPlus(woba, constants, pf)
+        } else {
+          stats.wrc_plus = null
         }
       })())
     }

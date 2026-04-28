@@ -46,6 +46,20 @@ export function computeXERA(
   return Math.round((((xwoba - constants.woba) / constants.woba_scale) * (pa / ip) * 9 + constants.lg_era) * 100) / 100
 }
 
+/**
+ * Compute wRC+ from wOBA, season constants, and park factor.
+ * Formula: (((wOBA - lgwOBA) / wOBA_scale + r_pa) / (parkFactor/100 * r_pa)) * 100
+ */
+export function computeWRCPlus(
+  woba: number,
+  constants: { woba: number; woba_scale: number; r_pa: number },
+  parkFactor: number, // e.g. 100 = neutral
+): number | null {
+  const denom = (parkFactor / 100) * constants.r_pa
+  if (denom === 0) return null
+  return Math.round((((woba - constants.woba) / constants.woba_scale + constants.r_pa) / denom) * 100)
+}
+
 /** Pivot pitcher_season_command rows into one entry per pitcher with usage-weighted averages. */
 export function pivotTritonRows(
   rows: Record<string, any>[]

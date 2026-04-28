@@ -149,6 +149,7 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'obp', label: 'OBP', group: 'Batting' },
   { value: 'slg', label: 'SLG', group: 'Batting' },
   { value: 'ops', label: 'OPS', group: 'Batting' },
+  { value: 'wrc_plus', label: 'wRC+', group: 'Batting' },
   // Expected
   { value: 'avg_xba', label: 'xBA', group: 'Expected' },
   { value: 'avg_xwoba', label: 'xwOBA', group: 'Expected' },
@@ -189,6 +190,7 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'triples', label: 'Triples', group: 'Counting' },
   { value: 'hbp_count', label: 'HBP', group: 'Counting' },
   { value: 'usage_pct', label: 'Usage %', group: 'Counting' },
+  { value: 'runs', label: 'Runs', group: 'Counting' },
   // Triton (Raw Command)
   { value: 'avg_brink', label: 'Brink', group: 'Triton' },
   { value: 'avg_cluster', label: 'Cluster', group: 'Triton' },
@@ -229,3 +231,5 @@ export const TRITON_PLUS_METRIC_KEYS = new Set([
 ])
 export const DECEPTION_METRIC_KEYS = new Set(['deception_score', 'unique_score', 'xdeception_score'])
 export const ERA_METRIC_KEYS = new Set(['era', 'fip', 'xera'])
+/** Metrics computed in JS from pitches + constants (not simple SQL expressions) */
+export const COMPUTED_METRIC_KEYS = new Set(['wrc_plus', 'runs'])

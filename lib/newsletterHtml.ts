@@ -110,7 +110,7 @@ function decisionBadge(d: string): string {
 
 function buildSectionTitle(text: string): string {
   return `<tr><td style="padding:0 0 12px 0;">
-    <p style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:${TEXT_MUTED};border-bottom:1px solid ${BORDER};padding-bottom:8px;">
+    <p class="section-title" style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:${TEXT_MUTED};border-bottom:1px solid ${BORDER};padding-bottom:8px;">
       ${escapeHtml(text)}
     </p>
   </td></tr>`
@@ -118,15 +118,15 @@ function buildSectionTitle(text: string): string {
 
 function buildStandoutCard(s: StandoutData): string {
   const fmtLine = s.game_line
-    ? `<p style="margin:4px 0 0;font-size:10px;color:${TEXT_MUTED};font-family:monospace;">
+    ? `<p class="standout-line" style="margin:4px 0 0;font-size:10px;color:${TEXT_MUTED};font-family:monospace;">
         ${decisionBadge(s.game_line.decision)}${s.game_line.ip} IP, ${s.game_line.h} H, ${s.game_line.er} ER, ${s.game_line.bb} BB, ${s.game_line.k} K
       </p>`
     : ''
 
   return `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;margin-bottom:8px;">
     <tr>
-      <td style="padding:12px 14px;">
-        <p style="margin:0 0 8px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:${TEXT_MUTED};">
+      <td class="card-pad" style="padding:12px 14px;">
+        <p class="standout-label" style="margin:0 0 8px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:${TEXT_MUTED};">
           <span style="color:${s.accent_color};">${escapeHtml(s.plus_label)}</span> ${escapeHtml(s.role_label)}
         </p>
         <table cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -135,11 +135,11 @@ function buildStandoutCard(s: StandoutData): string {
               <img src="${headshot(s.player_id)}" alt="" width="40" height="40" style="border-radius:50%;display:block;" />
             </td>
             <td valign="middle">
-              <p style="margin:0;font-size:13px;font-weight:600;color:${TEXT_BRIGHT};">${escapeHtml(s.player_name)}</p>
-              <p style="margin:2px 0 0;font-size:10px;color:${TEXT_MUTED};">${escapeHtml(s.team)}${s.subtitle ? ' &middot; ' + escapeHtml(s.subtitle) : ''}</p>
+              <p class="standout-name" style="margin:0;font-size:13px;font-weight:600;color:${TEXT_BRIGHT};">${escapeHtml(s.player_name)}</p>
+              <p class="standout-team" style="margin:2px 0 0;font-size:10px;color:${TEXT_MUTED};">${escapeHtml(s.team)}${s.subtitle ? ' &middot; ' + escapeHtml(s.subtitle) : ''}</p>
             </td>
             <td width="60" align="right" valign="middle">
-              <p style="margin:0;font-size:22px;font-weight:800;font-family:monospace;color:${plusColorHex(s.plus_value)};">${s.plus_value}</p>
+              <p class="standout-plus" style="margin:0;font-size:22px;font-weight:800;font-family:monospace;color:${plusColorHex(s.plus_value)};">${s.plus_value}</p>
             </td>
           </tr>
         </table>
@@ -161,11 +161,11 @@ function buildSurgesList(alerts: TrendAlert[], type: 'surge' | 'concern'): strin
         <span style="font-size:11px;color:${TEXT_MUTED};font-weight:600;">${i + 1}.</span>
       </td>
       <td style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-        <span style="font-weight:600;color:${TEXT_BRIGHT};font-size:13px;">${escapeHtml(a.player_name)}</span>
+        <span class="trend-name" style="font-weight:600;color:${TEXT_BRIGHT};font-size:13px;">${escapeHtml(a.player_name)}</span>
         <span style="display:inline-block;margin-left:6px;font-size:10px;font-weight:700;color:${badgeColor};background:rgba(${type === 'surge' ? '52,211,153' : '248,113,113'},0.12);padding:1px 6px;border-radius:3px;">
           ${arrow} ${sigmaText}
         </span>
-        <p style="margin:2px 0 0;font-size:11px;color:${TEXT_MUTED};">
+        <p class="trend-detail" style="margin:2px 0 0;font-size:11px;color:${TEXT_MUTED};">
           ${escapeHtml(a.metric_label)}: ${a.season_val.toFixed(1)} &rarr; ${a.recent_val.toFixed(1)} (${a.delta > 0 ? '+' : ''}${a.delta.toFixed(1)})
         </p>
       </td>
@@ -189,25 +189,25 @@ function buildScoreCard(game: GameScore): string {
   return `<td width="25%" valign="top" style="padding:3px;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:6px;">
       <tr>
-        <td style="padding:8px 10px;">
+        <td class="card-pad" style="padding:8px 10px;">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
               <td></td>
-              <td align="right" width="18" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">R</td>
-              ${hasExtras ? `<td align="right" width="18" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">H</td><td align="right" width="18" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">E</td>` : ''}
+              <td align="right" width="18" class="score-rhe-header" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">R</td>
+              ${hasExtras ? `<td align="right" width="18" class="score-rhe-header" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">H</td><td align="right" width="18" class="score-rhe-header" style="font-size:9px;font-weight:600;color:${TEXT_MUTED};padding-bottom:2px;">E</td>` : ''}
             </tr>
             <tr>
-              <td style="font-size:11px;font-weight:700;color:${awayWon ? winColor : loseColor};">${escapeHtml(game.away)}</td>
-              <td align="right" style="font-size:13px;font-weight:800;color:${awayWon ? winColor : loseColor};">${game.awayScore}</td>
-              ${hasExtras ? `<td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.awayHits ?? '—'}</td><td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.awayErrors ?? '—'}</td>` : ''}
+              <td class="score-team" style="font-size:11px;font-weight:700;color:${awayWon ? winColor : loseColor};">${escapeHtml(game.away)}</td>
+              <td align="right" class="score-runs" style="font-size:13px;font-weight:800;color:${awayWon ? winColor : loseColor};">${game.awayScore}</td>
+              ${hasExtras ? `<td align="right" class="score-rhe" style="font-size:11px;color:${TEXT_MUTED};">${game.awayHits ?? '—'}</td><td align="right" class="score-rhe" style="font-size:11px;color:${TEXT_MUTED};">${game.awayErrors ?? '—'}</td>` : ''}
             </tr>
             <tr>
-              <td style="font-size:11px;font-weight:700;color:${!awayWon ? winColor : loseColor};">${escapeHtml(game.home)}</td>
-              <td align="right" style="font-size:13px;font-weight:800;color:${!awayWon ? winColor : loseColor};">${game.homeScore}</td>
-              ${hasExtras ? `<td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.homeHits ?? '—'}</td><td align="right" style="font-size:11px;color:${TEXT_MUTED};">${game.homeErrors ?? '—'}</td>` : ''}
+              <td class="score-team" style="font-size:11px;font-weight:700;color:${!awayWon ? winColor : loseColor};">${escapeHtml(game.home)}</td>
+              <td align="right" class="score-runs" style="font-size:13px;font-weight:800;color:${!awayWon ? winColor : loseColor};">${game.homeScore}</td>
+              ${hasExtras ? `<td align="right" class="score-rhe" style="font-size:11px;color:${TEXT_MUTED};">${game.homeHits ?? '—'}</td><td align="right" class="score-rhe" style="font-size:11px;color:${TEXT_MUTED};">${game.homeErrors ?? '—'}</td>` : ''}
             </tr>
           </table>
-          ${decParts.length > 0 ? `<p style="margin:4px 0 0;font-size:9px;color:${TEXT_MUTED};line-height:1.4;">${decParts.join(' &middot; ')}</p>` : ''}
+          ${decParts.length > 0 ? `<p class="score-dec" style="margin:4px 0 0;font-size:9px;color:${TEXT_MUTED};line-height:1.4;">${decParts.join(' &middot; ')}</p>` : ''}
         </td>
       </tr>
     </table>
@@ -225,7 +225,7 @@ function buildScoresSection(scores: GameScore[]): string {
     while (cells.length < 4) {
       cells.push(`<td width="25%" style="padding:3px;"></td>`)
     }
-    rows.push(`<tr>${cells.join('')}</tr>`)
+    rows.push(`<tr class="scores-row">${cells.join('')}</tr>`)
   }
 
   return `<tr>
@@ -297,6 +297,30 @@ export function buildNewsletterHtml(data: NewsletterData): string {
     @media only screen and (max-width: 660px) {
       .email-container { width: 100% !important; }
       .two-col td { display: block !important; width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; }
+      /* Scores: 4-col → 2-col on mobile */
+      .scores-row td { display: inline-block !important; width: 50% !important; box-sizing: border-box !important; }
+      /* Bump font sizes for readability */
+      .score-team { font-size: 13px !important; }
+      .score-runs { font-size: 15px !important; }
+      .score-dec { font-size: 11px !important; }
+      .score-rhe-header { font-size: 10px !important; }
+      .score-rhe { font-size: 12px !important; }
+      /* Standout cards */
+      .standout-name { font-size: 15px !important; }
+      .standout-team { font-size: 12px !important; }
+      .standout-plus { font-size: 24px !important; }
+      .standout-label { font-size: 10px !important; }
+      .standout-line { font-size: 11px !important; }
+      /* Surges / trends */
+      .trend-name { font-size: 14px !important; }
+      .trend-detail { font-size: 12px !important; }
+      /* Section titles */
+      .section-title { font-size: 12px !important; }
+      /* General card padding */
+      .card-pad { padding: 14px 16px !important; }
+      /* Latest from Mayday */
+      .post-title { font-size: 18px !important; }
+      .post-desc { font-size: 14px !important; }
     }
   </style>
 </head>
@@ -349,7 +373,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                       <table cellpadding="0" cellspacing="0" border="0" width="100%">
                         ${buildSectionTitle('Surges')}
                         <tr>
-                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                          <td class="card-pad" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
                             ${buildSurgesList(data.surges, 'surge')}
                           </td>
                         </tr>
@@ -359,7 +383,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                       <table cellpadding="0" cellspacing="0" border="0" width="100%">
                         ${buildSectionTitle('Concerns')}
                         <tr>
-                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                          <td class="card-pad" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
                             ${buildSurgesList(data.concerns, 'concern')}
                           </td>
                         </tr>
@@ -398,7 +422,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                       <table cellpadding="0" cellspacing="0" border="0" width="100%">
                         ${buildSectionTitle('Top Performances')}
                         <tr>
-                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                          <td class="card-pad" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
                             ${sanitizeClaudeHtml(data.topPerformances)}
                           </td>
                         </tr>
@@ -410,7 +434,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                       <table cellpadding="0" cellspacing="0" border="0" width="100%">
                         ${buildSectionTitle('Rough Outings')}
                         <tr>
-                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                          <td class="card-pad" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
                             ${sanitizeClaudeHtml(data.worstPerformances)}
                           </td>
                         </tr>
@@ -433,7 +457,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                       <table cellpadding="0" cellspacing="0" border="0" width="100%">
                         ${buildSectionTitle('Injuries')}
                         <tr>
-                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                          <td class="card-pad" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
                             ${data.injuries ? sanitizeClaudeHtml(data.injuries) : `<p style="color:${TEXT_MUTED};font-size:12px;margin:0;">No injuries reported.</p>`}
                           </td>
                         </tr>
@@ -443,7 +467,7 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                       <table cellpadding="0" cellspacing="0" border="0" width="100%">
                         ${buildSectionTitle('Transactions')}
                         <tr>
-                          <td style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
+                          <td class="card-pad" style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:12px 16px;">
                             ${data.transactions ? sanitizeClaudeHtml(data.transactions) : `<p style="color:${TEXT_MUTED};font-size:12px;margin:0;">No transactions reported.</p>`}
                           </td>
                         </tr>
@@ -473,11 +497,11 @@ export function buildNewsletterHtml(data: NewsletterData): string {
                           </tr>
                           ` : ''}
                           <tr>
-                            <td style="padding:16px 20px;">
-                              <p style="margin:0;font-size:16px;font-weight:700;color:${TEXT_BRIGHT};line-height:1.4;">
+                            <td class="card-pad" style="padding:16px 20px;">
+                              <p class="post-title" style="margin:0;font-size:16px;font-weight:700;color:${TEXT_BRIGHT};line-height:1.4;">
                                 ${escapeHtml(data.latestPost.title)}
                               </p>
-                              <p style="margin:6px 0 0;font-size:13px;color:${TEXT};line-height:1.5;">
+                              <p class="post-desc" style="margin:6px 0 0;font-size:13px;color:${TEXT};line-height:1.5;">
                                 ${escapeHtml(data.latestPost.description)}
                               </p>
                               ${data.latestPost.author ? `

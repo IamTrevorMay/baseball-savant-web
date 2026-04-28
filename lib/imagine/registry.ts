@@ -10,10 +10,12 @@ import topFiveLeaderboard from '@/lib/imagine/widgets/topFiveLeaderboard'
 import playerStats from '@/lib/imagine/widgets/playerStats'
 import heatMaps from '@/lib/imagine/widgets/heatMaps'
 import heatMapOverlays from '@/lib/imagine/widgets/heatMapOverlays'
+import teamStats from '@/lib/imagine/widgets/teamStats'
 
 export const IMAGINE_WIDGETS: Widget[] = [
   topFiveLeaderboard as unknown as Widget,
   playerStats as unknown as Widget,
+  teamStats as unknown as Widget,
   heatMaps as unknown as Widget,
   heatMapOverlays as unknown as Widget,
 ]

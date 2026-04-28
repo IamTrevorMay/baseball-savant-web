@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/daily-graphics",
       "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/cron/player-stats",
+      "schedule": "30 9 * * *"
     }
   ]
 }
