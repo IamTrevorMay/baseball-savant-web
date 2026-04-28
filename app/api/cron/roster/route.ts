@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { trackCronRun } from '@/lib/cronTracker'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -136,24 +137,34 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [players, umpires] = await Promise.all([
-      syncPlayers(),
-      syncUmpires(),
-    ])
-
-    // Refresh materialized views so updated names are searchable
-    if (players.updated > 0) {
-      await Promise.all([
-        supabaseAdmin.rpc('refresh_player_summary'),
-        supabaseAdmin.rpc('refresh_batter_summary'),
+    const payload = await trackCronRun('roster', async () => {
+      const [players, umpires] = await Promise.all([
+        syncPlayers(),
+        syncUmpires(),
       ])
-    }
 
-    return NextResponse.json({
-      ok: true,
-      players,
-      umpires,
+      // Refresh materialized views so updated names are searchable
+      if (players.updated > 0) {
+        await Promise.all([
+          supabaseAdmin.rpc('refresh_player_summary'),
+          supabaseAdmin.rpc('refresh_batter_summary'),
+        ])
+      }
+
+      return {
+        result: { ok: true as const, players, umpires },
+        counts: {
+          players_updated: players.updated,
+          players_errors: players.errors,
+          players_remaining: players.remaining,
+          umpires_inserted: umpires.inserted,
+          umpires_errors: umpires.errors,
+          umpires_total_games: umpires.total_games,
+        },
+      }
     })
+
+    return NextResponse.json(payload)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })

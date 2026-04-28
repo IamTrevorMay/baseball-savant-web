@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { trackCronRun } from '@/lib/cronTracker'
 
 /**
  * GET /api/cron/player-stats
@@ -16,8 +17,20 @@ export async function GET(req: NextRequest) {
   const year = new Date().getFullYear()
 
   try {
-    const results = await syncPlayerStats(year)
-    return NextResponse.json({ ok: true, year, ...results })
+    const payload = await trackCronRun('player-stats', async () => {
+      const results = await syncPlayerStats(year)
+      return {
+        result: { ok: true as const, year, ...results },
+        counts: {
+          year,
+          pitchers: results.pitchers,
+          batters: results.batters,
+          pitchingUpserted: results.pitchingUpserted,
+          hittingUpserted: results.hittingUpserted,
+        },
+      }
+    })
+    return NextResponse.json(payload)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

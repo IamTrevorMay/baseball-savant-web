@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncMilbPitches } from '@/app/api/update/milb/route'
+import { trackCronRun } from '@/lib/cronTracker'
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -23,8 +24,20 @@ export async function GET(req: NextRequest) {
   const fmt = (d: Date) => d.toISOString().split('T')[0]
 
   try {
-    const result = await syncMilbPitches(fmt(start), fmt(end), gameType)
-    return NextResponse.json({ ok: true, gameType, start: fmt(start), end: fmt(end), ...result })
+    const payload = await trackCronRun('milb-pitches', async () => {
+      const result = await syncMilbPitches(fmt(start), fmt(end), gameType)
+      const summary = {
+        gameType,
+        gamesProcessed: (result as any)?.gamesProcessed,
+        totalRows: (result as any)?.totalRows,
+        errors: Array.isArray((result as any)?.errors) ? (result as any).errors.length : undefined,
+      }
+      return {
+        result: { ok: true as const, gameType, start: fmt(start), end: fmt(end), ...result },
+        counts: summary,
+      }
+    })
+    return NextResponse.json(payload)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })

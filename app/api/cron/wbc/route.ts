@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { trackCronRun } from '@/lib/cronTracker'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -200,32 +201,65 @@ export async function GET(req: NextRequest) {
   const season = req.nextUrl.searchParams.get('season')
 
   try {
-    // Backfill mode: ingest a full season
-    if (backfill === '2023' || season === '2023') {
-      const result = await ingestWBCGames(2023, '2023-03-07', '2023-03-22')
-      return NextResponse.json({ season: 2023, ...result })
-    }
+    const payload = await trackCronRun<Record<string, any>>('wbc', async () => {
+      // Backfill mode: ingest a full season
+      if (backfill === '2023' || season === '2023') {
+        const result = await ingestWBCGames(2023, '2023-03-07', '2023-03-22')
+        return {
+          result: { season: 2023, ...result },
+          counts: {
+            mode: 'backfill',
+            season: 2023,
+            gamesProcessed: result.gamesProcessed,
+            totalRows: result.totalRows,
+            errors: result.errors.length,
+          },
+        }
+      }
 
-    if (backfill === '2026' || season === '2026') {
-      const result = await ingestWBCGames(2026, '2026-03-01', '2026-03-25')
-      return NextResponse.json({ season: 2026, ...result })
-    }
+      if (backfill === '2026' || season === '2026') {
+        const result = await ingestWBCGames(2026, '2026-03-01', '2026-03-25')
+        return {
+          result: { season: 2026, ...result },
+          counts: {
+            mode: 'backfill',
+            season: 2026,
+            gamesProcessed: result.gamesProcessed,
+            totalRows: result.totalRows,
+            errors: result.errors.length,
+          },
+        }
+      }
 
-    // Daily cron mode — only run if WBC is active
-    const now = new Date()
-    const cutoff = new Date('2026-03-21T00:00:00Z')
-    if (now > cutoff) {
-      return NextResponse.json({ skipped: 'WBC ended' })
-    }
+      // Daily cron mode — only run if WBC is active
+      const now = new Date()
+      const cutoff = new Date('2026-03-21T00:00:00Z')
+      if (now > cutoff) {
+        return {
+          result: { skipped: 'WBC ended' as const },
+          counts: { mode: 'daily', skipped: true, reason: 'WBC ended' },
+        }
+      }
 
-    // Fetch games from last 3 days
-    const threeDaysAgo = new Date(now)
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
-    const startDate = threeDaysAgo.toISOString().slice(0, 10)
-    const endDate = now.toISOString().slice(0, 10)
+      // Fetch games from last 3 days
+      const threeDaysAgo = new Date(now)
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
+      const startDate = threeDaysAgo.toISOString().slice(0, 10)
+      const endDate = now.toISOString().slice(0, 10)
 
-    const result = await ingestWBCGames(2026, startDate, endDate)
-    return NextResponse.json({ mode: 'daily', ...result })
+      const result = await ingestWBCGames(2026, startDate, endDate)
+      return {
+        result: { mode: 'daily' as const, ...result },
+        counts: {
+          mode: 'daily',
+          gamesProcessed: result.gamesProcessed,
+          totalRows: result.totalRows,
+          errors: result.errors.length,
+        },
+      }
+    })
+
+    return NextResponse.json(payload)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
