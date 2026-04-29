@@ -5,12 +5,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { Scene, SceneElement, ELEMENT_CATALOG } from './sceneTypes'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { supabaseAdmin as supabase } from '@/lib/supabase/admin'
 
 /** Compact summary of the current scene for the system prompt */
 export function summarizeScene(scene: Scene): string {

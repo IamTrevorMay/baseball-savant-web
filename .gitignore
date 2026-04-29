@@ -5,6 +5,9 @@ node_modules/
 .env*.local
 .DS_Store
 
+# Vercel env snapshot
+.env.vercel
+
 # MCP server (contains secrets; build artifacts)
 .mcp.json
 mcp-server/build/

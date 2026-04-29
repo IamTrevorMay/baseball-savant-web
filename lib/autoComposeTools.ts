@@ -6,12 +6,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { Scene, SceneElement, ElementType, createElement, ELEMENT_CATALOG } from './sceneTypes'
 import { DATA_DRIVEN_TEMPLATES } from './sceneTemplates'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { supabaseAdmin as supabase } from '@/lib/supabase/admin'
 
 const MLB_API = 'https://statsapi.mlb.com/api/v1'
 

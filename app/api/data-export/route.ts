@@ -1,14 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 const SYSTEM_PROMPT = `You are a data export assistant for the Triton baseball analytics platform. Your job is to help users build custom CSV datasets from a Statcast database with 7.4M+ pitch records (2015-2025) and Lahman historical tables.
 
@@ -194,7 +189,7 @@ async function executeTool(block: any, userId: string): Promise<{ result: string
     const input = block.input as { sql: string; description: string }
     let sql = input.sql.replace(/\bLIMIT\s+\d+/i, 'LIMIT 10')
     if (!/\bLIMIT\b/i.test(sql)) sql += ' LIMIT 10'
-    const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+    const { data, error } = await supabaseAdmin.rpc('run_query', { query_text: sql })
     if (error) {
       result = JSON.stringify({ error: error.message })
     } else {
@@ -206,7 +201,7 @@ async function executeTool(block: any, userId: string): Promise<{ result: string
     if (!sqlLower.startsWith('select') && !sqlLower.startsWith('with')) {
       result = JSON.stringify({ error: 'Only SELECT queries are allowed.' })
     } else {
-      const { data, error } = await supabase.rpc('run_query', { query_text: input.sql })
+      const { data, error } = await supabaseAdmin.rpc('run_query', { query_text: input.sql })
       if (error) {
         result = JSON.stringify({ error: error.message })
       } else {
@@ -226,7 +221,7 @@ async function executeTool(block: any, userId: string): Promise<{ result: string
     }
   } else if (block.name === 'search_players') {
     const input = block.input as { name: string }
-    const { data, error } = await supabase.rpc('search_players', { search_term: input.name, result_limit: 5 })
+    const { data, error } = await supabaseAdmin.rpc('search_players', { search_term: input.name, result_limit: 5 })
     result = JSON.stringify(error ? { error: error.message } : { players: data })
   } else if (block.name === 'mlb_stats_api') {
     const input = block.input as {

@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseAdminLong as supabaseGame } from '@/lib/supabase-admin'
 import { SEASON_CONSTANTS } from '@/lib/constants-data'
 import {
   PITCHER_TIERS, HITTER_TIERS,
   dailyPlayerIndex, pickStats, TIER_LABELS, leagueForTeam, gameDay, secondsUntilReset,
   type StatDef,
 } from '@/lib/gameConstants'
-
-const supabaseGame = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { global: { fetch: (input, init?) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(120000) }) } }
-)
 
 const cache = new Map<string, { data: PuzzleResponse; ts: number }>()
 
