@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { encrypt, blindIndex } from '@/lib/encryption'
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,20 +12,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
     }
 
+    const emailHash = blindIndex(email)
+    const encryptedEmail = encrypt(email)
+
     // Upsert: re-activate if previously unsubscribed
+    // Dedup via email_hash blind index; plaintext email kept during migration
     const { data, error } = await supabaseAdmin
       .from('newsletter_subscribers')
       .upsert(
         {
           email,
+          encrypted_email: encryptedEmail,
+          email_hash: emailHash,
           name,
           is_active: true,
           source: 'api',
           updated_at: new Date().toISOString(),
         },
-        { onConflict: 'email' }
+        { onConflict: 'email_hash' }
       )
-      .select('id, email, is_active')
+      .select('id, is_active')
       .single()
 
     if (error) {

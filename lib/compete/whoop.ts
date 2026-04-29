@@ -1,5 +1,5 @@
-import crypto from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { encrypt, decrypt } from '@/lib/encryption'
 import {
   WhoopCycle,
   WhoopRecovery,
@@ -15,31 +15,14 @@ const WHOOP_API_BASE = 'https://api.prod.whoop.com/developer/v2'
 const WHOOP_AUTH_URL = 'https://api.prod.whoop.com/oauth/oauth2/auth'
 const WHOOP_TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token'
 
-// ---- Encryption helpers (AES-256-GCM) ----
+const WHOOP_KEY = 'WHOOP_ENCRYPTION_KEY'
 
-function getEncryptionKey(): Buffer {
-  const key = process.env.WHOOP_ENCRYPTION_KEY
-  if (!key || key.length < 32) throw new Error('WHOOP_ENCRYPTION_KEY must be at least 32 characters')
-  return Buffer.from(key.slice(0, 32), 'utf-8')
+function whoopEncrypt(plaintext: string): string {
+  return encrypt(plaintext, WHOOP_KEY)
 }
 
-export function encrypt(plaintext: string): string {
-  const iv = crypto.randomBytes(12)
-  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv)
-  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
-  const tag = cipher.getAuthTag()
-  // Format: iv:tag:ciphertext (all base64)
-  return `${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`
-}
-
-export function decrypt(encoded: string): string {
-  const [ivB64, tagB64, dataB64] = encoded.split(':')
-  const iv = Buffer.from(ivB64, 'base64')
-  const tag = Buffer.from(tagB64, 'base64')
-  const data = Buffer.from(dataB64, 'base64')
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), iv)
-  decipher.setAuthTag(tag)
-  return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8')
+function whoopDecrypt(encoded: string): string {
+  return decrypt(encoded, WHOOP_KEY)
 }
 
 // ---- OAuth helpers ----
@@ -107,7 +90,7 @@ async function refreshWhoopToken(tokenRow: WhoopTokenRow): Promise<{ access_toke
   if (!tokenRow.encrypted_refresh_token) {
     throw new Error('No refresh token available — user must re-authenticate')
   }
-  const currentRefreshToken = decrypt(tokenRow.encrypted_refresh_token)
+  const currentRefreshToken = whoopDecrypt(tokenRow.encrypted_refresh_token)
 
   const res = await fetch(WHOOP_TOKEN_URL, {
     method: 'POST',
@@ -128,8 +111,8 @@ async function refreshWhoopToken(tokenRow: WhoopTokenRow): Promise<{ access_toke
 
   // Update stored tokens
   await supabaseAdmin.from('whoop_tokens').update({
-    encrypted_access_token: encrypt(data.access_token),
-    encrypted_refresh_token: encrypt(data.refresh_token),
+    encrypted_access_token: whoopEncrypt(data.access_token),
+    encrypted_refresh_token: whoopEncrypt(data.refresh_token),
     token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
     updated_at: new Date().toISOString(),
   }).eq('id', tokenRow.id)
@@ -149,7 +132,7 @@ export async function ensureValidToken(athleteId: string): Promise<string> {
 
   if (!tokenRow) throw new Error('No WHOOP tokens found')
 
-  let accessToken = decrypt(tokenRow.encrypted_access_token)
+  let accessToken = whoopDecrypt(tokenRow.encrypted_access_token)
 
   // Check if token is expired (with 60s buffer)
   const expiresAt = new Date(tokenRow.token_expires_at).getTime()
@@ -266,7 +249,7 @@ export async function syncWhoopData(athleteId: string, days = 365) {
         kilojoule: c.score?.kilojoule ?? null,
         spo2_pct: recovery?.score?.spo2_percentage ?? null,
         skin_temp_celsius: recovery?.score?.skin_temp_celsius ?? null,
-        raw_data: { cycle: c, recovery },
+        raw_data: whoopEncrypt(JSON.stringify({ cycle: c, recovery })),
       }
     })
     await supabaseAdmin.from('whoop_cycles').upsert(rows, { onConflict: 'athlete_id,whoop_cycle_id' })
@@ -287,7 +270,7 @@ export async function syncWhoopData(athleteId: string, days = 365) {
       sleep_efficiency: s.score?.sleep_efficiency_percentage ?? null,
       sleep_consistency: s.score?.sleep_consistency_percentage ?? null,
       respiratory_rate: s.score?.respiratory_rate ?? null,
-      raw_data: s,
+      raw_data: whoopEncrypt(JSON.stringify(s)),
     }))
     await supabaseAdmin.from('whoop_sleep').upsert(rows, { onConflict: 'athlete_id,whoop_sleep_id' })
   }
@@ -308,7 +291,7 @@ export async function syncWhoopData(athleteId: string, days = 365) {
         max_heart_rate: w.score?.max_heart_rate ?? null,
         distance_meter: w.score?.distance_meter ?? null,
         duration_ms: endMs - startMs,
-        raw_data: w,
+        raw_data: whoopEncrypt(JSON.stringify(w)),
       }
     })
     await supabaseAdmin.from('whoop_workouts').upsert(rows, { onConflict: 'athlete_id,whoop_workout_id' })

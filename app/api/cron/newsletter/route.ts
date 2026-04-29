@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { decrypt } from '@/lib/encryption'
 import { buildNewsletterHtml, highlightsToStandouts, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
 
 export const maxDuration = 120
@@ -55,10 +56,10 @@ export async function GET(req: NextRequest) {
     // Fetch latest Substack post
     const latestPost = await fetchLatestSubstackPost()
 
-    // Fetch active subscribers
+    // Fetch active subscribers (encrypted_email preferred, plaintext fallback during migration)
     const { data: subscribers, error: subError } = await supabaseAdmin
       .from('newsletter_subscribers')
-      .select('email, name, unsubscribe_token')
+      .select('email, encrypted_email, name, unsubscribe_token')
       .eq('is_active', true)
 
     if (subError) {
@@ -79,6 +80,10 @@ export async function GET(req: NextRequest) {
       const batch = subscribers.slice(i, i + BATCH_SIZE)
 
       const emails = batch.map(sub => {
+        // Decrypt email; fall back to plaintext column during migration period
+        const recipientEmail = sub.encrypted_email
+          ? decrypt(sub.encrypted_email)
+          : sub.email
         const unsubscribeUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubscribe_token}`
 
         const html = buildNewsletterHtml({
@@ -98,7 +103,7 @@ export async function GET(req: NextRequest) {
 
         return {
           from: 'Mayday Daily <noreply@tritonapex.io>',
-          to: sub.email,
+          to: recipientEmail,
           subject: `${brief.title || 'Mayday Daily'} — ${formatDateShort(briefDate)}`,
           html,
           headers: {

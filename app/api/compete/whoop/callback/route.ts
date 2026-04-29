@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { exchangeWhoopCode, encrypt } from '@/lib/compete/whoop'
+import { exchangeWhoopCode } from '@/lib/compete/whoop'
+import { encrypt } from '@/lib/encryption'
 
 function fail(siteUrl: string, error: string, detail?: string) {
   const params = new URLSearchParams({ error })
@@ -44,8 +45,8 @@ export async function GET(req: NextRequest) {
     const { error: upsertError } = await supabaseAdmin.from('whoop_tokens').upsert({
       athlete_id: athlete.id,
       whoop_user_id: tokens.whoop_user_id,
-      encrypted_access_token: encrypt(tokens.access_token),
-      encrypted_refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
+      encrypted_access_token: encrypt(tokens.access_token, 'WHOOP_ENCRYPTION_KEY'),
+      encrypted_refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token, 'WHOOP_ENCRYPTION_KEY') : null,
       token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'athlete_id' })
