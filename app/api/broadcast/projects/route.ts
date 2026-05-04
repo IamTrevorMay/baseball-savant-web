@@ -86,6 +86,20 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Auto-add system admins as producers on every new project
+    const adminIds = SYSTEM_ADMIN_IDS.filter(id => id !== user.id)
+    if (adminIds.length > 0) {
+      await supabaseAdmin
+        .from('broadcast_project_members')
+        .insert(adminIds.map(adminId => ({
+          project_id: data.id,
+          user_id: adminId,
+          role: 'producer',
+          invited_by: user.id,
+        })))
+    }
+
     return NextResponse.json({ id: data.id })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })

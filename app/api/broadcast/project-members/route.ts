@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkProjectAccess } from '@/lib/broadcast/checkProjectAccess'
 
+const SYSTEM_ADMIN_IDS = (process.env.BROADCAST_ADMIN_IDS || '').split(',').filter(Boolean)
+
 // GET — list members + owner for a project (viewer+ access)
 export async function GET(req: NextRequest) {
   try {
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
 
     const level = await checkProjectAccess(project_id, user.id)
-    if (level !== 'owner') return NextResponse.json({ error: 'Only the project owner can add members' }, { status: 403 })
+    if (level !== 'owner' && !SYSTEM_ADMIN_IDS.includes(user.id)) return NextResponse.json({ error: 'Only the project owner or an admin can add members' }, { status: 403 })
 
     // Look up user by email
     const { data: users } = await supabaseAdmin.auth.admin.listUsers()
@@ -126,7 +128,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const level = await checkProjectAccess(project_id, user.id)
-    if (level !== 'owner') return NextResponse.json({ error: 'Only the project owner can update members' }, { status: 403 })
+    if (level !== 'owner' && !SYSTEM_ADMIN_IDS.includes(user.id)) return NextResponse.json({ error: 'Only the project owner or an admin can update members' }, { status: 403 })
 
     const { error } = await supabaseAdmin
       .from('broadcast_project_members')
@@ -155,7 +157,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const level = await checkProjectAccess(project_id, user.id)
-    if (level !== 'owner') return NextResponse.json({ error: 'Only the project owner can remove members' }, { status: 403 })
+    if (level !== 'owner' && !SYSTEM_ADMIN_IDS.includes(user.id)) return NextResponse.json({ error: 'Only the project owner or an admin can remove members' }, { status: 403 })
 
     const { error } = await supabaseAdmin
       .from('broadcast_project_members')

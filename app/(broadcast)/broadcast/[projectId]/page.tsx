@@ -197,7 +197,7 @@ function BroadcastManagerInner() {
           </>
         )}
 
-        {userRole === 'owner' && (
+        {(userRole === 'owner' || userRole === 'producer') && (
           <>
             <div className="w-px h-4 bg-zinc-700 mx-1" />
             <button
