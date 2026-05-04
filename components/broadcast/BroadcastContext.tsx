@@ -137,6 +137,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   const [videoTimeRemaining, setVideoTimeRemaining] = useState<Map<string, VideoTimeInfo>>(new Map())
   const channelRef = useRef<any>(null)
   const supabaseRef = useRef<any>(null)
+  const syncChannelRef = useRef<any>(null)
+  const reloadTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Segment state
   const [segments, setSegments] = useState<BroadcastSegment[]>([])
@@ -347,18 +349,87 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     }
   }, [projectId])
 
+  // ── Project sync (multi-user collaboration) ────────────────────────────
+  const reloadAssets = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/broadcast/assets?project_id=${projectId}`)
+      const data = await res.json()
+      if (data.assets) {
+        setAssets(data.assets)
+        // Deselect if selected asset was deleted by another user
+        setSelectedAssetId(prev =>
+          prev && !(data.assets as BroadcastAsset[]).some(a => a.id === prev) ? null : prev
+        )
+      }
+    } catch (err) {
+      console.error('Failed to reload assets:', err)
+    }
+  }, [projectId])
+
+  const reloadSegments = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/broadcast/scenes?project_id=${projectId}`)
+      const data = await res.json()
+      if (data.scenes) setSegments(data.scenes)
+    } catch (err) {
+      console.error('Failed to reload segments:', err)
+    }
+  }, [projectId])
+
+  const reloadAllRef = useRef<() => void>(() => {})
+  reloadAllRef.current = () => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+    reloadTimerRef.current = setTimeout(() => {
+      Promise.all([reloadAssets(), reloadSegments(), reloadSegmentAssets()])
+    }, 300)
+  }
+
+  const notifyProjectChange = useCallback(() => {
+    syncChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'project:data-changed',
+      payload: { timestamp: Date.now() },
+    })
+  }, [])
+
+  // Subscribe to project-level sync channel for multi-user collaboration
+  useEffect(() => {
+    if (!supabaseRef.current) return
+
+    const channel = supabaseRef.current.channel(`project-sync:${projectId}`, {
+      config: { broadcast: { self: false } },
+    })
+
+    channel
+      .on('broadcast', { event: 'project:data-changed' }, () => {
+        reloadAllRef.current()
+      })
+      .subscribe()
+
+    syncChannelRef.current = channel
+
+    return () => {
+      supabaseRef.current?.removeChannel(channel)
+      syncChannelRef.current = null
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+    }
+  }, [projectId])
+
   const addAsset = useCallback((asset: BroadcastAsset) => {
     setAssets(prev => [...prev, asset])
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const updateAsset = useCallback((id: string, updates: Partial<BroadcastAsset>) => {
     setAssets(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a))
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const removeAsset = useCallback((id: string) => {
     setAssets(prev => prev.filter(a => a.id !== id))
     setSelectedAssetId(prev => prev === id ? null : prev)
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const sendEvent = useCallback((event: string, payload: any) => {
     if (!channelRef.current) return
@@ -519,11 +590,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
   // Segment CRUD
   const addSegment = useCallback((segment: BroadcastSegment) => {
     setSegments(prev => [...prev, segment])
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const updateSegment = useCallback((id: string, updates: Partial<BroadcastSegment>) => {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const removeSegment = useCallback((id: string) => {
     setSegments(prev => prev.filter(s => s.id !== id))
@@ -534,7 +607,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
     })
     if (activeSegmentId === id) setActiveSegmentId(null)
     if (selectedSegmentId === id) setSelectedSegmentId(null)
-  }, [activeSegmentId, selectedSegmentId])
+    notifyProjectChange()
+  }, [activeSegmentId, selectedSegmentId, notifyProjectChange])
 
   // Segment-asset CRUD
   const addSegmentAsset = useCallback((sa: BroadcastSegmentAsset) => {
@@ -544,7 +618,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       next.set(sa.scene_id, list)
       return next
     })
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const updateSegmentAsset = useCallback((id: string, updates: Partial<BroadcastSegmentAsset>) => {
     setSegmentAssets(prev => {
@@ -554,7 +629,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
       return next
     })
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   const removeSegmentAsset = useCallback((id: string) => {
     setSegmentAssets(prev => {
@@ -564,7 +640,8 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
       }
       return next
     })
-  }, [])
+    notifyProjectChange()
+  }, [notifyProjectChange])
 
   // Switch segment — the core logic
   const switchSegment = useCallback((toSegmentId: string) => {
