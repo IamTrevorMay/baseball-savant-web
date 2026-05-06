@@ -18,7 +18,7 @@ export default function EmailsPage() {
     const res = await fetch('/api/emails/products')
     if (res.ok) {
       const json = await res.json()
-      setProducts(json.data ?? [])
+      setProducts(json.products ?? [])
     }
     setLoading(false)
   }, [])
