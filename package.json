@@ -24,6 +24,7 @@
     "html2canvas-pro": "^2.0.0",
     "jspdf": "^4.2.0",
     "jszip": "^3.10.1",
+    "lucide-react": "^1.14.0",
     "next": "16.1.6",
     "obs-websocket-js": "^5.0.7",
     "papaparse": "^5.5.3",
