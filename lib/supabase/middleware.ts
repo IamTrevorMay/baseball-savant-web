@@ -31,8 +31,22 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
+  // Landing page subdomains: {slug}.tritonapex.io → /landing/{slug}
+  const landingMatch = host.match(/^([a-z0-9-]+)\.tritonapex\.io$/)
+  if (landingMatch && !['www', 'api'].includes(landingMatch[1])) {
+    const slug = landingMatch[1]
+    if (pathname === '/') {
+      return NextResponse.rewrite(new URL(`/landing/${slug}`, request.url))
+    }
+    // Allow API routes for subscribe/unsubscribe
+    if (pathname.startsWith('/api/emails/subscribe') || pathname.startsWith('/api/emails/unsubscribe')) {
+      return NextResponse.next()
+    }
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
   // Public paths and API routes skip auth entirely — no cookie manipulation
-  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay', '/newsletter']
+  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay', '/newsletter', '/landing']
   const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
   const isApiRoute = pathname.startsWith('/api/')
 

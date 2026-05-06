@@ -59,6 +59,10 @@
     {
       "path": "/api/cron/janitor",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/emails",
+      "schedule": "0 15 * * *"
     }
   ]
 }
