@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { checkProjectAccess } from '@/lib/broadcast/checkProjectAccess'
-
-const SYSTEM_ADMIN_IDS = (process.env.BROADCAST_ADMIN_IDS || '').split(',').filter(Boolean)
+import { isSystemAdmin } from '@/lib/isSystemAdmin'
 
 export async function GET() {
   try {
@@ -11,7 +10,7 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const isAdmin = SYSTEM_ADMIN_IDS.includes(user.id)
+    const isAdmin = await isSystemAdmin(user.id)
 
     if (isAdmin) {
       // Admins see all projects
@@ -88,13 +87,17 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // Auto-add system admins as producers on every new project
-    const adminIds = SYSTEM_ADMIN_IDS.filter(id => id !== user.id)
-    if (adminIds.length > 0) {
+    const { data: admins } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .in('role', ['owner', 'admin'])
+      .neq('id', user.id)
+    if (admins && admins.length > 0) {
       await supabaseAdmin
         .from('broadcast_project_members')
-        .insert(adminIds.map(adminId => ({
+        .insert(admins.map(a => ({
           project_id: data.id,
-          user_id: adminId,
+          user_id: a.id,
           role: 'producer',
           invited_by: user.id,
         })))

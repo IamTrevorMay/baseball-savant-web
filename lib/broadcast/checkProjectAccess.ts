@@ -1,8 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { ProjectAccessLevel } from '@/lib/broadcastTypes'
-
-// Comma-separated list of user IDs with full access to all projects
-const SYSTEM_ADMIN_IDS = (process.env.BROADCAST_ADMIN_IDS || '').split(',').filter(Boolean)
+import { isSystemAdmin } from '@/lib/isSystemAdmin'
 
 /**
  * Determine a user's access level for a broadcast project.
@@ -12,8 +10,8 @@ export async function checkProjectAccess(
   projectId: string,
   userId: string,
 ): Promise<ProjectAccessLevel> {
-  // System admins get producer-level access everywhere
-  if (SYSTEM_ADMIN_IDS.includes(userId)) return 'producer'
+  // System admins (owner/admin role in profiles) get producer-level access everywhere
+  if (await isSystemAdmin(userId)) return 'producer'
 
   // Check project ownership
   const { data: project } = await supabaseAdmin
