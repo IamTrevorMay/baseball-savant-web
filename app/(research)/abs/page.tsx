@@ -1,275 +1,42 @@
 'use client'
-import { useState, useEffect, useMemo, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import ResearchNav from '@/components/ResearchNav'
 import { BASE_LAYOUT, COLORS } from '@/components/chartConfig'
+import { useDevice } from '@/lib/hooks/useDeviceContext'
+import { useABSData, GAME_TYPES, LEVELS, TABS, pct, rateColor, vsExpColor, missRateColor, sortArrow } from '@/lib/hooks/useABSData'
+import type { DashboardData, DailySource, TeamRow, TeamSortField, PlayerRow, PlayerSortField, BreakdownRow, UmpireRow, UmpireSortField } from '@/lib/hooks/useABSData'
+import MobileABS from '@/components/mobile/MobileABS'
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false })
 
-// --- Types ---
-
-interface FilterCombo { year: number; game_type: string; level: string }
-interface DailyRow {
-  game_date: string; challenges: number; overturns: number
-  overturn_rate: number | null; tot_pitches: number; chal_rate: number | null
-  rolling_overturn_rate_week: number | null; rolling_chal_rate_week: number | null
-}
-interface BreakdownRow {
-  source: string; breakdown_key: string; challenges: number
-  overturns: number; rate: number | null; pitches: number; chal_rate: number | null
-}
-interface TeamRow {
-  team_abbr: string; bat_for: number; fld_for: number
-  bat_against: number; fld_against: number
-}
-interface Summary {
-  challenges: number; overturns: number; overturn_rate: number
-  chal_rate: number; pitches: number
-}
-interface PlayerRow {
-  player_id: number; player_name: string; team_abbr: string
-  n_total_sample: number; n_challenges: number; n_overturns: number; n_fails: number
-  n_strikeouts: number; n_walks: number
-  rate_challenges: number | null; exp_rate_challenges: number | null
-  rate_overturns: number | null; exp_rate_overturns: number | null
-  exp_chal: number | null; net_net_chal: number | null; overturns_vs_exp: number | null
-  n_challenges_against: number; n_overturns_against: number
-  rate_overturns_against: number | null; net_net_chal_against: number | null
-}
-interface DashboardData {
-  daily: { all: DailyRow[]; batter: DailyRow[]; fielder: DailyRow[] }
-  breakdown: { batter: BreakdownRow[]; fielder: BreakdownRow[]; all: BreakdownRow[] }
-  teams: TeamRow[]
-  summary: Summary
-}
-
-interface UmpireRow {
-  hp_umpire: string; games: number; called_pitches: number
-  missed_calls: number; miss_rate: number | null
-  bad_strikes: number; bad_balls: number
-  non_shadow_pitches: number; non_shadow_missed: number; non_shadow_miss_rate: number | null
-  challenges: number; overturns: number; overturn_rate: number | null
-  abs_challenges: number; abs_overturns: number
-}
-
-type Tab = 'daily' | 'breakdowns' | 'teams' | 'leaderboard' | 'umpires'
-type DailySource = 'all' | 'batter' | 'fielder'
-type TeamSortField = 'team_abbr' | 'bat_for' | 'fld_for' | 'total_for' | 'bat_against' | 'fld_against' | 'total_against' | 'total' | 'net'
-type UmpireSortField = 'hp_umpire' | 'games' | 'called_pitches' | 'missed_calls' | 'miss_rate' | 'bad_strikes' | 'bad_balls' | 'non_shadow_missed' | 'non_shadow_miss_rate' | 'challenges' | 'overturns' | 'overturn_rate'
-type PlayerSortField = 'player_name' | 'n_challenges' | 'n_overturns' | 'n_fails' | 'rate_overturns' | 'exp_rate_overturns' | 'overturns_vs_exp' | 'net_net_chal'
-
-const GAME_TYPES = [
-  { value: 'S', label: 'Spring Training' },
-  { value: 'R', label: 'Regular Season' },
-  { value: 'P', label: 'Postseason' },
-]
-const LEVELS = [
-  { value: 'MLB', label: 'MLB' },
-  { value: 'AAA', label: 'AAA' },
-]
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'daily', label: 'Daily Trends' },
-  { key: 'breakdowns', label: 'Breakdowns' },
-  { key: 'teams', label: 'Teams' },
-  { key: 'leaderboard', label: 'Leaderboard' },
-  { key: 'umpires', label: 'Umpires' },
-]
-
-function pct(v: number | null | undefined, digits = 1): string {
-  if (v == null) return '—'
-  return (v * 100).toFixed(digits) + '%'
-}
-
-function rateColor(rate: number | null): string {
-  if (rate == null) return 'text-zinc-400'
-  if (rate >= 0.5) return 'text-emerald-400'
-  if (rate >= 0.3) return 'text-yellow-400'
-  return 'text-red-400'
-}
-
-function vsExpColor(val: number | null): string {
-  if (val == null) return 'text-zinc-400'
-  if (val > 0) return 'text-emerald-400'
-  if (val < 0) return 'text-red-400'
-  return 'text-zinc-400'
-}
-
-function api(action: string, params: Record<string, unknown> = {}) {
-  return fetch('/api/abs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, ...params }),
-  }).then(r => r.json())
-}
-
-// --- Sort helpers ---
-
-function sortArrow(current: string, field: string, dir: 'asc' | 'desc') {
-  if (current !== field) return ''
-  return dir === 'desc' ? ' ▼' : ' ▲'
-}
-
-// --- Component ---
-
 export default function ABSPage() {
-  const [filters, setFilters] = useState<FilterCombo[]>([])
-  const [year, setYear] = useState(2026)
-  const [gameType, setGameType] = useState('S')
-  const [level, setLevel] = useState('MLB')
-  const [tab, setTab] = useState<Tab>('daily')
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
-  const [syncMsg, setSyncMsg] = useState('')
+  const { isMobile, isLoading: deviceLoading } = useDevice()
+  const abs = useABSData()
 
-  // Daily tab
-  const [dailySource, setDailySource] = useState<DailySource>('all')
+  if (deviceLoading) return null
 
-  // Teams tab
-  const [teamSort, setTeamSort] = useState<TeamSortField>('net')
-  const [teamDir, setTeamDir] = useState<'asc' | 'desc'>('desc')
+  if (isMobile) return <MobileABS abs={abs} />
 
-  // Leaderboard tab
-  const [challengeType, setChallengeType] = useState('batter')
-  const [minChal, setMinChal] = useState(1)
-  const [players, setPlayers] = useState<PlayerRow[]>([])
-  const [playersLoading, setPlayersLoading] = useState(false)
-  const [playerSort, setPlayerSort] = useState<PlayerSortField>('n_challenges')
-  const [playerDir, setPlayerDir] = useState<'asc' | 'desc'>('desc')
-
-  // Umpires tab — uses pitches data, independent year/gameType
-  const [umpires, setUmpires] = useState<UmpireRow[]>([])
-  const [umpiresLoading, setUmpiresLoading] = useState(false)
-  const [umpireSort, setUmpireSort] = useState<UmpireSortField>('missed_calls')
-  const [umpireDir, setUmpireDir] = useState<'asc' | 'desc'>('desc')
-  const [minGames, setMinGames] = useState(1)
-  const [umpireYear, setUmpireYear] = useState(new Date().getFullYear())
-  const [umpireGameType, setUmpireGameType] = useState('R')
-
-  // Load filters
-  useEffect(() => {
-    api('filters').then(d => {
-      if (Array.isArray(d)) setFilters(d)
-    })
-  }, [])
-
-  const years = useMemo(() => {
-    const s = new Set(filters.map(f => f.year))
-    return Array.from(s).sort((a, b) => b - a)
-  }, [filters])
-
-  // Load dashboard data
-  const loadDashboard = useCallback(async () => {
-    setLoading(true)
-    try {
-      const d = await api('dashboard', { year, gameType, level })
-      if (!d.error) setData(d)
-    } finally {
-      setLoading(false)
-    }
-  }, [year, gameType, level])
-
-  useEffect(() => { loadDashboard() }, [loadDashboard])
-
-  // Load leaderboard
-  const loadLeaderboard = useCallback(async () => {
-    setPlayersLoading(true)
-    try {
-      const d = await api('leaderboard', { year, gameType, level, challengeType, minChal })
-      if (Array.isArray(d)) setPlayers(d)
-    } finally {
-      setPlayersLoading(false)
-    }
-  }, [year, gameType, level, challengeType, minChal])
-
-  useEffect(() => {
-    if (tab === 'leaderboard') loadLeaderboard()
-  }, [tab, loadLeaderboard])
-
-  // Load umpires
-  const loadUmpires = useCallback(async () => {
-    setUmpiresLoading(true)
-    try {
-      const d = await api('umpires', { year: umpireYear, gameType: umpireGameType, minGames })
-      if (Array.isArray(d)) setUmpires(d)
-    } finally {
-      setUmpiresLoading(false)
-    }
-  }, [umpireYear, umpireGameType, minGames])
-
-  useEffect(() => {
-    if (tab === 'umpires') loadUmpires()
-  }, [tab, loadUmpires])
-
-  // Sync
-  async function handleSync() {
-    setSyncing(true)
-    setSyncMsg('')
-    try {
-      const d = await api('sync', { year, gameType, level })
-      if (d.error) { setSyncMsg(`Error: ${d.error}`); return }
-      setSyncMsg(`Synced: ${d.daily} daily, ${d.breakdowns} breakdowns, ${d.teams} teams`)
-      loadDashboard()
-      if (tab === 'leaderboard') loadLeaderboard()
-    } catch (e) {
-      setSyncMsg('Sync failed')
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  // Team sort
-  function handleTeamSort(field: TeamSortField) {
-    if (teamSort === field) setTeamDir(d => d === 'desc' ? 'asc' : 'desc')
-    else { setTeamSort(field); setTeamDir('desc') }
-  }
-  const sortedTeams = useMemo(() => {
-    if (!data) return []
-    return [...data.teams].sort((a, b) => {
-      const mul = teamDir === 'desc' ? -1 : 1
-      const getVal = (r: TeamRow): number | string => {
-        if (teamSort === 'team_abbr') return r.team_abbr
-        if (teamSort === 'total_for') return r.bat_for + r.fld_for
-        if (teamSort === 'total_against') return r.bat_against + r.fld_against
-        if (teamSort === 'total') return r.bat_for + r.fld_for + r.bat_against + r.fld_against
-        if (teamSort === 'net') return (r.bat_for + r.fld_for) - (r.bat_against + r.fld_against)
-        return r[teamSort] as number
-      }
-      const av = getVal(a), bv = getVal(b)
-      if (typeof av === 'string') return av.localeCompare(bv as string) * mul
-      return ((av as number) - (bv as number)) * mul
-    })
-  }, [data, teamSort, teamDir])
-
-  // Player sort
-  function handlePlayerSort(field: PlayerSortField) {
-    if (playerSort === field) setPlayerDir(d => d === 'desc' ? 'asc' : 'desc')
-    else { setPlayerSort(field); setPlayerDir('desc') }
-  }
-  const sortedPlayers = useMemo(() => {
-    return [...players].sort((a, b) => {
-      const mul = playerDir === 'desc' ? -1 : 1
-      const av = a[playerSort], bv = b[playerSort]
-      if (typeof av === 'string') return (av || '').localeCompare((bv as string) || '') * mul
-      return ((av as number || 0) - (bv as number || 0)) * mul
-    })
-  }, [players, playerSort, playerDir])
-
-  // Umpire sort
-  function handleUmpireSort(field: UmpireSortField) {
-    if (umpireSort === field) setUmpireDir(d => d === 'desc' ? 'asc' : 'desc')
-    else { setUmpireSort(field); setUmpireDir('desc') }
-  }
-  const sortedUmpires = useMemo(() => {
-    return [...umpires].sort((a, b) => {
-      const mul = umpireDir === 'desc' ? -1 : 1
-      const av = a[umpireSort], bv = b[umpireSort]
-      if (typeof av === 'string') return (av || '').localeCompare((bv as string) || '') * mul
-      return ((av as number || 0) - (bv as number || 0)) * mul
-    })
-  }, [umpires, umpireSort, umpireDir])
-
-  const summary = data?.summary
+  const {
+    years, year, setYear,
+    gameType, setGameType,
+    level, setLevel,
+    tab, setTab,
+    data, loading,
+    syncing, syncMsg, handleSync,
+    summary,
+    dailySource, setDailySource,
+    teamSort, teamDir, handleTeamSort, sortedTeams,
+    challengeType, setChallengeType,
+    minChal, setMinChal,
+    players, playersLoading,
+    playerSort, playerDir, handlePlayerSort,
+    umpires, umpiresLoading,
+    umpireSort, umpireDir, handleUmpireSort,
+    minGames, setMinGames,
+    umpireYear, setUmpireYear,
+    umpireGameType, setUmpireGameType,
+  } = abs
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
@@ -346,7 +113,7 @@ export default function ABSPage() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 pb-16">
         {tab === 'umpires' ? (
           <UmpiresTab
-            umpires={sortedUmpires} loading={umpiresLoading}
+            umpires={umpires} loading={umpiresLoading}
             minGames={minGames} setMinGames={setMinGames}
             umpireYear={umpireYear} setUmpireYear={setUmpireYear}
             umpireGameType={umpireGameType} setUmpireGameType={setUmpireGameType}
@@ -371,7 +138,7 @@ export default function ABSPage() {
             )}
             {tab === 'leaderboard' && (
               <LeaderboardTab
-                players={sortedPlayers} loading={playersLoading}
+                players={players} loading={playersLoading}
                 challengeType={challengeType} setChallengeType={setChallengeType}
                 minChal={minChal} setMinChal={setMinChal}
                 sort={playerSort} dir={playerDir} onSort={handlePlayerSort}
@@ -431,7 +198,6 @@ function DailyTab({ data, source, setSource }: { data: DashboardData; source: Da
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
           <Plot
             data={[
-              // Rolling overturn rate
               {
                 x: rows.map(r => r.game_date),
                 y: rows.map(r => r.rolling_overturn_rate_week != null ? r.rolling_overturn_rate_week * 100 : null),
@@ -440,7 +206,6 @@ function DailyTab({ data, source, setSource }: { data: DashboardData; source: Da
                 line: { color: COLORS.emerald, width: 2.5 },
                 yaxis: 'y',
               },
-              // Daily raw overturn rate dots
               {
                 x: rows.map(r => r.game_date),
                 y: rows.map(r => r.overturn_rate != null ? r.overturn_rate * 100 : null),
@@ -449,7 +214,6 @@ function DailyTab({ data, source, setSource }: { data: DashboardData; source: Da
                 marker: { color: COLORS.emerald, size: 4, opacity: 0.25 },
                 yaxis: 'y',
               },
-              // Rolling challenge rate
               {
                 x: rows.map(r => r.game_date),
                 y: rows.map(r => r.rolling_chal_rate_week != null ? r.rolling_chal_rate_week * 100 : null),
@@ -458,7 +222,6 @@ function DailyTab({ data, source, setSource }: { data: DashboardData; source: Da
                 line: { color: COLORS.amber, width: 2.5 },
                 yaxis: 'y2',
               },
-              // Daily raw challenge rate dots
               {
                 x: rows.map(r => r.game_date),
                 y: rows.map(r => r.chal_rate != null ? r.chal_rate * 100 : null),
@@ -496,7 +259,6 @@ function DailyTab({ data, source, setSource }: { data: DashboardData; source: Da
 }
 
 function BreakdownsTab({ data }: { data: DashboardData }) {
-  // Group breakdowns by category — keys match Savant format
   const inningKeys = Array.from({ length: 9 }, (_, i) => `inning_${i + 1}`)
   const runnerKeys = ['nrunners_0', 'nrunners_1', 'nrunners_2', 'nrunners_3']
   const countKeys = ['count_ball3', 'count_strike2', 'count_full', 'count_other']
@@ -548,14 +310,14 @@ function BreakdownsTab({ data }: { data: DashboardData }) {
                   return (
                     <tr key={key} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
                       <td className="px-4 py-2 text-zinc-300 font-medium">{sec.labelFn(key)}</td>
-                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{bat?.challenges ?? '—'}</td>
-                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{bat?.overturns ?? '—'}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{bat?.challenges ?? '\u2014'}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{bat?.overturns ?? '\u2014'}</td>
                       <td className={`px-3 py-2 text-center tabular-nums font-medium ${rateColor(bat?.rate ?? null)}`}>{pct(bat?.rate ?? null)}</td>
-                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400 border-l border-zinc-800">{fld?.challenges ?? '—'}</td>
-                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{fld?.overturns ?? '—'}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400 border-l border-zinc-800">{fld?.challenges ?? '\u2014'}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{fld?.overturns ?? '\u2014'}</td>
                       <td className={`px-3 py-2 text-center tabular-nums font-medium ${rateColor(fld?.rate ?? null)}`}>{pct(fld?.rate ?? null)}</td>
-                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400 border-l border-zinc-800">{all?.challenges ?? '—'}</td>
-                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{all?.overturns ?? '—'}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400 border-l border-zinc-800">{all?.challenges ?? '\u2014'}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{all?.overturns ?? '\u2014'}</td>
                       <td className={`px-3 py-2 text-center tabular-nums font-medium ${rateColor(all?.rate ?? null)}`}>{pct(all?.rate ?? null)}</td>
                     </tr>
                   )
@@ -689,10 +451,10 @@ function LeaderboardTab({ players, loading, challengeType, setChallengeType, min
                     <td className="px-3 py-2 text-center tabular-nums text-zinc-300">{pct(p.rate_overturns)}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-zinc-500">{pct(p.exp_rate_overturns)}</td>
                     <td className={`px-3 py-2 text-center tabular-nums font-medium ${vsExpColor(p.overturns_vs_exp)}`}>
-                      {p.overturns_vs_exp != null ? (p.overturns_vs_exp > 0 ? '+' : '') + p.overturns_vs_exp.toFixed(1) : '—'}
+                      {p.overturns_vs_exp != null ? (p.overturns_vs_exp > 0 ? '+' : '') + p.overturns_vs_exp.toFixed(1) : '\u2014'}
                     </td>
                     <td className={`px-3 py-2 text-center tabular-nums font-bold ${vsExpColor(p.net_net_chal)}`}>
-                      {p.net_net_chal != null ? (p.net_net_chal > 0 ? '+' : '') + p.net_net_chal.toFixed(1) : '—'}
+                      {p.net_net_chal != null ? (p.net_net_chal > 0 ? '+' : '') + p.net_net_chal.toFixed(1) : '\u2014'}
                     </td>
                   </tr>
                 ))}
@@ -703,13 +465,6 @@ function LeaderboardTab({ players, loading, challengeType, setChallengeType, min
       )}
     </div>
   )
-}
-
-function missRateColor(rate: number | null): string {
-  if (rate == null) return 'text-zinc-400'
-  if (rate <= 0.05) return 'text-emerald-400'
-  if (rate <= 0.08) return 'text-yellow-400'
-  return 'text-red-400'
 }
 
 function UmpiresTab({ umpires, loading, minGames, setMinGames, umpireYear, setUmpireYear, umpireGameType, setUmpireGameType, sort, dir, onSort }: {
@@ -795,7 +550,7 @@ function UmpiresTab({ umpires, loading, minGames, setMinGames, umpireYear, setUm
                     <td className={`px-3 py-2 text-center tabular-nums font-medium ${missRateColor(u.non_shadow_miss_rate)}`}>{pct(u.non_shadow_miss_rate)}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-zinc-400">{u.challenges || 0}</td>
                     <td className="px-3 py-2 text-center tabular-nums text-zinc-300 font-medium">{u.overturns || 0}</td>
-                    <td className={`px-3 py-2 text-center tabular-nums font-medium ${u.overturn_rate != null && u.overturn_rate > 0.5 ? 'text-red-400' : u.overturn_rate != null && u.overturn_rate > 0.3 ? 'text-amber-400' : 'text-emerald-400'}`}>{u.overturn_rate != null ? (u.overturn_rate * 100).toFixed(1) + '%' : '—'}</td>
+                    <td className={`px-3 py-2 text-center tabular-nums font-medium ${u.overturn_rate != null && u.overturn_rate > 0.5 ? 'text-red-400' : u.overturn_rate != null && u.overturn_rate > 0.3 ? 'text-amber-400' : 'text-emerald-400'}`}>{u.overturn_rate != null ? (u.overturn_rate * 100).toFixed(1) + '%' : '\u2014'}</td>
                   </tr>
                 ))}
               </tbody>

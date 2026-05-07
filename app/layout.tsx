@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Bebas_Neue } from 'next/font/google'
 import './globals.css'
 import AuthProvider from '@/components/AuthProvider'
+import { DeviceProvider } from '@/lib/hooks/useDeviceContext'
+import { ThemeProvider } from '@/lib/hooks/useTheme'
 import MobileTabBar from '@/components/MobileTabBar'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
 import { Analytics } from '@vercel/analytics/next'
@@ -30,11 +32,23 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Inline script to prevent flash of wrong theme */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('triton-theme');if(t==='light'||t==='dark'){document.documentElement.classList.toggle('dark',t==='dark')}else if(window.matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.classList.add('dark')}else{document.documentElement.classList.remove('dark')}}catch(e){document.documentElement.classList.add('dark')}})()`,
+          }}
+        />
+      </head>
       <body className={`${inter.className} ${bebas.variable} antialiased`}>
         <AuthProvider>
-          {children}
-          <MobileTabBar />
+          <DeviceProvider>
+            <ThemeProvider>
+              {children}
+              <MobileTabBar />
+            </ThemeProvider>
+          </DeviceProvider>
         </AuthProvider>
         <ServiceWorkerRegistration />
         <Analytics />

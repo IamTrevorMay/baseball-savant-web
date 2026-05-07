@@ -4,7 +4,7 @@ import TridentLogo from '@/components/TridentLogo'
 import GlobalPlayerSearch from '@/components/GlobalPlayerSearch'
 
 const PRIMARY_LINKS = [
-  { href: '/home', label: 'Home' },
+  { href: '/scores', label: 'Scores' },
   { href: '/explore', label: 'Explore' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },
@@ -63,7 +63,7 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
       {/* Brand */}
       <TridentLogo className="w-5 h-6 text-emerald-400 mr-1.5" />
       <a href="/" className="font-[family-name:var(--font-bebas)] text-orange-500 hover:text-orange-400 text-sm uppercase tracking-wider transition">TRITON APEX</a>
-      <a href="/home" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4 hidden sm:inline">Research</a>
+      <a href="/scores" className="font-[family-name:var(--font-bebas)] text-emerald-400 tracking-wide text-sm hover:text-emerald-300 transition ml-4 hidden sm:inline">Research</a>
       <a href="/milb/home" className="text-zinc-500 hover:text-amber-400 text-xs transition ml-3 hidden sm:inline">MiLB</a>
 
       {/* Global player search */}

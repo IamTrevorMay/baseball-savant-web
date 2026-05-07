@@ -19,25 +19,44 @@ nav a, nav button {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Dark mode date picker — shows calendar icon and dropdown in dark theme */
-input[type="date"] {
+/* Date picker — theme-responsive color scheme */
+.dark input[type="date"] {
   color-scheme: dark;
 }
+html:not(.dark) input[type="date"] {
+  color-scheme: light;
+}
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
+/* Custom scrollbar — dark mode */
+.dark ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+.dark ::-webkit-scrollbar-track {
   background: transparent;
 }
-::-webkit-scrollbar-thumb {
+.dark ::-webkit-scrollbar-thumb {
   background: #3f3f46;
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
+.dark ::-webkit-scrollbar-thumb:hover {
   background: #52525b;
+}
+
+/* Custom scrollbar — light mode */
+html:not(.dark) ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html:not(.dark) ::-webkit-scrollbar-track {
+  background: transparent;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 3px;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
 }
 
 /* Checkbox styling */

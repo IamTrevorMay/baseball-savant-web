@@ -1,53 +1,9 @@
 'use client'
-import { useState, useCallback, useEffect } from 'react'
 import ResearchNav from '@/components/ResearchNav'
-
-const CURRENT_YEAR = new Date().getFullYear()
-const SEASONS = Array.from({ length: CURRENT_YEAR - 2014 }, (_, i) => String(CURRENT_YEAR - i))
-const PLAYER_TYPES = ['pitcher', 'hitter'] as const
-
-interface Alert {
-  player_id: number; player_name: string
-  metric: string; metric_label: string
-  season_val: number; recent_val: number
-  delta: number; sigma: number
-  direction: 'up' | 'down'
-  sentiment: 'good' | 'bad'
-}
-
-interface GameLine {
-  ip: string; h: number; r: number; er: number; bb: number; k: number
-  pitches: number; decision: string
-}
-
-interface DailyHighlights {
-  date: string
-  stuff_starter: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null; game_line: GameLine | null } | null
-  stuff_reliever: { player_id: number; player_name: string; team: string; pitch_name: string; stuff_plus: number; velo: number | null; hbreak_in: number | null; ivb_in: number | null; game_line: GameLine | null } | null
-  cmd_starter: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number; game_line: GameLine | null } | null
-  cmd_reliever: { player_id: number; player_name: string; team: string; cmd_plus: number; pitches: number; game_line: GameLine | null } | null
-  new_pitches: Array<{
-    player_id: number; player_name: string; team: string; pitch_name: string; count: number
-    avg_hbreak: number | null; avg_ivb: number | null; avg_stuff_plus: number | null
-    avg_brink: number | null; avg_cluster: number | null; avg_missfire: number | null; cmd_plus: number | null
-  }>
-}
-
-function headshot(id: number) {
-  return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${id}/headshot/67/current`
-}
-
-function plusColor(val: number) {
-  if (val >= 130) return 'text-emerald-400'
-  if (val >= 115) return 'text-emerald-500'
-  if (val >= 100) return 'text-zinc-200'
-  if (val >= 85) return 'text-orange-400'
-  return 'text-red-400'
-}
-
-function fmtGameLine(gl: GameLine): string {
-  return `${gl.ip} IP, ${gl.h} H, ${gl.er} ER, ${gl.bb} BB, ${gl.k} K`
-}
+import { useDevice } from '@/lib/hooks/useDeviceContext'
+import { useTrendsData, plusColor, headshot, fmtGameLine, fmtVal, sigmaColor, SEASONS, PLAYER_TYPES } from '@/lib/hooks/useTrendsData'
+import type { GameLine } from '@/lib/hooks/useTrendsData'
+import MobileTrends from '@/components/mobile/MobileTrends'
 
 function decisionBadge(d: string) {
   if (d === 'W') return <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 px-1 py-0.5 rounded">W</span>
@@ -57,179 +13,26 @@ function decisionBadge(d: string) {
   return null
 }
 
-function sigmaColor(sigma: number, sentiment: string): string {
-  const abs = Math.abs(sigma)
-  if (sentiment === 'good') {
-    if (abs >= 3) return 'bg-emerald-500/20 border-emerald-500/30'
-    if (abs >= 2) return 'bg-emerald-500/10 border-emerald-500/20'
-    return 'bg-emerald-500/5 border-emerald-500/10'
-  }
-  if (abs >= 3) return 'bg-red-500/20 border-red-500/30'
-  if (abs >= 2) return 'bg-red-500/10 border-red-500/20'
-  return 'bg-red-500/5 border-red-500/10'
-}
-
-function fmtVal(key: string, val: number): string {
-  if (key === 'xwoba') return val.toFixed(3)
-  if (key === 'spin') return String(Math.round(val))
-  if (key === 'velo' || key === 'ev') return val.toFixed(1)
-  return val.toFixed(1) + '%'
-}
-
-function fmtDelta(key: string, delta: number): string {
-  const abs = Math.abs(delta)
-  if (key === 'xwoba') return abs.toFixed(3)
-  if (key === 'spin') return String(Math.round(abs))
-  if (key === 'velo' || key === 'ev') return abs.toFixed(1) + ' mph'
-  return abs.toFixed(1) + ' pts'
-}
-
-function buildReason(a: Alert): string {
-  const d = fmtDelta(a.metric, a.delta)
-  const verb = a.direction === 'up' ? 'up' : 'down'
-  return `${a.metric_label} ${verb} ${d} vs season avg`
-}
-
-interface Highlight extends Alert {
-  type: 'pitcher' | 'hitter'
-  reason: string
-}
-
 export default function TrendsPage() {
-  const [season, setSeason] = useState(String(CURRENT_YEAR))
-  const [playerType, setPlayerType] = useState<'pitcher' | 'hitter'>('pitcher')
-  const [minPitches, setMinPitches] = useState(new Date().getMonth() + 1 <= 4 ? '50' : '500')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [alerts, setAlerts] = useState<Alert[]>([])
-  const [recentDate, setRecentDate] = useState('')
-  const [latestDate, setLatestDate] = useState('')
-  const [highlights, setHighlights] = useState<{ surges: Highlight[]; concerns: Highlight[] } | null>(null)
-  const [highlightsLoading, setHighlightsLoading] = useState(true)
-  const [daily, setDaily] = useState<DailyHighlights | null>(null)
-  const [dailyLoading, setDailyLoading] = useState(true)
-  const [trendTab, setTrendTab] = useState<'overview' | 'stuff' | 'arsenal'>('overview')
-  const [stuffData, setStuffData] = useState<any>(null)
-  const [stuffLoading, setStuffLoading] = useState(false)
-  const [arsenalData, setArsenalData] = useState<any>(null)
-  const [arsenalLoading, setArsenalLoading] = useState(false)
+  const { isMobile, isLoading: deviceLoading } = useDevice()
+  const trends = useTrendsData()
 
-  // Load Stuff+ data when tab changes
-  useEffect(() => {
-    if (trendTab !== 'stuff' || stuffData) return
-    setStuffLoading(true)
-    fetch('/api/trends', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season: Number(season), tab: 'stuff', minPitches: parseInt(minPitches) || 50 }),
-    }).then(r => r.json()).then(d => setStuffData(d)).catch(() => {}).finally(() => setStuffLoading(false))
-  }, [trendTab, season])
+  if (deviceLoading) return null
 
-  // Load Arsenal data when tab changes
-  useEffect(() => {
-    if (trendTab !== 'arsenal' || arsenalData) return
-    setArsenalLoading(true)
-    fetch('/api/trends', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season: Number(season), tab: 'arsenal', minPitches: parseInt(minPitches) || 50 }),
-    }).then(r => r.json()).then(d => setArsenalData(d)).catch(() => {}).finally(() => setArsenalLoading(false))
-  }, [trendTab, season])
+  if (isMobile) return <MobileTrends trends={trends} />
 
-  // Auto-load daily highlights
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/daily-highlights')
-      .then(r => r.json())
-      .then(d => { if (!cancelled && !d.error) setDaily(d) })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setDailyLoading(false) })
-    return () => { cancelled = true }
-  }, [])
-
-  // Auto-load highlights on mount — fetch both pitcher and hitter trends
-  useEffect(() => {
-    let cancelled = false
-    async function loadHighlights() {
-      try {
-        // Use lower threshold early in season (before May)
-        const month = new Date().getMonth() + 1
-        const autoMinPitches = month <= 4 ? 50 : 500
-        const [pitcherRes, hitterRes] = await Promise.all([
-          fetch('/api/trends', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'pitcher', minPitches: autoMinPitches }),
-          }),
-          fetch('/api/trends', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'hitter', minPitches: autoMinPitches }),
-          }),
-        ])
-        if (cancelled) return
-        const [pd, hd] = await Promise.all([pitcherRes.json(), hitterRes.json()])
-        const pitcherAlerts: Alert[] = (pd.rows || []).map((a: Alert) => ({ ...a }))
-        const hitterAlerts: Alert[] = (hd.rows || []).map((a: Alert) => ({ ...a }))
-
-        // Tag with type and add reason
-        const all: Highlight[] = [
-          ...pitcherAlerts.map(a => ({ ...a, type: 'pitcher' as const, reason: buildReason(a) })),
-          ...hitterAlerts.map(a => ({ ...a, type: 'hitter' as const, reason: buildReason(a) })),
-        ]
-
-        // Deduplicate: one entry per player, keep highest |sigma|
-        const surgeAll = all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
-        const concernAll = all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
-
-        const pickUnique = (list: Highlight[], n: number): Highlight[] => {
-          const seen = new Set<number>()
-          const result: Highlight[] = []
-          for (const item of list) {
-            if (seen.has(item.player_id)) continue
-            seen.add(item.player_id)
-            result.push(item)
-            if (result.length >= n) break
-          }
-          return result
-        }
-
-        setHighlights({
-          surges: pickUnique(surgeAll, 5),
-          concerns: pickUnique(concernAll, 5),
-        })
-        if (pd.recentDate) { setRecentDate(pd.recentDate); setLatestDate(pd.latestDate) }
-      } catch {
-        // Silently fail — highlights are supplementary
-      }
-      if (!cancelled) setHighlightsLoading(false)
-    }
-    loadHighlights()
-    return () => { cancelled = true }
-  }, [])
-
-  const handleScan = useCallback(async () => {
-    setLoading(true); setError(null)
-    try {
-      const res = await fetch('/api/trends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season, playerType, minPitches: parseInt(minPitches) || 500 }),
-      })
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
-      const data = await res.json()
-      setAlerts(data.rows || [])
-      setRecentDate(data.recentDate || '')
-      setLatestDate(data.latestDate || '')
-    } catch (e: any) { setError(e.message) }
-    setLoading(false)
-  }, [season, playerType, minPitches])
-
-  // Group alerts by player
-  const playerGroups: Record<string, Alert[]> = {}
-  for (const a of alerts) {
-    const key = `${a.player_id}`
-    if (!playerGroups[key]) playerGroups[key] = []
-    playerGroups[key].push(a)
-  }
+  const {
+    season, setSeason, playerType, setPlayerType,
+    minPitches, setMinPitches,
+    loading, error, alerts,
+    recentDate, latestDate,
+    highlights, highlightsLoading,
+    daily, dailyLoading,
+    trendTab, setTrendTab,
+    stuffData, stuffLoading,
+    arsenalData, arsenalLoading,
+    handleScan,
+  } = trends
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 flex flex-col">
@@ -472,16 +275,16 @@ export default function TrendsPage() {
                         </td>
                         <td className="px-3 py-1.5 text-orange-300 font-medium">{np.pitch_name}</td>
                         <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.count}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_hbreak != null ? `${np.avg_hbreak}"` : '—'}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_ivb != null ? `${np.avg_ivb}"` : '—'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_hbreak != null ? `${np.avg_hbreak}"` : '\u2014'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_ivb != null ? `${np.avg_ivb}"` : '\u2014'}</td>
                         <td className={`px-3 py-1.5 text-right font-mono font-medium ${np.avg_stuff_plus != null ? plusColor(np.avg_stuff_plus) : 'text-zinc-600'}`}>
-                          {np.avg_stuff_plus ?? '—'}
+                          {np.avg_stuff_plus ?? '\u2014'}
                         </td>
-                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_brink != null ? np.avg_brink.toFixed(1) : '—'}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_cluster != null ? np.avg_cluster.toFixed(1) : '—'}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_missfire != null ? np.avg_missfire.toFixed(1) : '—'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_brink != null ? np.avg_brink.toFixed(1) : '\u2014'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_cluster != null ? np.avg_cluster.toFixed(1) : '\u2014'}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-zinc-300">{np.avg_missfire != null ? np.avg_missfire.toFixed(1) : '\u2014'}</td>
                         <td className={`px-3 py-1.5 text-right font-mono font-medium ${np.cmd_plus != null ? plusColor(np.cmd_plus) : 'text-zinc-600'}`}>
-                          {np.cmd_plus ?? '—'}
+                          {np.cmd_plus ?? '\u2014'}
                         </td>
                       </tr>
                     ))}
@@ -520,7 +323,7 @@ export default function TrendsPage() {
                         <span className="text-white text-sm font-medium">{h.player_name}</span>
                         <span className="text-[9px] text-zinc-600 uppercase">{h.type === 'pitcher' ? 'P' : 'H'}</span>
                         <span className="text-[10px] font-mono text-emerald-400 ml-auto shrink-0">
-                          {h.sigma > 0 ? '+' : ''}{h.sigma.toFixed(1)}σ
+                          {h.sigma > 0 ? '+' : ''}{h.sigma.toFixed(1)}{'\u03C3'}
                         </span>
                       </div>
                       <p className="text-[11px] text-zinc-500 mt-0.5">{h.reason}</p>
@@ -547,7 +350,7 @@ export default function TrendsPage() {
                         <span className="text-white text-sm font-medium">{h.player_name}</span>
                         <span className="text-[9px] text-zinc-600 uppercase">{h.type === 'pitcher' ? 'P' : 'H'}</span>
                         <span className="text-[10px] font-mono text-red-400 ml-auto shrink-0">
-                          {h.sigma > 0 ? '+' : ''}{h.sigma.toFixed(1)}σ
+                          {h.sigma > 0 ? '+' : ''}{h.sigma.toFixed(1)}{'\u03C3'}
                         </span>
                       </div>
                       <p className="text-[11px] text-zinc-500 mt-0.5">{h.reason}</p>
@@ -638,7 +441,7 @@ export default function TrendsPage() {
                       <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
                         a.sentiment === 'good' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
                       }`}>
-                        {a.direction === 'up' ? '↑' : '↓'}
+                        {a.direction === 'up' ? '\u2191' : '\u2193'}
                         {a.sentiment === 'good' ? 'Surge' : 'Concern'}
                       </span>
                     </td>
@@ -666,7 +469,7 @@ export default function TrendsPage() {
               <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
                 <div className="px-4 py-3 border-b border-zinc-800">
                   <h2 className="text-sm font-semibold text-white">Stuff+ Leaders</h2>
-                  <p className="text-[10px] text-zinc-500">Top 25 by average Stuff+ ({stuffData.recentDate} – {stuffData.latestDate})</p>
+                  <p className="text-[10px] text-zinc-500">Top 25 by average Stuff+ ({stuffData.recentDate} {'\u2013'} {stuffData.latestDate})</p>
                 </div>
                 <table className="w-full text-xs">
                   <thead><tr className="bg-zinc-800/40 text-zinc-500">
@@ -764,12 +567,12 @@ export default function TrendsPage() {
                 const moveChanges = [...arsenalData.changes].filter((r: any) => Math.abs(r.ivb_delta) >= 0.5 || Math.abs(r.hb_delta) >= 0.5).sort((a: any, b: any) => (Math.abs(b.ivb_delta) + Math.abs(b.hb_delta)) - (Math.abs(a.ivb_delta) + Math.abs(a.hb_delta))).slice(0, 20)
                 const usageChanges = [...arsenalData.changes].filter((r: any) => Math.abs(r.usage_delta) >= 3).sort((a: any, b: any) => Math.abs(b.usage_delta) - Math.abs(a.usage_delta)).slice(0, 20)
                 const deltaColor = (v: number) => v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : 'text-zinc-400'
-                const fmtDelta = (v: number, unit: string) => `${v > 0 ? '+' : ''}${v}${unit}`
+                const fmtDeltaArsenal = (v: number, unit: string) => `${v > 0 ? '+' : ''}${v}${unit}`
                 return (<>
                   <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
                     <div className="px-4 py-3 border-b border-zinc-800">
                       <h2 className="text-sm font-semibold text-white">Velocity Changes</h2>
-                      <p className="text-[10px] text-zinc-500">Season vs recent window ({arsenalData.recentDate} – {arsenalData.latestDate})</p>
+                      <p className="text-[10px] text-zinc-500">Season vs recent window ({arsenalData.recentDate} {'\u2013'} {arsenalData.latestDate})</p>
                     </div>
                     {veloChanges.length > 0 ? (
                       <table className="w-full text-xs"><thead><tr className="bg-zinc-800/40 text-zinc-500">
@@ -785,7 +588,7 @@ export default function TrendsPage() {
                             <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
                             <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{r.season_velo}</td>
                             <td className="px-3 py-1.5 text-right text-white tabular-nums">{r.recent_velo}</td>
-                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.velo_delta)}`}>{fmtDelta(r.velo_delta, ' mph')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.velo_delta)}`}>{fmtDeltaArsenal(r.velo_delta, ' mph')}</td>
                           </tr>
                         ))}
                       </tbody></table>
@@ -801,17 +604,17 @@ export default function TrendsPage() {
                       <table className="w-full text-xs"><thead><tr className="bg-zinc-800/40 text-zinc-500">
                         <th className="px-3 py-1.5 text-left font-medium">Player</th>
                         <th className="px-3 py-1.5 text-left font-medium">Pitch</th>
-                        <th className="px-3 py-1.5 text-right font-medium">IVB Δ</th>
-                        <th className="px-3 py-1.5 text-right font-medium">HB Δ</th>
-                        <th className="px-3 py-1.5 text-right font-medium">Spin Δ</th>
+                        <th className="px-3 py-1.5 text-right font-medium">IVB {'\u0394'}</th>
+                        <th className="px-3 py-1.5 text-right font-medium">HB {'\u0394'}</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Spin {'\u0394'}</th>
                       </tr></thead><tbody>
                         {moveChanges.map((r: any) => (
                           <tr key={`${r.player_id}-${r.pitch_name}-m`} className="border-t border-zinc-800/30">
                             <td className="px-3 py-1.5"><a href={`/player/${r.player_id}`} className="text-white hover:text-emerald-300 font-medium">{r.player_name}</a></td>
                             <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
-                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.ivb_delta)}`}>{fmtDelta(r.ivb_delta, '"')}</td>
-                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.hb_delta)}`}>{fmtDelta(r.hb_delta, '"')}</td>
-                            <td className={`px-3 py-1.5 text-right tabular-nums ${deltaColor(r.spin_delta)}`}>{fmtDelta(r.spin_delta, ' rpm')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.ivb_delta)}`}>{fmtDeltaArsenal(r.ivb_delta, '"')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.hb_delta)}`}>{fmtDeltaArsenal(r.hb_delta, '"')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums ${deltaColor(r.spin_delta)}`}>{fmtDeltaArsenal(r.spin_delta, ' rpm')}</td>
                           </tr>
                         ))}
                       </tbody></table>
@@ -837,7 +640,7 @@ export default function TrendsPage() {
                             <td className="px-3 py-1.5 text-zinc-400">{r.pitch_name}</td>
                             <td className="px-3 py-1.5 text-right text-zinc-400 tabular-nums">{r.season_usage}%</td>
                             <td className="px-3 py-1.5 text-right text-white tabular-nums">{r.recent_usage}%</td>
-                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.usage_delta)}`}>{fmtDelta(r.usage_delta, '%')}</td>
+                            <td className={`px-3 py-1.5 text-right tabular-nums font-bold ${deltaColor(r.usage_delta)}`}>{fmtDeltaArsenal(r.usage_delta, '%')}</td>
                           </tr>
                         ))}
                       </tbody></table>

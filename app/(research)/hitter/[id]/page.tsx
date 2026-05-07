@@ -1,10 +1,9 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { loadGlossary } from '@/lib/glossary'
+import { useDevice } from '@/lib/hooks/useDeviceContext'
+import { useHitterData, BASE_TABS } from '@/lib/hooks/useHitterData'
 import ResearchNav from '@/components/ResearchNav'
-import FilterEngine, { ActiveFilter, applyFiltersToData } from '@/components/FilterEngine'
+import FilterEngine from '@/components/FilterEngine'
 import HitterOverviewTab from '@/components/dashboard/HitterOverviewTab'
 import LocationTab from '@/components/dashboard/LocationTab'
 import ResultsTab from '@/components/dashboard/ResultsTab'
@@ -15,184 +14,29 @@ import HitterFieldingTab from '@/components/dashboard/HitterFieldingTab'
 import GenerateReportDropdown from '@/components/reports/GenerateReportDropdown'
 import ModelMetricTab from '@/components/dashboard/ModelMetricTab'
 import PlayerBadges from '@/components/PlayerBadges'
-import { fetchDeployedModels, getDashboardModels, type DeployedModel } from '@/lib/deployedModels'
-import type { LahmanPlayerData } from '@/lib/lahman-stats'
+import MobileHitterDashboard from '@/components/mobile/MobileHitterDashboard'
 import { TEAM_COLORS } from '@/lib/constants'
-
-interface HitterInfo {
-  player_name: string; batter: number; total_pitches: number
-  games: number; last_date: string; avg_exit_velo: number; avg_launch_angle: number
-  team: string; bats: string; latest_season: number; first_date: string
-}
-
-const BASE_TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'viz', label: 'Visualizations' },
-  { id: 'results', label: 'Results' },
-  { id: 'pitchlog', label: 'Pitch Log' },
-  { id: 'splits', label: 'Splits' },
-  { id: 'gamelog', label: 'Game Log' },
-  { id: 'fielding', label: 'Fielding' },
-]
 
 export default function HitterDashboard() {
   const params = useParams()
   const batterId = Number(params.id)
+  const { isMobile, isLoading: deviceLoading } = useDevice()
+  const hitter = useHitterData(batterId)
 
-  const [info, setInfo] = useState<HitterInfo | null>(null)
-  const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dataLoading, setDataLoading] = useState(false)
-  const [tab, setTab] = useState('overview')
-  const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([])
-  const [allData, setAllData] = useState<any[]>([])
-  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
-  const [resultCount, setResultCount] = useState(0)
-  const [selectedYear, setSelectedYear] = useState<number | null>(new Date().getFullYear())
-  const [availableYears, setAvailableYears] = useState<number[]>([])
+  const {
+    info, loading, dataLoading, data, allData, seasonFilteredData,
+    resultCount, activeFilters, setActiveFilters, optionsCache,
+    seasonType, setSeasonType, selectedYear, setSelectedYear,
+    availableYears, tab, setTab, modelTabs, lahmanData, fetchData,
+  } = hitter
 
-  // Model tabs
-  const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
+  // Wait for device detection before rendering to avoid flash
+  if (deviceLoading) return null
 
-  // Lahman historical data
-  const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
+  // Mobile view
+  if (isMobile) return <MobileHitterDashboard hitter={hitter} />
 
-  const [seasonType, setSeasonType] = useState<'regular'|'spring'|'postseason'|'all'>('regular')
-
-  useEffect(() => { loadPlayer(); loadModelTabs() }, [batterId])
-
-  async function loadModelTabs() {
-    const models = await fetchDeployedModels()
-    setModelTabs(getDashboardModels(models, 'hitter'))
-  }
-
-  // Partition by season type before user filters
-  const seasonFilteredData = useMemo(() => {
-    if (seasonType === 'all') return allData
-    return allData.filter((r: any) => {
-      const gt = r.game_type
-      if (seasonType === 'regular') return gt === 'R'
-      if (seasonType === 'spring') return gt === 'S' || gt === 'E'
-      if (seasonType === 'postseason') return ['P','F','D','L','W'].includes(gt)
-      return true
-    })
-  }, [allData, seasonType])
-
-  // Client-side filtered data
-  const filteredData = useMemo(() => {
-    if (activeFilters.length === 0) return seasonFilteredData
-    return applyFiltersToData(seasonFilteredData, activeFilters)
-  }, [seasonFilteredData, activeFilters])
-
-  // Debounced filter application
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setData(filteredData)
-      setResultCount(filteredData.length)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [filteredData])
-
-  async function loadPlayer() {
-    setLoading(true)
-    await loadGlossary()
-
-    // Get hitter info from batter_summary
-    const { data: pData } = await supabase
-      .from('batter_summary').select('*').eq('batter', batterId).single()
-    if (pData) setInfo(pData as HitterInfo)
-
-    // Default to player's latest season (handles retired players correctly)
-    const initialYear = pData?.latest_season || new Date().getFullYear()
-    setSelectedYear(initialYear)
-
-    // Load pitches + Lahman data in parallel
-    const lahmanPromise = fetch(`/api/lahman/player?mlb_id=${batterId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.player) setLahmanData(d) })
-      .catch(() => {})
-    await Promise.all([fetchData(initialYear), lahmanPromise])
-    setLoading(false)
-  }
-
-  async function fetchData(year?: number | null) {
-    setDataLoading(true)
-    try {
-      const yearParam = year != null ? `&year=${year}` : ''
-      const res = await fetch(`/api/player-data?id=${batterId}&col=batter${yearParam}`)
-      if (!res.ok) throw new Error('Failed to fetch player data')
-      const { rows: allRows } = await res.json() as { rows: any[] }
-
-      // Enrich with derived fields (pitcher_name now comes from server-side JOIN)
-      allRows.forEach((p: any) => {
-        // VAA (approach angle context)
-        if (p.vz0 != null && p.vy0 != null && p.az != null && p.ay != null && p.release_extension != null) {
-          const t = (-p.vy0 - Math.sqrt(p.vy0*p.vy0 - 2*p.ay*(50-p.release_extension))) / p.ay
-          const vzf = p.vz0 + p.az * t
-          const vyf = p.vy0 + p.ay * t
-          p.vaa = Math.atan2(vzf, -vyf) * (180 / Math.PI)
-        }
-        // HAA
-        if (p.vx0 != null && p.vy0 != null && p.ax != null && p.ay != null && p.release_extension != null) {
-          const t = (-p.vy0 - Math.sqrt(p.vy0*p.vy0 - 2*p.ay*(50-p.release_extension))) / p.ay
-          const vxf = p.vx0 + p.ax * t
-          const vyf = p.vy0 + p.ay * t
-          p.haa = Math.atan2(vxf, -vyf) * (180 / Math.PI)
-        }
-        // Movement in inches
-        if (p.pfx_x != null) p.pfx_x_in = +(p.pfx_x * 12).toFixed(1)
-        if (p.pfx_z != null) p.pfx_z_in = +(p.pfx_z * 12).toFixed(1)
-        // vs Team (opposing pitching team)
-        if (p.inning_topbot === "Top") p.vs_team = p.home_team
-        else if (p.inning_topbot === "Bot") p.vs_team = p.away_team
-      })
-
-      const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
-      setAllData(cleaned)
-      setData(cleaned)
-      setResultCount(cleaned.length)
-
-      // Build filter options from loaded data
-      const buildOpts = (col: string) => [...new Set(cleaned.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
-      const years = buildOpts("game_year").sort().reverse()
-      if (year != null && availableYears.length === 0) {
-        fetch(`/api/player-filter-options?id=${batterId}&col=batter`)
-          .then(r => r.json())
-          .then(d => { if (d.game_year) setAvailableYears(d.game_year.map(Number)) })
-          .catch(() => {})
-      } else if (year == null) {
-        setAvailableYears(years.map(Number))
-      }
-      setOptionsCache({
-        game_year: years,
-        pitch_name: buildOpts("pitch_name"),
-        pitch_type: buildOpts("pitch_type"),
-        stand: buildOpts("stand"),
-        p_throws: buildOpts("p_throws"),
-        balls: ["0","1","2","3"],
-        strikes: ["0","1","2"],
-        outs_when_up: ["0","1","2"],
-        inning: Array.from({length:18},(_,i)=>String(i+1)),
-        inning_topbot: ["Top","Bot"],
-        type: buildOpts("type"),
-        events: buildOpts("events"),
-        description: buildOpts("description"),
-        bb_type: buildOpts("bb_type"),
-        game_type: buildOpts("game_type"),
-        home_team: buildOpts("home_team"),
-        away_team: buildOpts("away_team"),
-        zone: Array.from({length:14},(_,i)=>String(i+1)),
-        if_fielding_alignment: buildOpts("if_fielding_alignment"),
-        of_fielding_alignment: buildOpts("of_fielding_alignment"),
-        vs_team: buildOpts("vs_team"),
-        pitcher_name: buildOpts("pitcher_name"),
-      })
-    } catch (e) {
-      console.error("fetchData error:", e)
-    }
-    setDataLoading(false)
-  }
-
+  // Loading state (desktop)
   if (loading || !info) return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="text-center">

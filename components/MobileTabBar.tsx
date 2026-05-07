@@ -19,7 +19,7 @@ const TABS = [
   {
     id: 'research',
     label: 'Research',
-    href: '/home',
+    href: '/scores',
     color: { active: 'text-emerald-400', inactive: 'text-zinc-500' },
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -65,8 +65,11 @@ const TABS = [
 
 const PREFIX_MAP: Record<string, string> = {
   '/compete': 'compete',
+  '/scores': 'research',
   '/home': 'research',
+  '/players': 'research',
   '/player': 'research',
+  '/hitter': 'research',
   '/reports': 'research',
   '/standings': 'research',
   '/analyst': 'research',
@@ -75,6 +78,14 @@ const PREFIX_MAP: Record<string, string> = {
   '/broadcast': 'broadcast',
   '/admin': 'admin',
 }
+
+// Research routes where MobileShell provides navigation — suppress the tab bar
+const RESEARCH_PREFIXES = [
+  '/home', '/scores', '/standings', '/players', '/explore', '/trends', '/abs',
+  '/player', '/hitter', '/pitchers', '/hitters', '/teams', '/reports',
+  '/umpire', '/matchups', '/sequencing', '/park-adjusted', '/data-export',
+  '/leaders', '/briefs', '/wbc', '/glossary',
+]
 
 function getActiveTab(pathname: string): string | null {
   for (const [prefix, tabId] of Object.entries(PREFIX_MAP)) {
@@ -85,11 +96,18 @@ function getActiveTab(pathname: string): string | null {
   return null
 }
 
+function isResearchRoute(pathname: string): boolean {
+  return RESEARCH_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
+}
+
 export default function MobileTabBar() {
   const pathname = usePathname()
   const { user, profile, loading } = useAuth()
 
   if (loading || !user) return null
+
+  // Suppress on research routes on mobile — MobileShell handles navigation there
+  if (isResearchRoute(pathname)) return null
 
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
   const activeTab = getActiveTab(pathname)

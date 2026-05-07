@@ -26,12 +26,12 @@ export default function GlobalPlayerSearch() {
   const doSearch = useCallback(async (term: string) => {
     const seq = ++seqRef.current
     const [pRes, hRes] = await Promise.all([
-      supabase.rpc('search_all_players', { search_term: term, player_type: 'pitcher', result_limit: 4 }),
-      supabase.rpc('search_all_players', { search_term: term, player_type: 'hitter', result_limit: 4 }),
+      supabase.rpc('search_players', { search_term: term, result_limit: 4 }),
+      supabase.rpc('search_batters', { search_term: term, result_limit: 4 }),
     ])
     if (seq !== seqRef.current) return // stale
-    setPitchers(pRes.data || [])
-    setHitters(hRes.data || [])
+    setPitchers((pRes.data || []).map((p: any) => ({ id: p.pitcher, player_name: p.player_name, team: p.team })))
+    setHitters((hRes.data || []).map((p: any) => ({ id: p.batter, player_name: p.player_name, team: p.team })))
     setShow(true)
   }, [])
 
