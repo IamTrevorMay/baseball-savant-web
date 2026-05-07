@@ -1,6 +1,7 @@
 'use client'
 import { useParams } from 'next/navigation'
 import { useDevice } from '@/lib/hooks/useDeviceContext'
+import { useAuth } from '@/components/AuthProvider'
 import { usePlayerData, BASE_TABS } from '@/lib/hooks/usePlayerData'
 import ResearchNav from '@/components/ResearchNav'
 import FilterEngine from '@/components/FilterEngine'
@@ -24,6 +25,7 @@ export default function PlayerDashboard() {
   const params = useParams()
   const pitcherId = Number(params.id)
   const { isMobile, isLoading: deviceLoading } = useDevice()
+  const { user } = useAuth()
   const player = usePlayerData(pitcherId)
 
   const {
@@ -92,7 +94,7 @@ export default function PlayerDashboard() {
               {lahmanData && <PlayerBadges awards={lahmanData.awards} allstars={lahmanData.allstars} hof={lahmanData.hof} />}
             </div>
           </div>
-          <GenerateReportDropdown playerId={info.pitcher} playerName={info.player_name} playerData={allData} dashboardType="pitching" />
+          {user && <GenerateReportDropdown playerId={info.pitcher} playerName={info.player_name} playerData={allData} dashboardType="pitching" />}
         </div>
       </div>
 

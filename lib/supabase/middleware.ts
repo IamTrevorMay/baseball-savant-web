@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const GAME_HOSTS = ['mayday.games', 'www.mayday.games']
 const DAILY_HOSTS = ['daily.mayday.show', 'www.daily.mayday.show']
+const PUBLIC_HOSTS = ['public.tritonapex.io', 'www.public.tritonapex.io', 'public.localhost']
 
 export async function updateSession(request: NextRequest) {
   const host = request.headers.get('host')?.replace(/:\d+$/, '') ?? ''
@@ -33,7 +34,7 @@ export async function updateSession(request: NextRequest) {
 
   // Landing page subdomains: {slug}.tritonapex.io → /landing/{slug}
   const landingMatch = host.match(/^([a-z0-9-]+)\.tritonapex\.io$/)
-  if (landingMatch && !['www', 'api'].includes(landingMatch[1])) {
+  if (landingMatch && !['www', 'api', 'public'].includes(landingMatch[1])) {
     const slug = landingMatch[1]
     if (pathname === '/') {
       return NextResponse.rewrite(new URL(`/landing/${slug}`, request.url))
@@ -43,6 +44,24 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.next()
     }
     return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  // Public research subdomain: no auth, restrict to research routes only
+  if (PUBLIC_HOSTS.includes(host)) {
+    if (pathname === '/') {
+      return NextResponse.redirect(new URL('/scores', request.url))
+    }
+    const allowedPrefixes = [
+      '/scores', '/standings', '/players', '/explore', '/trends', '/abs',
+      '/player', '/hitter', '/pitchers', '/hitters', '/teams',
+      '/glossary', '/leaders', '/wbc', '/api/',
+    ]
+    if (!allowedPrefixes.some(p => pathname.startsWith(p))) {
+      return NextResponse.redirect(new URL('/scores', request.url))
+    }
+    const requestHeaders = new Headers(request.headers)
+    requestHeaders.set('x-triton-public', '1')
+    return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
   // Public paths and API routes skip auth entirely — no cookie manipulation

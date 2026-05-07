@@ -1,6 +1,7 @@
 'use client'
 import { useParams } from 'next/navigation'
 import { useDevice } from '@/lib/hooks/useDeviceContext'
+import { useAuth } from '@/components/AuthProvider'
 import { useHitterData, BASE_TABS } from '@/lib/hooks/useHitterData'
 import ResearchNav from '@/components/ResearchNav'
 import FilterEngine from '@/components/FilterEngine'
@@ -21,6 +22,7 @@ export default function HitterDashboard() {
   const params = useParams()
   const batterId = Number(params.id)
   const { isMobile, isLoading: deviceLoading } = useDevice()
+  const { user } = useAuth()
   const hitter = useHitterData(batterId)
 
   const {
@@ -89,7 +91,7 @@ export default function HitterDashboard() {
               {lahmanData && <PlayerBadges awards={lahmanData.awards} allstars={lahmanData.allstars} hof={lahmanData.hof} />}
             </div>
           </div>
-          <GenerateReportDropdown playerId={info.batter} playerName={info.player_name} playerData={allData} dashboardType="hitting" />
+          {user && <GenerateReportDropdown playerId={info.batter} playerName={info.player_name} playerData={allData} dashboardType="hitting" />}
         </div>
       </div>
 
