@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-
-// Use admin client when available, fall back to anon (works when RLS is off)
-const writeClient = process.env.SUPABASE_SERVICE_ROLE_KEY ? supabaseAdmin : supabase
 
 // --- Helpers ---
 
@@ -106,7 +102,7 @@ export async function syncData(year: number, gameType: GameType = 'R', level: st
   addDaily(fielderSummaryData, 'fielder')
 
   if (dailyRows.length > 0) {
-    const { error } = await writeClient.from('abs_daily_summary').upsert(dailyRows, {
+    const { error } = await supabaseAdmin.from('abs_daily_summary').upsert(dailyRows, {
       onConflict: 'year,game_type,level,source,game_date',
     })
     if (error) throw new Error(`Daily upsert: ${error.message}`)
@@ -135,7 +131,7 @@ export async function syncData(year: number, gameType: GameType = 'R', level: st
   }
 
   if (breakdownRows.length > 0) {
-    const { error } = await writeClient.from('abs_breakdown').upsert(breakdownRows, {
+    const { error } = await supabaseAdmin.from('abs_breakdown').upsert(breakdownRows, {
       onConflict: 'year,game_type,level,source,breakdown_key',
     })
     if (error) throw new Error(`Breakdown upsert: ${error.message}`)
@@ -160,7 +156,7 @@ export async function syncData(year: number, gameType: GameType = 'R', level: st
   }
 
   if (teamRows.length > 0) {
-    const { error } = await writeClient.from('abs_team').upsert(teamRows, {
+    const { error } = await supabaseAdmin.from('abs_team').upsert(teamRows, {
       onConflict: 'year,game_type,level,team_id',
     })
     if (error) throw new Error(`Team upsert: ${error.message}`)
@@ -201,7 +197,7 @@ export async function syncData(year: number, gameType: GameType = 'R', level: st
       net_net_chal_against: r.net_net_chal_against != null ? Number(r.net_net_chal_against) : null,
     }))
 
-    const { error } = await writeClient.from('abs_player').upsert(playerRows, {
+    const { error } = await supabaseAdmin.from('abs_player').upsert(playerRows, {
       onConflict: 'year,game_type,level,challenge_type,player_id',
     })
     if (error) throw new Error(`Player upsert (${challengeType}): ${error.message}`)
@@ -239,14 +235,14 @@ export async function POST(req: NextRequest) {
     const level = body.level || 'MLB'
 
     const [dailyRes, breakdownRes, teamRes] = await Promise.all([
-      supabase.from('abs_daily_summary')
+      supabaseAdmin.from('abs_daily_summary')
         .select('*')
         .eq('year', year).eq('game_type', gameType).eq('level', level)
         .order('game_date', { ascending: true }),
-      supabase.from('abs_breakdown')
+      supabaseAdmin.from('abs_breakdown')
         .select('*')
         .eq('year', year).eq('game_type', gameType).eq('level', level),
-      supabase.from('abs_team')
+      supabaseAdmin.from('abs_team')
         .select('*')
         .eq('year', year).eq('game_type', gameType).eq('level', level)
         .order('team_abbr', { ascending: true }),
@@ -292,7 +288,7 @@ export async function POST(req: NextRequest) {
     const challengeType = body.challengeType || 'batter'
     const minChal = Number(body.minChal || 0)
 
-    let q = supabase.from('abs_player')
+    let q = supabaseAdmin.from('abs_player')
       .select('*')
       .eq('year', year).eq('game_type', gameType).eq('level', level)
       .eq('challenge_type', challengeType)
@@ -361,13 +357,13 @@ export async function POST(req: NextRequest) {
       LIMIT 100
     `
 
-    const { data, error } = await supabase.rpc('run_query', { query_text: sql.trim() })
+    const { data, error } = await supabaseAdmin.rpc('run_query', { query_text: sql.trim() })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data || [])
   }
 
   if (action === 'filters') {
-    const { data, error } = await supabase.from('abs_daily_summary')
+    const { data, error } = await supabaseAdmin.from('abs_daily_summary')
       .select('year,game_type,level')
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     // Deduplicate
