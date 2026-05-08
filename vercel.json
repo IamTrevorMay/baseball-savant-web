@@ -63,6 +63,10 @@
     {
       "path": "/api/cron/emails",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron/integrity",
+      "schedule": "0 10 * * *"
     }
   ]
 }

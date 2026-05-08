@@ -1,4 +1,4 @@
-// FanGraphs Guts! season constants (2015–2025)
+// FanGraphs Guts! season constants (2015–2026)
 // Source: https://www.fangraphs.com/guts.aspx?type=cn
 
 export const SEASON_CONSTANTS: Record<number, {
@@ -19,6 +19,7 @@ export const SEASON_CONSTANTS: Record<number, {
   2023: { woba: .318, woba_scale: 1.204, wbb: .696, whbp: .726, w1b: .883, w2b: 1.244, w3b: 1.569, whr: 2.004, run_sb: .200, run_cs: -.422, r_pa: .122, r_w: 10.028, cfip: 3.255, lg_era: 4.33, lg_babip: .296, lg_k_pct: .227, lg_bb_pct: .084, lg_hr_pct: .033, lg_hr_fb: .114 },
   2024: { woba: .310, woba_scale: 1.242, wbb: .689, whbp: .720, w1b: .882, w2b: 1.254, w3b: 1.590, whr: 2.050, run_sb: .200, run_cs: -.405, r_pa: .117, r_w: 9.683, cfip: 3.166, lg_era: 4.01, lg_babip: .291, lg_k_pct: .228, lg_bb_pct: .079, lg_hr_pct: .030, lg_hr_fb: .105 },
   2025: { woba: .313, woba_scale: 1.232, wbb: .691, whbp: .722, w1b: .882, w2b: 1.252, w3b: 1.584, whr: 2.037, run_sb: .200, run_cs: -.410, r_pa: .118, r_w: 9.774, cfip: 3.135, lg_era: 4.10, lg_babip: .293, lg_k_pct: .225, lg_bb_pct: .080, lg_hr_pct: .031, lg_hr_fb: .110 },
+  2026: { woba: .320, woba_scale: 1.256, wbb: .707, whbp: .738, w1b: .902, w2b: 1.278, w3b: 1.617, whr: 2.078, run_sb: .200, run_cs: -.412, r_pa: .118, r_w: 9.826, cfip: 3.138, lg_era: 4.18, lg_babip: .289, lg_k_pct: .221, lg_bb_pct: .096, lg_hr_pct: .028, lg_hr_fb: .109 },
 }
 
 // Park factors by team (5-year rolling, 2024 FanGraphs)
@@ -68,13 +69,18 @@ export const ZONE_HALF_WIDTH = 0.83
 
 // Pitch name → lowercase abbreviation (for leaderboard column keys)
 export const PITCH_NAME_TO_ABBREV: Record<string, string> = {
-  '4-Seam Fastball': 'ff', 'Sinker': 'si', 'Cutter': 'fc', 'Slider': 'sl',
-  'Sweeper': 'sw', 'Curveball': 'cu', 'Changeup': 'ch', 'Split-Finger': 'fs',
-  'Knuckle Curve': 'kc', 'Slurve': 'sv',
+  '4-Seam Fastball': 'ff', '2-Seam Fastball': 'ft', 'Sinker': 'si',
+  'Cutter': 'fc', 'Slider': 'sl', 'Sweeper': 'sw', 'Curveball': 'cu',
+  'Slow Curve': 'cs', 'Knuckle Curve': 'kc', 'Slurve': 'sv',
+  'Changeup': 'ch', 'Split-Finger': 'fs', 'Forkball': 'fo',
+  'Knuckleball': 'kn', 'Screwball': 'sc', 'Eephus': 'ep',
+  'Pitch Out': 'po', 'Other': 'fa',
 }
 
 // Pitch type code → lowercase abbreviation
 export const PITCH_TYPE_TO_ABBREV: Record<string, string> = {
-  FF: 'ff', SI: 'si', FC: 'fc', SL: 'sl', SW: 'sw', CU: 'cu',
-  CH: 'ch', FS: 'fs', KC: 'kc', SV: 'sv', ST: 'st',
+  FF: 'ff', FT: 'ft', SI: 'si', FC: 'fc', SL: 'sl', SW: 'sw',
+  CU: 'cu', CS: 'cs', KC: 'kc', SV: 'sv', ST: 'st',
+  CH: 'ch', FS: 'fs', FO: 'fo', KN: 'kn', SC: 'sc', EP: 'ep',
+  PO: 'po', FA: 'fa',
 }
