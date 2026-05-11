@@ -33,10 +33,6 @@
       "schedule": "0 14 * * *"
     },
     {
-      "path": "/api/cron/newsletter",
-      "schedule": "0 15 * * *"
-    },
-    {
       "path": "/api/cron/daily-cards",
       "schedule": "0 10 * * *"
     },
