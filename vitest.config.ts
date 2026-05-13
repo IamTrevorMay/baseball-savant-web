@@ -9,5 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    setupFiles: ['dotenv/config'],
+    testTimeout: 120_000,
   },
 })

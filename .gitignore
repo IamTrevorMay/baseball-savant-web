@@ -8,6 +8,10 @@ node_modules/
 # Vercel env snapshot
 .env.vercel
 
+# Claude Code
+.claude/worktrees/
+tsconfig.tsbuildinfo
+
 # MCP server (contains secrets; build artifacts)
 .mcp.json
 mcp-server/build/
