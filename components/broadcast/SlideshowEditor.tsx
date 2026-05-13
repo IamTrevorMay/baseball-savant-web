@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { BroadcastAsset, SlideshowSlide, SlideshowConfig, SLIDESHOW_TRANSITIONS, SlideshowTransitionType } from '@/lib/broadcastTypes'
 import { useBroadcast } from './BroadcastContext'
 import { uploadBroadcastMedia } from '@/lib/uploadMedia'
@@ -16,7 +16,17 @@ export default function SlideshowEditor({ asset }: Props) {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [selectedTransitionIdx, setSelectedTransitionIdx] = useState<number | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Close context menu on click anywhere or scroll
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener('click', close)
+    window.addEventListener('scroll', close, true)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true) }
+  }, [contextMenu])
 
   const config: SlideshowConfig = asset.slideshow_config || { slides: [], fit: 'contain' }
   const slides = config.slides || []
@@ -65,6 +75,19 @@ export default function SlideshowEditor({ asset }: Props) {
     const newSlides = slides.filter((_, i) => i !== index)
     persistConfig({ ...config, slides: newSlides })
     if (selectedTransitionIdx === index) setSelectedTransitionIdx(null)
+  }
+
+  function duplicateSlide(index: number) {
+    const original = slides[index]
+    const copy: SlideshowSlide = { ...original, id: crypto.randomUUID(), name: `${original.name} copy` }
+    const newSlides = [...slides]
+    newSlides.splice(index + 1, 0, copy)
+    persistConfig({ ...config, slides: newSlides })
+  }
+
+  function handleContextMenu(e: React.MouseEvent, index: number) {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, index })
   }
 
   function handleDragStart(index: number) {
@@ -231,6 +254,7 @@ export default function SlideshowEditor({ asset }: Props) {
                   onDragOver={e => handleDragOver(e, i)}
                   onDrop={() => handleDrop(i)}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={e => handleContextMenu(e, i)}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded border transition cursor-grab active:cursor-grabbing ${
                     dragOverIndex === i
                       ? 'border-purple-500/50 bg-purple-500/10'
@@ -349,6 +373,34 @@ export default function SlideshowEditor({ asset }: Props) {
           </button>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[140px] bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 text-[11px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => { duplicateSlide(contextMenu.index); setContextMenu(null) }}
+            className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 hover:text-white transition flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+              <rect x="8" y="8" width="13" height="13" rx="2" />
+              <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+            </svg>
+            Duplicate
+          </button>
+          <button
+            onClick={() => { removeSlide(contextMenu.index); setContextMenu(null) }}
+            className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-zinc-700 hover:text-red-300 transition flex items-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   )
 }
