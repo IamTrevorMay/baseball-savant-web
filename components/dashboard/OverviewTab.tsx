@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import PercentileRankings from '../charts/PercentileRankings'
 import MovementProfile from '../charts/MovementProfile'
 import PitchLocationCards from '../charts/PitchLocationCards'
@@ -70,6 +70,12 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
   })
 
 
+  // Compute season-wide average arm angle for the gauge tooltip
+  const seasonAvgArmAngle = useMemo(() => {
+    const angles = data.map(d => d.arm_angle).filter((v: any): v is number => v != null)
+    return angles.length ? angles.reduce((a, b) => a + b, 0) / angles.length : null
+  }, [data])
+
   const tradCols = getColumns('pitcher:traditional')
   const advCols = getColumns('pitcher:advanced')
   const arsenalCols = getColumns('pitcher:arsenal')
@@ -137,7 +143,7 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
           <PercentileRankings data={data} />
         </div>
         <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">
-          <MovementProfile data={data} />
+          <MovementProfile data={data} seasonAvgArmAngle={seasonAvgArmAngle} />
         </div>
       </div>
       <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-4">

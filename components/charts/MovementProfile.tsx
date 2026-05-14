@@ -1,14 +1,27 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Plot from '../PlotWrapper'
 import { COLORS, getPitchColor } from '../chartConfig'
 import { STUFF_ZSCORE_BASELINES } from '@/lib/leagueStats'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import ArmAngleGauge from './ArmAngleGauge'
 
-export default function MovementProfile({ data }: { data: any[] }) {
+interface Props {
+  data: any[]
+  seasonAvgArmAngle?: number | null
+}
+
+export default function MovementProfile({ data, seasonAvgArmAngle }: Props) {
   const filtered = data.filter(d => d.pfx_x != null && d.pfx_z != null && d.pitch_name)
 
-  const { traces, arsenal } = useMemo(() => {
-    if (!filtered.length) return { traces: [], arsenal: [] }
+  // Derive throwing hand from data (p_throws field on every pitch row)
+  const throwHand: 'R' | 'L' = useMemo(() => {
+    const hand = data.find(d => d.p_throws === 'L' || d.p_throws === 'R')?.p_throws
+    return hand === 'L' ? 'L' : 'R'
+  }, [data])
+
+  const { traces, arsenal, avgArmAngle } = useMemo(() => {
+    if (!filtered.length) return { traces: [], arsenal: [], avgArmAngle: null as number | null }
 
     const groups: Record<string, any[]> = {}
     filtered.forEach(d => {
@@ -20,7 +33,7 @@ export default function MovementProfile({ data }: { data: any[] }) {
     const pitchTypes = Object.entries(groups).sort((a, b) => b[1].length - a[1].length)
 
     const traces = pitchTypes.map(([pt, pts]) => ({
-      x: pts.map(d => d.pfx_x * 12),
+      x: pts.map(d => toPitcherX(d.pfx_x) * 12),
       y: pts.map(d => d.pfx_z * 12),
       type: 'scatter' as any,
       mode: 'markers' as any,
@@ -32,6 +45,8 @@ export default function MovementProfile({ data }: { data: any[] }) {
     const arsenal = pitchTypes.map(([name, pts]) => {
       const velos = pts.map(p => p.release_speed).filter(Boolean)
       const avgVelo = velos.length ? velos.reduce((a, b) => a + b, 0) / velos.length : null
+      const armAngles = pts.map(p => p.arm_angle).filter((v: any): v is number => v != null)
+      const avgArm = armAngles.length ? armAngles.reduce((a: number, b: number) => a + b, 0) / armAngles.length : null
       const bl = STUFF_ZSCORE_BASELINES[name]
       return {
         name,
@@ -39,11 +54,18 @@ export default function MovementProfile({ data }: { data: any[] }) {
         usage: ((pts.length / total) * 100).toFixed(1),
         mph: avgVelo != null ? avgVelo.toFixed(1) : '—',
         lgAvg: bl ? bl.avg_velo.toFixed(1) : '—',
+        armAngle: avgArm != null ? avgArm.toFixed(1) : '—',
       }
     })
 
-    return { traces, arsenal }
+    // Overall average arm angle
+    const allArmAngles = filtered.map(d => d.arm_angle).filter((v: any): v is number => v != null)
+    const avgArmAngle = allArmAngles.length ? allArmAngles.reduce((a, b) => a + b, 0) / allArmAngles.length : null
+
+    return { traces, arsenal, avgArmAngle }
   }, [filtered])
+
+  const [gaugeHovered, setGaugeHovered] = useState(false)
 
   if (!filtered.length) return <div className="text-zinc-500 text-sm text-center py-10">No movement data</div>
 
@@ -75,7 +97,22 @@ export default function MovementProfile({ data }: { data: any[] }) {
       range: [-28, 28], zeroline: false, showgrid: false,
       showticklabels: false, fixedrange: true, scaleanchor: 'x',
     },
-    shapes: [...circleShapes, ...crossHairs],
+    shapes: [...circleShapes, ...crossHairs, ...(() => {
+      if (!gaugeHovered || avgArmAngle == null) return []
+      const rad = (avgArmAngle * Math.PI) / 180
+      const dir = throwHand === 'R' ? 1 : -1
+      const dx = dir * Math.cos(rad)
+      const dy = Math.sin(rad)
+      // Scale to fill chart bounds (±28)
+      const tX = Math.abs(dx) > 0.001 ? 28 / Math.abs(dx) : Infinity
+      const tY = Math.abs(dy) > 0.001 ? 28 / Math.abs(dy) : Infinity
+      const t = Math.min(tX, tY)
+      return [{
+        type: 'line' as const, xref: 'x' as const, yref: 'y' as const,
+        x0: -dx * t, y0: -dy * t, x1: dx * t, y1: dy * t,
+        line: { color: 'rgba(228,228,231,0.5)', width: 3 },
+      }]
+    })()],
     annotations: [
       { x: 0, y: 27, text: 'MORE RISE', showarrow: false, font: { size: 9, color: '#71717a' } },
       { x: 0, y: -27, text: 'MORE DROP', showarrow: false, font: { size: 9, color: '#71717a' } },
@@ -91,7 +128,16 @@ export default function MovementProfile({ data }: { data: any[] }) {
   return (
     <div>
       <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">Movement Profile</h3>
-      <Plot data={traces} layout={layout} config={{ displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d', 'zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] }} />
+      <div className="relative">
+        <Plot data={traces} layout={layout} config={{ displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d', 'zoom2d', 'pan2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] }} />
+        <div
+          className={`absolute bottom-8 z-10 ${throwHand === 'R' ? 'right-2' : 'left-2'}`}
+          onMouseEnter={() => setGaugeHovered(true)}
+          onMouseLeave={() => setGaugeHovered(false)}
+        >
+          <ArmAngleGauge angle={avgArmAngle} seasonAngle={seasonAvgArmAngle} throwHand={throwHand} />
+        </div>
+      </div>
 
       {/* Arsenal Legend Table */}
       <table className="w-full text-[11px] mt-2">
@@ -101,6 +147,7 @@ export default function MovementProfile({ data }: { data: any[] }) {
             <th className="text-right py-1 font-medium">Usage</th>
             <th className="text-right py-1 font-medium">MPH</th>
             <th className="text-right py-1 font-medium">Lg Avg</th>
+            <th className="text-right py-1 font-medium">Arm°</th>
           </tr>
         </thead>
         <tbody>
@@ -113,6 +160,7 @@ export default function MovementProfile({ data }: { data: any[] }) {
               <td className="text-right text-zinc-400 font-mono py-1">{a.usage}%</td>
               <td className="text-right text-zinc-200 font-mono py-1">{a.mph}</td>
               <td className="text-right text-zinc-500 font-mono py-1">{a.lgAvg}</td>
+              <td className="text-right text-zinc-400 font-mono py-1">{a.armAngle}°</td>
             </tr>
           ))}
         </tbody>
