@@ -3,6 +3,8 @@ import { useState, useMemo } from 'react'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor, ZONE_SHAPES } from '../chartConfig'
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 interface Props {
   data: any[]
@@ -143,7 +145,7 @@ function MiniHeatmap({
   let trace: any
   if (metric === 'frequency') {
     trace = {
-      x: f.map(d => d.plate_x), y: f.map(d => d.plate_z),
+      x: f.map(d => toPitcherX(d.plate_x)), y: f.map(d => d.plate_z),
       type: 'histogram2dcontour',
       colorscale: BLUE_RED_SCALE,
       reversescale: false,
@@ -162,7 +164,7 @@ function MiniHeatmap({
     const bins: any[][][] = Array.from({ length: nbins }, () => Array.from({ length: nbins }, () => []))
 
     f.forEach(d => {
-      const xi = Math.min(Math.floor((d.plate_x - xRange[0]) / xStep), nbins - 1)
+      const xi = Math.min(Math.floor((toPitcherX(d.plate_x) - xRange[0]) / xStep), nbins - 1)
       const yi = Math.min(Math.floor((d.plate_z - yRange[0]) / yStep), nbins - 1)
       if (xi >= 0 && yi >= 0) bins[yi][xi].push(d)
     })
@@ -219,6 +221,7 @@ function MiniHeatmap({
           xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
           yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
           shapes: ZONE_SHAPES,
+          images: batterSilhouetteImages(detectStand(data)),
           width: size, height: size,
         }}
         style={{ width: size, height: size, minHeight: size }}
@@ -242,11 +245,11 @@ function MiniScatter({ data, title, size = 220 }: { data: any[]; title: string; 
   f.forEach(d => { const k = d.pitch_name || 'Unknown'; if (!groups[k]) groups[k] = []; groups[k].push(d) })
 
   const traces = Object.entries(groups).map(([name, pts]) => ({
-    x: pts.map(d => d.plate_x), y: pts.map(d => d.plate_z),
+    x: pts.map(d => toPitcherX(d.plate_x)), y: pts.map(d => d.plate_z),
     type: 'scatter' as any, mode: 'markers',
     marker: { size: 3.5, color: getPitchColor(name), opacity: 0.5 },
     name,
-    customdata: pts.map(d => [+(d.plate_x * 12).toFixed(1), +(d.plate_z * 12).toFixed(1)]),
+    customdata: pts.map(d => [+(toPitcherX(d.plate_x) * 12).toFixed(1), +(d.plate_z * 12).toFixed(1)]),
     hovertemplate: `${name}<br>X: %{customdata[0]:.1f}"<br>Z: %{customdata[1]:.1f}"<extra></extra>`,
   }))
 
@@ -261,7 +264,7 @@ function MiniScatter({ data, title, size = 220 }: { data: any[]; title: string; 
           margin: { t: 5, r: 5, b: 5, l: 5 },
           xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
           yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
-          shapes: ZONE_SHAPES, showlegend: false,
+          shapes: ZONE_SHAPES, images: batterSilhouetteImages(detectStand(data)), showlegend: false,
           width: size, height: size,
         }}
         style={{ width: size, height: size, minHeight: size }}
@@ -361,7 +364,7 @@ export default function LocationTab({ data, subjectType, level }: Props) {
     const xS = (xR[1]-xR[0])/nbins, yS = (yR[1]-yR[0])/nbins
     const bins: any[][][] = Array.from({length:nbins}, () => Array.from({length:nbins}, () => []))
     f.forEach(d => {
-      const xi = Math.min(Math.floor((d.plate_x-xR[0])/xS), nbins-1)
+      const xi = Math.min(Math.floor((toPitcherX(d.plate_x)-xR[0])/xS), nbins-1)
       const yi = Math.min(Math.floor((d.plate_z-yR[0])/yS), nbins-1)
       if (xi >= 0 && yi >= 0) bins[yi][xi].push(d)
     })

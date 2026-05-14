@@ -1,6 +1,8 @@
 'use client'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '../chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 interface Props {
   data: any[]
@@ -10,6 +12,7 @@ interface Props {
 export default function PitchLocationCards({ data, playerName }: Props) {
   const f = data.filter(d => d.pitch_name && d.plate_x != null && d.plate_z != null)
   if (!f.length) return <div className="text-zinc-500 text-sm text-center py-10">No location data</div>
+  const stand = detectStand(data)
 
   // Group by pitch_name, sorted descending by count
   const groups: Record<string, any[]> = {}
@@ -57,7 +60,7 @@ export default function PitchLocationCards({ data, playerName }: Props) {
           const color = getPitchColor(name)
 
           const trace = {
-            x: pitches.map((d: any) => d.plate_x),
+            x: pitches.map((d: any) => toPitcherX(d.plate_x)),
             y: pitches.map((d: any) => d.plate_z),
             type: 'histogram2dcontour' as any,
             colorscale: [[0, 'rgba(0,0,0,0)'], [0.2, color + '30'], [0.5, color + '70'], [1, color]],
@@ -81,6 +84,7 @@ export default function PitchLocationCards({ data, playerName }: Props) {
               showticklabels: false, fixedrange: true,
             },
             shapes: zoneShapes,
+            images: batterSilhouetteImages(stand),
             height: 220,
             autosize: true,
           }

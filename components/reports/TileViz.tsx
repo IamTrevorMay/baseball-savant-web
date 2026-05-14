@@ -6,6 +6,8 @@ import {
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 // Shared zone shapes for strike zone
 const ZONE_SHAPES = [
@@ -121,11 +123,11 @@ export function TileHeatmap({
   if(f.length<5) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">Not enough data</div>
   let trace: any
   if(metric==="frequency") {
-    trace = {x:f.map(d=>d.plate_x),y:f.map(d=>d.plate_z),type:"histogram2dcontour",colorscale:SPECTRUM,ncontours:25,contours:{coloring:"heatmap"},line:{width:0},showscale:false,hovertemplate:"%{z:.0f} pitches<extra></extra>"}
+    trace = {x:f.map(d=>toPitcherX(d.plate_x)),y:f.map(d=>d.plate_z),type:"histogram2dcontour",colorscale:SPECTRUM,ncontours:25,contours:{coloring:"heatmap"},line:{width:0},showscale:false,hovertemplate:"%{z:.0f} pitches<extra></extra>"}
   } else {
     const nb=16,xR=[-1.76,1.76],yR=[0.24,4.06],xS=(xR[1]-xR[0])/nb,yS=(yR[1]-yR[0])/nb
     const bins:any[][][]=Array.from({length:nb},()=>Array.from({length:nb},()=>[]))
-    f.forEach(d=>{const xi=Math.min(Math.max(Math.floor((d.plate_x-xR[0])/xS),0),nb-1),yi=Math.min(Math.max(Math.floor((d.plate_z-yR[0])/yS),0),nb-1);bins[yi][xi].push(d)})
+    f.forEach(d=>{const xi=Math.min(Math.max(Math.floor((toPitcherX(d.plate_x)-xR[0])/xS),0),nb-1),yi=Math.min(Math.max(Math.floor((d.plate_z-yR[0])/yS),0),nb-1);bins[yi][xi].push(d)})
     const z=bins.map(row=>row.map(cell=>calcMetric(cell,metric)))
     // Chase%: null out bins inside the strike zone (can't chase in-zone pitches)
     if(metric==='chase_pct'){for(let r=0;r<nb;r++){for(let c=0;c<nb;c++){const bx=xR[0]+(c+.5)*xS,by=yR[0]+(r+.5)*yS;if(bx>=-0.708&&bx<=0.708&&by>=1.5&&by<=3.5)z[r][c]=null}}}
@@ -146,7 +148,7 @@ export function TileHeatmap({
   const fmtZ = (v:number) => metric==="frequency" ? String(Math.round(v)) : ["ba","slg","woba","xba","xwoba","xslg"].includes(metric) ? v.toFixed(3) : v.toFixed(1)
   return (
     <div className="relative w-full h-full">
-      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...(metric==='chase_pct'?[{type:'rect' as const,x0:-0.708,x1:0.708,y0:1.5,y1:3.5,fillcolor:'#09090b',line:{color:'#fff',width:2},layer:'above' as const},...ZONE_SHAPES.slice(1)]:[...ZONE_SHAPES]),...batShapes(stand)],autosize:true}} style={{width:"100%",height:"100%"}} />
+      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...(metric==='chase_pct'?[{type:'rect' as const,x0:-0.708,x1:0.708,y0:1.5,y1:3.5,fillcolor:'#09090b',line:{color:'#fff',width:2},layer:'above' as const},...ZONE_SHAPES.slice(1)]:[...ZONE_SHAPES])],images:batterSilhouetteImages(stand),autosize:true}} style={{width:"100%",height:"100%"}} />
       {zVals && zVals.length > 0 && (
         <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
           <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMin)}</span>
@@ -160,7 +162,7 @@ export function TileHeatmap({
 
 // ── SCATTER ───────────────────────────────────────────────────────────────────
 export type ScatterMode = 'location'|'movement'|'ev_la'
-export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode}) {
+export function TileScatter({data,mode='location',stand=null}:{data:any[];mode?:ScatterMode;stand?:'L'|'R'|null}) {
   const groups:Record<string,any[]>={}
   const valid = data.filter(d => {
     if(mode==='location') return d.plate_x!=null&&d.plate_z!=null
@@ -169,9 +171,7 @@ export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode
   })
   if(!valid.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
   valid.forEach(d=>{const k=d.pitch_name||'Unknown';if(!groups[k]) groups[k]=[];groups[k].push(d)})
-  const xKey = mode==='location'?'plate_x':mode==='movement'?'pfx_x':'launch_speed'
   const yKey = mode==='location'?'plate_z':mode==='movement'?'pfx_z':'launch_angle'
-  const xMul = mode==='movement'?12:1
   const yMul = mode==='movement'?12:1
   const traces = Object.entries(groups).map(([name,pts])=>{
     const customdata = pts.map(d => [d.player_name || "", d.release_speed ? d.release_speed.toFixed(1) : ""])
@@ -180,8 +180,9 @@ export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode
       : mode==="movement"
       ? `${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>HB: %{x:.1f}\"<br>IVB: %{y:.1f}\"<extra></extra>`
       : `${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>EV: %{x:.1f}<br>LA: %{y:.1f}u00b0<extra></extra>`
+    const xArr = mode==='location'?pts.map(d=>toPitcherX(d.plate_x)):mode==='movement'?pts.map(d=>toPitcherX(d.pfx_x)*12):pts.map(d=>d.launch_speed)
     return {
-      x:pts.map(d=>d[xKey]*xMul),y:pts.map(d=>d[yKey]*yMul),customdata,
+      x:xArr,y:pts.map(d=>d[yKey]*yMul),customdata,
       type:"scatter" as any,mode:"markers",marker:{size:3,color:getPitchColor(name),opacity:.5},
       name,hovertemplate:hoverTpl,
     }
@@ -191,7 +192,7 @@ export function TileScatter({data,mode='location'}:{data:any[];mode?:ScatterMode
   const shapes = mode==='location'?ZONE_SHAPES:[]
   const xRange = mode==='location'?[-1.76,1.76]:undefined
   const yRange = mode==='location'?[0.24,4.06]:undefined
-  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:10,r:10,b:mode==='location'?5:30,l:mode==='location'?5:35},xaxis:{title:xTitle,range:xRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',fixedrange:true,tickfont:{size:8}},yaxis:{title:yTitle,range:yRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',scaleanchor:mode==='location'?'x':undefined,fixedrange:true,tickfont:{size:8}},shapes,showlegend:false,autosize:true}} style={{width:'100%',height:'100%'}} />
+  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:10,r:10,b:mode==='location'?5:30,l:mode==='location'?5:35},xaxis:{title:xTitle,range:xRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',fixedrange:true,tickfont:{size:8}},yaxis:{title:yTitle,range:yRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',scaleanchor:mode==='location'?'x':undefined,fixedrange:true,tickfont:{size:8}},shapes,images:mode==='location'?batterSilhouetteImages(stand):[],showlegend:false,autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
 // ── BAR CHART ─────────────────────────────────────────────────────────────────
@@ -226,12 +227,12 @@ export function TileStrikeZone({data,stand=null}:{data:any[];stand?:'L'|'R'|null
   if(!f.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
   f.forEach(d=>{const k=d.pitch_name||'Unknown';if(!groups[k]) groups[k]=[];groups[k].push(d)})
   const traces = Object.entries(groups).map(([name,pts])=>({
-    x:pts.map(d=>d.plate_x),y:pts.map(d=>d.plate_z),
+    x:pts.map(d=>toPitcherX(d.plate_x)),y:pts.map(d=>d.plate_z),
     type:'scatter' as any,mode:'markers',
     marker:{size:5,color:getPitchColor(name),opacity:.7,line:{width:.5,color:'rgba(0,0,0,0.3)'}},
     name,customdata:pts.map(d=>[d.player_name||"",d.release_speed?d.release_speed.toFixed(1):""]),hovertemplate:`${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>X: %{x:.1f}\"<br>Z: %{y:.1f}\"<extra></extra>`,
   }))
-  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:[...ZONE_SHAPES,...batShapes(stand)],showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
+  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,images:batterSilhouetteImages(stand),showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
 // ── CUSTOM COLUMN DEFINITIONS ────────────────────────────────────────────────
@@ -299,7 +300,7 @@ export const CUSTOM_COL_CATALOG: CustomColDef[] = [
   { key: 'velo', label: 'Velo', category: 'Velocity', compute: p => avg(p, 'release_speed'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'max_velo', label: 'Max Velo', category: 'Velocity', compute: p => { const v = p.map((d: any) => d.release_speed).filter(Boolean); return v.length ? Math.max(...v) : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'spin', label: 'Spin', category: 'Velocity', compute: p => avg(p, 'release_spin_rate'), fmt: v => v === null ? '\u2014' : String(Math.round(v)) },
-  { key: 'hb', label: 'HB"', category: 'Velocity', compute: p => { const v = avg(p, 'pfx_x'); return v !== null ? v * 12 : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
+  { key: 'hb', label: 'HB"', category: 'Velocity', compute: p => { const v = avg(p, 'pfx_x'); return v !== null ? toPitcherX(v) * 12 : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'ivb', label: 'IVB"', category: 'Velocity', compute: p => { const v = avg(p, 'pfx_z'); return v !== null ? v * 12 : null }, fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   { key: 'ext', label: 'Ext', category: 'Velocity', compute: p => avg(p, 'release_extension'), fmt: v => v === null ? '\u2014' : v.toFixed(1) },
   // Rates
@@ -413,7 +414,7 @@ export function TileTable({ data, mode = 'arsenal', columns, groupBy }: { data: 
           pitch: pt, n: p.length, pct: 100 * p.length / data.length,
           velo: velos.length ? velos.reduce((a: number, b: number) => a + b, 0) / velos.length : null,
           spin: spins.length ? Math.round(spins.reduce((a: number, b: number) => a + b, 0) / spins.length) : null,
-          hb: hb.length ? hb.reduce((a: number, b: number) => a + b, 0) / hb.length * 12 : null,
+          hb: hb.length ? toPitcherX(hb.reduce((a: number, b: number) => a + b, 0) / hb.length) * 12 : null,
           ivb: vb.length ? vb.reduce((a: number, b: number) => a + b, 0) / vb.length * 12 : null,
           whiff: sw.length ? 100 * wh.length / sw.length : null,
           ev: evs.length ? evs.reduce((a: number, b: number) => a + b, 0) / evs.length : null,
@@ -594,7 +595,7 @@ export function TileHeatmapOverlay({ player1Config, player2Config, tileFilters, 
         const f = rows.filter(d => d.plate_x != null && d.plate_z != null)
         const bins: any[][][] = Array.from({length: nb}, () => Array.from({length: nb}, () => []))
         f.forEach(d => {
-          const xi = Math.min(Math.max(Math.floor((d.plate_x - xR[0]) / xS), 0), nb - 1)
+          const xi = Math.min(Math.max(Math.floor((toPitcherX(d.plate_x) - xR[0]) / xS), 0), nb - 1)
           const yi = Math.min(Math.max(Math.floor((d.plate_z - yR[0]) / yS), 0), nb - 1)
           bins[yi][xi].push(d)
         })

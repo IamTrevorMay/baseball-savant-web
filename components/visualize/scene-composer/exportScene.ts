@@ -3,6 +3,8 @@ import { interpolateScene } from '@/lib/sceneInterpolation'
 import { drawPitchFlightStatic } from './PitchFlightRenderer'
 import { drawStadiumStatic } from './StadiumRenderer'
 import { getPitchColor } from '@/components/chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, drawBatterSilhouette } from '@/lib/batterSilhouette'
 
 // ── Canvas helpers ───────────────────────────────────────────────────────────
 
@@ -981,7 +983,7 @@ function drawRCHeatmap(ctx: CanvasRenderingContext2D, el: SceneElement) {
   const VXM = -2, VXX = 2, VZM = 0.5, VZX = 4.5
 
   for (const loc of locations) {
-    const bx = Math.floor(((loc.plate_x - VXM) / (VXX - VXM)) * binsX)
+    const bx = Math.floor(((toPitcherX(loc.plate_x) - VXM) / (VXX - VXM)) * binsX)
     const by = Math.floor(((VZX - loc.plate_z) / (VZX - VZM)) * binsY)
     if (bx >= 0 && bx < binsX && by >= 0 && by < binsY) {
       bins[by][bx]++
@@ -1330,9 +1332,13 @@ function drawRCZonePlot(ctx: CanvasRenderingContext2D, el: SceneElement) {
     ctx.globalAlpha = 1
   }
 
+  // Batter silhouette (below pitch dots)
+  const rcStand = detectStand(pitches)
+  drawBatterSilhouette(ctx, rcStand, toCanvasX, toCanvasY)
+
   // Pitch dots
   for (const pitch of pitches) {
-    const cx = toCanvasX(pitch.plate_x)
+    const cx = toCanvasX(toPitcherX(pitch.plate_x))
     const cy = toCanvasY(pitch.plate_z)
     const color = getPitchColor(pitch.pitch_name)
 

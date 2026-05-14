@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import ResearchNav from '@/components/ResearchNav'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
 import { PITCH_COLORS } from '@/components/chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false })
 
@@ -58,7 +60,7 @@ export default function MatchupsPage() {
   // Build Plotly scatter data grouped by pitch type
   const pitchTypes = [...new Set(locations.map(l => l.pitch_name))]
   const plotData = pitchTypes.map(pt => ({
-    x: locations.filter(l => l.pitch_name === pt).map(l => l.plate_x),
+    x: locations.filter(l => l.pitch_name === pt).map(l => toPitcherX(l.plate_x)),
     y: locations.filter(l => l.pitch_name === pt).map(l => l.plate_z),
     text: locations.filter(l => l.pitch_name === pt).map(l => `${pt}\n${l.velo} mph\n${l.description}${l.events ? '\n' + l.events : ''}`),
     mode: 'markers' as const,
@@ -186,6 +188,7 @@ export default function MatchupsPage() {
                     xaxis: { range: [-2.5, 2.5], zeroline: false, showgrid: false, color: '#71717a', title: { text: 'Plate X (ft)', font: { size: 10, color: '#71717a' } } },
                     yaxis: { range: [0, 5], zeroline: false, showgrid: false, color: '#71717a', title: { text: 'Plate Z (ft)', font: { size: 10, color: '#71717a' } } },
                     shapes: zoneShapes,
+                    images: batterSilhouetteImages(detectStand(locations)),
                     margin: { l: 50, r: 20, t: 20, b: 50 },
                     legend: { font: { size: 10, color: '#a1a1aa' }, bgcolor: 'transparent' },
                     showlegend: true,

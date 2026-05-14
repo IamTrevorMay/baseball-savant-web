@@ -4,6 +4,7 @@ import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable, TileHeatm
 import type { MetricKey, ScatterMode, BarMetric, TableMode } from './TileViz'
 import { applyFiltersToData, FILTER_CATALOG, type ActiveFilter, type FilterDef } from '../FilterEngine'
 import { PITCH_CODE_NAMES } from '../chartConfig'
+import { detectStand } from '@/lib/batterSilhouette'
 
 export type VizType = 'heatmap'|'scatter'|'bar'|'strike_zone'|'table'|'heatmap_overlay'|'empty'
 
@@ -103,15 +104,8 @@ export default function ReportTile({
   // Apply tile-level filters
   const filtered = config.filters.length > 0 ? applyFiltersToData(data, config.filters) : data
 
-  // Determine dominant batter stand for bat graphic
-  const dominantStand = (() => {
-    const stands = filtered.map(d => d.stand).filter(Boolean)
-    if (!stands.length) return null
-    const lCount = stands.filter((s: string) => s === 'L').length
-    const rCount = stands.filter((s: string) => s === 'R').length
-    if (lCount === 0 && rCount === 0) return null
-    return lCount > rCount ? 'L' as const : 'R' as const
-  })()
+  // Determine batter stand for silhouette overlay (strict: all pitches same side)
+  const dominantStand = detectStand(filtered)
 
   function setViz(viz: VizType) { onUpdate({ ...config, viz }) }
 
@@ -370,7 +364,7 @@ export default function ReportTile({
       {/* Visualization */}
       <div className="flex-1 p-1 min-h-0">
         {config.viz === 'heatmap' && <TileHeatmap data={filtered} metric={config.metric || 'frequency'} stand={dominantStand} subjectType={subjectType} level={level} season={season} />}
-        {config.viz === 'scatter' && <TileScatter data={filtered} mode={config.scatterMode || 'location'} />}
+        {config.viz === 'scatter' && <TileScatter data={filtered} mode={config.scatterMode || 'location'} stand={(config.scatterMode || 'location') === 'location' ? dominantStand : null} />}
         {config.viz === 'bar' && <TileBar data={filtered} metric={config.barMetric || 'usage'} />}
         {config.viz === 'strike_zone' && <TileStrikeZone data={filtered} stand={dominantStand} />}
         {config.viz === 'table' && <TileTable data={filtered} mode={config.tableMode || 'arsenal'} columns={config.tableColumns} groupBy={config.tableGroupBy} />}

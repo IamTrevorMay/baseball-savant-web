@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { preloadBatterSilhouette } from '@/lib/batterSilhouette'
 
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -9,6 +10,7 @@ export default function ServiceWorkerRegistration() {
         // SW registration failed — ignore silently
       })
     }
+    preloadBatterSilhouette()
   }, [])
 
   return null

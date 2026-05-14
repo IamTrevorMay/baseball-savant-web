@@ -2,6 +2,8 @@
 import { useMemo } from 'react'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor, ZONE_SHAPES } from '../chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 interface Props { pitches: any[] }
 
@@ -81,7 +83,7 @@ export default function GameDetail({ pitches }: Props) {
         cswPct: pts.length > 0 ? ((cs + whiffs) / pts.length * 100).toFixed(1) : '—',
         avgSpin: f(avg(spins), 0),
         avgIVB: f(avg(ivb)),
-        avgHB: f(avg(hb)),
+        avgHB: f(avg(hb) != null ? toPitcherX(avg(hb)!) : null),
       }
     }).sort((a, b) => b.count - a.count)
   }, [pitches])
@@ -181,7 +183,7 @@ export default function GameDetail({ pitches }: Props) {
   const zoneTraces = Object.entries(pitchGroups).map(([name, pts]) => {
     const f = pts.filter(p => p.plate_x != null && p.plate_z != null)
     return {
-      x: f.map(p => p.plate_x), y: f.map(p => p.plate_z),
+      x: f.map(p => toPitcherX(p.plate_x)), y: f.map(p => p.plate_z),
       type: 'scatter' as any, mode: 'markers' as any,
       marker: { size: 5, color: getPitchColor(name), opacity: 0.7 },
       name,
@@ -193,7 +195,7 @@ export default function GameDetail({ pitches }: Props) {
   const moveTraces = Object.entries(pitchGroups).map(([name, pts]) => {
     const f = pts.filter(p => p.pfx_x_in != null && p.pfx_z_in != null)
     return {
-      x: f.map(p => p.pfx_x_in), y: f.map(p => p.pfx_z_in),
+      x: f.map(p => toPitcherX(p.pfx_x_in)), y: f.map(p => p.pfx_z_in),
       type: 'scatter' as any, mode: 'markers' as any,
       marker: { size: 5, color: getPitchColor(name), opacity: 0.7 },
       name,
@@ -288,6 +290,7 @@ export default function GameDetail({ pitches }: Props) {
               xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
               yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
               shapes: ZONE_SHAPES,
+              images: batterSilhouetteImages(detectStand(pitches)),
               margin: { t: 5, r: 5, b: 5, l: 5 },
             })}
             style={{ width: '100%', height: chartH }}

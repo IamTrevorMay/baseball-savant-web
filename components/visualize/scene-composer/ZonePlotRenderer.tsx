@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 import { getPitchColor } from '@/components/chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, drawBatterSilhouette } from '@/lib/batterSilhouette'
 
 interface PitchLocation {
   plate_x: number
@@ -135,9 +137,13 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
       ctx.globalAlpha = 1
     }
 
+    // Batter silhouette (below pitch dots)
+    const stand = detectStand(pitches)
+    drawBatterSilhouette(ctx, stand, toCanvasX, toCanvasY)
+
     // Pitch dots
     for (const pitch of pitches) {
-      const cx = toCanvasX(pitch.plate_x)
+      const cx = toCanvasX(toPitcherX(pitch.plate_x))
       const cy = toCanvasY(pitch.plate_z)
       const color = getPitchColor(pitch.pitch_name)
 

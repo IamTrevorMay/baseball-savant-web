@@ -4,6 +4,8 @@ import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
+import { toPitcherX, PITCH_LOC_X_TITLE } from '@/lib/pitcherPerspective'
+import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 interface TemplateProps {
   data: any[]
@@ -46,7 +48,7 @@ function buildBins(pitches: any[]): any[][][] {
   )
   for (const d of pitches) {
     if (d.plate_x == null || d.plate_z == null) continue
-    const xi = Math.min(Math.max(Math.floor((d.plate_x - X_RANGE[0]) / X_STEP), 0), NB - 1)
+    const xi = Math.min(Math.max(Math.floor((toPitcherX(d.plate_x) - X_RANGE[0]) / X_STEP), 0), NB - 1)
     const yi = Math.min(Math.max(Math.floor((d.plate_z - Y_RANGE[0]) / Y_STEP), 0), NB - 1)
     bins[yi][xi].push(d)
   }
@@ -181,7 +183,7 @@ export default function StrikeZoneHeatmapViz({
 
     if (metric === 'density') {
       const t = {
-        x: filtered.map(d => d.plate_x),
+        x: filtered.map(d => toPitcherX(d.plate_x)),
         y: filtered.map(d => d.plate_z),
         type: 'histogram2d' as any,
         colorscale: 'YlOrRd',
@@ -256,7 +258,7 @@ export default function StrikeZoneHeatmapViz({
     },
     xaxis: {
       ...BASE_LAYOUT.xaxis,
-      title: 'Horizontal (ft) — Catcher View',
+      title: PITCH_LOC_X_TITLE,
       range: X_RANGE,
       scaleanchor: 'y',
       showgrid: false,
@@ -270,6 +272,7 @@ export default function StrikeZoneHeatmapViz({
       zeroline: false,
     },
     shapes: ZONE_SHAPES,
+    images: batterSilhouetteImages(detectStand(filtered)),
     margin: { t: 45, r: 70, b: 55, l: 55 },
     annotations: [
       { x: X_RANGE[0] + 0.3, y: -0.05, text: '← 3B', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },

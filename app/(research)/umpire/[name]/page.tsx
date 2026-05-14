@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ResearchNav from '@/components/ResearchNav'
 import dynamic from 'next/dynamic'
+import { toPitcherX } from '@/lib/pitcherPerspective'
+import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false })
 
@@ -360,14 +362,14 @@ export default function UmpireScorecardPage() {
               <Plot
                 data={[
                   {
-                    x: incorrectStrikes.map(p => p.plate_x),
+                    x: incorrectStrikes.map(p => toPitcherX(p.plate_x)),
                     y: incorrectStrikes.map(p => p.plate_z),
                     mode: 'markers', type: 'scatter',
                     name: 'Called Strike (ball)',
                     marker: { color: '#f97316', size: 5, opacity: 0.6 },
                   },
                   {
-                    x: incorrectBalls.map(p => p.plate_x),
+                    x: incorrectBalls.map(p => toPitcherX(p.plate_x)),
                     y: incorrectBalls.map(p => p.plate_z),
                     mode: 'markers', type: 'scatter',
                     name: 'Called Ball (strike)',
@@ -388,6 +390,7 @@ export default function UmpireScorecardPage() {
                     // Shadow zone (1" buffer)
                     { type: 'rect', x0: -0.913, x1: 0.913, y0: szBot - 0.083, y1: szTop + 0.083, line: { color: '#3f3f46', width: 1, dash: 'dot' } },
                   ],
+                  images: batterSilhouetteImages(batterSide === 'R' ? 'R' : batterSide === 'L' ? 'L' : null),
                 }}
                 config={{ displayModeBar: false }}
               />
@@ -520,7 +523,7 @@ export default function UmpireScorecardPage() {
                       <Plot
                         data={[
                           {
-                            x: overturned.map((e: any) => Number(e.plate_x)),
+                            x: overturned.map((e: any) => toPitcherX(Number(e.plate_x))),
                             y: overturned.map((e: any) => Number(e.plate_z)),
                             type: 'scatter' as any,
                             mode: 'markers' as any,
@@ -532,7 +535,7 @@ export default function UmpireScorecardPage() {
                             hoverinfo: 'text' as any,
                           },
                           {
-                            x: upheld.map((e: any) => Number(e.plate_x)),
+                            x: upheld.map((e: any) => toPitcherX(Number(e.plate_x))),
                             y: upheld.map((e: any) => Number(e.plate_z)),
                             type: 'scatter' as any,
                             mode: 'markers' as any,
