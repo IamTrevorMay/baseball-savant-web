@@ -181,9 +181,28 @@ export function readinessStateFromScore(score: number | null): 'green' | 'yellow
   return 'red'
 }
 
+// Static score for time in bed: curve based on athlete sleep recommendations
+function timeInBedStaticScore(sleepMs: number | null | undefined): number | null {
+  if (sleepMs == null) return null
+  const hours = sleepMs / 3_600_000
+  if (hours >= 10) return 1.0
+  if (hours <= 5) return 0.1
+  // Piecewise linear: 5h→10%, 6h→40%, 7h→60%, 8h→80%, 9h→92%, 10h→100%
+  const breakpoints: [number, number][] = [[5, 0.1], [6, 0.4], [7, 0.6], [8, 0.8], [9, 0.92], [10, 1.0]]
+  for (let i = 1; i < breakpoints.length; i++) {
+    if (hours <= breakpoints[i][0]) {
+      const [h0, s0] = breakpoints[i - 1]
+      const [h1, s1] = breakpoints[i]
+      return s0 + (s1 - s0) * ((hours - h0) / (h1 - h0))
+    }
+  }
+  return 1.0
+}
+
 // Weights reflect controllability: highest = most controllable
-const READINESS_METRICS: { key: string; weight: number; extract: (cycle: WhoopCycleRow | null, sleep: WhoopSleepRow | null) => number | null }[] = [
-  { key: 'time_in_bed', weight: 2.0, extract: (_, s) => s?.total_duration_ms ?? null },
+// time_in_bed uses a static scale (not percentile-ranked) — see timeInBedStaticScore
+const READINESS_METRICS: { key: string; weight: number; static?: true; extract: (cycle: WhoopCycleRow | null, sleep: WhoopSleepRow | null) => number | null }[] = [
+  { key: 'time_in_bed', weight: 2.0, static: true, extract: (_, s) => timeInBedStaticScore(s?.total_duration_ms) },
   { key: 'sleep_consistency', weight: 1.75, extract: (_, s) => s?.sleep_consistency ?? null },
   { key: 'time_asleep', weight: 1.5, extract: (_, s) => (s?.total_duration_ms != null && s?.awake_duration_ms != null) ? s.total_duration_ms - s.awake_duration_ms : null },
   { key: 'sleep_efficiency', weight: 1.25, extract: (_, s) => s?.sleep_efficiency ?? null },
@@ -220,23 +239,29 @@ export function computeReadiness(
     const todayVal = metric.extract(todayCycle, todaySleep)
     if (todayVal === null) continue
 
-    // Collect all historical values for this metric
-    const historical: number[] = []
-    for (const date of allDates) {
-      const c = cycleByDate.get(date) ?? null
-      const s = sleepByDate.get(date) ?? null
-      const v = metric.extract(c, s)
-      if (v !== null) historical.push(v)
+    let score: number
+
+    if (metric.static) {
+      // Static metrics already return a 0-1 score directly
+      score = todayVal
+    } else {
+      // Percentile rank against historical values
+      const historical: number[] = []
+      for (const date of allDates) {
+        const c = cycleByDate.get(date) ?? null
+        const s = sleepByDate.get(date) ?? null
+        const v = metric.extract(c, s)
+        if (v !== null) historical.push(v)
+      }
+
+      if (historical.length === 0) continue
+
+      historical.sort((a, b) => a - b)
+      const countBelow = historical.filter(v => v <= todayVal).length
+      score = countBelow / historical.length
     }
 
-    if (historical.length === 0) continue
-
-    // Percentile rank: count of values <= today / total
-    historical.sort((a, b) => a - b)
-    const countBelow = historical.filter(v => v <= todayVal).length
-    const percentile = countBelow / historical.length
-
-    weightedSum += percentile * metric.weight
+    weightedSum += score * metric.weight
     weightSum += metric.weight
   }
 
