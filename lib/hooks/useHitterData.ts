@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
 import { applyFiltersToData, type ActiveFilter } from '@/lib/filterEngineCore'
@@ -136,110 +138,109 @@ function buildOptionsCache(allRows: any[]): Record<string, string[]> {
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useHitterData(batterId: number): UseHitterDataReturn {
-  const [info, setInfo] = useState<HitterInfo | null>(null)
   const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dataLoading, setDataLoading] = useState(false)
   const [tab, setTab] = useState('overview')
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([])
-  const [allData, setAllData] = useState<any[]>([])
-  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
   const [seasonType, setSeasonType] = useState<SeasonType>('regular')
-  const [selectedYear, setSelectedYear] = useState<number | null>(new Date().getFullYear())
-  const [availableYears, setAvailableYears] = useState<number[]>([])
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
 
-  // Model tabs
-  const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
+  // ── Hitter info query ──────────────────────────────────────────────────
 
-  // Lahman historical data
-  const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
+  const { data: info = null, isLoading: infoLoading } = useQuery({
+    queryKey: queryKeys.hitterInfo(batterId),
+    queryFn: async () => {
+      await loadGlossary()
+      const { data: pData } = await supabase
+        .from('batter_summary')
+        .select('*')
+        .eq('batter', batterId)
+        .single()
+      return (pData as HitterInfo) || null
+    },
+  })
 
-  // ── Load model tabs ──────────────────────────────────────────────────────
+  // Set initial year from info when it first loads
+  useEffect(() => {
+    if (info && selectedYear === null) {
+      setSelectedYear(info.latest_season || new Date().getFullYear())
+    }
+  }, [info, selectedYear])
 
-  const loadModelTabs = useCallback(async () => {
-    const models = await fetchDeployedModels()
-    setModelTabs(getDashboardModels(models, 'hitter'))
-  }, [])
+  // ── Pitch data query ──────────────────────────────────────────────────
 
-  // ── Fetch pitch data ─────────────────────────────────────────────────────
-
-  const fetchData = useCallback(async (year?: number | null) => {
-    setDataLoading(true)
-    try {
-      const yearParam = year != null ? `&year=${year}` : ''
+  const { data: pitchQueryData, isLoading: pitchesLoading } = useQuery({
+    queryKey: queryKeys.hitterPitches(batterId, selectedYear),
+    queryFn: async () => {
+      const yearParam = selectedYear != null ? `&year=${selectedYear}` : ''
       const res = await fetch(`/api/player-data?id=${batterId}&col=batter${yearParam}`)
       if (!res.ok) throw new Error('Failed to fetch player data')
       const { rows: allRows } = (await res.json()) as { rows: any[] }
-
-      // Enrich with derived fields
       enrichDerivedFields(allRows)
-
       const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
-      setAllData(cleaned)
-      setData(cleaned)
-      setResultCount(cleaned.length)
-
-      // Build filter options
       const opts = buildOptionsCache(cleaned)
-      const years = opts.game_year
+      return { cleaned, opts }
+    },
+    enabled: selectedYear !== null,
+  })
 
-      // If loading a single year, fetch available years from filter-options endpoint
-      if (year != null && availableYears.length === 0) {
-        fetch(`/api/player-filter-options?id=${batterId}&col=batter`)
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.game_year) setAvailableYears(d.game_year.map(Number))
-          })
-          .catch(() => {})
-      } else if (year == null) {
-        setAvailableYears(years.map(Number))
-      }
-      setOptionsCache(opts)
-    } catch (e) {
-      console.error('fetchData error:', e)
-    }
-    setDataLoading(false)
-  }, [batterId, availableYears.length])
+  const allData = pitchQueryData?.cleaned ?? []
+  const optionsCache = pitchQueryData?.opts ?? {}
 
-  // ── Load player ──────────────────────────────────────────────────────────
+  // ── Available years query ──────────────────────────────────────────────
 
-  const loadPlayer = useCallback(async () => {
-    setLoading(true)
-    await loadGlossary()
+  const { data: filterYears } = useQuery({
+    queryKey: queryKeys.playerFilterOptions(batterId, 'batter'),
+    queryFn: async () => {
+      const res = await fetch(`/api/player-filter-options?id=${batterId}&col=batter`)
+      const d = await res.json()
+      return d.game_year ? (d.game_year as string[]).map(Number) : []
+    },
+    enabled: selectedYear != null,
+    staleTime: Infinity,
+  })
 
-    // Get hitter info from batter_summary
-    const { data: pData } = await supabase
-      .from('batter_summary')
-      .select('*')
-      .eq('batter', batterId)
-      .single()
-    if (pData) setInfo(pData as HitterInfo)
+  const availableYears = selectedYear != null
+    ? (filterYears ?? (optionsCache.game_year ?? []).map(Number))
+    : (optionsCache.game_year ?? []).map(Number)
 
-    // Default to player's latest season (handles retired players correctly)
-    const initialYear = pData?.latest_season || new Date().getFullYear()
-    setSelectedYear(initialYear)
+  // ── Lahman query ───────────────────────────────────────────────────────
 
-    // Load pitches + Lahman data in parallel
-    const lahmanPromise = fetch(`/api/lahman/player?mlb_id=${batterId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.player) setLahmanData(d)
-      })
-      .catch(() => {})
+  const { data: lahmanData = null } = useQuery({
+    queryKey: queryKeys.hitterLahman(batterId),
+    queryFn: async () => {
+      const res = await fetch(`/api/lahman/player?mlb_id=${batterId}`)
+      if (!res.ok) return null
+      const d = await res.json()
+      return d.player ? (d as LahmanPlayerData) : null
+    },
+    enabled: !!info,
+  })
 
-    await Promise.all([fetchData(initialYear), lahmanPromise])
-    setLoading(false)
-  }, [batterId, fetchData])
+  // ── Model tabs query ──────────────────────────────────────────────────
 
-  // ── Trigger on batterId change ───────────────────────────────────────────
+  const { data: modelTabs = [] } = useQuery({
+    queryKey: queryKeys.deployedModels('hitter'),
+    queryFn: async () => {
+      const models = await fetchDeployedModels()
+      return getDashboardModels(models, 'hitter')
+    },
+    staleTime: Infinity,
+  })
+
+  // ── Composite loading states ──────────────────────────────────────────
+
+  const loading = infoLoading
+  const dataLoading = pitchesLoading
+
+  // ── Reset on batterId change ──────────────────────────────────────────
 
   useEffect(() => {
-    loadPlayer()
-    loadModelTabs()
-  }, [batterId, loadPlayer, loadModelTabs])
+    setSelectedYear(null)
+    setActiveFilters([])
+  }, [batterId])
 
-  // ── Season-type filtering (before user filters) ──────────────────────────
+  // ── Season-type filtering (before user filters) ──────────────────────
 
   const seasonFilteredData = useMemo(() => {
     if (seasonType === 'all') return allData
@@ -252,14 +253,14 @@ export function useHitterData(batterId: number): UseHitterDataReturn {
     })
   }, [allData, seasonType])
 
-  // ── Client-side filtered data ────────────────────────────────────────────
+  // ── Client-side filtered data ────────────────────────────────────────
 
   const filteredData = useMemo(() => {
     if (activeFilters.length === 0) return seasonFilteredData
     return applyFiltersToData(seasonFilteredData, activeFilters)
   }, [seasonFilteredData, activeFilters])
 
-  // ── Debounced filter application ─────────────────────────────────────────
+  // ── Debounced filter application ─────────────────────────────────────
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -268,6 +269,12 @@ export function useHitterData(batterId: number): UseHitterDataReturn {
     }, 300)
     return () => clearTimeout(timer)
   }, [filteredData])
+
+  // ── fetchData wrapper (preserves interface) ──────────────────────────
+
+  const fetchData = useCallback(async (year?: number | null) => {
+    setSelectedYear(year ?? null)
+  }, [])
 
   return {
     info,

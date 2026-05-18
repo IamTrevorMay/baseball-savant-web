@@ -1,6 +1,9 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
+import { postJson, fetchJson } from '@/lib/queries/fetchers'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const SEASONS = Array.from({ length: CURRENT_YEAR - 2014 }, (_, i) => String(CURRENT_YEAR - i))
@@ -89,113 +92,101 @@ export function fmtGameLine(gl: GameLine): string {
 
 export { CURRENT_YEAR, SEASONS, PLAYER_TYPES }
 
+function pickUnique(list: Highlight[], n: number): Highlight[] {
+  const seen = new Set<number>()
+  const result: Highlight[] = []
+  for (const item of list) {
+    if (seen.has(item.player_id)) continue
+    seen.add(item.player_id)
+    result.push(item)
+    if (result.length >= n) break
+  }
+  return result
+}
+
 export function useTrendsData() {
   const [season, setSeason] = useState(String(CURRENT_YEAR))
   const [playerType, setPlayerType] = useState<'pitcher' | 'hitter'>('pitcher')
   const [minPitches, setMinPitches] = useState(new Date().getMonth() + 1 <= 4 ? '50' : '500')
+  const [trendTab, setTrendTab] = useState<'overview' | 'stuff' | 'arsenal'>('overview')
+
+  // Scan state (user-triggered, stays as local state)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [recentDate, setRecentDate] = useState('')
   const [latestDate, setLatestDate] = useState('')
-  const [highlights, setHighlights] = useState<{ surges: Highlight[]; concerns: Highlight[] } | null>(null)
-  const [highlightsLoading, setHighlightsLoading] = useState(true)
-  const [daily, setDaily] = useState<DailyHighlights | null>(null)
-  const [dailyLoading, setDailyLoading] = useState(true)
-  const [trendTab, setTrendTab] = useState<'overview' | 'stuff' | 'arsenal'>('overview')
-  const [stuffData, setStuffData] = useState<any>(null)
-  const [stuffLoading, setStuffLoading] = useState(false)
-  const [arsenalData, setArsenalData] = useState<any>(null)
-  const [arsenalLoading, setArsenalLoading] = useState(false)
 
-  // Load Stuff+ data when tab changes
-  useEffect(() => {
-    if (trendTab !== 'stuff' || stuffData) return
-    setStuffLoading(true)
-    fetch('/api/trends', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season: Number(season), tab: 'stuff', minPitches: parseInt(minPitches) || 50 }),
-    }).then(r => r.json()).then(d => setStuffData(d)).catch(() => {}).finally(() => setStuffLoading(false))
-  }, [trendTab, season])
+  // Daily highlights query
+  const { data: daily = null, isLoading: dailyLoading } = useQuery({
+    queryKey: queryKeys.dailyHighlights(),
+    queryFn: async () => {
+      const d = await fetchJson<DailyHighlights & { error?: string }>('/api/daily-highlights')
+      if (d.error) return null
+      return d
+    },
+    staleTime: 10 * 60 * 1000,
+  })
 
-  // Load Arsenal data when tab changes
-  useEffect(() => {
-    if (trendTab !== 'arsenal' || arsenalData) return
-    setArsenalLoading(true)
-    fetch('/api/trends', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ season: Number(season), tab: 'arsenal', minPitches: parseInt(minPitches) || 50 }),
-    }).then(r => r.json()).then(d => setArsenalData(d)).catch(() => {}).finally(() => setArsenalLoading(false))
-  }, [trendTab, season])
+  // Trend highlights (surges/concerns) query
+  const { data: highlights = null, isLoading: highlightsLoading } = useQuery({
+    queryKey: queryKeys.trendsHighlights(),
+    queryFn: async () => {
+      const month = new Date().getMonth() + 1
+      const autoMinPitches = month <= 4 ? 50 : 500
+      const [pd, hd] = await Promise.all([
+        postJson<{ rows?: Alert[]; recentDate?: string; latestDate?: string }>('/api/trends', {
+          season: CURRENT_YEAR, playerType: 'pitcher', minPitches: autoMinPitches,
+        }),
+        postJson<{ rows?: Alert[] }>('/api/trends', {
+          season: CURRENT_YEAR, playerType: 'hitter', minPitches: autoMinPitches,
+        }),
+      ])
 
-  // Auto-load daily highlights
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/daily-highlights')
-      .then(r => r.json())
-      .then(d => { if (!cancelled && !d.error) setDaily(d) })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setDailyLoading(false) })
-    return () => { cancelled = true }
-  }, [])
+      const pitcherAlerts: Alert[] = (pd.rows || []).map((a: Alert) => ({ ...a }))
+      const hitterAlerts: Alert[] = (hd.rows || []).map((a: Alert) => ({ ...a }))
 
-  // Auto-load highlights on mount
-  useEffect(() => {
-    let cancelled = false
-    async function loadHighlights() {
-      try {
-        const month = new Date().getMonth() + 1
-        const autoMinPitches = month <= 4 ? 50 : 500
-        const [pitcherRes, hitterRes] = await Promise.all([
-          fetch('/api/trends', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'pitcher', minPitches: autoMinPitches }),
-          }),
-          fetch('/api/trends', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: CURRENT_YEAR, playerType: 'hitter', minPitches: autoMinPitches }),
-          }),
-        ])
-        if (cancelled) return
-        const [pd, hd] = await Promise.all([pitcherRes.json(), hitterRes.json()])
-        const pitcherAlerts: Alert[] = (pd.rows || []).map((a: Alert) => ({ ...a }))
-        const hitterAlerts: Alert[] = (hd.rows || []).map((a: Alert) => ({ ...a }))
+      const all: Highlight[] = [
+        ...pitcherAlerts.map(a => ({ ...a, type: 'pitcher' as const, reason: buildReason(a) })),
+        ...hitterAlerts.map(a => ({ ...a, type: 'hitter' as const, reason: buildReason(a) })),
+      ]
 
-        const all: Highlight[] = [
-          ...pitcherAlerts.map(a => ({ ...a, type: 'pitcher' as const, reason: buildReason(a) })),
-          ...hitterAlerts.map(a => ({ ...a, type: 'hitter' as const, reason: buildReason(a) })),
-        ]
+      const surgeAll = all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
+      const concernAll = all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
 
-        const surgeAll = all.filter(a => a.sentiment === 'good').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
-        const concernAll = all.filter(a => a.sentiment === 'bad').sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
-
-        const pickUnique = (list: Highlight[], n: number): Highlight[] => {
-          const seen = new Set<number>()
-          const result: Highlight[] = []
-          for (const item of list) {
-            if (seen.has(item.player_id)) continue
-            seen.add(item.player_id)
-            result.push(item)
-            if (result.length >= n) break
-          }
-          return result
-        }
-
-        setHighlights({
-          surges: pickUnique(surgeAll, 5),
-          concerns: pickUnique(concernAll, 5),
-        })
-        if (pd.recentDate) { setRecentDate(pd.recentDate); setLatestDate(pd.latestDate) }
-      } catch {
-        // Silently fail
+      // Update recentDate/latestDate from response
+      if (pd.recentDate) {
+        setRecentDate(pd.recentDate)
+        setLatestDate(pd.latestDate || '')
       }
-      if (!cancelled) setHighlightsLoading(false)
-    }
-    loadHighlights()
-    return () => { cancelled = true }
-  }, [])
+
+      return {
+        surges: pickUnique(surgeAll, 5),
+        concerns: pickUnique(concernAll, 5),
+      }
+    },
+    staleTime: 10 * 60 * 1000,
+  })
+
+  // Stuff tab query
+  const { data: stuffData = null, isLoading: stuffLoading } = useQuery<any>({
+    queryKey: queryKeys.trendsTab(season, 'stuff', minPitches),
+    queryFn: () => postJson('/api/trends', {
+      season: Number(season), tab: 'stuff', minPitches: parseInt(minPitches) || 50,
+    }),
+    enabled: trendTab === 'stuff',
+    staleTime: Infinity,
+  })
+
+  // Arsenal tab query
+  const { data: arsenalData = null, isLoading: arsenalLoading } = useQuery<any>({
+    queryKey: queryKeys.trendsTab(season, 'arsenal', minPitches),
+    queryFn: () => postJson('/api/trends', {
+      season: Number(season), tab: 'arsenal', minPitches: parseInt(minPitches) || 50,
+    }),
+    enabled: trendTab === 'arsenal',
+    staleTime: Infinity,
+  })
 
   const handleScan = useCallback(async () => {
     setLoading(true); setError(null)

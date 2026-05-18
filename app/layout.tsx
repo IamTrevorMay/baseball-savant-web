@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Bebas_Neue } from 'next/font/google'
 import './globals.css'
 import AuthProvider from '@/components/AuthProvider'
+import QueryProvider from '@/lib/QueryProvider'
 import { DeviceProvider } from '@/lib/hooks/useDeviceContext'
 import { ThemeProvider } from '@/lib/hooks/useTheme'
 import MobileTabBar from '@/components/MobileTabBar'
@@ -42,14 +43,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`${inter.className} ${bebas.variable} antialiased`}>
-        <AuthProvider>
-          <DeviceProvider>
-            <ThemeProvider>
-              {children}
-              <MobileTabBar />
-            </ThemeProvider>
-          </DeviceProvider>
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <DeviceProvider>
+              <ThemeProvider>
+                {children}
+                <MobileTabBar />
+              </ThemeProvider>
+            </DeviceProvider>
+          </AuthProvider>
+        </QueryProvider>
         <ServiceWorkerRegistration />
         <Analytics />
       </body>

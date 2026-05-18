@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
 import { applyFiltersToData, type ActiveFilter } from '@/lib/filterEngineCore'
@@ -113,128 +115,130 @@ function buildOptionsCache(allRows: any[]): Record<string, string[]> {
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function usePlayerData(pitcherId: number): UsePlayerDataReturn {
-  const [info, setInfo] = useState<PlayerInfo | null>(null)
   const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dataLoading, setDataLoading] = useState(false)
-  const [mlbStats, setMlbStats] = useState<any[]>([])
   const [tab, setTab] = useState('overview')
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([])
-  const [allData, setAllData] = useState<any[]>([])
-  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [resultCount, setResultCount] = useState(0)
   const [seasonType, setSeasonType] = useState<SeasonType>('regular')
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
-  const [availableYears, setAvailableYears] = useState<number[]>([])
 
-  // Model tabs
-  const [modelTabs, setModelTabs] = useState<DeployedModel[]>([])
+  // ── Player info query ──────────────────────────────────────────────────
 
-  // SOS scores per year
-  const [sosScores, setSosScores] = useState<Record<number, { sos: number }>>({})
+  const { data: info = null, isLoading: infoLoading } = useQuery({
+    queryKey: queryKeys.playerInfo(pitcherId),
+    queryFn: async () => {
+      await loadGlossary()
+      const { data: pData } = await supabase
+        .from('player_summary')
+        .select('*')
+        .eq('pitcher', pitcherId)
+        .single()
+      return (pData as PlayerInfo) || null
+    },
+  })
 
-  // Lahman historical data
-  const [lahmanData, setLahmanData] = useState<LahmanPlayerData | null>(null)
+  // ── Pitch data query ──────────────────────────────────────────────────
 
-  // ── Load model tabs ──────────────────────────────────────────────────────
-
-  const loadModelTabs = useCallback(async () => {
-    const models = await fetchDeployedModels()
-    setModelTabs(getDashboardModels(models, 'pitcher'))
-  }, [])
-
-  // ── Fetch pitch data ─────────────────────────────────────────────────────
-
-  const fetchData = useCallback(async (year?: number | null) => {
-    setDataLoading(true)
-    try {
-      const yearParam = year != null ? `&year=${year}` : ''
+  const { data: pitchQueryData, isLoading: pitchesLoading } = useQuery({
+    queryKey: queryKeys.playerPitches(pitcherId, selectedYear),
+    queryFn: async () => {
+      const yearParam = selectedYear != null ? `&year=${selectedYear}` : ''
       const res = await fetch(`/api/player-data?id=${pitcherId}&col=pitcher${yearParam}`)
       if (!res.ok) throw new Error('Failed to fetch player data')
       const { rows: allRows } = (await res.json()) as { rows: any[] }
-
-      // Enrich with derived fields
       enrichDerivedFields(allRows)
-
       const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
-      setAllData(cleaned)
-      setData(cleaned)
-      setResultCount(cleaned.length)
-
-      // Build filter options
       const opts = buildOptionsCache(allRows)
-      const years = opts.game_year
+      return { cleaned, opts }
+    },
+  })
 
-      // If loading a single year, fetch available years from filter-options endpoint
-      if (year != null) {
-        fetch(`/api/player-filter-options?id=${pitcherId}&col=pitcher`)
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.game_year) setAvailableYears(d.game_year.map(Number))
-          })
-          .catch(() => {})
-      } else {
-        setAvailableYears(years.map(Number))
-      }
-      setOptionsCache(opts)
-    } catch (e) {
-      console.error('fetchData error:', e)
-    }
-    setDataLoading(false)
-  }, [pitcherId])
+  const allData = pitchQueryData?.cleaned ?? []
+  const optionsCache = pitchQueryData?.opts ?? {}
 
-  // ── Load player ──────────────────────────────────────────────────────────
+  // ── Available years query ──────────────────────────────────────────────
 
-  const loadPlayer = useCallback(async () => {
-    setLoading(true)
-    await loadGlossary()
+  const { data: filterYears } = useQuery({
+    queryKey: queryKeys.playerFilterOptions(pitcherId, 'pitcher'),
+    queryFn: async () => {
+      const res = await fetch(`/api/player-filter-options?id=${pitcherId}&col=pitcher`)
+      const d = await res.json()
+      return d.game_year ? (d.game_year as string[]).map(Number) : []
+    },
+    enabled: selectedYear != null,
+    staleTime: Infinity,
+  })
 
-    // Get player info from summary
-    const { data: pData } = await supabase
-      .from('player_summary')
-      .select('*')
-      .eq('pitcher', pitcherId)
-      .single()
-    if (pData) setInfo(pData as PlayerInfo)
+  const availableYears = selectedYear != null
+    ? (filterYears ?? [])
+    : (optionsCache.game_year ?? []).map(Number)
 
-    // Default to all seasons
-    setSelectedYear(null)
-    await fetchData(null)
+  // ── MLB stats query ────────────────────────────────────────────────────
 
-    // Fetch MLB official stats, Lahman data, and SOS scores in parallel
-    try {
-      const [mlbRes, lahmanRes, sosRes] = await Promise.all([
-        fetch(`/api/mlbstats?pitcher=${pitcherId}`),
-        fetch(`/api/lahman/player?mlb_id=${pitcherId}`),
-        supabase.from('sos_scores').select('game_year, sos').eq('player_id', pitcherId).eq('role', 'pitcher'),
-      ])
-      const mlbData = await mlbRes.json()
-      if (mlbData.seasons) setMlbStats(mlbData.seasons)
-      if (lahmanRes.ok) {
-        const ld = await lahmanRes.json()
-        if (ld.player) setLahmanData(ld)
-      }
-      if (sosRes.data) {
-        const map: Record<number, { sos: number }> = {}
-        sosRes.data.forEach((r: any) => {
-          map[r.game_year] = { sos: Number(r.sos) }
-        })
-        setSosScores(map)
-      }
-    } catch (e) {
-      console.error('Stats fetch failed:', e)
-    }
-    setLoading(false)
-  }, [pitcherId, fetchData])
+  const { data: mlbStats = [] } = useQuery({
+    queryKey: queryKeys.playerMlbStats(pitcherId),
+    queryFn: async () => {
+      const res = await fetch(`/api/mlbstats?pitcher=${pitcherId}`)
+      const d = await res.json()
+      return d.seasons || []
+    },
+    enabled: !!info,
+  })
 
-  // ── Trigger on pitcherId change ──────────────────────────────────────────
+  // ── Lahman query ───────────────────────────────────────────────────────
+
+  const { data: lahmanData = null } = useQuery({
+    queryKey: queryKeys.playerLahman(pitcherId),
+    queryFn: async () => {
+      const res = await fetch(`/api/lahman/player?mlb_id=${pitcherId}`)
+      if (!res.ok) return null
+      const d = await res.json()
+      return d.player ? (d as LahmanPlayerData) : null
+    },
+    enabled: !!info,
+  })
+
+  // ── SOS scores query ──────────────────────────────────────────────────
+
+  const { data: sosScores = {} } = useQuery({
+    queryKey: queryKeys.playerSos(pitcherId),
+    queryFn: async () => {
+      const { data: sosData } = await supabase
+        .from('sos_scores')
+        .select('game_year, sos')
+        .eq('player_id', pitcherId)
+        .eq('role', 'pitcher')
+      const map: Record<number, { sos: number }> = {}
+      if (sosData) sosData.forEach((r: any) => { map[r.game_year] = { sos: Number(r.sos) } })
+      return map
+    },
+    enabled: !!info,
+  })
+
+  // ── Model tabs query ──────────────────────────────────────────────────
+
+  const { data: modelTabs = [] } = useQuery({
+    queryKey: queryKeys.deployedModels('pitcher'),
+    queryFn: async () => {
+      const models = await fetchDeployedModels()
+      return getDashboardModels(models, 'pitcher')
+    },
+    staleTime: Infinity,
+  })
+
+  // ── Composite loading states ──────────────────────────────────────────
+
+  const loading = infoLoading
+  const dataLoading = pitchesLoading
+
+  // ── Reset on pitcherId change ─────────────────────────────────────────
 
   useEffect(() => {
-    loadPlayer()
-    loadModelTabs()
-  }, [pitcherId, loadPlayer, loadModelTabs])
+    setSelectedYear(null)
+    setActiveFilters([])
+  }, [pitcherId])
 
-  // ── Season-type filtering (before user filters) ──────────────────────────
+  // ── Season-type filtering (before user filters) ──────────────────────
 
   const seasonFilteredData = useMemo(() => {
     if (seasonType === 'all') return allData
@@ -247,14 +251,14 @@ export function usePlayerData(pitcherId: number): UsePlayerDataReturn {
     })
   }, [allData, seasonType])
 
-  // ── Client-side filtered data ────────────────────────────────────────────
+  // ── Client-side filtered data ────────────────────────────────────────
 
   const filteredData = useMemo(() => {
     if (activeFilters.length === 0) return seasonFilteredData
     return applyFiltersToData(seasonFilteredData, activeFilters)
   }, [seasonFilteredData, activeFilters])
 
-  // ── Debounced filter application ─────────────────────────────────────────
+  // ── Debounced filter application ─────────────────────────────────────
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -263,6 +267,12 @@ export function usePlayerData(pitcherId: number): UsePlayerDataReturn {
     }, 300)
     return () => clearTimeout(timer)
   }, [filteredData])
+
+  // ── fetchData wrapper (preserves interface) ──────────────────────────
+
+  const fetchData = useCallback(async (year?: number | null) => {
+    setSelectedYear(year ?? null)
+  }, [])
 
   return {
     info,

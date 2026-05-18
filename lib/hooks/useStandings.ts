@@ -1,27 +1,29 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import type { Division } from '@/components/standings/StandingsTypes'
 
 const AL_ORDER = ['AL East','AL Central','AL West']
 const NL_ORDER = ['NL East','NL Central','NL West']
 
 export function useStandings() {
-  const [divisions, setDivisions] = useState<Division[]>([])
-  const [standingsLoading, setStandingsLoading] = useState(true)
   const [season, setSeason] = useState(new Date().getFullYear())
   const [view, setView] = useState<'division'|'league'|'wildcard'>('division')
   const [standingsType, setStandingsType] = useState<'regular'|'spring'>('regular')
 
   const years = Array.from({length: new Date().getFullYear() - 2014}, (_, i) => new Date().getFullYear() - i)
 
-  useEffect(() => {
-    setStandingsLoading(true)
-    const typeParam = standingsType === 'spring' ? '&type=spring' : ''
-    fetch(`/api/standings?season=${season}${typeParam}`)
-      .then(r => r.json())
-      .then(d => { if (d.divisions) setDivisions(d.divisions); setStandingsLoading(false) })
-      .catch(() => setStandingsLoading(false))
-  }, [season, standingsType])
+  const { data: divisions = [], isLoading: standingsLoading } = useQuery({
+    queryKey: queryKeys.standings(season, standingsType),
+    queryFn: async () => {
+      const typeParam = standingsType === 'spring' ? '&type=spring' : ''
+      const res = await fetch(`/api/standings?season=${season}${typeParam}`)
+      const d = await res.json()
+      return (d.divisions || []) as Division[]
+    },
+    staleTime: season < new Date().getFullYear() ? Infinity : 5 * 60 * 1000,
+  })
 
   function getDivisions(league: string) {
     const order = league === 'AL' ? AL_ORDER : NL_ORDER

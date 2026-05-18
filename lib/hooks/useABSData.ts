@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 
 // --- Types ---
 
@@ -111,13 +113,11 @@ function api(action: string, params: Record<string, unknown> = {}) {
 }
 
 export function useABSData() {
-  const [filters, setFilters] = useState<FilterCombo[]>([])
+  const queryClient = useQueryClient()
   const [year, setYear] = useState(2026)
   const [gameType, setGameType] = useState('S')
   const [level, setLevel] = useState('MLB')
   const [tab, setTab] = useState<Tab>('daily')
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
 
@@ -131,74 +131,59 @@ export function useABSData() {
   // Leaderboard tab
   const [challengeType, setChallengeType] = useState('batter')
   const [minChal, setMinChal] = useState(1)
-  const [players, setPlayers] = useState<PlayerRow[]>([])
-  const [playersLoading, setPlayersLoading] = useState(false)
   const [playerSort, setPlayerSort] = useState<PlayerSortField>('n_challenges')
   const [playerDir, setPlayerDir] = useState<'asc' | 'desc'>('desc')
 
   // Umpires tab
-  const [umpires, setUmpires] = useState<UmpireRow[]>([])
-  const [umpiresLoading, setUmpiresLoading] = useState(false)
   const [umpireSort, setUmpireSort] = useState<UmpireSortField>('missed_calls')
   const [umpireDir, setUmpireDir] = useState<'asc' | 'desc'>('desc')
   const [minGames, setMinGames] = useState(1)
   const [umpireYear, setUmpireYear] = useState(new Date().getFullYear())
   const [umpireGameType, setUmpireGameType] = useState('R')
 
-  // Load filters
-  useEffect(() => {
-    api('filters').then(d => {
-      if (Array.isArray(d)) setFilters(d)
-    })
-  }, [])
+  // Filters query
+  const { data: filters = [] } = useQuery({
+    queryKey: queryKeys.absFilters(),
+    queryFn: async () => {
+      const d = await api('filters')
+      return Array.isArray(d) ? (d as FilterCombo[]) : []
+    },
+    staleTime: Infinity,
+  })
 
   const years = useMemo(() => {
     const s = new Set(filters.map(f => f.year))
     return Array.from(s).sort((a, b) => b - a)
   }, [filters])
 
-  // Load dashboard data
-  const loadDashboard = useCallback(async () => {
-    setLoading(true)
-    try {
+  // Dashboard query
+  const { data = null, isLoading: loading } = useQuery({
+    queryKey: queryKeys.absDashboard(year, gameType, level),
+    queryFn: async () => {
       const d = await api('dashboard', { year, gameType, level })
-      if (!d.error) setData(d)
-    } finally {
-      setLoading(false)
-    }
-  }, [year, gameType, level])
+      return d.error ? null : (d as DashboardData)
+    },
+  })
 
-  useEffect(() => { loadDashboard() }, [loadDashboard])
-
-  // Load leaderboard
-  const loadLeaderboard = useCallback(async () => {
-    setPlayersLoading(true)
-    try {
+  // Leaderboard query
+  const { data: players = [], isLoading: playersLoading } = useQuery({
+    queryKey: queryKeys.absLeaderboard({ year, gameType, level, challengeType, minChal }),
+    queryFn: async () => {
       const d = await api('leaderboard', { year, gameType, level, challengeType, minChal })
-      if (Array.isArray(d)) setPlayers(d)
-    } finally {
-      setPlayersLoading(false)
-    }
-  }, [year, gameType, level, challengeType, minChal])
+      return Array.isArray(d) ? (d as PlayerRow[]) : []
+    },
+    enabled: tab === 'leaderboard',
+  })
 
-  useEffect(() => {
-    if (tab === 'leaderboard') loadLeaderboard()
-  }, [tab, loadLeaderboard])
-
-  // Load umpires
-  const loadUmpires = useCallback(async () => {
-    setUmpiresLoading(true)
-    try {
+  // Umpires query
+  const { data: umpires = [], isLoading: umpiresLoading } = useQuery({
+    queryKey: queryKeys.absUmpires({ year: umpireYear, gameType: umpireGameType, minGames }),
+    queryFn: async () => {
       const d = await api('umpires', { year: umpireYear, gameType: umpireGameType, minGames })
-      if (Array.isArray(d)) setUmpires(d)
-    } finally {
-      setUmpiresLoading(false)
-    }
-  }, [umpireYear, umpireGameType, minGames])
-
-  useEffect(() => {
-    if (tab === 'umpires') loadUmpires()
-  }, [tab, loadUmpires])
+      return Array.isArray(d) ? (d as UmpireRow[]) : []
+    },
+    enabled: tab === 'umpires',
+  })
 
   // Sync
   const handleSync = useCallback(async () => {
@@ -208,14 +193,13 @@ export function useABSData() {
       const d = await api('sync', { year, gameType, level })
       if (d.error) { setSyncMsg(`Error: ${d.error}`); return }
       setSyncMsg(`Synced: ${d.daily} daily, ${d.breakdowns} breakdowns, ${d.teams} teams`)
-      loadDashboard()
-      if (tab === 'leaderboard') loadLeaderboard()
+      queryClient.invalidateQueries({ queryKey: ['abs'] })
     } catch {
       setSyncMsg('Sync failed')
     } finally {
       setSyncing(false)
     }
-  }, [year, gameType, level, tab, loadDashboard, loadLeaderboard])
+  }, [year, gameType, level, queryClient])
 
   // Team sort
   function handleTeamSort(field: TeamSortField) {

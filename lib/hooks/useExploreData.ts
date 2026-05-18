@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import { supabase } from '@/lib/supabase'
 import { FILTER_CATALOG, type ActiveFilter } from '@/lib/filterEngineCore'
 import {
@@ -104,10 +106,7 @@ export function useExploreData(): UseExploreDataReturn {
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([
     { def: FILTER_CATALOG.find(f => f.key === 'game_year')!, values: [currentYear] },
   ])
-  const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>({})
   const [rows, setRows] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [initialLoading, setInitialLoading] = useState(true)
   const [sortBy, setSortBy] = useState('pitches')
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC')
   const [page, setPage] = useState(0)
@@ -117,11 +116,12 @@ export function useExploreData(): UseExploreDataReturn {
   const [explainRequest, setExplainRequest] = useState<UseExploreDataReturn['explainRequest']>(null)
   const batterNamesRef = useRef<Record<number, string>>({})
   const limit = 50
-  const fetchRef = useRef(0)
 
-  // Load filter options on mount
-  useEffect(() => {
-    async function loadOptions() {
+  // ── Filter options query ──────────────────────────────────────────────
+
+  const { data: optionsCache = {}, isLoading: initialLoading } = useQuery({
+    queryKey: queryKeys.exploreOptions(),
+    queryFn: async () => {
       const o: Record<string, string[]> = {}
 
       // Static options for known Statcast vocabularies
@@ -152,18 +152,26 @@ export function useExploreData(): UseExploreDataReturn {
 
       const { data: yd } = await supabase.rpc('get_distinct_values', { col_name: 'game_year' })
       if (yd) o.game_year = yd.map((r: any) => r.value).filter(Boolean).sort().reverse()
-      setOptionsCache(o)
-      setInitialLoading(false)
-    }
-    loadOptions()
-  }, [])
+      return o
+    },
+    staleTime: Infinity,
+  })
 
-  // Fetch data whenever view, statSet, filters, sort, page, or qualifier changes
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    const id = ++fetchRef.current
+  // ── Leaderboard rows query ────────────────────────────────────────────
 
-    try {
+  // Serialize only the data-relevant parts of activeFilters for the query key
+  const serializedFilters = useMemo(() =>
+    activeFilters.map(f => ({ key: f.def.key, values: f.values })),
+    [activeFilters]
+  )
+
+  const queryParams = useMemo(() => ({
+    view, statSet, filters: serializedFilters, sortBy, sortDir, page, qualifier, gameType,
+  }), [view, statSet, serializedFilters, sortBy, sortDir, page, qualifier, gameType])
+
+  const { data: queryRows, isLoading: loading, refetch } = useQuery({
+    queryKey: queryKeys.exploreRows(queryParams),
+    queryFn: async () => {
       if (DEFENCE_STAT_SETS.has(statSet)) {
         const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
         const season = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
@@ -174,8 +182,7 @@ export function useExploreData(): UseExploreDataReturn {
           body: JSON.stringify({ season, statSet, sortBy, sortDir, limit, offset: page * limit }),
         })
         const data = await res.json()
-        if (id !== fetchRef.current) return
-        setRows(data.rows || [])
+        return data.rows || []
       } else if (statSet === 'triton_raw' || statSet === 'triton_plus' || statSet === 'deception') {
         const yearFilter = activeFilters.find(f => f.def.key === 'game_year')
         const gameYear = yearFilter?.values?.[0] ? parseInt(yearFilter.values[0]) : parseInt(currentYear)
@@ -196,8 +203,7 @@ export function useExploreData(): UseExploreDataReturn {
           }),
         })
         const data = await res.json()
-        if (id !== fetchRef.current) return
-        setRows(data.rows || [])
+        return data.rows || []
       } else {
         const metrics = getMetricsForStatSet(view, statSet)
         const groupBy = getGroupBy(view)
@@ -222,7 +228,6 @@ export function useExploreData(): UseExploreDataReturn {
           }),
         })
         const data = await res.json()
-        if (id !== fetchRef.current) return
 
         let fetchedRows = data.rows || []
 
@@ -269,17 +274,16 @@ export function useExploreData(): UseExploreDataReturn {
           }))
         }
 
-        setRows(fetchedRows)
+        return fetchedRows
       }
-    } catch {
-      if (id === fetchRef.current) setRows([])
-    }
-    if (id === fetchRef.current) setLoading(false)
-  }, [view, statSet, activeFilters, sortBy, sortDir, page, qualifier, gameType])
+    },
+    enabled: !initialLoading,
+  })
 
+  // Sync query data to rows state
   useEffect(() => {
-    if (!initialLoading) fetchData()
-  }, [fetchData, initialLoading])
+    if (queryRows !== undefined) setRows(queryRows)
+  }, [queryRows])
 
   // Sync view + tab to URL params
   useEffect(() => {
@@ -364,6 +368,9 @@ export function useExploreData(): UseExploreDataReturn {
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
   }, [contextMenu])
+
+  // fetchData mapped to refetch for interface compatibility
+  const fetchData = useCallback(() => { refetch() }, [refetch])
 
   return {
     // State

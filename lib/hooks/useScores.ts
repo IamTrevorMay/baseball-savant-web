@@ -1,5 +1,7 @@
 'use client'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 import type { Game } from '@/lib/types'
 
 // Box Score types
@@ -31,21 +33,31 @@ function localToday() {
 
 export function useScores() {
   const [scoresDate, setScoresDate] = useState(localToday)
-  const [games, setGames] = useState<Game[]>([])
-  const [scoresLoading, setScoresLoading] = useState(true)
-  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [selectedGamePk, setSelectedGamePk] = useState<number | null>(null)
-  const [boxScore, setBoxScore] = useState<BoxScore | null>(null)
-  const [boxLoading, setBoxLoading] = useState(false)
   const [boxTeamSide, setBoxTeamSide] = useState<'away' | 'home'>('away')
 
-  const fetchScores = useCallback((date: string, showLoading = false) => {
-    if (showLoading) setScoresLoading(true)
-    fetch(`/api/scores?date=${date}`)
-      .then(r => r.json())
-      .then(d => { setGames(d.games || []); setScoresLoading(false) })
-      .catch(() => setScoresLoading(false))
-  }, [])
+  // Scores query with auto-refresh every 30s
+  const { data: games = [], isLoading: scoresLoading } = useQuery({
+    queryKey: queryKeys.scores(scoresDate),
+    queryFn: async () => {
+      const res = await fetch(`/api/scores?date=${scoresDate}`)
+      const d = await res.json()
+      return (d.games || []) as Game[]
+    },
+    refetchInterval: 30_000,
+    staleTime: 0,
+  })
+
+  // Box score query
+  const { data: boxScore = null, isLoading: boxLoading } = useQuery({
+    queryKey: queryKeys.boxscore(selectedGamePk),
+    queryFn: async () => {
+      const res = await fetch(`/api/boxscore?gamePk=${selectedGamePk}`)
+      const d = await res.json()
+      return d.away ? (d as BoxScore) : null
+    },
+    enabled: !!selectedGamePk,
+  })
 
   const shiftDate = useCallback((days: number) => {
     setScoresDate(prev => {
@@ -65,25 +77,14 @@ export function useScores() {
     if (scoresDate !== today) setScoresDate(today)
   }, [])
 
-  // Fetch scores + auto-refresh
+  // Reset selection when date changes
   useEffect(() => {
-    fetchScores(scoresDate, true)
     setSelectedGamePk(null)
-    setBoxScore(null)
-    if (refreshRef.current) clearInterval(refreshRef.current)
-    refreshRef.current = setInterval(() => fetchScores(scoresDate), 30000)
-    return () => { if (refreshRef.current) clearInterval(refreshRef.current) }
-  }, [scoresDate, fetchScores])
+  }, [scoresDate])
 
-  // Fetch box score
+  // Reset team side when game changes
   useEffect(() => {
-    if (!selectedGamePk) { setBoxScore(null); return }
-    setBoxLoading(true)
     setBoxTeamSide('away')
-    fetch(`/api/boxscore?gamePk=${selectedGamePk}`)
-      .then(r => r.json())
-      .then(d => { if (d.away) setBoxScore(d); setBoxLoading(false) })
-      .catch(() => setBoxLoading(false))
   }, [selectedGamePk])
 
   return {

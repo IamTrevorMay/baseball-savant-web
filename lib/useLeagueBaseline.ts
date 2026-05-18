@@ -14,7 +14,8 @@
  * Skips the fetch entirely when `metric` is empty or 'frequency' /
  * 'density' (count-style metrics that have no league midpoint).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/queryKeys'
 
 export type LeagueBaselineRole = 'hitter' | 'hitting' | 'pitcher' | 'pitching' | 'SP' | 'RP'
 
@@ -29,27 +30,24 @@ export function useLeagueBaseline(
   role: LeagueBaselineRole | null | undefined,
   metric: string | null | undefined,
 ): LeagueBaseline | null {
-  const [baseline, setBaseline] = useState<LeagueBaseline | null>(null)
-  // Sequence guard for races when filters change rapidly.
-  const seq = useRef(0)
+  const skip = !season || !level || !role || !metric ||
+    metric === 'frequency' || metric === 'density' || metric === 'count'
 
-  useEffect(() => {
-    if (!season || !level || !role || !metric) { setBaseline(null); return }
-    if (metric === 'frequency' || metric === 'density' || metric === 'count') {
-      setBaseline(null); return
-    }
-    const mySeq = ++seq.current
-    const params = new URLSearchParams({ season: String(season), level, role, metric })
-    fetch(`/api/league-baseline?${params}`)
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`baseline ${r.status}`)))
-      .then(json => {
-        if (mySeq !== seq.current) return
-        const b = json?.baseline
-        if (!b || b.value == null || b.stddev == null) setBaseline(null)
-        else setBaseline({ value: Number(b.value), stddev: Number(b.stddev) })
-      })
-      .catch(() => { if (mySeq === seq.current) setBaseline(null) })
-  }, [season, level, role, metric])
+  const { data } = useQuery({
+    queryKey: queryKeys.leagueBaseline(season, level, role, metric),
+    queryFn: async (): Promise<LeagueBaseline | null> => {
+      const params = new URLSearchParams({ season: String(season), level: level!, role: role!, metric: metric! })
+      const res = await fetch(`/api/league-baseline?${params}`)
+      if (!res.ok) return null
+      const json = await res.json()
+      const b = json?.baseline
+      if (!b || b.value == null || b.stddev == null) return null
+      return { value: Number(b.value), stddev: Number(b.stddev) }
+    },
+    enabled: !skip,
+    staleTime: Infinity,
+    gcTime: 30 * 60 * 1000,
+  })
 
-  return baseline
+  return data ?? null
 }
