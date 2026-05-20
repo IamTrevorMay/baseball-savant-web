@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { ZONE_HALF_WIDTH } from '@/lib/constants-data'
 
 // Zone boundary constants (feet) derived from ZONE_HALF_WIDTH (half plate + ball radius)
