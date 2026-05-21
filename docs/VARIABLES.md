@@ -339,6 +339,27 @@ For value rendering: `raw` · `1f` · `2f` · `3f` · `integer` · `percent`
 
 ---
 
+## 8.5 Team Tendencies — `/api/team-tendencies`
+
+POST `{ season, tab, gameType }` → 30-team rows. `tab` ∈ `pitching | hitting | bullpen | platoon | momentum | leverage`. `momentum` and `leverage` share the same response payload (different column subsets shown per tab).
+
+**Momentum** keys (one row per team, paired half-innings derived from `pitches`):
+
+| Key | Meaning |
+|---|---|
+| `momentum_plus` | **MOM+** — single rating: avg of z-scored `sd_for_rate` and `r_for_rate` across the 30 teams, rescaled to mean 100 / sd 15. 100 = league avg; ≥115 top-tier; ≤85 bottom-tier. |
+| `sos_plus` | **SOS+** — strength of schedule. PA-weighted avg of each opponent's xwOBA (offense) and xwOBA-allowed (pitching), computed **excluding each opp's games vs the rated team** to avoid self-contamination. Z-scored across 30 teams, rescaled to mean 100 / sd 15. 100 = avg schedule, >100 = tougher, <100 = easier. |
+| `leverage_plus` | **LEV+** — same construction as MOM+, but only counts half-inning pairs where the trigger half was a **leverage event** (batting team scored ≥1 AND went from "behind or tied" → "tied or ahead"). ~47% of scoring halves qualify. Sample is ~50 opps/team/side. |
+| `lev_sd_for_*` / `lev_sd_against_*` / `lev_r_for_*` / `lev_r_against_*` | Leverage-only versions of the four SD/R counts (Succ/Opp/%). Same definitions, restricted to opportunities triggered by leverage events. |
+| `sd_for_succ` / `sd_for_opp` / `sd_for_pct` | **Shutdown For** — after team scored ≥1, team allowed 0 next half |
+| `sd_against_succ` / `sd_against_opp` / `sd_against_pct` | **Shutdown Against** — after team allowed ≥1, team scored 0 next half |
+| `r_for_succ` / `r_for_opp` / `r_for_pct` | **Response For** — after team allowed ≥1, team scored ≥1 next half |
+| `r_against_succ` / `r_against_opp` / `r_against_pct` | **Response Against** — after team scored ≥1, team allowed ≥1 next half |
+
+Higher For % = better; lower Against % = better. `sd_for_% + r_against_%` and `sd_against_% + r_for_%` each sum to 100 (same opportunity pool, complementary outcomes), so MOM+ uses only the two independent For rates. Game-ending half-innings emit no opportunity (no "next half"). `gameType='all'` excludes spring training for momentum; other tabs include all.
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |

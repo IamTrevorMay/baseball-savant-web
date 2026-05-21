@@ -18,6 +18,172 @@ export async function POST(req: NextRequest) {
 
     const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}`
 
+    if (tab === 'momentum' || tab === 'leverage') {
+      // Momentum: Shutdowns & Responses (for + against). Spring is excluded even on "All".
+      const momentumGt =
+        gameType === 'regular' ? "game_type = 'R'"
+        : gameType === 'spring' ? "game_type = 'S'"
+        : gameType === 'postseason' ? "game_type IN ('D','L','W','F','P')"
+        : "game_type IN ('R','D','L','W','F','P')"
+      const momentumQuery = q(`
+        WITH half_innings AS (
+          SELECT game_pk, inning, inning_topbot,
+            CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END AS off_team,
+            CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END AS def_team,
+            MAX(post_bat_score) - MIN(bat_score) AS runs,
+            -- leverage event: batting team went from (behind or tied) -> (tied or ahead) AND scored >=1.
+            CASE
+              WHEN MIN(bat_score) <= MIN(fld_score)
+                AND MAX(post_bat_score) >= MIN(fld_score)
+                AND MAX(post_bat_score) - MIN(bat_score) >= 1
+              THEN 1 ELSE 0 END AS lev
+          FROM pitches
+          WHERE game_year = ${safeSeason} AND ${momentumGt}
+          GROUP BY game_pk, inning, inning_topbot, home_team, away_team
+        ),
+        sequenced AS (
+          SELECT *,
+            LAG(runs) OVER w AS prev_runs,
+            LAG(lev) OVER w AS prev_lev
+          FROM half_innings
+          WINDOW w AS (PARTITION BY game_pk ORDER BY inning, CASE WHEN inning_topbot = 'Top' THEN 0 ELSE 1 END)
+        ),
+        opps AS (
+          -- Prev-batting team (now fielding): SD-For + R-Against opps.
+          SELECT def_team AS team,
+            1 AS sd_for_opp, CASE WHEN runs = 0 THEN 1 ELSE 0 END AS sd_for_succ,
+            1 AS r_against_opp, CASE WHEN runs >= 1 THEN 1 ELSE 0 END AS r_against_succ,
+            0 AS sd_against_opp, 0 AS sd_against_succ, 0 AS r_for_opp, 0 AS r_for_succ,
+            prev_lev AS lev_sd_for_opp,
+            CASE WHEN runs = 0 THEN prev_lev ELSE 0 END AS lev_sd_for_succ,
+            prev_lev AS lev_r_against_opp,
+            CASE WHEN runs >= 1 THEN prev_lev ELSE 0 END AS lev_r_against_succ,
+            0 AS lev_sd_against_opp, 0 AS lev_sd_against_succ, 0 AS lev_r_for_opp, 0 AS lev_r_for_succ
+          FROM sequenced WHERE prev_runs >= 1
+          UNION ALL
+          -- Prev-fielding team (now batting): SD-Against + R-For opps.
+          SELECT off_team AS team,
+            0, 0, 0, 0,
+            1 AS sd_against_opp, CASE WHEN runs = 0 THEN 1 ELSE 0 END AS sd_against_succ,
+            1 AS r_for_opp, CASE WHEN runs >= 1 THEN 1 ELSE 0 END AS r_for_succ,
+            0, 0, 0, 0,
+            prev_lev AS lev_sd_against_opp,
+            CASE WHEN runs = 0 THEN prev_lev ELSE 0 END AS lev_sd_against_succ,
+            prev_lev AS lev_r_for_opp,
+            CASE WHEN runs >= 1 THEN prev_lev ELSE 0 END AS lev_r_for_succ
+          FROM sequenced WHERE prev_runs >= 1
+        ),
+        team_totals AS (
+          SELECT team,
+            SUM(sd_for_succ)::int AS sd_for_succ, SUM(sd_for_opp)::int AS sd_for_opp,
+            1.0 * SUM(sd_for_succ) / NULLIF(SUM(sd_for_opp), 0) AS sd_for_rate,
+            SUM(sd_against_succ)::int AS sd_against_succ, SUM(sd_against_opp)::int AS sd_against_opp,
+            1.0 * SUM(sd_against_succ) / NULLIF(SUM(sd_against_opp), 0) AS sd_against_rate,
+            SUM(r_for_succ)::int AS r_for_succ, SUM(r_for_opp)::int AS r_for_opp,
+            1.0 * SUM(r_for_succ) / NULLIF(SUM(r_for_opp), 0) AS r_for_rate,
+            SUM(r_against_succ)::int AS r_against_succ, SUM(r_against_opp)::int AS r_against_opp,
+            1.0 * SUM(r_against_succ) / NULLIF(SUM(r_against_opp), 0) AS r_against_rate,
+            SUM(lev_sd_for_succ)::int AS lev_sd_for_succ, SUM(lev_sd_for_opp)::int AS lev_sd_for_opp,
+            1.0 * SUM(lev_sd_for_succ) / NULLIF(SUM(lev_sd_for_opp), 0) AS lev_sd_for_rate,
+            SUM(lev_sd_against_succ)::int AS lev_sd_against_succ, SUM(lev_sd_against_opp)::int AS lev_sd_against_opp,
+            1.0 * SUM(lev_sd_against_succ) / NULLIF(SUM(lev_sd_against_opp), 0) AS lev_sd_against_rate,
+            SUM(lev_r_for_succ)::int AS lev_r_for_succ, SUM(lev_r_for_opp)::int AS lev_r_for_opp,
+            1.0 * SUM(lev_r_for_succ) / NULLIF(SUM(lev_r_for_opp), 0) AS lev_r_for_rate,
+            SUM(lev_r_against_succ)::int AS lev_r_against_succ, SUM(lev_r_against_opp)::int AS lev_r_against_opp,
+            1.0 * SUM(lev_r_against_succ) / NULLIF(SUM(lev_r_against_opp), 0) AS lev_r_against_rate
+          FROM opps
+          GROUP BY team
+        ),
+        lg AS (
+          SELECT
+            AVG(sd_for_rate) AS lg_sd_for, NULLIF(STDDEV_SAMP(sd_for_rate), 0) AS sd_for_sd,
+            AVG(r_for_rate) AS lg_r_for, NULLIF(STDDEV_SAMP(r_for_rate), 0) AS r_for_sd,
+            AVG(lev_sd_for_rate) AS lg_lev_sd_for, NULLIF(STDDEV_SAMP(lev_sd_for_rate), 0) AS lev_sd_for_sd,
+            AVG(lev_r_for_rate) AS lg_lev_r_for, NULLIF(STDDEV_SAMP(lev_r_for_rate), 0) AS lev_r_for_sd
+          FROM team_totals
+        )
+        SELECT t.team,
+          ROUND(100 + 15 * (
+            ((t.sd_for_rate - lg.lg_sd_for) / lg.sd_for_sd
+             + (t.r_for_rate - lg.lg_r_for) / lg.r_for_sd) / 2.0
+          ))::int AS momentum_plus,
+          ROUND(100 + 15 * (
+            ((t.lev_sd_for_rate - lg.lg_lev_sd_for) / lg.lev_sd_for_sd
+             + (t.lev_r_for_rate - lg.lg_lev_r_for) / lg.lev_r_for_sd) / 2.0
+          ))::int AS leverage_plus,
+          t.sd_for_succ, t.sd_for_opp,
+          ROUND(100.0 * t.sd_for_rate, 1) AS sd_for_pct,
+          t.sd_against_succ, t.sd_against_opp,
+          ROUND(100.0 * t.sd_against_rate, 1) AS sd_against_pct,
+          t.r_for_succ, t.r_for_opp,
+          ROUND(100.0 * t.r_for_rate, 1) AS r_for_pct,
+          t.r_against_succ, t.r_against_opp,
+          ROUND(100.0 * t.r_against_rate, 1) AS r_against_pct,
+          t.lev_sd_for_succ, t.lev_sd_for_opp,
+          ROUND(100.0 * t.lev_sd_for_rate, 1) AS lev_sd_for_pct,
+          t.lev_sd_against_succ, t.lev_sd_against_opp,
+          ROUND(100.0 * t.lev_sd_against_rate, 1) AS lev_sd_against_pct,
+          t.lev_r_for_succ, t.lev_r_for_opp,
+          ROUND(100.0 * t.lev_r_for_rate, 1) AS lev_r_for_pct,
+          t.lev_r_against_succ, t.lev_r_against_opp,
+          ROUND(100.0 * t.lev_r_against_rate, 1) AS lev_r_against_pct
+        FROM team_totals t CROSS JOIN lg
+        ORDER BY momentum_plus DESC NULLS LAST
+      `)
+      // SOS+: opponent xwOBA quality faced, ex-X (each opp's stats exclude games vs team being rated).
+      const sosQuery = q(`
+        WITH pa_grain AS (
+          SELECT
+            CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END AS bat_team,
+            CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END AS pitch_team,
+            estimated_woba_using_speedangle AS xwoba
+          FROM pitches
+          WHERE game_year = ${safeSeason} AND ${momentumGt}
+            AND events IS NOT NULL AND estimated_woba_using_speedangle IS NOT NULL
+        ),
+        matchup AS (
+          SELECT bat_team, pitch_team, SUM(xwoba) AS xs, COUNT(*) AS pa
+          FROM pa_grain GROUP BY bat_team, pitch_team
+        ),
+        team_bat_tot AS (SELECT bat_team AS team, SUM(xs) AS xs, SUM(pa) AS pa FROM matchup GROUP BY bat_team),
+        team_pitch_tot AS (SELECT pitch_team AS team, SUM(xs) AS xs, SUM(pa) AS pa FROM matchup GROUP BY pitch_team),
+        sos_pitch AS (
+          SELECT m.bat_team AS team,
+            (SUM((tp.xs - m.xs) / NULLIF(tp.pa - m.pa, 0) * m.pa) / NULLIF(SUM(m.pa), 0))::numeric AS opp_pitch_xwoba
+          FROM matchup m JOIN team_pitch_tot tp ON tp.team = m.pitch_team
+          GROUP BY m.bat_team
+        ),
+        sos_bat AS (
+          SELECT m.pitch_team AS team,
+            (SUM((tb.xs - m.xs) / NULLIF(tb.pa - m.pa, 0) * m.pa) / NULLIF(SUM(m.pa), 0))::numeric AS opp_bat_xwoba
+          FROM matchup m JOIN team_bat_tot tb ON tb.team = m.bat_team
+          GROUP BY m.pitch_team
+        ),
+        sos AS (SELECT p.team, p.opp_pitch_xwoba, b.opp_bat_xwoba FROM sos_pitch p JOIN sos_bat b USING (team)),
+        sos_lg AS (
+          SELECT AVG(opp_pitch_xwoba) AS lg_p, NULLIF(STDDEV_SAMP(opp_pitch_xwoba), 0) AS sd_p,
+            AVG(opp_bat_xwoba) AS lg_b, NULLIF(STDDEV_SAMP(opp_bat_xwoba), 0) AS sd_b FROM sos
+        )
+        SELECT s.team,
+          ROUND(100 + 15 * (
+            (- (s.opp_pitch_xwoba - sos_lg.lg_p) / sos_lg.sd_p
+             + (s.opp_bat_xwoba - sos_lg.lg_b) / sos_lg.sd_b) / 2.0
+          ))::int AS sos_plus
+        FROM sos s CROSS JOIN sos_lg
+      `)
+      const [momRes, sosRes] = await Promise.all([momentumQuery, sosQuery])
+      if (momRes.error) return NextResponse.json({ error: momRes.error.message }, { status: 500 })
+      if (sosRes.error) return NextResponse.json({ error: sosRes.error.message }, { status: 500 })
+      const sosByTeam = new Map<string, number>(
+        ((sosRes.data as any[]) || []).map((r) => [r.team, r.sos_plus])
+      )
+      const rows = ((momRes.data as any[]) || []).map((r) => ({
+        ...r,
+        sos_plus: sosByTeam.get(r.team) ?? null,
+      }))
+      return NextResponse.json({ rows })
+    }
+
     if (tab === 'bullpen') {
       const { data, error } = await q(`
         SELECT CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END as team,

@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 import { TEAM_COLORS } from '@/lib/teamColors'
 
-const TABS = ['pitching', 'hitting', 'bullpen', 'platoon'] as const
+const TABS = ['pitching', 'hitting', 'bullpen', 'platoon', 'momentum', 'leverage'] as const
 type Tab = typeof TABS[number]
 
 const GAME_TYPES = [
@@ -73,10 +73,51 @@ const PLATOON_COLS = [
   { key: 'avg_xwoba', label: 'xwOBA', fmt: (v: number) => v?.toFixed(3) },
 ]
 
+const numInt = (v: number) => v != null ? String(v) : '—'
+const numPct = (v: number) => v != null ? Number(v).toFixed(1) + '%' : '—'
+
+const MOMENTUM_COLS = [
+  { key: 'team', label: 'Team', align: 'left' as const },
+  { key: 'momentum_plus', label: 'MOM+', fmt: numInt },
+  { key: 'leverage_plus', label: 'LEV+', fmt: numInt },
+  { key: 'sos_plus', label: 'SOS+', fmt: numInt },
+  { key: 'sd_for_succ', label: 'SD-For S', fmt: numInt },
+  { key: 'sd_for_opp', label: 'SD-For Opp', fmt: numInt },
+  { key: 'sd_for_pct', label: 'SD-For %', fmt: numPct },
+  { key: 'sd_against_succ', label: 'SD-Ag S', fmt: numInt },
+  { key: 'sd_against_opp', label: 'SD-Ag Opp', fmt: numInt },
+  { key: 'sd_against_pct', label: 'SD-Ag %', fmt: numPct },
+  { key: 'r_for_succ', label: 'R-For S', fmt: numInt },
+  { key: 'r_for_opp', label: 'R-For Opp', fmt: numInt },
+  { key: 'r_for_pct', label: 'R-For %', fmt: numPct },
+  { key: 'r_against_succ', label: 'R-Ag S', fmt: numInt },
+  { key: 'r_against_opp', label: 'R-Ag Opp', fmt: numInt },
+  { key: 'r_against_pct', label: 'R-Ag %', fmt: numPct },
+]
+
+const LEVERAGE_COLS = [
+  { key: 'team', label: 'Team', align: 'left' as const },
+  { key: 'leverage_plus', label: 'LEV+', fmt: numInt },
+  { key: 'lev_sd_for_succ', label: 'L-SD-For S', fmt: numInt },
+  { key: 'lev_sd_for_opp', label: 'L-SD-For Opp', fmt: numInt },
+  { key: 'lev_sd_for_pct', label: 'L-SD-For %', fmt: numPct },
+  { key: 'lev_sd_against_succ', label: 'L-SD-Ag S', fmt: numInt },
+  { key: 'lev_sd_against_opp', label: 'L-SD-Ag Opp', fmt: numInt },
+  { key: 'lev_sd_against_pct', label: 'L-SD-Ag %', fmt: numPct },
+  { key: 'lev_r_for_succ', label: 'L-R-For S', fmt: numInt },
+  { key: 'lev_r_for_opp', label: 'L-R-For Opp', fmt: numInt },
+  { key: 'lev_r_for_pct', label: 'L-R-For %', fmt: numPct },
+  { key: 'lev_r_against_succ', label: 'L-R-Ag S', fmt: numInt },
+  { key: 'lev_r_against_opp', label: 'L-R-Ag Opp', fmt: numInt },
+  { key: 'lev_r_against_pct', label: 'L-R-Ag %', fmt: numPct },
+]
+
 function getColumns(tab: Tab) {
   if (tab === 'hitting') return HITTING_COLS
   if (tab === 'bullpen') return BULLPEN_COLS
   if (tab === 'platoon') return PLATOON_COLS
+  if (tab === 'momentum') return MOMENTUM_COLS
+  if (tab === 'leverage') return LEVERAGE_COLS
   return PITCHING_COLS
 }
 
@@ -141,7 +182,13 @@ export default function TeamsPage() {
       <ResearchNav active="/teams" />
       <div className="max-w-7xl mx-auto w-full px-4 md:px-6 py-6">
         <h1 className="text-lg font-semibold text-white mb-1">Team Tendencies</h1>
-        <p className="text-xs text-zinc-500 mb-4">All 30 teams ranked across pitching, hitting, bullpen, and platoon splits</p>
+        <p className="text-xs text-zinc-500 mb-4">
+          {tab === 'momentum'
+            ? 'Shutdowns & Responses: how teams react to the previous half-inning. SD = next half held scoreless; R = next half scored 1+. MOM+ blends SD-For % and R-For % (100 = league avg). LEV+ does the same but only counts halves where the prev team tied the game or took the lead. SOS+ measures opponent xwOBA quality faced, ex-self.'
+            : tab === 'leverage'
+            ? 'Leverage Shutdowns & Responses: like momentum, but the trigger half-inning must have tied the game or taken the lead (batting team went from behind/tied → tied/ahead). LEV+ is the combined rating. ~47% of all scoring halves qualify, so ~50 opps per team per side this season.'
+            : 'All 30 teams ranked across pitching, hitting, bullpen, platoon, momentum, and leverage splits'}
+        </p>
 
         {/* Controls */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-6">
