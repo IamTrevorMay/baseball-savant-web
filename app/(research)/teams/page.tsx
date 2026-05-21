@@ -78,7 +78,7 @@ const numPct = (v: number) => v != null ? Number(v).toFixed(1) + '%' : '—'
 const diffPct = (v: number) => v != null ? (v > 0 ? '+' : '') + Number(v).toFixed(1) + '%' : '—'
 
 // Keys that represent for/against differentials — colored green (positive) / red (negative)
-const DIFF_KEYS = new Set(['sd_diff', 'r_diff', 'lev_sd_diff', 'lev_r_diff'])
+const DIFF_KEYS = new Set(['diff', 'lev_diff'])
 
 const MOMENTUM_COLS = [
   { key: 'team', label: 'Team', align: 'left' as const },
@@ -91,14 +91,13 @@ const MOMENTUM_COLS = [
   { key: 'sd_against_succ', label: 'SD-Ag S', fmt: numInt },
   { key: 'sd_against_opp', label: 'SD-Ag Opp', fmt: numInt },
   { key: 'sd_against_pct', label: 'SD-Ag %', fmt: numPct },
-  { key: 'sd_diff', label: 'SD Diff', fmt: diffPct },
   { key: 'r_for_succ', label: 'R-For S', fmt: numInt },
   { key: 'r_for_opp', label: 'R-For Opp', fmt: numInt },
   { key: 'r_for_pct', label: 'R-For %', fmt: numPct },
   { key: 'r_against_succ', label: 'R-Ag S', fmt: numInt },
   { key: 'r_against_opp', label: 'R-Ag Opp', fmt: numInt },
   { key: 'r_against_pct', label: 'R-Ag %', fmt: numPct },
-  { key: 'r_diff', label: 'R Diff', fmt: diffPct },
+  { key: 'diff', label: 'Differential', fmt: diffPct },
 ]
 
 const LEVERAGE_COLS = [
@@ -110,14 +109,13 @@ const LEVERAGE_COLS = [
   { key: 'lev_sd_against_succ', label: 'L-SD-Ag S', fmt: numInt },
   { key: 'lev_sd_against_opp', label: 'L-SD-Ag Opp', fmt: numInt },
   { key: 'lev_sd_against_pct', label: 'L-SD-Ag %', fmt: numPct },
-  { key: 'lev_sd_diff', label: 'L-SD Diff', fmt: diffPct },
   { key: 'lev_r_for_succ', label: 'L-R-For S', fmt: numInt },
   { key: 'lev_r_for_opp', label: 'L-R-For Opp', fmt: numInt },
   { key: 'lev_r_for_pct', label: 'L-R-For %', fmt: numPct },
   { key: 'lev_r_against_succ', label: 'L-R-Ag S', fmt: numInt },
   { key: 'lev_r_against_opp', label: 'L-R-Ag Opp', fmt: numInt },
   { key: 'lev_r_against_pct', label: 'L-R-Ag %', fmt: numPct },
-  { key: 'lev_r_diff', label: 'L-R Diff', fmt: diffPct },
+  { key: 'lev_diff', label: 'Differential', fmt: diffPct },
 ]
 
 function getColumns(tab: Tab) {
@@ -161,10 +159,8 @@ export default function TeamsPage() {
       const data = await res.json()
       const enriched = (data.rows || []).map((r: TeamRow) => ({
         ...r,
-        sd_diff: r.sd_for_pct != null && r.sd_against_pct != null ? r.sd_for_pct - r.sd_against_pct : null,
-        r_diff: r.r_for_pct != null && r.r_against_pct != null ? r.r_for_pct - r.r_against_pct : null,
-        lev_sd_diff: r.lev_sd_for_pct != null && r.lev_sd_against_pct != null ? r.lev_sd_for_pct - r.lev_sd_against_pct : null,
-        lev_r_diff: r.lev_r_for_pct != null && r.lev_r_against_pct != null ? r.lev_r_for_pct - r.lev_r_against_pct : null,
+        diff: r.sd_for_pct != null && r.sd_against_pct != null ? r.sd_for_pct - r.sd_against_pct : null,
+        lev_diff: r.lev_sd_for_pct != null && r.lev_sd_against_pct != null ? r.lev_sd_for_pct - r.lev_sd_against_pct : null,
       }))
       setRows(enriched)
       setSortCol(null)
