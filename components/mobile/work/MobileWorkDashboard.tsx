@@ -10,9 +10,13 @@ export default function MobileWorkDashboard() {
           <div className="text-xs uppercase tracking-wider text-zinc-500">My Board</div>
           <div className="text-lg text-sky-300 font-semibold mt-1">Today's tasks →</div>
         </Link>
-        <Link href="/work/athletes" className="block bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="text-xs uppercase tracking-wider text-zinc-500">Athletes</div>
-          <div className="text-lg text-emerald-300 font-semibold mt-1">Pipeline →</div>
+        <Link href="/work/channels" className="block bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="text-xs uppercase tracking-wider text-zinc-500">Channels</div>
+          <div className="text-lg text-emerald-300 font-semibold mt-1">Team chat →</div>
+        </Link>
+        <Link href="/work/messages" className="block bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="text-xs uppercase tracking-wider text-zinc-500">Messages</div>
+          <div className="text-lg text-violet-300 font-semibold mt-1">Direct messages →</div>
         </Link>
         <Link href="/work/sprints" className="block bg-zinc-900 border border-zinc-800 rounded-xl p-4">
           <div className="text-xs uppercase tracking-wider text-zinc-500">Sprint</div>

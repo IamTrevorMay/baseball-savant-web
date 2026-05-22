@@ -3,12 +3,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const TABS = [
-  { href: '/work',          label: 'Home',     icon: 'M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7H10v7H6a2 2 0 0 1-2-2v-9z' },
-  { href: '/work/myboard',  label: 'Board',    icon: 'M4 4h6v16H4zM14 4h6v9h-6z' },
-  { href: '/work/athletes', label: 'Athletes', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0' },
-  { href: '/work/sprints',  label: 'Sprint',   icon: 'M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3' },
-  { href: '/work/calendar', label: 'Cal',      icon: 'M3 8h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 2v4M16 2v4' },
-  { href: '/work/goals',    label: 'Goals',    icon: 'M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z' },
+  { href: '/work',           label: 'Home',     icon: 'M3 12l9-9 9 9v9a2 2 0 0 1-2 2h-4v-7H10v7H6a2 2 0 0 1-2-2v-9z' },
+  { href: '/work/myboard',   label: 'Board',    icon: 'M4 4h6v16H4zM14 4h6v9h-6z' },
+  { href: '/work/channels',  label: 'Chat',     icon: 'M4 9h16M4 15h16M10 3L8 21M16 3L14 21' },
+  { href: '/work/sprints',   label: 'Sprint',   icon: 'M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3' },
+  { href: '/work/calendar',  label: 'Cal',      icon: 'M3 8h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 2v4M16 2v4' },
 ]
 
 export default function MobileWorkShell({ title, children }: { title: string; children: React.ReactNode }) {

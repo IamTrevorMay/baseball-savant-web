@@ -35,6 +35,55 @@ export const PRIORITY_LABEL: Record<string, string> = {
 
 export const STATUS_LABEL: Record<string, string> = {
   inbox: 'Inbox', today: 'Today', this_week: 'This Week', done: 'Done', backlog: 'Backlog',
+  ready: 'Ready', in_progress: 'In Progress', holding: 'Holding',
+}
+
+export const SPRINT_COLUMNS = [
+  { id: 'ready', label: 'Ready', color: '#38bdf8' },
+  { id: 'in_progress', label: 'In Progress', color: '#f59e0b' },
+  { id: 'holding', label: 'Holding', color: '#f97316' },
+  { id: 'done', label: 'Done', color: '#22c55e' },
+] as const
+
+export const BUCKET_COLUMNS = [
+  { id: 'inbox', label: 'Inbox', color: '#a78bfa' },
+  { id: 'backlog', label: 'Backlog', color: '#f97316' },
+] as const
+
+export const POINT_COLORS: Record<string, string> = {
+  '15': '#ef4444', '10': '#f97316', '6': '#f59e0b', '3': '#38bdf8', '1': '#6b7280',
+}
+
+export function getSprintWeek(date: Date = new Date()) {
+  const d = new Date(date)
+  const day = d.getDay()
+  const monday = new Date(d)
+  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+  monday.setHours(0, 0, 0, 0)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return {
+    start: monday.toISOString().split('T')[0],
+    end: sunday.toISOString().split('T')[0],
+  }
+}
+
+export function offsetWeek(startDate: string, offset: number) {
+  const d = new Date(startDate + 'T00:00:00')
+  d.setDate(d.getDate() + offset * 7)
+  return getSprintWeek(d)
+}
+
+export function fmtWeekRange(start: string, end: string) {
+  const s = new Date(start + 'T00:00:00')
+  const e = new Date(end + 'T00:00:00')
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${fmt(s)} – ${fmt(e)}`
+}
+
+export function isCurrentWeek(start: string) {
+  const current = getSprintWeek()
+  return current.start === start
 }
 
 export const ATHLETE_STAGES = [
