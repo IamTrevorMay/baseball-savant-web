@@ -73,6 +73,19 @@ const TOOLS = [
     available: true,
   },
   {
+    id: 'work',
+    name: 'Work',
+    description: 'Internal ops: board, athletes, sprints, calendar, goals',
+    href: '/work',
+    color: 'sky',
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M2 13h20" />
+      </svg>
+    ),
+    available: true,
+  },
+  {
     id: 'design',
     name: 'Design',
     description: 'Natural language data exploration and visualization',
@@ -93,6 +106,7 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string; icon
   purple:  { bg: 'hover:bg-purple-500/5',  text: 'text-purple-400',  border: 'hover:border-purple-500/40',  iconBg: 'bg-purple-500/15' },
   amber:   { bg: 'hover:bg-amber-500/5',   text: 'text-amber-400',   border: 'hover:border-amber-500/40',   iconBg: 'bg-amber-500/15' },
   cyan:    { bg: 'hover:bg-cyan-500/5',   text: 'text-cyan-400',   border: 'hover:border-cyan-500/40',   iconBg: 'bg-cyan-500/15' },
+  sky:     { bg: 'hover:bg-sky-500/5',    text: 'text-sky-400',    border: 'hover:border-sky-500/40',    iconBg: 'bg-sky-500/15' },
   red:     { bg: 'hover:bg-red-500/5',    text: 'text-red-400',    border: 'hover:border-red-500/40',    iconBg: 'bg-red-500/15' },
   rose:    { bg: 'hover:bg-rose-500/5',   text: 'text-rose-400',   border: 'hover:border-rose-500/40',   iconBg: 'bg-rose-500/15' },
 }
