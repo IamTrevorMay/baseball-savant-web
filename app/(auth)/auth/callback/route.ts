@@ -6,7 +6,10 @@ export async function GET(request: Request) {
   const code = searchParams.get('code')
   const tokenHash = searchParams.get('token_hash')
   const type = searchParams.get('type')
-  const next = searchParams.get('next') ?? '/'
+  const rawNext = searchParams.get('next') ?? '/'
+  // Recovery must always land on the password reset page, even if the
+  // email template's redirect_to points at "/".
+  const next = type === 'recovery' ? '/set-password' : rawNext
 
   // Build redirect URL first so we can attach cookies directly to it
   const redirectUrl = new URL(next, origin)

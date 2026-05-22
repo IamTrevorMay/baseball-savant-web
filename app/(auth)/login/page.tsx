@@ -1,6 +1,7 @@
 'use client'
 import { Suspense, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import TridentLogo from '@/components/TridentLogo'
 
@@ -69,6 +70,10 @@ function LoginForm() {
       >
         {loading ? 'Signing in...' : 'Sign In'}
       </button>
+
+      <Link href="/forgot-password" className="block text-center text-sm text-zinc-500 hover:text-emerald-400 transition">
+        Forgot password?
+      </Link>
     </form>
   )
 }

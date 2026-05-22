@@ -65,7 +65,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Public paths and API routes skip auth entirely — no cookie manipulation
-  const publicPaths = ['/login', '/auth/callback', '/set-password', '/game', '/overlay', '/newsletter', '/landing']
+  const publicPaths = ['/login', '/auth/callback', '/set-password', '/forgot-password', '/game', '/overlay', '/newsletter', '/landing']
   const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
   const isApiRoute = pathname.startsWith('/api/')
 

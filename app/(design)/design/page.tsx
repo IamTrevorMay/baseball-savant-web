@@ -153,6 +153,34 @@ export default function DesignPage() {
           </div>
         </button>
 
+        {/* Broadcast card */}
+        <button
+          onClick={() => router.push('/broadcast')}
+          className="
+            group text-left bg-zinc-900 border border-zinc-800 rounded-xl p-5
+            hover:border-red-600/50 hover:bg-zinc-800/60 transition
+            flex flex-col gap-2
+          "
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-sm font-semibold text-zinc-100 group-hover:text-red-300 transition leading-snug">
+              Broadcast
+            </span>
+            <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide bg-red-500/15 text-red-400 border border-red-500/20">
+              Live
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 leading-relaxed">OBS overlay graphics controller. Drive live broadcast assets and stream-deck cues from a single console.</p>
+          <div className="mt-auto pt-1 flex items-center gap-1.5">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-500">
+              OBS
+            </span>
+            <span className="ml-auto text-[10px] text-zinc-600 group-hover:text-red-500/60 transition">
+              Open &rarr;
+            </span>
+          </div>
+        </button>
+
         {/* Emails card */}
         <button
           onClick={() => router.push('/design/emails')}
