@@ -210,6 +210,9 @@ export type BroadcastEventType =
   | 'widget:notification'
   | 'widget:username-stack'
   | 'widget:state-sync'
+  | 'producer:panel-show'
+  | 'producer:panel-hide'
+  | 'producer:panel-update'
 
 export interface BroadcastEvent {
   event: BroadcastEventType

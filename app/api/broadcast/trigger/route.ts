@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import type { BroadcastSession } from '@/lib/broadcastTypes'
 
-const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out'] as const
+const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out', 'producer_panel_show', 'producer_panel_hide'] as const
 type TriggerAction = typeof VALID_ACTIONS[number]
 
 export async function GET(req: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const aid = req.nextUrl.searchParams.get('aid')
     const action = req.nextUrl.searchParams.get('action') as TriggerAction | null
 
-    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out']
+    const aidOptionalActions: TriggerAction[] = ['slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out', 'producer_panel_show', 'producer_panel_hide']
     if (!sid || !action) {
       return NextResponse.json({ error: 'sid and action are required' }, { status: 400 })
     }
@@ -46,6 +46,42 @@ export async function GET(req: NextRequest) {
     let eventPayload: Record<string, any>
     let resultVisible: boolean | undefined
     let resultIndex: number | undefined
+
+    // ── Producer panel actions ──────────────────────────────────────────────
+
+    if (action === 'producer_panel_show' || action === 'producer_panel_hide') {
+      const position = req.nextUrl.searchParams.get('position') || 'lower-bar'
+      const channel = supabaseAdmin.channel(sess.channel_name)
+      await channel.subscribe()
+
+      if (action === 'producer_panel_show') {
+        // Expect content as JSON in the 'content' query param
+        const contentRaw = req.nextUrl.searchParams.get('content')
+        if (!contentRaw) {
+          supabaseAdmin.removeChannel(channel)
+          return NextResponse.json({ error: 'content is required for producer_panel_show' }, { status: 400 })
+        }
+        let content: any
+        try { content = JSON.parse(contentRaw) } catch {
+          supabaseAdmin.removeChannel(channel)
+          return NextResponse.json({ error: 'content must be valid JSON' }, { status: 400 })
+        }
+        await channel.send({
+          type: 'broadcast',
+          event: 'producer:panel-show',
+          payload: { position, content, source: 'trigger-api', timestamp: Date.now() },
+        })
+      } else {
+        await channel.send({
+          type: 'broadcast',
+          event: 'producer:panel-hide',
+          payload: { position, source: 'trigger-api', timestamp: Date.now() },
+        })
+      }
+
+      supabaseAdmin.removeChannel(channel)
+      return NextResponse.json({ ok: true, action, position })
+    }
 
     // ── Widget actions ─────────────────────────────────────────────────────
 
