@@ -5,10 +5,8 @@ import TridentLogo from '@/components/TridentLogo'
 
 const ITEMS = [
   { href: '/work',              label: 'Dashboard',       icon: 'grid' },
-  { href: '/work/myboard',      label: 'My Board',        icon: 'board' },
   { href: '/work/channels',     label: 'Channels',        icon: 'hash' },
   { href: '/work/messages',     label: 'Messages',        icon: 'message' },
-  { href: '/work/sprints',      label: 'Sprints',         icon: 'sprint' },
   { href: '/work/calendar',     label: 'Calendar',        icon: 'calendar' },
   { href: '/work/goals',        label: 'Goals',           icon: 'target' },
   { href: '/work/resources',    label: 'Resources',       icon: 'folder' },
