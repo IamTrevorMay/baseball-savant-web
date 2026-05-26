@@ -109,6 +109,23 @@ const COLOR_MAP: Record<string, { bg: string; text: string; border: string; icon
   sky:     { bg: 'hover:bg-sky-500/5',    text: 'text-sky-400',    border: 'hover:border-sky-500/40',    iconBg: 'bg-sky-500/15' },
   red:     { bg: 'hover:bg-red-500/5',    text: 'text-red-400',    border: 'hover:border-red-500/40',    iconBg: 'bg-red-500/15' },
   rose:    { bg: 'hover:bg-rose-500/5',   text: 'text-rose-400',   border: 'hover:border-rose-500/40',   iconBg: 'bg-rose-500/15' },
+  indigo:  { bg: 'hover:bg-indigo-500/5', text: 'text-indigo-400', border: 'hover:border-indigo-500/40', iconBg: 'bg-indigo-500/15' },
+}
+
+const DATA_TOOL = {
+  id: 'data',
+  name: 'Data',
+  description: 'Integration ingest, raw retention, and ad-hoc query across all sources',
+  href: '/data',
+  color: 'indigo',
+  icon: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+      <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" />
+    </svg>
+  ),
+  available: true,
 }
 
 const ADMIN_TOOL = {
@@ -133,7 +150,7 @@ function LauncherContent() {
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
   // If no user session (preview mode or not logged in), show all tools as accessible
   const effectivePermissions = !user ? ['research', 'mechanics', 'models', 'compete', 'visualize'] : isAdmin ? TOOLS.map(t => t.id) : permissions
-  const visibleTools = isAdmin ? [...TOOLS, ADMIN_TOOL] : TOOLS
+  const visibleTools = isAdmin ? [...TOOLS, DATA_TOOL, ADMIN_TOOL] : TOOLS
 
   // In PWA standalone mode, redirect to Compete tab
   useEffect(() => {
@@ -170,7 +187,7 @@ function LauncherContent() {
       {/* Tool Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {visibleTools.map(tool => {
-          const hasAccess = tool.id === 'admin' || effectivePermissions.includes(tool.id)
+          const hasAccess = tool.id === 'admin' || tool.id === 'data' || effectivePermissions.includes(tool.id)
           const colors = COLOR_MAP[tool.color]
           const locked = !hasAccess && tool.available
 
