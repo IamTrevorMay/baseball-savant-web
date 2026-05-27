@@ -69,7 +69,10 @@ export async function updateSession(request: NextRequest) {
   const isPublicPath = publicPaths.some(p => pathname.startsWith(p))
   const isApiRoute = pathname.startsWith('/api/')
 
-  if (isPublicPath || isApiRoute) {
+  // Dev-only bypass for the Data app while local auth is locked out.
+  const isDataBypass = process.env.DATA_DEV_BYPASS === '1' && pathname.startsWith('/data')
+
+  if (isPublicPath || isApiRoute || isDataBypass) {
     return NextResponse.next()
   }
 
