@@ -144,16 +144,18 @@ export default function TeamsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<TeamRow[]>([])
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const handleFetch = useCallback(async (t: Tab, s: string, gt: GameType) => {
+  const handleFetch = useCallback(async (t: Tab, s: string, gt: GameType, sd: string, ed: string) => {
     setLoading(true); setError(null)
     try {
       const res = await fetch('/api/team-tendencies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ season: s, tab: t, gameType: gt }),
+        body: JSON.stringify({ season: s, tab: t, gameType: gt, ...(sd && { startDate: sd }), ...(ed && { endDate: ed }) }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const data = await res.json()
@@ -168,8 +170,8 @@ export default function TeamsPage() {
     setLoading(false)
   }, [])
 
-  // Auto-fetch on mount and when tab/season/gameType changes
-  useEffect(() => { handleFetch(tab, season, gameType) }, [tab, season, gameType, handleFetch])
+  // Auto-fetch on mount and when filters change
+  useEffect(() => { handleFetch(tab, season, gameType, startDate, endDate) }, [tab, season, gameType, startDate, endDate, handleFetch])
 
   const handleSort = (col: string) => {
     const newDir = sortCol === col && sortDir === 'desc' ? 'asc' : 'desc'
@@ -220,6 +222,22 @@ export default function TeamsPage() {
                     {gt.label}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block">Date Range</label>
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                  className="h-9 px-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white focus:outline-none [color-scheme:dark]" />
+                <span className="text-zinc-500 text-xs">–</span>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                  className="h-9 px-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white focus:outline-none [color-scheme:dark]" />
+                {(startDate || endDate) && (
+                  <button onClick={() => { setStartDate(''); setEndDate('') }}
+                    className="h-9 px-2 text-xs text-zinc-400 hover:text-white bg-zinc-800 border border-zinc-700 rounded transition">
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
             <div>

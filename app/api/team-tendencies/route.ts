@@ -5,9 +5,14 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
 export async function POST(req: NextRequest) {
   try {
-    const { season = 2025, tab = 'pitching', gameType = 'all' } = await req.json()
+    const { season = 2025, tab = 'pitching', gameType = 'all', startDate, endDate } = await req.json()
     const safeSeason = parseInt(season)
     if (isNaN(safeSeason)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
+
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/
+    const safeStart = typeof startDate === 'string' && dateRe.test(startDate) ? startDate : null
+    const safeEnd = typeof endDate === 'string' && dateRe.test(endDate) ? endDate : null
+    const dateFilter = (safeStart ? ` AND game_date >= '${safeStart}'` : '') + (safeEnd ? ` AND game_date <= '${safeEnd}'` : '')
 
     const gtMap: Record<string, string> = {
       regular: "AND game_type = 'R'",
@@ -16,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
     const gtFilter = gtMap[gameType] || ''
 
-    const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}`
+    const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}${dateFilter}`
 
     if (tab === 'momentum' || tab === 'leverage') {
       // Momentum: Shutdowns & Responses (for + against). Spring is excluded even on "All".
@@ -38,7 +43,7 @@ export async function POST(req: NextRequest) {
                 AND MAX(post_bat_score) - MIN(bat_score) >= 1
               THEN 1 ELSE 0 END AS lev
           FROM pitches
-          WHERE game_year = ${safeSeason} AND ${momentumGt}
+          WHERE game_year = ${safeSeason} AND ${momentumGt}${dateFilter}
           GROUP BY game_pk, inning, inning_topbot, home_team, away_team
         ),
         sequenced AS (
@@ -138,7 +143,7 @@ export async function POST(req: NextRequest) {
             CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END AS pitch_team,
             estimated_woba_using_speedangle AS xwoba
           FROM pitches
-          WHERE game_year = ${safeSeason} AND ${momentumGt}
+          WHERE game_year = ${safeSeason} AND ${momentumGt}${dateFilter}
             AND events IS NOT NULL AND estimated_woba_using_speedangle IS NOT NULL
         ),
         matchup AS (
