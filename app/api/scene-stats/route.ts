@@ -618,7 +618,9 @@ export async function GET(req: NextRequest) {
       const playerIdsRaw = sp.get('playerIds') || ''
       const playerIds = playerIdsRaw.split(',').map(Number).filter(Boolean)
       if (playerIds.length === 0) return NextResponse.json({ error: 'Missing playerIds' }, { status: 400 })
-      const gameYear = sp.get('gameYear') || new Date().getFullYear()
+      const gameYearParam = sp.get('gameYear')
+      const gameYear = gameYearParam ? parseInt(gameYearParam) : new Date().getFullYear()
+      if (isNaN(gameYear)) return NextResponse.json({ error: 'Invalid gameYear' }, { status: 400 })
       const playerType = sp.get('playerType') || 'pitcher'
       const col = playerType === 'batter' ? 'batter' : 'pitcher'
 
@@ -792,7 +794,7 @@ export async function GET(req: NextRequest) {
 
         await Promise.all([
           backfillPitchesMetrics(q, result, pitchesMetrics, groupCol, extraWhere),
-          backfillEraMetrics(q, result, eraBackfill, SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], gameYear ? [`game_year = ${yr}`] : []),
+          backfillEraMetrics(q, result, eraBackfill, SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], gameYear ? [`game_year = ${yr}`] : [], yr),
         ])
 
         return NextResponse.json({ leaderboard: result })
@@ -1053,7 +1055,7 @@ export async function GET(req: NextRequest) {
         await Promise.all([
           backfillPitchesMetrics(q, result, pitchesMetrics, 'pitcher', extraWhere3),
           backfillTritonMetrics(q, result, tritonBackfill, year),
-          backfillEraMetrics(q, result, eraBackfill, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], [`game_year = ${year}`]),
+          backfillEraMetrics(q, result, eraBackfill, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], [`game_year = ${year}`], year),
         ])
 
         return NextResponse.json({ leaderboard: result })
@@ -1098,7 +1100,7 @@ export async function GET(req: NextRequest) {
         })
         rows = rows.slice(0, limit)
 
-        const ERA_COL: Record<string, string> = { era: 'fip', fip: 'fip', xera: 'xera' }
+        const ERA_COL: Record<string, string> = { fip: 'fip', xera: 'xera' }
         const result = rows.map(r => {
           const out: Record<string, any> = { player_id: r.player_id, player_name: r.player_name }
           for (const m of allMetrics) { out[m.alias] = (r as any)[ERA_COL[m.key] || ''] ?? null }
@@ -1108,6 +1110,7 @@ export async function GET(req: NextRequest) {
         // Parallel backfills for secondary/tertiary from other sources
         const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !ERA_METRIC_KEYS.has(m.key) && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key))
         const tritonBackfill = allMetrics.filter(m => m.alias !== 'primary_value' && TRITON_PLUS_METRIC_KEYS.has(m.key))
+        const eraBackfill4 = allMetrics.filter(m => m.alias !== 'primary_value' && m.key === 'era')
         const extraWhere4: string[] = []
         if (gameYear) extraWhere4.push(`game_year = ${year}`)
         if (pitchType) extraWhere4.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
@@ -1115,6 +1118,7 @@ export async function GET(req: NextRequest) {
         await Promise.all([
           backfillPitchesMetrics(q, result, pitchesMetrics, 'pitcher', extraWhere4),
           backfillTritonMetrics(q, result, tritonBackfill, year),
+          backfillEraMetrics(q, result, eraBackfill4, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], extraWhere4, year),
         ])
 
         return NextResponse.json({ leaderboard: result })
@@ -1171,7 +1175,7 @@ export async function GET(req: NextRequest) {
 
         await Promise.all([
           backfillTritonMetrics(q, result, tritonMetrics, year),
-          backfillEraMetrics(q, result, eraMetrics, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], extraWhere5),
+          backfillEraMetrics(q, result, eraMetrics, SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR], extraWhere5, year),
         ])
       }
 

@@ -151,29 +151,61 @@ export async function backfillTritonMetrics(
   } catch (e) { console.error('Triton backfill failed:', e) }
 }
 
-/** Backfill FIP/xERA metrics computed from pitches ERA components into result rows. */
+/**
+ * Backfill ERA/FIP/xERA metrics into result rows.
+ * - fip/xera: computed from pitches ERA components + season constants
+ * - era: pulled from player_season_stats (true ERA, not FIP). Requires `year`.
+ *   If `year` is omitted, era requests no-op rather than returning FIP-as-ERA.
+ */
 export async function backfillEraMetrics(
   q: (sql: string) => PromiseLike<{ data: any; error: any }>,
   result: Record<string, any>[],
   metrics: { key: string; alias: string }[],
   constants: { cfip: number; woba: number; woba_scale: number; lg_era: number },
-  extraWhere: string[]
+  extraWhere: string[],
+  year?: number,
 ): Promise<void> {
   if (metrics.length === 0 || result.length === 0) return
-  try {
-    const ids = result.map(r => r.player_id)
-    const where = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO','IN')", ...extraWhere]
-    const sql = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.pitcher`
-    const { data } = await q(sql)
-    if (data) {
-      const lookup = new Map((data as any[]).map((r: any) => [r.player_id, r]))
-      for (const r of result) {
-        const s = lookup.get(r.player_id); if (!s) continue
-        const fipVal = computeFIP(s, constants)
-        const xeraVal = computeXERA(s, constants)
-        const ERA_VALS: Record<string, any> = { era: fipVal, fip: fipVal, xera: xeraVal }
-        for (const m of metrics) r[m.alias] = ERA_VALS[m.key] ?? null
-      }
-    }
-  } catch (e) { console.error('ERA backfill failed:', e) }
+  const ids = result.map(r => r.player_id)
+  const fipXeraMetrics = metrics.filter(m => m.key === 'fip' || m.key === 'xera')
+  const eraMetrics = metrics.filter(m => m.key === 'era')
+
+  const tasks: Promise<void>[] = []
+
+  if (fipXeraMetrics.length > 0) {
+    tasks.push((async () => {
+      try {
+        const where = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO','IN')", ...extraWhere]
+        const sql = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.pitcher`
+        const { data } = await q(sql)
+        if (!data) return
+        const lookup = new Map((data as any[]).map((r: any) => [r.player_id, r]))
+        for (const r of result) {
+          const s = lookup.get(r.player_id); if (!s) continue
+          const FIP_VALS: Record<string, any> = {
+            fip: computeFIP(s, constants),
+            xera: computeXERA(s, constants),
+          }
+          for (const m of fipXeraMetrics) r[m.alias] = FIP_VALS[m.key] ?? null
+        }
+      } catch (e) { console.error('FIP/xERA backfill failed:', e) }
+    })())
+  }
+
+  if (eraMetrics.length > 0 && year != null) {
+    tasks.push((async () => {
+      try {
+        const sql = `SELECT player_id, era FROM player_season_stats WHERE season = ${year} AND stat_group = 'pitching' AND player_id IN (${ids.join(',')})`
+        const { data } = await q(sql)
+        if (!data) return
+        const lookup = new Map((data as any[]).map((r: any) => [r.player_id, r.era != null ? Number(r.era) : null]))
+        for (const r of result) {
+          const v = lookup.get(r.player_id) ?? null
+          for (const m of eraMetrics) r[m.alias] = v
+        }
+      } catch (e) { console.error('True ERA backfill failed:', e) }
+    })())
+  }
+
+  await Promise.all(tasks)
 }

@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (sessionErr || !session) {
-    return NextResponse.json({ error: sessionErr?.message || 'Failed to create session' }, { status: 500 })
+    if (sessionErr) console.error('compete/upload: session insert failed', sessionErr)
+    return NextResponse.json({ error: 'Failed to create session' }, { status: 500 })
   }
 
   // Bulk insert with tm_pitch_uid conflict → ignore (idempotent re-uploads).
@@ -50,9 +51,10 @@ export async function POST(req: NextRequest) {
       .select('id')
 
     if (error) {
-      // Roll back the session so we don't leave an orphan.
+      console.error('compete/upload: pitches upsert failed', error)
+      // Roll back the session so we don't leave an orphan (FK cascades child pitches).
       await supabaseAdmin.from('compete_pitch_sessions').delete().eq('id', session.id)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to insert pitches' }, { status: 500 })
     }
     inserted += data?.length || 0
   }

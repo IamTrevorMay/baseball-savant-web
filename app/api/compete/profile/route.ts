@@ -31,20 +31,24 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Check if admin or self-onboarding
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
   const body = await req.json()
   const targetProfileId = body.profile_id || user.id
 
-  // Only admins can create for others
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'owner'
-  if (targetProfileId !== user.id && !isAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Only admins can create for others. Self-onboarding (target === self) is allowed
+  // even before a profiles row exists, so we only fail closed on lookup error when
+  // privilege escalation is actually being requested.
+  if (targetProfileId !== user.id) {
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (profileErr) {
+      console.error('compete/profile POST: profile lookup failed', profileErr)
+      return NextResponse.json({ error: 'Failed to verify permissions' }, { status: 500 })
+    }
+    const isAdmin = profile?.role === 'admin' || profile?.role === 'owner'
+    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { data, error } = await supabaseAdmin
@@ -65,7 +69,10 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) {
+    console.error('compete/profile POST: athlete insert failed', error)
+    return NextResponse.json({ error: 'Failed to create athlete profile' }, { status: 400 })
+  }
   return NextResponse.json({ athlete: data })
 }
 
@@ -75,6 +82,25 @@ export async function PUT(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
+  const targetProfileId = body.profile_id || user.id
+
+  // Only admins can update other users' profiles
+  if (targetProfileId !== user.id) {
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (profileErr) {
+      console.error('compete/profile PUT: profile lookup failed', profileErr)
+      return NextResponse.json({ error: 'Failed to verify permissions' }, { status: 500 })
+    }
+    const isAdmin = profile?.role === 'admin' || profile?.role === 'owner'
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  }
+
   const allowedFields = [
     'height_in', 'weight_lbs', 'position', 'current_team', 'birth_date',
     'throws', 'bats', 'jersey_number', 'bio', 'photo_url', 'player_id',
@@ -87,10 +113,13 @@ export async function PUT(req: NextRequest) {
   const { data, error } = await supabaseAdmin
     .from('athlete_profiles')
     .update(updates)
-    .eq('profile_id', user.id)
+    .eq('profile_id', targetProfileId)
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) {
+    console.error('compete/profile PUT: athlete update failed', error)
+    return NextResponse.json({ error: 'Failed to update athlete profile' }, { status: 400 })
+  }
   return NextResponse.json({ athlete: data })
 }
