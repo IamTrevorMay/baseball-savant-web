@@ -3,7 +3,8 @@ import { useMemo, useState, useEffect, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
-import { valueToPercentile, SAVANT_PERCENTILES, computePercentile } from '@/lib/leagueStats'
+import { empiricalPercentile } from '@/lib/leagueStats'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 interface TemplateProps {
   data: any[]
@@ -14,68 +15,14 @@ interface TemplateProps {
 }
 
 // Metric definitions for this template's subset
-const LEAGUE_PERCENTILES: Record<string, { label: string; unit: string; percentiles: number[]; higherBetter: boolean }> = {
-  avg_velo: {
-    label: 'Avg Velocity',
-    unit: 'mph',
-    percentiles: [88.5, 90.8, 93.2, 95.1, 97.0],
-    higherBetter: true,
-  },
-  max_velo: {
-    label: 'Max Velocity',
-    unit: 'mph',
-    percentiles: [91.2, 93.5, 96.0, 97.8, 99.5],
-    higherBetter: true,
-  },
-  avg_spin: {
-    label: 'Spin Rate',
-    unit: 'rpm',
-    percentiles: [2050, 2180, 2320, 2450, 2600],
-    higherBetter: true,
-  },
-  extension: {
-    label: 'Extension',
-    unit: 'ft',
-    percentiles: [5.8, 6.1, 6.3, 6.6, 6.9],
-    higherBetter: true,
-  },
-  ivb: {
-    label: 'IVB (FF)',
-    unit: 'in',
-    percentiles: [12.0, 14.0, 16.0, 18.0, 20.5],
-    higherBetter: true,
-  },
-  hb: {
-    label: 'HB (FF)',
-    unit: 'in',
-    percentiles: [-10.0, -8.0, -6.5, -4.5, -2.5],
-    higherBetter: false,
-  },
-  vaa: {
-    label: 'VAA (FF)',
-    unit: '°',
-    percentiles: [-6.8, -6.2, -5.5, -4.9, -4.2],
-    higherBetter: true,  // less negative = better for FF
-  },
-  whiff_pct: {
-    label: 'Whiff%',
-    unit: '%',
-    percentiles: [18.0, 22.0, 26.0, 31.0, 36.0],
-    higherBetter: true,
-  },
-  chase_pct: {
-    label: 'Chase%',
-    unit: '%',
-    percentiles: [24.0, 27.0, 30.0, 34.0, 38.0],
-    higherBetter: true,
-  },
-}
-
-// Mapping from this template's keys to league_metric_baselines keys
-const KEY_TO_BASELINE: Record<string, string> = {
-  avg_velo: 'avg_velo', max_velo: 'max_velo', avg_spin: 'avg_spin',
-  extension: 'extension', ivb: 'ivb_ff', hb: 'hb', vaa: 'vaa_ff',
-  whiff_pct: 'whiff_pct', chase_pct: 'chase_pct',
+const TEMPLATE_METRICS: Record<string, { label: string; unit: string; dbKey: string }> = {
+  avg_spin:  { label: 'Spin Rate',  unit: 'rpm', dbKey: 'avg_spin' },
+  extension: { label: 'Extension',  unit: 'ft',  dbKey: 'avg_ext' },
+  ivb:       { label: 'IVB (FF)',   unit: 'in',  dbKey: 'avg_ivb_in' },
+  hb:        { label: 'HB (FF)',    unit: 'in',  dbKey: 'avg_hbreak_in' },
+  vaa:       { label: 'VAA (FF)',   unit: '°',   dbKey: 'vaa_ff' },
+  whiff_pct: { label: 'Whiff%',    unit: '%',   dbKey: 'whiff_pct' },
+  chase_pct: { label: 'Chase%',    unit: '%',   dbKey: 'chase_pct' },
 }
 
 function percentileColor(pct: number): string {
@@ -96,24 +43,36 @@ function percentileColor(pct: number): string {
 }
 
 export default function PercentileRankings({ data, playerName }: TemplateProps) {
-  const [baselines, setBaselines] = useState<Record<string, { mean: number; stddev: number; higher_better: boolean }>>({})
+  const [percentileMap, setPercentileMap] = useState<Record<string, { breakpoints: number[]; higher_better: boolean }>>({})
+
+  // Determine pitcher role (SP if ≥3 games with 50+ pitches)
+  const role = useMemo(() => {
+    const gamePitchCounts: Record<string, number> = {}
+    for (const d of data) {
+      if (!d.game_pk || !d.pitcher) continue
+      if (d.pitch_type === 'PO' || d.pitch_type === 'IN') continue
+      const key = String(d.game_pk)
+      gamePitchCounts[key] = (gamePitchCounts[key] || 0) + 1
+    }
+    const gamesOver50 = Object.values(gamePitchCounts).filter(c => c >= 50).length
+    return gamesOver50 >= 3 ? 'SP' : 'RP'
+  }, [data])
 
   useEffect(() => {
-    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))]
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))] as number[]
     if (years.length === 0) return
-    fetch(`/api/league-baselines?years=${years.join(',')}`)
+    const season = Math.max(...years)
+    fetch(`/api/league-percentiles?season=${season}&role=${role}`)
       .then(r => r.ok ? r.json() : [])
       .then((rows: any[]) => {
-        const map: Record<string, { mean: number; stddev: number; higher_better: boolean }> = {}
+        const map: Record<string, { breakpoints: number[]; higher_better: boolean }> = {}
         for (const r of rows) {
-          if (r.pitch_type === '_all') {
-            map[r.metric] = { mean: Number(r.mean), stddev: Number(r.stddev), higher_better: r.higher_better }
-          }
+          map[r.metric] = { breakpoints: r.breakpoints.map(Number), higher_better: r.higher_better }
         }
-        setBaselines(map)
+        setPercentileMap(map)
       })
       .catch(() => {})
-  }, [data])
+  }, [data, role])
 
   const metrics = useMemo(() => {
     if (!data.length) return []
@@ -121,11 +80,6 @@ export default function PercentileRankings({ data, playerName }: TemplateProps) 
     // Compute player averages for fastballs (for pitch-specific metrics)
     const fastballs = data.filter(d => ['4-Seam Fastball', 'FF', 'Fastball', 'FA'].includes(d.pitch_name || d.pitch_type || ''))
     const allPitches = data
-
-    // Velocity: all pitches
-    const velos = allPitches.map(d => d.release_speed).filter((v): v is number => v != null)
-    const avgVelo = velos.length ? velos.reduce((a, b) => a + b, 0) / velos.length : null
-    const maxVelo = velos.length ? Math.max(...velos) : null
 
     // Spin rate: all pitches
     const spins = allPitches.map(d => d.release_spin_rate).filter((v): v is number => v != null)
@@ -167,28 +121,22 @@ export default function PercentileRankings({ data, playerName }: TemplateProps) 
 
     const results: { key: string; value: number; pct: number }[] = []
     const vals: Record<string, number | null> = {
-      avg_velo: avgVelo, max_velo: maxVelo, avg_spin: avgSpin, extension: avgExt,
+      avg_spin: avgSpin, extension: avgExt,
       ivb: avgIvb, hb: avgHb, vaa: avgVaa, whiff_pct: whiffPct, chase_pct: chasePct,
     }
 
-    for (const [key, def] of Object.entries(LEAGUE_PERCENTILES)) {
+    for (const [key, def] of Object.entries(TEMPLATE_METRICS)) {
       const v = vals[key]
       if (v == null) continue
 
-      let pct: number
-      const blKey = KEY_TO_BASELINE[key]
-      const bl = blKey ? baselines[blKey] : null
-      if (bl && bl.stddev > 0) {
-        pct = valueToPercentile(v, bl.mean, bl.stddev, bl.higher_better)
-      } else {
-        pct = computePercentile(v, def.percentiles, def.higherBetter)
-      }
+      const bp = percentileMap[def.dbKey]
+      const pct = bp ? empiricalPercentile(v, bp.breakpoints, bp.higher_better) : 50
 
       results.push({ key, value: v, pct })
     }
 
     return results
-  }, [data, baselines])
+  }, [data, percentileMap])
 
   if (!metrics.length) {
     return (
@@ -198,12 +146,13 @@ export default function PercentileRankings({ data, playerName }: TemplateProps) 
     )
   }
 
-  const labels = metrics.map(m => LEAGUE_PERCENTILES[m.key].label)
+  const labels = metrics.map(m => TEMPLATE_METRICS[m.key].label)
   const pcts = metrics.map(m => Math.round(m.pct))
   const colors = pcts.map(p => percentileColor(p))
   const hoverTexts = metrics.map(m => {
-    const def = LEAGUE_PERCENTILES[m.key]
-    return `${def.label}: ${m.value.toFixed(1)} ${def.unit}<br>Percentile: ${Math.round(m.pct)}th`
+    const def = TEMPLATE_METRICS[m.key]
+    const displayVal = m.key === 'hb' ? toPitcherX(m.value) : m.value
+    return `${def.label}: ${displayVal.toFixed(1)} ${def.unit}<br>Percentile: ${Math.round(m.pct)}th`
   })
 
   const traces = [{

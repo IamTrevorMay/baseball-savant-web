@@ -1,36 +1,48 @@
 'use client'
 import { useMemo, useState, useEffect } from 'react'
 import {
-  SAVANT_PERCENTILES, computePercentile, percentileColor, valueToPercentile,
-  METRIC_META, METRIC_ORDER, isFastball, computeXDeceptionScore,
+  empiricalPercentile, percentileColor,
+  METRIC_META, isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
 import { supabase } from '@/lib/supabase'
 
 const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
 export default function PercentileRankings({ data }: { data: any[] }) {
-  const [baselines, setBaselines] = useState<Record<string, { mean: number; stddev: number; higher_better: boolean }>>({})
+  const [percentileMap, setPercentileMap] = useState<Record<string, { breakpoints: number[]; higher_better: boolean }>>({})
   const [deceptionVals, setDeceptionVals] = useState<Record<string, number | null>>({
     unique_score: null, deception_score: null, xdeception_score: null,
   })
 
-  // Fetch dynamic league baselines
+  // Determine pitcher role (SP if ≥3 games with 50+ pitches)
+  const role = useMemo(() => {
+    const gamePitchCounts: Record<string, number> = {}
+    for (const d of data) {
+      if (!d.game_pk || !d.pitcher) continue
+      if (d.pitch_type === 'PO' || d.pitch_type === 'IN') continue
+      const key = String(d.game_pk)
+      gamePitchCounts[key] = (gamePitchCounts[key] || 0) + 1
+    }
+    const gamesOver50 = Object.values(gamePitchCounts).filter(c => c >= 50).length
+    return gamesOver50 >= 3 ? 'SP' : 'RP'
+  }, [data])
+
+  // Fetch empirical percentile breakpoints
   useEffect(() => {
-    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))]
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))] as number[]
     if (years.length === 0) return
-    fetch(`/api/league-baselines?years=${years.join(',')}`)
+    const season = Math.max(...years)
+    fetch(`/api/league-percentiles?season=${season}&role=${role}`)
       .then(r => r.ok ? r.json() : [])
       .then((rows: any[]) => {
-        const map: Record<string, { mean: number; stddev: number; higher_better: boolean }> = {}
+        const map: Record<string, { breakpoints: number[]; higher_better: boolean }> = {}
         for (const r of rows) {
-          if (r.pitch_type === '_all') {
-            map[r.metric] = { mean: Number(r.mean), stddev: Number(r.stddev), higher_better: r.higher_better }
-          }
+          map[r.metric] = { breakpoints: r.breakpoints.map(Number), higher_better: r.higher_better }
         }
-        setBaselines(map)
+        setPercentileMap(map)
       })
       .catch(() => {})
-  }, [data])
+  }, [data, role])
 
   // Fetch pre-computed deception scores
   useEffect(() => {
@@ -111,10 +123,8 @@ export default function PercentileRankings({ data }: { data: any[] }) {
     const ffIvbs = fastballs.map(d => d.pfx_z != null ? d.pfx_z * 12 : null).filter((v): v is number => v != null)
     const ffVaas = fastballs.map(d => d.vaa).filter((v): v is number => v != null)
     const exts = data.map(d => d.release_extension).filter((v): v is number => v != null)
-    const velos = data.map(d => d.release_speed).filter((v): v is number => v != null)
 
     const vals: Record<string, number | null> = {
-      avg_velo: avg(velos),
       k_pct: pas.length > 0 ? (ks / pas.length) * 100 : null,
       bb_pct: pas.length > 0 ? (bbs / pas.length) * 100 : null,
       whiff_pct: swings.length > 0 ? (whiffs.length / swings.length) * 100 : null,
@@ -134,7 +144,7 @@ export default function PercentileRankings({ data }: { data: any[] }) {
     const overviewOrder = [
       'k_pct', 'bb_pct', 'whiff_pct', 'chase_pct',
       'barrel_pct', 'hard_hit', 'avg_ev', 'xba', 'gb_pct',
-      'extension', 'avg_velo', 'ivb_ff',
+      'extension', 'ivb_ff',
     ]
 
     const results: { key: string; label: string; value: number; unit: string; pct: number }[] = []
@@ -144,18 +154,12 @@ export default function PercentileRankings({ data }: { data: any[] }) {
       const meta = METRIC_META[key]
       if (!meta) continue
 
-      let pct: number
-      const bl = baselines[key]
-      if (bl && bl.stddev > 0) {
-        pct = valueToPercentile(v, bl.mean, bl.stddev, bl.higher_better)
-      } else {
-        const def = SAVANT_PERCENTILES[key]
-        pct = def ? computePercentile(v, def.percentiles, def.higherBetter) : 50
-      }
+      const bp = percentileMap[key]
+      const pct = bp ? empiricalPercentile(v, bp.breakpoints, bp.higher_better) : 50
       results.push({ key, label: meta.label, unit: meta.unit, value: v, pct })
     }
     return results
-  }, [data, deceptionVals, baselines])
+  }, [data, deceptionVals, percentileMap])
 
   if (!rankings.length) return <div className="text-zinc-500 text-sm text-center py-10">No data</div>
 

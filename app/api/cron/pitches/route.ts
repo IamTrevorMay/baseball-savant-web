@@ -69,6 +69,15 @@ export async function GET(req: NextRequest) {
         leagueAveragesResult = { error: e.message }
       }
 
+      // Refresh league_percentiles (empirical breakpoints) after averages.
+      let leaguePercentilesResult: { ok: true } | { error: string }
+      try {
+        const { error } = await supabaseAdmin.rpc('refresh_league_percentiles', { p_season: year })
+        leaguePercentilesResult = error ? { error: error.message } : { ok: true }
+      } catch (e: any) {
+        leaguePercentilesResult = { error: e.message }
+      }
+
       // Invalidate query caches after fresh data sync
       await Promise.all([
         invalidateCache('trends:'),
@@ -83,9 +92,10 @@ export async function GET(req: NextRequest) {
         results,
         computeResults,
         leagueAverages: leagueAveragesResult,
+        leaguePercentiles: leaguePercentilesResult,
       }
 
-      return { result: payload, counts: { gameTypes, results, leagueAverages: leagueAveragesResult } }
+      return { result: payload, counts: { gameTypes, results, leagueAverages: leagueAveragesResult, leaguePercentiles: leaguePercentilesResult } }
     })
 
     return NextResponse.json(result)

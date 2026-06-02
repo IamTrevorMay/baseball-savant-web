@@ -1271,43 +1271,24 @@ function _buildPooled(table: YearLeague): Record<string, LeagueEntry> {
   return result
 }
 
-// Savant-style percentile breakpoints [p10, p25, p50, p75, p90]
-export const SAVANT_PERCENTILES: Record<string, { label: string; percentiles: number[]; higherBetter: boolean; unit: string }> = {
-  avg_velo:   { label: 'Avg Velocity',  unit: 'mph', percentiles: [88.5, 90.8, 93.2, 95.1, 97.0], higherBetter: true },
-  max_velo:   { label: 'Max Velocity',  unit: 'mph', percentiles: [91.2, 93.5, 96.0, 97.8, 99.5], higherBetter: true },
-  k_pct:      { label: 'K%',            unit: '%',   percentiles: [16.4, 18.9, 21.9, 25.0, 28.4], higherBetter: true },
-  bb_pct:     { label: 'BB%',           unit: '%',   percentiles: [6.2, 7.4, 9.0, 10.8, 12.8],    higherBetter: false },
-  whiff_pct:  { label: 'Whiff%',        unit: '%',   percentiles: [18.0, 22.0, 26.0, 31.0, 36.0], higherBetter: true },
-  chase_pct:  { label: 'Chase%',        unit: '%',   percentiles: [24.0, 27.0, 30.0, 34.0, 38.0], higherBetter: true },
-  barrel_pct: { label: 'Barrel%',       unit: '%',   percentiles: [0.7, 1.1, 1.5, 1.8, 2.3],      higherBetter: false },
-  hard_hit:   { label: 'Hard Hit%',     unit: '%',   percentiles: [20.3, 22.2, 24.1, 26.3, 28.7], higherBetter: false },
-  avg_ev:     { label: 'Avg EV',        unit: 'mph', percentiles: [81.1, 81.9, 82.6, 83.4, 84.1], higherBetter: false },
-  xba:        { label: 'xBA',           unit: '',    percentiles: [0.295, 0.308, 0.319, 0.330, 0.344], higherBetter: false },
-  gb_pct:     { label: 'GB%',           unit: '%',   percentiles: [16.5, 19.0, 22.2, 25.6, 29.6], higherBetter: true },
-  avg_spin:   { label: 'Spin Rate',     unit: 'rpm', percentiles: [2050, 2180, 2320, 2450, 2600],  higherBetter: true },
-  extension:  { label: 'Extension',     unit: 'ft',  percentiles: [5.8, 6.1, 6.3, 6.6, 6.9],      higherBetter: true },
-  ivb_ff:     { label: 'IVB (FF)',      unit: 'in',  percentiles: [12.0, 14.0, 16.0, 18.0, 20.5], higherBetter: true },
-  vaa_ff:     { label: 'VAA (FF)',      unit: '°',   percentiles: [-6.8, -6.2, -5.5, -4.9, -4.2], higherBetter: true },
-  unique_score:     { label: 'Unique',      unit: 'z',  percentiles: [0.44, 0.56, 0.73, 0.93, 1.21], higherBetter: true },
-  deception_score:  { label: 'Deception',   unit: 'z',  percentiles: [-0.45, -0.22, 0.02, 0.25, 0.48], higherBetter: true },
-  xdeception_score: { label: 'xDeception',  unit: 'z',  percentiles: [-1.31, -0.58, -0.03, 0.58, 1.11], higherBetter: true },
-}
-
-export function computePercentile(value: number, percentiles: number[], higherBetter: boolean): number {
-  const pcts = [10, 25, 50, 75, 90]
-  const vals = higherBetter ? percentiles : [...percentiles].reverse()
-  const pctsUsed = higherBetter ? pcts : [90, 75, 50, 25, 10]
-
-  if (value <= vals[0]) return pctsUsed[0]
-  if (value >= vals[vals.length - 1]) return pctsUsed[pctsUsed.length - 1]
-
-  for (let i = 0; i < vals.length - 1; i++) {
-    if (value >= vals[i] && value <= vals[i + 1]) {
-      const frac = (value - vals[i]) / (vals[i + 1] - vals[i])
-      return pctsUsed[i] + frac * (pctsUsed[i + 1] - pctsUsed[i])
-    }
+/**
+ * Compute an empirical percentile from pre-computed breakpoints.
+ * breakpoints: 99-element array of values at p1..p99, always in ascending order.
+ * higherBetter: if true, higher raw value = higher percentile; if false, invert.
+ * Returns an integer 1–99.
+ */
+export function empiricalPercentile(
+  value: number, breakpoints: number[], higherBetter: boolean
+): number {
+  // Binary search: count how many breakpoints the value is >= (i.e., position)
+  let lo = 0, hi = breakpoints.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (breakpoints[mid] <= value) lo = mid + 1
+    else hi = mid
   }
-  return 50
+  const rawPct = Math.max(1, Math.min(99, lo))
+  return higherBetter ? rawPct : 100 - rawPct
 }
 
 export function percentileColor(pct: number): string {
@@ -1363,7 +1344,7 @@ export function valueToPercentile(
   return plusToPercentile(adjusted)
 }
 
-/** Metric display metadata (labels + units) — replaces SAVANT_PERCENTILES for display purposes */
+/** Metric display metadata (labels + units) */
 export const METRIC_META: Record<string, { label: string; unit: string }> = {
   avg_velo: { label: 'Avg Velocity', unit: 'mph' },
   max_velo: { label: 'Max Velocity', unit: 'mph' },

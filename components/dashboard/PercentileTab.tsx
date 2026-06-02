@@ -2,8 +2,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
-  SAVANT_PERCENTILES,
-  computePercentile, percentileColor, plusToPercentile, valueToPercentile,
+  empiricalPercentile, percentileColor, plusToPercentile,
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
   isFastball, computeXDeceptionScore,
   METRIC_META, METRIC_ORDER,
@@ -20,25 +19,37 @@ export default function PercentileTab({ data }: Props) {
   const [deceptionVals, setDeceptionVals] = useState<Record<string, number | null>>({
     unique_score: null, deception_score: null, xdeception_score: null,
   })
-  const [baselines, setBaselines] = useState<Record<string, { mean: number; stddev: number; higher_better: boolean }>>({})
+  const [percentileMap, setPercentileMap] = useState<Record<string, { breakpoints: number[]; higher_better: boolean }>>({})
 
-  // Fetch dynamic league baselines
+  // Determine pitcher role (SP if ≥3 games with 50+ pitches)
+  const role = useMemo(() => {
+    const gamePitchCounts: Record<string, number> = {}
+    for (const d of data) {
+      if (!d.game_pk || !d.pitcher) continue
+      if (d.pitch_type === 'PO' || d.pitch_type === 'IN') continue
+      const key = String(d.game_pk)
+      gamePitchCounts[key] = (gamePitchCounts[key] || 0) + 1
+    }
+    const gamesOver50 = Object.values(gamePitchCounts).filter(c => c >= 50).length
+    return gamesOver50 >= 3 ? 'SP' : 'RP'
+  }, [data])
+
+  // Fetch empirical percentile breakpoints
   useEffect(() => {
-    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))]
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))] as number[]
     if (years.length === 0) return
-    fetch(`/api/league-baselines?years=${years.join(',')}`)
+    const season = Math.max(...years)
+    fetch(`/api/league-percentiles?season=${season}&role=${role}`)
       .then(r => r.ok ? r.json() : [])
       .then((rows: any[]) => {
-        const map: Record<string, { mean: number; stddev: number; higher_better: boolean }> = {}
+        const map: Record<string, { breakpoints: number[]; higher_better: boolean }> = {}
         for (const r of rows) {
-          if (r.pitch_type === '_all') {
-            map[r.metric] = { mean: Number(r.mean), stddev: Number(r.stddev), higher_better: r.higher_better }
-          }
+          map[r.metric] = { breakpoints: r.breakpoints.map(Number), higher_better: r.higher_better }
         }
-        setBaselines(map)
+        setPercentileMap(map)
       })
       .catch(() => {})
-  }, [data])
+  }, [data, role])
 
   // Fetch pre-computed deception scores
   useEffect(() => {
@@ -153,21 +164,13 @@ export default function PercentileTab({ data }: Props) {
       const meta = METRIC_META[key]
       if (!meta) continue
 
-      let pct: number
-      const bl = baselines[key]
-      if (bl && bl.stddev > 0) {
-        // Dynamic 1-99 percentile from league baselines
-        pct = valueToPercentile(v, bl.mean, bl.stddev, bl.higher_better)
-      } else {
-        // Fallback to hardcoded breakpoints
-        const def = SAVANT_PERCENTILES[key]
-        pct = def ? computePercentile(v, def.percentiles, def.higherBetter) : 50
-      }
+      const bp = percentileMap[key]
+      const pct = bp ? empiricalPercentile(v, bp.breakpoints, bp.higher_better) : 50
 
       results.push({ key, label: meta.label, unit: meta.unit, value: v, pct })
     }
     return results
-  }, [data, deceptionVals, baselines])
+  }, [data, deceptionVals, percentileMap])
 
   // Raw command metrics per pitch type with percentile ranks
   const rawMetrics = useMemo(() => {

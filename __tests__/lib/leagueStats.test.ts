@@ -5,7 +5,7 @@ import {
   computeRPComPlus,
   plusToPercentile,
   valueToPercentile,
-  computePercentile,
+  empiricalPercentile,
   percentileColor,
   getLeagueBaseline,
   computeYearWeightedPlus,
@@ -151,35 +151,37 @@ describe('computeRPComPlus', () => {
   })
 })
 
-// ── computePercentile ────────────────────────────────────────────────────────
+// ── empiricalPercentile ──────────────────────────────────────────────────────
 
-describe('computePercentile', () => {
-  const percentiles = [88.5, 90.8, 93.2, 95.1, 97.0] // avg_velo
+describe('empiricalPercentile', () => {
+  // 99-element breakpoints: p1=80, p2=81, ..., p99=178
+  const breakpoints = Array.from({ length: 99 }, (_, i) => 80 + i)
 
-  it('returns 10 for values below min (higherBetter=true)', () => {
-    expect(computePercentile(85, percentiles, true)).toBe(10)
+  it('returns 1 for values below all breakpoints (higherBetter=true)', () => {
+    expect(empiricalPercentile(70, breakpoints, true)).toBe(1)
   })
 
-  it('returns 90 for values above max (higherBetter=true)', () => {
-    expect(computePercentile(99, percentiles, true)).toBe(90)
+  it('returns 99 for values above all breakpoints (higherBetter=true)', () => {
+    expect(empiricalPercentile(200, breakpoints, true)).toBe(99)
   })
 
-  it('returns 50 at the median breakpoint', () => {
-    expect(computePercentile(93.2, percentiles, true)).toBe(50)
-  })
-
-  it('interpolates between breakpoints', () => {
-    // Halfway between 88.5 (p10) and 90.8 (p25) → halfway between 10 and 25
-    const mid = (88.5 + 90.8) / 2 // 89.65
-    const pct = computePercentile(mid, percentiles, true)
-    expect(pct).toBeCloseTo(17.5, 0)
+  it('returns correct position for exact match', () => {
+    // breakpoints[49] = 129 → 50 values ≤ 129 → rawPct = 50
+    expect(empiricalPercentile(129, breakpoints, true)).toBe(50)
   })
 
   it('inverts for higherBetter=false', () => {
-    // Below min → should return 90 (good when lower)
-    expect(computePercentile(85, percentiles, false)).toBe(90)
-    // Above max → should return 10 (bad when lower)
-    expect(computePercentile(99, percentiles, false)).toBe(10)
+    // rawPct=50 → 100-50=50 (still 50 at midpoint)
+    expect(empiricalPercentile(129, breakpoints, false)).toBe(50)
+    // rawPct=99 → 100-99=1
+    expect(empiricalPercentile(200, breakpoints, false)).toBe(1)
+    // rawPct=1 → 100-1=99
+    expect(empiricalPercentile(70, breakpoints, false)).toBe(99)
+  })
+
+  it('clamps to 1-99 range', () => {
+    expect(empiricalPercentile(-1000, breakpoints, true)).toBe(1)
+    expect(empiricalPercentile(1000, breakpoints, true)).toBe(99)
   })
 })
 
