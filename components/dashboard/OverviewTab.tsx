@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import PercentileRankings from '../charts/PercentileRankings'
 import MovementProfile from '../charts/MovementProfile'
 import PitchLocationCards from '../charts/PitchLocationCards'
@@ -7,6 +7,8 @@ import { calcTraditionalByYear, calcAdvancedByYear, calcArsenal } from '@/lib/pi
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 import Tip from '@/components/Tip'
 import { getColumns, formatMetric, getCellColor, calcTotalsFromRegistry } from '@/lib/metricRegistry'
+import { supabase } from '@/lib/supabase'
+import { isFastball, computeXDeceptionScore } from '@/lib/leagueStats'
 
 interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[]; sosScores?: Record<number, { sos: number }> }
 
@@ -76,11 +78,88 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     return angles.length ? angles.reduce((a, b) => a + b, 0) / angles.length : null
   }, [data])
 
+  // Fetch deception + unique scores per year from pitcher_season_deception
+  const [deceptionByYear, setDeceptionByYear] = useState<Record<number, { deception: number | null; unique: number | null }>>({})
+
+  useEffect(() => {
+    const pitcherId = data[0]?.pitcher
+    if (!pitcherId) return
+
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))] as number[]
+    if (years.length === 0) return
+
+    async function fetchDeception() {
+      const yearList = years.join(',')
+      const sql = `SELECT game_year, pitch_type, pitches, unique_score, deception_score, z_vaa, z_haa, z_vb, z_hb, z_ext FROM pitcher_season_deception WHERE pitcher = ${pitcherId} AND game_year IN (${yearList})`
+      const { data: rows } = await supabase.rpc('run_query', { query_text: sql })
+      if (!rows?.length) return
+
+      // Group rows by year, compute pitch-weighted averages
+      const byYear: Record<number, typeof rows> = {}
+      for (const r of rows) {
+        const yr = Number(r.game_year)
+        if (!byYear[yr]) byYear[yr] = []
+        byYear[yr].push(r)
+      }
+
+      const result: Record<number, { deception: number | null; unique: number | null }> = {}
+      for (const [yr, yrRows] of Object.entries(byYear)) {
+        let uniqueSum = 0, decSum = 0, totalW = 0
+        const fbZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
+        const osZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
+
+        for (const r of yrRows) {
+          const w = Number(r.pitches) || 0
+          if (r.unique_score != null) { uniqueSum += Number(r.unique_score) * w; totalW += w }
+          if (r.deception_score != null) { decSum += Number(r.deception_score) * w }
+
+          const bucket = isFastball(r.pitch_type) ? fbZ : osZ
+          if (r.z_vaa != null) {
+            bucket.vaa += Number(r.z_vaa) * w
+            bucket.haa += Number(r.z_haa) * w
+            bucket.vb += Number(r.z_vb) * w
+            bucket.hb += Number(r.z_hb) * w
+            bucket.ext += (Number(r.z_ext) || 0) * w
+            bucket.w += w
+          }
+        }
+
+        let xdec: number | null = null
+        if (fbZ.w > 0 && osZ.w > 0) {
+          xdec = computeXDeceptionScore(
+            { vaa: fbZ.vaa / fbZ.w, haa: fbZ.haa / fbZ.w, vb: fbZ.vb / fbZ.w, hb: fbZ.hb / fbZ.w, ext: fbZ.ext / fbZ.w },
+            { vaa: osZ.vaa / osZ.w, haa: osZ.haa / osZ.w, vb: osZ.vb / osZ.w, hb: osZ.hb / osZ.w, ext: osZ.ext / osZ.w }
+          )
+        }
+
+        // Use deception_score from DB; fall back to xdeception if available
+        const dec = totalW > 0 ? decSum / totalW : null
+        result[Number(yr)] = {
+          deception: dec ?? xdec,
+          unique: totalW > 0 ? uniqueSum / totalW : null,
+        }
+      }
+
+      setDeceptionByYear(result)
+    }
+    fetchDeception()
+  }, [data])
+
+  // Merge deception scores into advanced rows
+  const mergedAdvRowsFinal = mergedAdvRows.map(r => {
+    const dec = deceptionByYear[r.year]
+    return {
+      ...r,
+      deceptionScore: dec?.deception != null ? dec.deception.toFixed(1) : '—',
+      uniqueScore: dec?.unique != null ? dec.unique.toFixed(1) : '—',
+    }
+  })
+
   const tradCols = getColumns('pitcher:traditional')
   const advCols = getColumns('pitcher:advanced')
   const arsenalCols = getColumns('pitcher:arsenal')
 
-  const activeRows = mode === 'traditional' ? mergedTradRows : mode === 'advanced' ? mergedAdvRows : arsenalRows
+  const activeRows = mode === 'traditional' ? mergedTradRows : mode === 'advanced' ? mergedAdvRowsFinal : arsenalRows
   const activeCols = mode === 'traditional' ? tradCols : mode === 'advanced' ? advCols : arsenalCols
 
   return (

@@ -450,6 +450,24 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Strength of schedule rating (100 = average)',
   },
 
+  // ── Deception ───────────────────────────────────────────────────────
+  deceptionScore: {
+    key: 'deceptionScore', label: 'Deception', unit: '',
+    format: { type: 'dec', digits: 1 },
+    color: { mode: 'static', class: 'text-violet-400' },
+    totals: 'avg',
+    higherBetter: true,
+    tip: 'Pitch-weighted deception score — tunneling + release consistency',
+  },
+  uniqueScore: {
+    key: 'uniqueScore', label: 'Unique', unit: '',
+    format: { type: 'dec', digits: 1 },
+    color: { mode: 'static', class: 'text-violet-400' },
+    totals: 'avg',
+    higherBetter: true,
+    tip: 'Pitch-weighted uniqueness score — how unusual the pitch movement/velo profile is',
+  },
+
   // ── Arsenal ──────────────────────────────────────────────────────────
   avgVelo: {
     key: 'avgVelo', label: 'Avg Velo', unit: 'mph',
@@ -559,6 +577,7 @@ const GROUP_COLUMNS: Record<string, ColEntry[]> = {
     'fip', 'xfip', 'xera', 'siera',
     'k9', 'bb9', 'hr9',
     'totalRE', 'commandPlus', 'rpcomPlus', 'sos',
+    'deceptionScore', 'uniqueScore',
   ],
   'pitcher:arsenal': [
     'name', 'count', 'usagePct',
