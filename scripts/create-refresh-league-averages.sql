@@ -125,7 +125,7 @@ BEGIN
             WHERE events_n IS NOT NULL
               AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')
           ) AS _ab,
-          AVG(launch_speed)       AS avg_ev,
+          AVG(CASE WHEN bb_type IS NOT NULL THEN launch_speed END) AS avg_ev,
           MAX(launch_speed)       AS max_ev,
           AVG(launch_angle)       AS avg_la,
           AVG(hit_distance_sc)    AS avg_dist,
@@ -154,16 +154,16 @@ BEGIN
             / NULLIF(COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9), 0) AS z_swing_pct,
           100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip'))
             / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip','missed_bunt')), 0) AS o_contact_pct,
-          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95)
-            / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0) AS hard_hit_pct,
+          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
+            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS hard_hit_pct,
           100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6')
             / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0) AS barrel_pct,
           100.0 * COUNT(*) FILTER (WHERE bat_speed >= 75)
             / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL), 0) AS fast_swing_rate,
-          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed IS NOT NULL AND launch_speed IS NOT NULL)
-            / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND launch_speed IS NOT NULL), 0) AS squared_up_rate,
-          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed >= 75 AND bat_speed IS NOT NULL AND launch_speed IS NOT NULL)
-            / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND launch_speed IS NOT NULL), 0) AS blast_rate,
+          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed IS NOT NULL AND bb_type IS NOT NULL)
+            / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND bb_type IS NOT NULL), 0) AS squared_up_rate,
+          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed >= 75 AND bat_speed IS NOT NULL AND bb_type IS NOT NULL)
+            / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND bb_type IS NOT NULL), 0) AS blast_rate,
           %s AS ideal_attack_angle_rate,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball')
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS gb_pct,
@@ -179,7 +179,7 @@ BEGIN
             / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS slg,
           COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','hit_by_pitch'))::numeric
             / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS obp,
-          AVG(estimated_ba_using_speedangle)    AS avg_xba,
+          SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS avg_xba,
           AVG(estimated_woba_using_speedangle)  AS avg_xwoba,
           %s                                    AS avg_xslg,
           AVG(woba_value)                       AS avg_woba
@@ -355,8 +355,8 @@ BEGIN
             / NULLIF(COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9), 0) AS z_swing_pct,
           100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip'))
             / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip','missed_bunt')), 0) AS o_contact_pct,
-          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95)
-            / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0) AS hard_hit_pct,
+          100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
+            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS hard_hit_pct,
           100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6')
             / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0) AS barrel_pct,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball')
@@ -373,7 +373,7 @@ BEGIN
             / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS slg,
           COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','hit_by_pitch'))::numeric
             / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS obp,
-          AVG(estimated_ba_using_speedangle)    AS avg_xba,
+          SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS avg_xba,
           AVG(estimated_woba_using_speedangle)  AS avg_xwoba,
           %s                                    AS avg_xslg,
           AVG(woba_value)                       AS avg_woba

@@ -99,7 +99,7 @@ export default function PercentileRankings({ data }: { data: any[] }) {
     const pas = data.filter(p => p.events)
     const ks = data.filter(p => p.events?.includes('strikeout')).length
     const bbs = data.filter(p => p.events?.includes('walk')).length
-    const battedBalls = data.filter(p => p.launch_speed != null)
+    const battedBalls = data.filter(p => p.bb_type != null)
     const swings = data.filter(p => {
       const d = (p.description || '').toLowerCase()
       return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
@@ -116,7 +116,12 @@ export default function PercentileRankings({ data }: { data: any[] }) {
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
     const evs = battedBalls.map(d => d.launch_speed)
-    const xbas = data.map(d => d.estimated_ba_using_speedangle).filter((v: any) => v != null)
+    const xbaSum = pas.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+    const atBats = pas.filter((p: any) => {
+      const e = (p.events || '').toLowerCase()
+      return e && !e.includes('walk') && !e.includes('hit_by_pitch')
+        && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf')
+    }).length
     const barrels = battedBalls.filter(d => String(d.launch_speed_angle) === '6').length
     const hardHits = battedBalls.filter(d => d.launch_speed >= 95).length
     const gbs = battedBalls.filter(d => d.bb_type === 'ground_ball').length
@@ -132,7 +137,7 @@ export default function PercentileRankings({ data }: { data: any[] }) {
       barrel_pct: battedBalls.length > 0 ? (barrels / battedBalls.length) * 100 : null,
       hard_hit: battedBalls.length > 0 ? (hardHits / battedBalls.length) * 100 : null,
       avg_ev: avg(evs),
-      xba: avg(xbas),
+      xba: atBats > 0 ? xbaSum / atBats : null,
       gb_pct: battedBalls.length > 0 ? (gbs / battedBalls.length) * 100 : null,
       extension: avg(exts),
       ivb_ff: avg(ffIvbs),
