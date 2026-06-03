@@ -209,6 +209,15 @@ The full set is encoded as `TRITON_PLUS_METRIC_KEYS` in lib/reportMetrics.ts:224
 
 Membership set: `DECEPTION_METRIC_KEYS` (lib/reportMetrics.ts:230). Available 2017+.
 
+### Dashboard display keys (metricRegistry)
+
+These are the `METRIC_REGISTRY` keys used in the pitcher Overview → Advanced tab. They map to the same `pitcher_season_deception` data but are pitch-weighted per-year aggregates fetched client-side in `OverviewTab.tsx`.
+
+| Key | Label | Source | Notes |
+|---|---|---|---|
+| `deceptionScore` | Deception | pitch-weighted `deception_score` per year; fallback `computeXDeceptionScore()` | `lib/metricRegistry.ts`; violet-400 |
+| `uniqueScore` | Unique | pitch-weighted `unique_score` per year | `lib/metricRegistry.ts`; violet-400 |
+
 ---
 
 ## 4. ERA Estimators — Computed in Code
