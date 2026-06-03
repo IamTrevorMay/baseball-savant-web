@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   empiricalPercentile, percentileColor,
-  METRIC_META, isFastball, computeXDeceptionScore,
+  METRIC_META, METRIC_TO_DB_KEY, isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
 import { supabase } from '@/lib/supabase'
 
@@ -154,7 +154,8 @@ export default function PercentileRankings({ data }: { data: any[] }) {
       const meta = METRIC_META[key]
       if (!meta) continue
 
-      const bp = percentileMap[key]
+      const dbKey = METRIC_TO_DB_KEY[key] ?? key
+      const bp = percentileMap[dbKey]
       const pct = bp ? empiricalPercentile(v, bp.breakpoints, bp.higher_better) : 50
       results.push({ key, label: meta.label, unit: meta.unit, value: v, pct })
     }

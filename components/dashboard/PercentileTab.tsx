@@ -5,7 +5,7 @@ import {
   empiricalPercentile, percentileColor, plusToPercentile,
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
   isFastball, computeXDeceptionScore,
-  METRIC_META, METRIC_ORDER,
+  METRIC_META, METRIC_ORDER, METRIC_TO_DB_KEY,
 } from '@/lib/leagueStats'
 
 type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'close_pct'
@@ -164,7 +164,8 @@ export default function PercentileTab({ data }: Props) {
       const meta = METRIC_META[key]
       if (!meta) continue
 
-      const bp = percentileMap[key]
+      const dbKey = METRIC_TO_DB_KEY[key] ?? key
+      const bp = percentileMap[dbKey]
       const pct = bp ? empiricalPercentile(v, bp.breakpoints, bp.higher_better) : 50
 
       results.push({ key, label: meta.label, unit: meta.unit, value: v, pct })

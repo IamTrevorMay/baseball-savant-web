@@ -350,6 +350,7 @@ BEGIN
             / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS slg,
           COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','hit_by_pitch'))::numeric
             / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS obp,
+          AVG(launch_speed)                     AS avg_ev,
           AVG(estimated_ba_using_speedangle)    AS avg_xba,
           AVG(estimated_woba_using_speedangle)  AS avg_xwoba,
           %s                                    AS avg_xslg,
@@ -400,6 +401,7 @@ BEGIN
           ('contact_pct',  q.contact_pct,  false),
           ('z_swing_pct',  q.z_swing_pct,  true),
           ('o_contact_pct', q.o_contact_pct, false),
+          ('avg_ev',       q.avg_ev,       false),
           ('hard_hit_pct', q.hard_hit_pct, false),
           ('barrel_pct',   q.barrel_pct,   false),
           ('gb_pct',       q.gb_pct,       true),

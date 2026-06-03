@@ -1365,6 +1365,16 @@ export const METRIC_META: Record<string, { label: string; unit: string }> = {
   deception_score: { label: 'Deception', unit: 'z' },
 }
 
+/** Maps component-side metric keys to their DB column names in league_percentiles */
+export const METRIC_TO_DB_KEY: Record<string, string> = {
+  hard_hit: 'hard_hit_pct',
+  avg_ev: 'avg_ev',
+  xba: 'avg_xba',
+  extension: 'avg_ext',
+  ivb_ff: 'avg_ivb_in',
+  vaa_ff: 'vaa_ff',
+}
+
 /** Ordered list of metric keys for consistent display */
 export const METRIC_ORDER = [
   'avg_velo', 'max_velo', 'k_pct', 'bb_pct', 'whiff_pct', 'chase_pct',
