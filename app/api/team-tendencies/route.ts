@@ -276,8 +276,8 @@ export async function POST(req: NextRequest) {
          ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk')
            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
          ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as avg_xwoba,
-         ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95)
-           / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1) as hard_hit_pct,
+         ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
+           / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as hard_hit_pct,
          ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6')
            / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0), 1) as barrel_pct`
 

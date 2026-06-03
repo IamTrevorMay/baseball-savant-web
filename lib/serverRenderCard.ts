@@ -738,10 +738,14 @@ function calcHeatmapMetric(pitches: any[], metric: string): number | null {
       return tb / ab.length
     }
     case 'woba': return avg(pitches.map(p => p.woba_value).filter((x: any) => x != null))
-    case 'xba': return avg(pitches.map(p => p.estimated_ba_using_speedangle).filter((x: any) => x != null))
+    case 'xba': {
+      const pa = pitches.filter(p => p.events)
+      const abCount = pa.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
+      return abCount > 0 ? pa.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0) / abCount : null
+    }
     case 'xwoba': return avg(pitches.map(p => p.estimated_woba_using_speedangle).filter((x: any) => x != null))
     case 'xslg': return avg(pitches.map(p => p.estimated_slg_using_speedangle).filter((x: any) => x != null))
-    case 'ev': return avg(pitches.map(p => p.launch_speed).filter((x: any) => x != null))
+    case 'ev': return avg(pitches.filter(p => p.bb_type != null).map(p => p.launch_speed))
     case 'whiff_pct': {
       const sw = pitches.filter(p => isSwing(((p.description || '') as string).toLowerCase()))
       const wh = pitches.filter(p => ((p.description || '') as string).toLowerCase().includes('swinging_strike'))

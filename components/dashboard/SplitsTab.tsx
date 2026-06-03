@@ -24,9 +24,11 @@ function calcSplitStats(pitches: any[]) {
   const hits = pitches.filter(p => ['single','double','triple','home_run'].includes(p.events)).length
   const hrs = pitches.filter(p => p.events === 'home_run').length
 
-  const battedBalls = pitches.filter(p => p.launch_speed != null)
+  const battedBalls = pitches.filter(p => p.bb_type != null)
   const evs = battedBalls.map(p => p.launch_speed)
-  const xbas = pitches.map(p => p.estimated_ba_using_speedangle).filter((v: any) => v != null)
+  const xbaPA = pitches.filter(p => p.events)
+  const xbaSum = xbaPA.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+  const xbaAB = xbaPA.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
   const xwobas = pitches.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
 
   const gbs = battedBalls.filter(p => p.bb_type === 'ground_ball').length
@@ -42,15 +44,15 @@ function calcSplitStats(pitches: any[]) {
     pitches: total, pa: pas, avgVelo: f(avg(velos)), avgSpin: f(avg(spins), 0),
     whiffPct: pct(whiffs, swings), csPct: pct(calledStrikes, total), swingPct: pct(swings, total),
     kPct: pct(ks, pas), bbPct: pct(bbs, pas), hits, hrs, ba: pas > 0 ? f(hits / pas, 3) : '—',
-    avgEV: f(avg(evs)), xBA: f(avg(xbas), 3), xwOBA: f(avg(xwobas), 3),
+    avgEV: f(avg(evs)), xBA: f(xbaAB > 0 ? xbaSum / xbaAB : null, 3), xwOBA: f(avg(xwobas), 3),
     gbPct: pct(gbs, bbT), fbPct: pct(fbs, bbT), ldPct: pct(lds, bbT),
   }
 }
 
-function SplitTable({ label, splits }: { label: string; splits: { name: string; stats: any }[] }) {
+function SplitTable({ label, splits, showVelo = false }: { label: string; splits: { name: string; stats: any }[]; showVelo?: boolean }) {
   const cols = [
     { key: 'name', label: label }, { key: 'pitches', label: '#' }, { key: 'pa', label: 'PA' },
-    { key: 'avgVelo', label: 'Velo' }, { key: 'avgSpin', label: 'Spin' },
+    ...(showVelo ? [{ key: 'avgVelo', label: 'Velo' }] : []), { key: 'avgSpin', label: 'Spin' },
     { key: 'whiffPct', label: 'Whiff%' }, { key: 'csPct', label: 'CSt%' }, { key: 'swingPct', label: 'Sw%' },
     { key: 'kPct', label: 'K%' }, { key: 'bbPct', label: 'BB%' }, { key: 'ba', label: 'BA' },
     { key: 'hits', label: 'H' }, { key: 'hrs', label: 'HR' },
@@ -144,10 +146,10 @@ export default function SplitsTab({ data }: { data: any[] }) {
       <SplitTable label="Inning" splits={inningSplits} />
 
       <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Pitch Arsenal vs LHH</h3>
-      <SplitTable label="Pitch" splits={pitchVsL} />
+      <SplitTable label="Pitch" splits={pitchVsL} showVelo />
 
       <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Pitch Arsenal vs RHH</h3>
-      <SplitTable label="Pitch" splits={pitchVsR} />
+      <SplitTable label="Pitch" splits={pitchVsR} showVelo />
     </div>
   )
 }

@@ -59,7 +59,7 @@ function computeSummary(data: any[]) {
   const ab = pa - walks - hbps - sacFlies - sacBunts
   const totalBases = singles + doubles * 2 + triples * 3 + hrs * 4
 
-  const battedBalls = data.filter(p => p.launch_speed != null)
+  const battedBalls = data.filter(p => p.bb_type != null)
   const evArr = battedBalls.map(p => p.launch_speed)
   const laArr = battedBalls.map(p => p.launch_angle).filter(Boolean)
   const hardHit = battedBalls.filter(p => p.launch_speed >= 95).length
@@ -193,7 +193,7 @@ function computeResults(data: any[]) {
     }))
 
   // Batted ball breakdown
-  const bb = data.filter(p => p.launch_speed != null)
+  const bb = data.filter(p => p.bb_type != null)
   const bbT = bb.length || 1
   const gbs = bb.filter(p => p.bb_type === 'ground_ball').length
   const fbs = bb.filter(p => p.bb_type === 'fly_ball').length
@@ -566,15 +566,15 @@ function ResultsTabContent({ results, data }: { results: ReturnType<typeof compu
       </div>
 
       {/* EV vs Launch Angle scatter chart */}
-      {data.filter(p => p.launch_speed != null).length > 0 && (
+      {data.filter(p => p.bb_type != null).length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">EV vs Launch Angle</h3>
           <MobileChartWrapper
             title="EV vs LA"
             height={240}
             data={[{
-              x: data.filter(p => p.launch_speed != null).map(p => p.launch_angle),
-              y: data.filter(p => p.launch_speed != null).map(p => p.launch_speed),
+              x: data.filter(p => p.bb_type != null).map(p => p.launch_angle),
+              y: data.filter(p => p.bb_type != null).map(p => p.launch_speed),
               mode: 'markers' as const,
               type: 'scattergl' as const,
               marker: { size: 3, color: '#34d399', opacity: 0.4 },

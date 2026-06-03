@@ -3,7 +3,7 @@ import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '../chartConfig'
 
 export default function ExitVeloLaunchAngle({ data }: { data: any[] }) {
-  const f = data.filter(d => d.launch_speed != null && d.launch_angle != null)
+  const f = data.filter(d => d.bb_type != null)
   if (!f.length) return <div className="text-zinc-500 text-sm text-center py-10">No batted ball data</div>
 
   const xba = f.map(d => d.estimated_ba_using_speedangle).filter(v => v != null)

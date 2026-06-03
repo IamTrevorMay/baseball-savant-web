@@ -149,7 +149,7 @@ export default function GameDetail({ pitches }: Props) {
 
   // === Section 6: Batted Ball Summary ===
   const battedBall = useMemo(() => {
-    const bb = pitches.filter(p => p.launch_speed != null)
+    const bb = pitches.filter(p => p.bb_type != null)
     if (bb.length === 0) return null
     const evs = bb.map(p => p.launch_speed)
     const avgEV = (evs.reduce((a, b) => a + b, 0) / evs.length).toFixed(1)
@@ -342,7 +342,6 @@ export default function GameDetail({ pitches }: Props) {
               <tr className="text-zinc-500 uppercase tracking-wider">
                 <th className="text-left px-3 py-1">Inn</th>
                 <th className="text-right px-3 py-1">Pitches</th>
-                <th className="text-right px-3 py-1">Velo</th>
                 <th className="text-right px-3 py-1">K</th>
                 <th className="text-right px-3 py-1">BB</th>
                 <th className="text-right px-3 py-1">H</th>
@@ -353,7 +352,6 @@ export default function GameDetail({ pitches }: Props) {
                 <tr key={r.inning} className="border-t border-zinc-800/30">
                   <td className="px-3 py-1 text-white font-medium">{r.inning}</td>
                   <td className="px-3 py-1 text-right text-zinc-400 font-mono">{r.pitches}</td>
-                  <td className="px-3 py-1 text-right text-amber-400 font-mono">{r.avgVelo}</td>
                   <td className="px-3 py-1 text-right text-emerald-400 font-mono">{r.ks}</td>
                   <td className="px-3 py-1 text-right text-red-400 font-mono">{r.bbs}</td>
                   <td className="px-3 py-1 text-right text-sky-400 font-mono">{r.hits}</td>

@@ -33,7 +33,7 @@ export const METRICS: Record<string, string> = {
   slg: "ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   obp: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0), 3)",
   // Expected
-  avg_xba: 'ROUND(AVG(estimated_ba_using_speedangle)::numeric, 3)',
+  avg_xba: "ROUND(SUM(estimated_ba_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   avg_xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
   avg_xslg: 'ROUND(AVG(estimated_slg_using_speedangle)::numeric, 3)',
   avg_woba: 'ROUND(AVG(woba_value)::numeric, 3)',
@@ -55,7 +55,7 @@ export const METRICS: Record<string, string> = {
   // Rate — additional
   k_minus_bb: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) - 100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
   swstr_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%') / NULLIF(COUNT(*), 0), 1)",
-  hard_hit_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1)",
+  hard_hit_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
   barrel_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6') / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0), 1)",
   ops: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip')) / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip','missed_bunt')), 0), 1)",
@@ -70,8 +70,8 @@ export const METRICS: Record<string, string> = {
   avg_attack_direction: 'ROUND(AVG(attack_direction)::numeric, 1)',
   avg_swing_path_tilt: 'ROUND(AVG(swing_path_tilt)::numeric, 1)',
   fast_swing_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE bat_speed >= 75) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL), 0), 1)",
-  squared_up_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed IS NOT NULL AND launch_speed IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND launch_speed IS NOT NULL), 0), 1)",
-  blast_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed >= 75 AND bat_speed IS NOT NULL AND launch_speed IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND launch_speed IS NOT NULL), 0), 1)",
+  squared_up_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed IS NOT NULL AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND bb_type IS NOT NULL), 0), 1)",
+  blast_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed >= 75 AND bat_speed IS NOT NULL AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL AND bb_type IS NOT NULL), 0), 1)",
   ideal_attack_angle_rate: "ROUND(100.0 * COUNT(*) FILTER (WHERE attack_angle BETWEEN 5 AND 20) / NULLIF(COUNT(*) FILTER (WHERE attack_angle IS NOT NULL), 0), 1)",
 }
 

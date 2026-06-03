@@ -44,14 +44,14 @@ async function main() {
        + 3 * COUNT(*) FILTER (WHERE p.events = 'triple')
        + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run')) as tb,
       -- Batted ball metrics (only on balls in play)
-      ROUND(AVG(p.launch_speed) FILTER (WHERE p.launch_speed IS NOT NULL)::numeric, 1) as ev,
-      ROUND(AVG(p.launch_angle) FILTER (WHERE p.launch_angle IS NOT NULL)::numeric, 1) as la,
-      ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed >= 95)
-        / NULLIF(COUNT(*) FILTER (WHERE p.launch_speed IS NOT NULL), 0), 1) as hh_pct,
+      ROUND(AVG(p.launch_speed) FILTER (WHERE p.bb_type IS NOT NULL)::numeric, 1) as ev,
+      ROUND(AVG(p.launch_angle) FILTER (WHERE p.bb_type IS NOT NULL)::numeric, 1) as la,
+      ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed >= 95 AND p.bb_type IS NOT NULL)
+        / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0), 1) as hh_pct,
       ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed_angle::text = '6')
         / NULLIF(COUNT(*) FILTER (WHERE p.launch_speed_angle IS NOT NULL), 0), 1) as brl_pct,
       -- Expected stats
-      ROUND(AVG(p.estimated_ba_using_speedangle) FILTER (WHERE p.estimated_ba_using_speedangle IS NOT NULL)::numeric, 3) as xba,
+      ROUND((SUM(p.estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0))::numeric, 3) as xba,
       ROUND(AVG(p.estimated_woba_using_speedangle) FILTER (WHERE p.estimated_woba_using_speedangle IS NOT NULL)::numeric, 3) as xwoba,
       -- xSLG (using woba scale factor to approximate)
       ROUND(AVG(

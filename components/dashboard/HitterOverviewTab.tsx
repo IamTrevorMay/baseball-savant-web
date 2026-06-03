@@ -50,10 +50,12 @@ function calcAdvancedByYear(data: any[]) {
     const ks = pitches.filter(p => p.events?.includes('strikeout')).length
     const bbs = pitches.filter(p => p.events?.includes('walk')).length
 
-    const battedBalls = pitches.filter(p => p.launch_speed != null)
+    const battedBalls = pitches.filter(p => p.bb_type != null)
     const evs = battedBalls.map(p => p.launch_speed)
     const las = battedBalls.map(p => p.launch_angle).filter(Boolean)
-    const xbas = pitches.map(p => p.estimated_ba_using_speedangle).filter((v: any) => v != null)
+    const xbaPA = pitches.filter(p => p.events)
+    const xbaSum = xbaPA.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+    const xbaAB = xbaPA.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
     const xwobas = pitches.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
     const xslgs = pitches.map(p => p.estimated_slg_using_speedangle).filter((v: any) => v != null)
     const wobas = pitches.map(p => p.woba_value).filter((v: any) => v != null)
@@ -98,7 +100,7 @@ function calcAdvancedByYear(data: any[]) {
       avgLA: f(avg(las)),
       hardHitPct: pct(hardHits, bbT), barrelPct: pct(barrels, bbT),
       gbPct: pct(gbs, bbT), fbPct: pct(fbs, bbT), ldPct: pct(lds, bbT),
-      xBA: f(avg(xbas), 3), xwOBA: f(avg(xwobas), 3), xSLG: f(avg(xslgs), 3),
+      xBA: f(xbaAB > 0 ? xbaSum / xbaAB : null, 3), xwOBA: f(avg(xwobas), 3), xSLG: f(avg(xslgs), 3),
       wOBA: f(avg(wobas), 3),
       totalRE: f(dres.length ? dres.reduce((a: number, b: number) => a + b, 0) : null, 1),
     }
@@ -124,10 +126,12 @@ function calcVsPitchType(data: any[]) {
       return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
     }).length
 
-    const battedBalls = pitches.filter(p => p.launch_speed != null)
+    const battedBalls = pitches.filter(p => p.bb_type != null)
     const evs = battedBalls.map(p => p.launch_speed)
     const las = battedBalls.map(p => p.launch_angle).filter(Boolean)
-    const xbas = pitches.map(p => p.estimated_ba_using_speedangle).filter((v: any) => v != null)
+    const ptXbaPA = pitches.filter(p => p.events)
+    const ptXbaSum = ptXbaPA.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+    const ptXbaAB = ptXbaPA.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
     const xwobas = pitches.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a,b) => a+b,0)/arr.length : null
@@ -141,7 +145,7 @@ function calcVsPitchType(data: any[]) {
       ba: abEst > 0 ? f(hits / abEst, 3) : '—',
       avgEV: f(avg(evs)), maxEV: f(evs.length ? Math.max(...evs) : null),
       avgLA: f(avg(las)),
-      xBA: f(avg(xbas), 3), xwOBA: f(avg(xwobas), 3),
+      xBA: f(ptXbaAB > 0 ? ptXbaSum / ptXbaAB : null, 3), xwOBA: f(avg(xwobas), 3),
     }
   }).sort((a, b) => b.count - a.count)
 }

@@ -68,7 +68,7 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       AVG(CASE WHEN pitch_type IN ('FF','SI','FC') THEN ABS(pfx_x) * 12 END) AS fb_hb,
       100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS gb_pct,
       AVG(CASE WHEN arm_angle IS NOT NULL THEN arm_angle END) AS arm_angle,
-      AVG(estimated_ba_using_speedangle) AS xba_against,
+      SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf') THEN CONCAT(game_pk, at_bat_number) END), 0) AS xba_against,
       100.0 * COUNT(*) FILTER (WHERE pitch_number = 1 AND (zone BETWEEN 1 AND 9 OR description IN ('called_strike','swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt'))) / NULLIF(COUNT(*) FILTER (WHERE pitch_number = 1), 0) AS first_strike_pct,
       -- T2: fb_spin, fb_ivb, extension, zone_pct, breaking_spin, fb_usage_pct
       AVG(CASE WHEN pitch_type IN ('FF','SI') THEN release_spin_rate END) AS fb_spin,
@@ -80,14 +80,14 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       -- T3: csw_pct, chase_rate, avg_ev_against, swstr_pct, put_away_pct, contact_pct_against
       100.0 * COUNT(*) FILTER (WHERE description IN ('called_strike','swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt')) / NULLIF(COUNT(*), 0) AS csw_pct,
       100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0) AS chase_rate,
-      AVG(CASE WHEN launch_speed IS NOT NULL THEN launch_speed END) AS avg_ev_against,
+      AVG(CASE WHEN bb_type IS NOT NULL THEN launch_speed END) AS avg_ev_against,
       100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*), 0) AS swstr_pct,
       100.0 * COUNT(DISTINCT CASE WHEN strikes = 2 AND events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN strikes = 2 AND events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END), 0) AS put_away_pct,
       100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked','swinging_pitchout','foul_pitchout')), 0) AS contact_pct_against,
       -- T4: whiff_pct, barrel_pct_against, hard_hit_pct_against, fip(computed), xwoba_against, babip_against
       100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul_tip')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul_tip','foul','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_pitchout','swinging_pitchout')), 0) AS whiff_pct,
-      100.0 * COUNT(*) FILTER (WHERE launch_speed_angle = 6) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL AND launch_angle IS NOT NULL), 0) AS barrel_pct_against,
-      100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0) AS hard_hit_pct_against,
+      100.0 * COUNT(*) FILTER (WHERE launch_speed_angle = 6) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS barrel_pct_against,
+      100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS hard_hit_pct_against,
       AVG(estimated_woba_using_speedangle) AS xwoba_against,
       COUNT(DISTINCT CASE WHEN events IN ('single','double','triple') THEN CONCAT(game_pk, at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IN ('single','double','triple','field_out','grounded_into_double_play','force_out','fielders_choice','fielders_choice_out','sac_fly','field_error','double_play') THEN CONCAT(game_pk, at_bat_number) END), 0) AS babip_against,
       -- T5: fb_velo, k_pct, bb_pct, xera(computed), k_minus_bb(computed), avg_velo
@@ -184,24 +184,24 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
       100.0 * COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9 AND p.description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9), 0) AS z_swing_pct,
       COUNT(*)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS pitch_per_pa,
       -- T3: xba, sprint_speed(joined), whiff_pct, chase_rate, o_swing_pct, babip
-      AVG(p.estimated_ba_using_speedangle) AS xba,
+      SUM(p.estimated_ba_using_speedangle) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf') THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS xba,
       100.0 * COUNT(*) FILTER (WHERE p.description IN ('swinging_strike','swinging_strike_blocked','foul_tip')) / NULLIF(COUNT(*) FILTER (WHERE p.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','foul','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_pitchout','swinging_pitchout')), 0) AS whiff_pct,
       100.0 * COUNT(*) FILTER (WHERE p.zone > 9 AND p.description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0) AS chase_rate,
       100.0 * COUNT(*) FILTER (WHERE p.zone > 9 AND p.description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0) AS o_swing_pct,
       COUNT(DISTINCT CASE WHEN p.events IN ('single','double','triple') THEN CONCAT(p.game_pk, p.at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IN ('single','double','triple','field_out','grounded_into_double_play','force_out','fielders_choice','fielders_choice_out','sac_fly','field_error','double_play') THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS babip,
       -- T4: barrel_pct, max_ev, xslg, hard_hit_pct, iso_x(computed), woba
-      100.0 * COUNT(*) FILTER (WHERE p.launch_speed_angle = 6) / NULLIF(COUNT(*) FILTER (WHERE p.launch_speed IS NOT NULL AND p.launch_angle IS NOT NULL), 0) AS barrel_pct,
+      100.0 * COUNT(*) FILTER (WHERE p.launch_speed_angle = 6) / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0) AS barrel_pct,
       MAX(p.launch_speed) AS max_ev,
       AVG(p.estimated_slg_using_speedangle) AS xslg,
-      100.0 * COUNT(*) FILTER (WHERE p.launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE p.launch_speed IS NOT NULL), 0) AS hard_hit_pct,
+      100.0 * COUNT(*) FILTER (WHERE p.launch_speed >= 95 AND p.bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0) AS hard_hit_pct,
       AVG(p.estimated_woba_using_speedangle) AS woba,
       -- T5: avg_ev, k_pct, bb_pct, xwoba, k_minus_bb(computed), hr_per_pa
-      AVG(CASE WHEN p.launch_speed IS NOT NULL THEN p.launch_speed END) AS avg_ev,
+      AVG(CASE WHEN p.bb_type IS NOT NULL THEN p.launch_speed END) AS avg_ev,
       100.0 * COUNT(DISTINCT CASE WHEN p.events = 'strikeout' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS k_pct,
       100.0 * COUNT(DISTINCT CASE WHEN p.events = 'walk' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS bb_pct,
       AVG(p.estimated_woba_using_speedangle) AS xwoba,
-      AVG(p.estimated_ba_using_speedangle) AS xba_for_iso,
-      AVG(p.estimated_slg_using_speedangle) AS xslg_for_iso,
+      AVG(p.estimated_ba_using_speedangle) FILTER (WHERE p.bb_type IS NOT NULL) AS xba_for_iso,
+      AVG(p.estimated_slg_using_speedangle) FILTER (WHERE p.bb_type IS NOT NULL) AS xslg_for_iso,
       100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS hr_per_pa,
       -- Traditional stat components
       COUNT(DISTINCT CASE WHEN p.events = 'single' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS singles,

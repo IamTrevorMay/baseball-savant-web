@@ -1272,7 +1272,7 @@ export async function GET(req: NextRequest) {
         `batter = ${parseInt(batterId)}`,
         'hc_x IS NOT NULL',
         'hc_y IS NOT NULL',
-        'launch_speed IS NOT NULL',
+        'bb_type IS NOT NULL',
         'launch_angle IS NOT NULL',
         "pitch_type NOT IN ('PO', 'IN')",
       ]

@@ -21,7 +21,7 @@ export default function HitterGameLogTab({ data }: { data: any[] }) {
     const ks = pitches.filter(p => p.events?.includes('strikeout')).length
     const hbps = pitches.filter(p => p.events === 'hit_by_pitch').length
 
-    const battedBalls = pitches.filter(p => p.launch_speed != null)
+    const battedBalls = pitches.filter(p => p.bb_type != null)
     const evs = battedBalls.map(p => p.launch_speed)
     const avgEV = evs.length ? (evs.reduce((a,b) => a+b,0) / evs.length).toFixed(1) : '—'
 

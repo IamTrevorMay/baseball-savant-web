@@ -7,6 +7,7 @@ import MobileChartWrapper from '@/components/mobile/MobileChartWrapper'
 import PlayerBadges from '@/components/PlayerBadges'
 import { TEAM_COLORS } from '@/lib/constants'
 import type { UsePlayerDataReturn } from '@/lib/hooks/usePlayerData'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ function computeSummary(data: any[]) {
   const ipDisplay = `${Math.floor(outsCount / 3)}.${outsCount % 3}`
 
   // Batted ball
-  const battedBalls = data.filter(p => p.launch_speed != null)
+  const battedBalls = data.filter(p => p.bb_type != null)
   const evArr = battedBalls.map(p => p.launch_speed)
   const gbs = battedBalls.filter(p => p.bb_type === 'ground_ball').length
   const fbs = battedBalls.filter(p => p.bb_type === 'fly_ball').length
@@ -139,7 +140,7 @@ function computeArsenal(data: any[]) {
         usage: total > 0 ? (pitches.length / total * 100).toFixed(1) : '0',
         velo: fmt(avg(velos)),
         spin: avg(spins) ? Math.round(avg(spins)!) : '--',
-        hBreak: fmt(avg(hb)),
+        hBreak: fmt(avg(hb) != null ? toPitcherX(avg(hb)!) : null),
         vBreak: fmt(avg(vb)),
         whiffPct: pct(whiffs, swings),
         stuffPlus: stuffArr.length ? Math.round(avg(stuffArr)!) : null,
@@ -170,7 +171,7 @@ function computeResults(data: any[]) {
     }))
 
   // Batted ball breakdown
-  const bb = data.filter(p => p.launch_speed != null)
+  const bb = data.filter(p => p.bb_type != null)
   const bbT = bb.length || 1
   const gbs = bb.filter(p => p.bb_type === 'ground_ball').length
   const fbs = bb.filter(p => p.bb_type === 'fly_ball').length
@@ -235,7 +236,7 @@ function computeRanks(data: any[]): RankBar[] {
   const velos = data.map(p => p.release_speed).filter(Boolean)
   const spins = data.map(p => p.release_spin_rate).filter(Boolean)
   const exts = data.map(p => p.release_extension).filter(Boolean)
-  const evs = data.filter(p => p.launch_speed != null).map(p => p.launch_speed)
+  const evs = data.filter(p => p.bb_type != null).map(p => p.launch_speed)
   const xwobas = data.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
 
   const whiffs = data.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
@@ -550,15 +551,15 @@ function ResultsTabContent({ results, data }: { results: ReturnType<typeof compu
       </div>
 
       {/* Batted ball scatter chart */}
-      {data.filter(p => p.launch_speed != null).length > 0 && (
+      {data.filter(p => p.bb_type != null).length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">EV vs Launch Angle</h3>
           <MobileChartWrapper
             title="EV vs LA"
             height={240}
             data={[{
-              x: data.filter(p => p.launch_speed != null).map(p => p.launch_angle),
-              y: data.filter(p => p.launch_speed != null).map(p => p.launch_speed),
+              x: data.filter(p => p.bb_type != null).map(p => p.launch_angle),
+              y: data.filter(p => p.bb_type != null).map(p => p.launch_speed),
               mode: 'markers' as const,
               type: 'scattergl' as const,
               marker: { size: 3, color: '#34d399', opacity: 0.4 },

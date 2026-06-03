@@ -167,7 +167,7 @@ export function TileScatter({data,mode='location',stand=null}:{data:any[];mode?:
   const valid = data.filter(d => {
     if(mode==='location') return d.plate_x!=null&&d.plate_z!=null
     if(mode==='movement') return d.pfx_x!=null&&d.pfx_z!=null
-    return d.launch_speed!=null&&d.launch_angle!=null
+    return d.bb_type!=null
   })
   if(!valid.length) return <div className="flex-1 flex items-center justify-center text-zinc-600 text-[11px]">No data</div>
   valid.forEach(d=>{const k=d.pitch_name||'Unknown';if(!groups[k]) groups[k]=[];groups[k].push(d)})

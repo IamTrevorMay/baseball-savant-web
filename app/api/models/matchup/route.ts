@@ -70,9 +70,9 @@ export async function POST(req: NextRequest) {
     const damageSQL = `
       SELECT zone,
         COUNT(*) as pitches,
-        ROUND(AVG(launch_speed)::numeric, 1) as avg_ev,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95)
-          / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1) as hard_hit_pct,
+        ROUND(AVG(launch_speed) FILTER (WHERE bb_type IS NOT NULL)::numeric, 1) as avg_ev,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
+          / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as hard_hit_pct,
         ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle IN ('6'))
           / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0), 1) as barrel_pct,
         ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba

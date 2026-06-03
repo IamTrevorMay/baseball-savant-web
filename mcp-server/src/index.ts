@@ -206,8 +206,8 @@ server.tool(
             ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
             ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')), 0), 1) as whiff_pct,
             ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba,
-            ROUND(AVG(launch_speed)::numeric FILTER (WHERE launch_speed IS NOT NULL), 1) as avg_ev,
-            ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1) as hard_hit_pct,
+            ROUND(AVG(launch_speed)::numeric FILTER (WHERE bb_type IS NOT NULL), 1) as avg_ev,
+            ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as hard_hit_pct,
             ROUND(AVG(stuff_plus)::numeric, 0) as avg_stuff_plus
           FROM pitches WHERE ${col} = ${player_id} AND game_year = ${year} AND game_type = 'R' AND pitch_type NOT IN ('PO','IN')`
         : `SELECT
@@ -220,12 +220,12 @@ server.tool(
             COUNT(*) FILTER (WHERE events = 'triple') as triples,
             COUNT(*) FILTER (WHERE events = 'walk') as bb,
             COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
-            ROUND(AVG(launch_speed)::numeric FILTER (WHERE launch_speed IS NOT NULL), 1) as avg_ev,
-            ROUND(AVG(launch_angle)::numeric FILTER (WHERE launch_angle IS NOT NULL), 1) as avg_la,
-            ROUND(AVG(estimated_ba_using_speedangle)::numeric FILTER (WHERE estimated_ba_using_speedangle IS NOT NULL), 3) as xba,
-            ROUND(AVG(estimated_woba_using_speedangle)::numeric FILTER (WHERE estimated_woba_using_speedangle IS NOT NULL), 3) as xwoba,
-            ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95) / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1) as hard_hit_pct,
-            ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6') / NULLIF(COUNT(*) FILTER (WHERE launch_speed IS NOT NULL), 0), 1) as barrel_pct,
+            ROUND(AVG(launch_speed)::numeric FILTER (WHERE bb_type IS NOT NULL), 1) as avg_ev,
+            ROUND(AVG(launch_angle)::numeric FILTER (WHERE bb_type IS NOT NULL), 1) as avg_la,
+            ROUND((SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0))::numeric, 3) as xba,
+            ROUND(AVG(estimated_woba_using_speedangle)::numeric FILTER (WHERE bb_type IS NOT NULL), 3) as xwoba,
+            ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as hard_hit_pct,
+            ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as barrel_pct,
             ROUND(AVG(bat_speed)::numeric FILTER (WHERE bat_speed IS NOT NULL), 1) as bat_speed
           FROM pitches WHERE ${col} = ${player_id} AND game_year = ${year} AND game_type = 'R' AND pitch_type NOT IN ('PO','IN')`;
 
