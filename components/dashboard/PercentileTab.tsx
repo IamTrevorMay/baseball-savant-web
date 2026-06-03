@@ -7,8 +7,9 @@ import {
   isFastball, computeXDeceptionScore,
   METRIC_META, METRIC_ORDER, METRIC_TO_DB_KEY,
 } from '@/lib/leagueStats'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
-type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'close_pct'
+type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'close_pct' | 'movement'
 
 interface Props { data: any[] }
 
@@ -20,6 +21,10 @@ export default function PercentileTab({ data }: Props) {
     unique_score: null, deception_score: null, xdeception_score: null,
   })
   const [percentileMap, setPercentileMap] = useState<Record<string, { breakpoints: number[]; higher_better: boolean }>>({})
+  const [movementMap, setMovementMap] = useState<Record<string, {
+    hb_breakpoints: number[]; ivb_breakpoints: number[];
+    pool_avg_hb: number; pool_avg_ivb: number; n_qualified: number;
+  }>>({})
 
   // Determine pitcher role (SP if ≥3 games with 50+ pitches)
   const role = useMemo(() => {
@@ -238,6 +243,83 @@ export default function PercentileTab({ data }: Props) {
     }
   }, [data])
 
+  // Per-pitch-type movement stats for the movement view
+  const pitchMovement = useMemo(() => {
+    const groups: Record<string, any[]> = {}
+    data.forEach(d => {
+      if (d.pitch_name && d.pitch_type !== 'PO' && d.pitch_type !== 'IN') {
+        if (!groups[d.pitch_name]) groups[d.pitch_name] = []
+        groups[d.pitch_name].push(d)
+      }
+    })
+
+    const results: {
+      name: string; pitchType: string; count: number;
+      avgVelo: number; avgHbAbs: number; avgIvbAbs: number;
+      avgHb: number; avgIvb: number;
+    }[] = []
+
+    for (const [name, pitches] of Object.entries(groups)) {
+      const velos = pitches.map(p => p.release_speed).filter((v: any) => v != null)
+      const hbs = pitches.filter(p => p.pfx_x != null).map(p => p.pfx_x * 12)
+      const ivbs = pitches.filter(p => p.pfx_z != null).map(p => p.pfx_z * 12)
+      if (velos.length < 10 || hbs.length < 10) continue
+
+      // Mode of pitch_type code
+      const ptCounts: Record<string, number> = {}
+      pitches.forEach(p => { if (p.pitch_type) ptCounts[p.pitch_type] = (ptCounts[p.pitch_type] || 0) + 1 })
+      const pitchType = Object.entries(ptCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+      if (!pitchType) continue
+
+      const avgVelo = velos.reduce((a: number, b: number) => a + b, 0) / velos.length
+      const avgHb = hbs.reduce((a: number, b: number) => a + b, 0) / hbs.length
+      const avgIvb = ivbs.reduce((a: number, b: number) => a + b, 0) / ivbs.length
+
+      results.push({
+        name, pitchType, count: pitches.length,
+        avgVelo: Math.round(avgVelo * 10) / 10,
+        avgHbAbs: Math.abs(avgHb),
+        avgIvbAbs: Math.abs(avgIvb),
+        avgHb, avgIvb,
+      })
+    }
+
+    return results.sort((a, b) => b.count - a.count)
+  }, [data])
+
+  // Lazy-load movement breakpoints when movement view is selected
+  useEffect(() => {
+    if (view !== 'movement' || pitchMovement.length === 0) return
+
+    const years = [...new Set(data.map(d => d.game_year).filter(Boolean))] as number[]
+    if (years.length === 0) return
+    const season = Math.max(...years)
+
+    const hand = data.find(d => d.p_throws)?.p_throws
+    if (!hand) return
+
+    const entries = pitchMovement
+      .map(p => `${p.pitchType}:${p.avgVelo.toFixed(1)}`)
+      .join(',')
+
+    fetch(`/api/movement-percentiles?season=${season}&hand=${hand}&entries=${entries}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: any[]) => {
+        const map: Record<string, typeof movementMap[string]> = {}
+        for (const r of rows) {
+          map[r.pitch_type] = {
+            hb_breakpoints: (r.hb_breakpoints || []).map(Number),
+            ivb_breakpoints: (r.ivb_breakpoints || []).map(Number),
+            pool_avg_hb: Number(r.pool_avg_hb),
+            pool_avg_ivb: Number(r.pool_avg_ivb),
+            n_qualified: Number(r.n_qualified),
+          }
+        }
+        setMovementMap(map)
+      })
+      .catch(() => {})
+  }, [view, pitchMovement, data])
+
   const formatVal = (v: number, unit: string) => {
     if (unit === '%') return v.toFixed(1) + '%'
     if (unit === '') return v.toFixed(3)
@@ -259,7 +341,7 @@ export default function PercentileTab({ data }: Props) {
     <div className="space-y-4">
       {/* View toggle */}
       <div className="flex gap-1 flex-wrap">
-        {([['rankings', 'Rankings'], ['brink', 'Brink'], ['cluster', 'Cluster'], ['hdev', 'HDev'], ['vdev', 'VDev'], ['missfire', 'Missfire'], ['close_pct', 'Close%']] as [View, string][]).map(([v, label]) => (
+        {([['rankings', 'Rankings'], ['brink', 'Brink'], ['cluster', 'Cluster'], ['hdev', 'HDev'], ['vdev', 'VDev'], ['missfire', 'Missfire'], ['close_pct', 'Close%'], ['movement', 'Movement']] as [View, string][]).map(([v, label]) => (
           <button key={v} onClick={() => setView(v)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition ${
               view === v ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
@@ -325,6 +407,81 @@ export default function PercentileTab({ data }: Props) {
           {mv.rows.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
         </div>
       ))}
+
+      {/* Movement view */}
+      {view === 'movement' && (
+        <div className="bg-zinc-900 rounded-lg border border-zinc-800 p-5">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">Movement by Pitch Type (Velo-Matched ±1 mph)</h3>
+          <p className="text-[11px] text-zinc-500 mb-4">Each pitch type&apos;s movement compared to all same-type pitchers at similar velocity</p>
+          {pitchMovement.length === 0 && <p className="text-zinc-500 text-sm">Insufficient data</p>}
+          <div className="space-y-5">
+            {pitchMovement.map(pm => {
+              const pool = movementMap[pm.pitchType]
+              const nLabel = pool ? `n=${pool.n_qualified}` : '…'
+
+              // HB: display in pitcher perspective (signed), percentile from ABS
+              const displayHb = toPitcherX(pm.avgHb)
+              const hbPct = pool
+                ? empiricalPercentile(pm.avgHbAbs, pool.hb_breakpoints, true)
+                : null
+              const hbDiff = pool ? pm.avgHbAbs - Math.abs(pool.pool_avg_hb) : null
+
+              // IVB: display signed, percentile from ABS
+              const displayIvb = pm.avgIvb
+              const ivbPct = pool
+                ? empiricalPercentile(pm.avgIvbAbs, pool.ivb_breakpoints, true)
+                : null
+              const ivbDiff = pool ? pm.avgIvbAbs - Math.abs(pool.pool_avg_ivb) : null
+
+              const rows = [
+                { label: 'H-Break', value: displayHb, pct: hbPct, diff: hbDiff },
+                { label: 'IVB', value: displayIvb, pct: ivbPct, diff: ivbDiff },
+              ]
+
+              return (
+                <div key={pm.pitchType}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-medium text-zinc-200">{pm.name}</span>
+                    <span className="text-[11px] text-zinc-500">·</span>
+                    <span className="text-[11px] text-zinc-400 font-mono">{pm.avgVelo.toFixed(1)} mph</span>
+                    <span className="text-[11px] text-zinc-500">·</span>
+                    <span className="text-[11px] text-zinc-500">{nLabel}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {rows.map(r => {
+                      const pct = r.pct != null ? Math.round(r.pct) : null
+                      const color = pct != null ? percentileColor(pct) : 'rgb(100,100,100)'
+                      const diffStr = r.diff != null
+                        ? `(${r.diff >= 0 ? '+' : ''}${r.diff.toFixed(1)})`
+                        : ''
+                      return (
+                        <div key={r.label} className="flex items-center gap-3 h-8">
+                          <span className="w-16 text-xs text-zinc-400 text-right shrink-0">{r.label}</span>
+                          <span className="w-20 text-xs font-mono text-zinc-300 text-right shrink-0">
+                            {r.value.toFixed(1)}″ <span className="text-zinc-500">{diffStr}</span>
+                          </span>
+                          <div className="flex-1 relative h-5 bg-zinc-800 rounded overflow-hidden">
+                            <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-zinc-600 z-10" />
+                            <div className="h-full rounded transition-all" style={{
+                              width: `${pct ?? 50}%`,
+                              backgroundColor: color,
+                              opacity: 0.8,
+                            }} />
+                          </div>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                            style={{ backgroundColor: color }}>
+                            {pct ?? '—'}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
