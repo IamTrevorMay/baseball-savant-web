@@ -432,11 +432,7 @@ export default function WorkBoard({ onBoardChange, sprintVersion = 0 }: Props) {
   }
 
   // ── Quick capture ──
-  const addingRef = useRef(false)
   async function addTask() {
-    if (addingRef.current) return
-    addingRef.current = true
-    try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -454,7 +450,6 @@ export default function WorkBoard({ onBoardChange, sprintVersion = 0 }: Props) {
       setEditingTask(data as Task)
       isNewTaskRef.current = true
     }
-    } finally { addingRef.current = false }
   }
 
   // ── Update task ──
@@ -477,9 +472,8 @@ export default function WorkBoard({ onBoardChange, sprintVersion = 0 }: Props) {
     setTasks(ts => ts.filter(t => t.id !== id))
     const supabase = createClient()
     const { error } = await supabase.from('work_tasks').delete().eq('id', id)
-    if (error) {
-      console.error('Failed to delete task:', error.message)
-      if (snapshot) setTasks(ts => [...ts, snapshot])
+    if (error && snapshot) {
+      setTasks(ts => [...ts, snapshot])
     }
   }
 
