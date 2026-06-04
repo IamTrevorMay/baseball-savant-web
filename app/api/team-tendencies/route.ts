@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
       const momentumQuery = q(`
         WITH half_innings AS (
           SELECT game_pk, inning, inning_topbot,
-            CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END AS off_team,
-            CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END AS def_team,
+            CASE WHEN inning_topbot = 'Top' THEN MIN(away_team) ELSE MIN(home_team) END AS off_team,
+            CASE WHEN inning_topbot = 'Top' THEN MIN(home_team) ELSE MIN(away_team) END AS def_team,
             MAX(post_bat_score) - MIN(bat_score) AS runs,
             -- leverage event: batting team went from (behind or tied) -> (tied or ahead) AND scored >=1.
             CASE
@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
               THEN 1 ELSE 0 END AS lev
           FROM pitches
           WHERE game_year = ${safeSeason} AND ${momentumGt}${dateFilter}
-          GROUP BY game_pk, inning, inning_topbot, home_team, away_team
+            AND events IS NOT NULL
+          GROUP BY game_pk, inning, inning_topbot
         ),
         sequenced AS (
           SELECT *,

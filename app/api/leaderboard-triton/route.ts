@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { PITCH_NAME_TO_ABBREV } from '@/lib/constants-data'
 
 /**

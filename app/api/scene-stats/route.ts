@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS, COMPUTED_METRIC_KEYS } from '@/lib/reportMetrics'
 import { SEASON_CONSTANTS, LATEST_SEASON_YEAR, PARK_FACTORS } from '@/lib/constants-data'
 import { computeXDeceptionScore, isFastball } from '@/lib/leagueStats'

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { getCached, setCache } from '@/lib/queryCache'
 import { computeTrendAlerts } from '@/lib/trendAlerts'
 

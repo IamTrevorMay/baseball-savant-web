@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { PARK_FACTORS } from '@/lib/constants-data'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
