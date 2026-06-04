@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useDevice } from '@/lib/hooks/useDeviceContext'
 import MobileWorkMyBoard from '@/components/mobile/work/MobileWorkMyBoard'
@@ -44,18 +44,23 @@ export default function MyBoardPage() {
 
   useEffect(() => { reload() }, [reload])
 
+  const creatingRef = useRef(false)
   async function createTask(status: Task['status']) {
     const title = draftTitle.trim()
     if (!title) { setDraftCol(null); return }
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    await supabase.from('work_tasks').insert({
-      user_id: user.id, title, status, priority: '3',
-    })
-    setDraftTitle('')
-    setDraftCol(null)
-    reload()
+    if (creatingRef.current) return
+    creatingRef.current = true
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('work_tasks').insert({
+        user_id: user.id, title, status, priority: '3',
+      })
+      setDraftTitle('')
+      setDraftCol(null)
+      reload()
+    } finally { creatingRef.current = false }
   }
 
   async function moveTask(t: Task, status: Task['status']) {
