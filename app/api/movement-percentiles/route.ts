@@ -8,6 +8,9 @@ import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
  * for ABS horizontal break and ABS induced vertical break among all pitchers
  * with the same hand throwing that pitch type at ±1 mph, with ≥10 pitches.
  * Skip pitch types whose pool has < 20 qualified pitchers.
+ *
+ * Uses a single table scan with a compound OR filter instead of one CTE per
+ * pitch type, avoiding N separate full-table scans.
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams
@@ -26,44 +29,34 @@ export async function GET(req: NextRequest) {
   const entries = entriesRaw.split(',').map(e => {
     const [pt, vStr] = e.split(':')
     return { pitch_type: pt, velo: Number(vStr) }
-  }).filter(e => e.pitch_type && !isNaN(e.velo))
+  }).filter(e => e.pitch_type && !isNaN(e.velo) && /^[A-Z0-9]{1,4}$/.test(e.pitch_type))
 
   if (entries.length === 0) {
     return NextResponse.json({ error: 'No valid entries' }, { status: 400 })
   }
 
-  // Build one CTE per pitch type, then UNION ALL the aggregations
-  const ctes: string[] = []
-  const selects: string[] = []
+  // Build a single-scan query: compound OR for velo bands, then GROUP BY pitch_type
+  const orClauses = entries.map(({ pitch_type, velo }) => {
+    const lo = (velo - 1).toFixed(1)
+    const hi = (velo + 1).toFixed(1)
+    return `(pitch_type = '${pitch_type}' AND release_speed BETWEEN ${lo} AND ${hi})`
+  }).join('\n      OR ')
 
-  for (let i = 0; i < entries.length; i++) {
-    const { pitch_type, velo } = entries[i]
-    const alias = `pool_${i}`
-    const veloLo = (velo - 1).toFixed(1)
-    const veloHi = (velo + 1).toFixed(1)
-
-    // Sanitize pitch_type: only allow uppercase letters and digits
-    if (!/^[A-Z0-9]{1,4}$/.test(pitch_type)) continue
-
-    ctes.push(`${alias} AS (
-  SELECT pitcher,
+  const sql = `WITH pool AS (
+  SELECT pitcher, pitch_type,
          ABS(AVG(pfx_x) * 12) AS hb_abs,
          ABS(AVG(pfx_z) * 12) AS ivb_abs,
          AVG(pfx_x) * 12 AS hb_signed,
          AVG(pfx_z) * 12 AS ivb_signed
   FROM pitches
   WHERE game_year = ${season}
-    AND pitch_type = '${pitch_type}'
-    AND release_speed BETWEEN ${veloLo} AND ${veloHi}
     AND p_throws = '${hand}'
-    AND pitch_type NOT IN ('PO','IN')
     AND pfx_x IS NOT NULL AND pfx_z IS NOT NULL
-  GROUP BY pitcher
+    AND (${orClauses})
+  GROUP BY pitcher, pitch_type
   HAVING COUNT(*) >= 10
-)`)
-
-    selects.push(`SELECT
-  '${pitch_type}' AS pitch_type,
+)
+SELECT pitch_type,
   CASE WHEN COUNT(*) >= 20 THEN
     percentile_cont(ARRAY(SELECT s/100.0 FROM generate_series(1,99) s))
       WITHIN GROUP (ORDER BY hb_abs)
@@ -75,14 +68,8 @@ export async function GET(req: NextRequest) {
   COUNT(*)::int AS n_qualified,
   AVG(hb_signed) AS pool_avg_hb,
   AVG(ivb_signed) AS pool_avg_ivb
-FROM ${alias}`)
-  }
-
-  if (ctes.length === 0) {
-    return NextResponse.json([])
-  }
-
-  const sql = `WITH ${ctes.join(',\n')}\n${selects.join('\nUNION ALL\n')}`
+FROM pool
+GROUP BY pitch_type`
 
   const { data, error } = await supabase.rpc('run_query', { query_text: sql })
 
