@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
         p.description, p.events, p.balls, p.strikes,
         p.stand, p.inning, p.inning_topbot,
         p.batter,
-        pl.player_name as batter_name,
+        pl.name as batter_name,
         p.vx0, p.vy0, p.vz0, p.ax, p.ay, p.az,
         p.release_pos_x, p.release_pos_z, p.release_extension
       FROM pitches p

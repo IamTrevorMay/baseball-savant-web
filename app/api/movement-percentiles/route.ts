@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
 /**
  * GET /api/movement-percentiles?season=2026&hand=R&entries=FF:95.5,SI:93.2,SL:87.1
