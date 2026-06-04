@@ -52,66 +52,34 @@ export async function GET(req: NextRequest) {
         ip: String(r.ip_est ?? '?'),
       }))
 
-      return NextResponse.json({ games })
+      return NextResponse.json({ games }, {
+        headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' },
+      })
     }
 
     // ── Mode B: Outing Data ──────────────────────────────────────────────
     const gamePk = sp.get('gamePk')
     if (!gamePk) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
 
-    // Run queries in parallel (6 queries)
-    const [boxscoreRes, arsenalRes, locationsRes, metaRes, pitchLevelRes, deceptionRes] = await Promise.all([
+    // Run queries in parallel (3 DB queries + 1 external fetch, down from 6)
+    // Merged: arsenal, locations, metadata, and pitch-level into one query
+    const [boxscoreRes, allPitchesRes, deceptionRes] = await Promise.all([
       // 1. MLB Stats API boxscore
       fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`).then(r => r.json()).catch(() => null),
 
-      // 2. Arsenal breakdown
+      // 2. All pitches for this outing (replaces 4 separate queries)
       q(`
-        SELECT
-          pitch_name,
-          COUNT(*) AS count,
-          ROUND(AVG(release_speed)::numeric, 1) AS avg_velo,
-          ROUND(AVG(pfx_z * 12)::numeric, 1) AS avg_ivb,
-          ROUND(AVG(pfx_x * 12)::numeric, 1) AS avg_hbreak,
-          ROUND(AVG(arm_angle)::numeric, 1) AS avg_arm_angle,
-          ROUND(AVG(release_extension)::numeric, 1) AS avg_ext
-        FROM pitches
-        WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
-          AND pitch_name IS NOT NULL
-        GROUP BY pitch_name
-        ORDER BY count DESC
-      `),
-
-      // 3. Pitch locations + zone data for command computation
-      q(`
-        SELECT plate_x, plate_z, pitch_name, sz_top, sz_bot, zone, game_year, description, stand
-        FROM pitches
-        WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
-          AND plate_x IS NOT NULL AND plate_z IS NOT NULL
-      `),
-
-      // 4. Game metadata (opponent, date)
-      q(`
-        SELECT
-          game_date::text AS game_date,
-          MODE() WITHIN GROUP (ORDER BY CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END) AS opponent
-        FROM pitches
-        WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
-        GROUP BY game_date
-        LIMIT 1
-      `),
-
-      // 5. Pitch-level data for stuff+ and whiffs
-      q(`
-        SELECT pitch_name, description, stuff_plus, p_throws,
+        SELECT pitch_name, pitch_type, description, stuff_plus, p_throws, stand,
                release_speed, pfx_x, pfx_z, release_spin_rate, spin_axis,
                release_extension, release_pos_x, release_pos_z, arm_angle,
-               vx0, vy0, vz0, ax, ay, az, game_year
+               plate_x, plate_z, sz_top, sz_bot, zone,
+               vx0, vy0, vz0, ax, ay, az, game_year,
+               game_date::text AS game_date, inning_topbot, home_team, away_team
         FROM pitches
         WHERE pitcher = ${pitcherId} AND game_pk = ${gamePk}
-          AND pitch_name IS NOT NULL
       `),
 
-      // 6. Season-level deception scores
+      // 3. Season-level deception scores
       q(`
         SELECT pitch_name, unique_score, deception_score
         FROM pitcher_season_deception
@@ -145,44 +113,57 @@ export async function GET(req: NextRequest) {
     }
 
     // Get pitcher name from players table
-    const { data: playerRow } = await q(`SELECT player_name FROM players WHERE id = ${pitcherId} LIMIT 1`)
-    const pitcherName = playerRow?.[0]?.player_name || 'Unknown'
+    const { data: playerRow } = await q(`SELECT name FROM players WHERE id = ${pitcherId} LIMIT 1`)
+    const pitcherName = playerRow?.[0]?.name || 'Unknown'
 
-    const meta = metaRes.data?.[0] || {}
+    const allPitches: any[] = allPitchesRes.data || []
+    if (allPitchesRes.error) return NextResponse.json({ error: allPitchesRes.error.message }, { status: 500 })
+
+    // Extract metadata from first row
+    const firstRow = allPitches[0] || {}
+    const gameDate = firstRow.game_date || ''
+    // Compute opponent: most common opposing team
+    const teamCounts: Record<string, number> = {}
+    for (const p of allPitches) {
+      const opp = p.inning_topbot === 'Top' ? p.away_team : p.home_team
+      if (opp) teamCounts[opp] = (teamCounts[opp] || 0) + 1
+    }
+    const opponent = Object.entries(teamCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '??'
+
+    // Filter to named pitches (exclude PO/IN)
+    const namedPitches = allPitches.filter((p: any) => p.pitch_name != null && p.pitch_type !== 'PO' && p.pitch_type !== 'IN')
 
     // Compute outing-level command metrics from pitch locations
-    const pitchRows: PitchRow[] = (locationsRes.data || []).map((r: any) => ({
-      plate_x: Number(r.plate_x),
-      plate_z: Number(r.plate_z),
-      pitch_name: r.pitch_name,
-      sz_top: Number(r.sz_top),
-      sz_bot: Number(r.sz_bot),
-      zone: Number(r.zone),
-      game_year: Number(r.game_year),
-      description: r.description || '',
-      stand: r.stand || '',
-    }))
+    const pitchRows: PitchRow[] = allPitches
+      .filter((r: any) => r.plate_x != null && r.plate_z != null)
+      .map((r: any) => ({
+        plate_x: Number(r.plate_x),
+        plate_z: Number(r.plate_z),
+        pitch_name: r.pitch_name,
+        sz_top: Number(r.sz_top),
+        sz_bot: Number(r.sz_bot),
+        zone: Number(r.zone),
+        game_year: Number(r.game_year),
+        description: r.description || '',
+        stand: r.stand || '',
+      }))
 
     const cmd = computeOutingCommand(pitchRows)
 
-    // Compute per-pitch-type whiffs and stuff+ from pitch-level data
-    const rawPitches: any[] = pitchLevelRes.data || []
+    // Group named pitches by type for arsenal stats, whiffs, and stuff+
     const pitchByType: Record<string, any[]> = {}
-    for (const p of rawPitches) {
-      const name = p.pitch_name
-      if (!pitchByType[name]) pitchByType[name] = []
-      pitchByType[name].push(p)
+    for (const p of namedPitches) {
+      if (!pitchByType[p.pitch_name]) pitchByType[p.pitch_name] = []
+      pitchByType[p.pitch_name].push(p)
     }
 
     const whiffsByType: Record<string, number> = {}
     const stuffPlusByType: Record<string, number | null> = {}
     for (const [name, pts] of Object.entries(pitchByType)) {
-      // Whiffs: count swinging strikes
       whiffsByType[name] = pts.filter((p: any) =>
         typeof p.description === 'string' && p.description.includes('swinging_strike')
       ).length
 
-      // Stuff+: prefer DB column, fall back to client-side Z-score
       const stuffArr = pts.map((p: any) => {
         if (p.stuff_plus != null) return Number(p.stuff_plus)
         return computeStuffRV(p)
@@ -201,24 +182,30 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const arsenal = (arsenalRes.data || []).map((r: any) => {
-      const cmdRow = cmd.byPitch[r.pitch_name] || {}
-      const dec = deceptionByType[r.pitch_name] || {}
-      return {
-        pitch_name: r.pitch_name,
-        count: Number(r.count),
-        avg_velo: Number(r.avg_velo),
-        avg_ivb: Number(r.avg_ivb),
-        avg_hbreak: Number(r.avg_hbreak),
-        avg_arm_angle: Number(r.avg_arm_angle),
-        avg_ext: Number(r.avg_ext),
-        whiffs: whiffsByType[r.pitch_name] || 0,
-        stuff_plus: stuffPlusByType[r.pitch_name] ?? null,
-        unique_score: dec.unique_score ?? null,
-        deception_score: dec.deception_score ?? null,
-        cmd_plus: cmdRow.cmd_plus ?? null,
-      }
-    })
+    // Compute arsenal stats in JS from raw pitch rows (replaces SQL GROUP BY)
+    const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d
+    const notNull = (v: number | null | undefined): v is number => v != null
+    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : 0
+    const arsenal = Object.entries(pitchByType)
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([name, pts]) => {
+        const cmdRow = cmd.byPitch[name] || {}
+        const dec = deceptionByType[name] || {}
+        return {
+          pitch_name: name,
+          count: pts.length,
+          avg_velo: round(avg(pts.map((p: any) => p.release_speed as number | null).filter(notNull)), 1),
+          avg_ivb: round(avg(pts.map((p: any) => p.pfx_z != null ? p.pfx_z * 12 : null).filter(notNull)), 1),
+          avg_hbreak: round(avg(pts.map((p: any) => p.pfx_x != null ? p.pfx_x * 12 : null).filter(notNull)), 1),
+          avg_arm_angle: round(avg(pts.map((p: any) => p.arm_angle as number | null).filter(notNull)), 1),
+          avg_ext: round(avg(pts.map((p: any) => p.release_extension as number | null).filter(notNull)), 1),
+          whiffs: whiffsByType[name] || 0,
+          stuff_plus: stuffPlusByType[name] ?? null,
+          unique_score: dec.unique_score ?? null,
+          deception_score: dec.deception_score ?? null,
+          cmd_plus: cmdRow.cmd_plus ?? null,
+        }
+      })
 
     const locations = pitchRows.map((r) => ({
       plate_x: r.plate_x,
@@ -229,15 +216,17 @@ export async function GET(req: NextRequest) {
     const outing = {
       pitcher_id: Number(pitcherId),
       pitcher_name: pitcherName,
-      game_date: meta.game_date || '',
-      opponent: meta.opponent || '??',
+      game_date: gameDate,
+      opponent,
       game_line: gameLine,
       arsenal,
       locations,
       command: cmd.aggregate,
     }
 
-    return NextResponse.json({ outing })
+    return NextResponse.json({ outing }, {
+      headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' },
+    })
   } catch (err: any) {
     console.error('pitcher-outing error:', err)
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })

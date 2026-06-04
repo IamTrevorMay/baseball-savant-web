@@ -38,7 +38,9 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ pitches: data || [] })
+    return NextResponse.json({ pitches: data || [] }, {
+      headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' },
+    })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

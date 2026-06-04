@@ -226,7 +226,9 @@ export async function POST(req: NextRequest) {
         ...r,
         sos_plus: sosByTeam.get(r.team) ?? null,
       }))
-      return NextResponse.json({ rows })
+      return NextResponse.json({ rows }, {
+        headers: { 'Cache-Control': 'public, max-age=600, stale-while-revalidate=3600' },
+      })
     }
 
     if (tab === 'bullpen') {

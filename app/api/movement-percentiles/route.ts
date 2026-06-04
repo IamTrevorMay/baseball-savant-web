@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
+import { getCached, setCache } from '@/lib/queryCache'
 
 /**
  * GET /api/movement-percentiles?season=2026&hand=R&entries=FF:95.5,SI:93.2,SL:87.1
@@ -33,6 +34,15 @@ export async function GET(req: NextRequest) {
 
   if (entries.length === 0) {
     return NextResponse.json({ error: 'No valid entries' }, { status: 400 })
+  }
+
+  // DB cache (6h TTL) — percentile breakpoints only change nightly
+  const cacheKey = `mvpct:${season}:${hand}:${entries.map(e => `${e.pitch_type}:${e.velo}`).join(',')}`
+  const cached = await getCached(cacheKey)
+  if (cached) {
+    return NextResponse.json(cached, {
+      headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' },
+    })
   }
 
   // Build a single-scan query: compound OR for velo bands, then GROUP BY pitch_type
@@ -82,5 +92,11 @@ GROUP BY pitch_type`
     (r: any) => r.hb_breakpoints != null && r.ivb_breakpoints != null
   )
 
-  return NextResponse.json(results)
+  if (results.length > 0) {
+    setCache(cacheKey, results, { ttlSeconds: 21600 }).catch(() => {})
+  }
+
+  return NextResponse.json(results, {
+    headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' },
+  })
 }

@@ -147,17 +147,9 @@ export async function POST(req: NextRequest) {
       ORDER BY pitches DESC
     `
 
-    // Player names
+    // Player names (use players table — 4k rows vs 8.6M pitches)
     const namesSQL = `
-      SELECT player_name, pitcher, batter
-      FROM (
-        SELECT DISTINCT ON (pitcher) player_name, pitcher, NULL::int as batter
-        FROM pitches WHERE pitcher = ${safePitcher} AND player_name IS NOT NULL
-        UNION ALL
-        SELECT DISTINCT ON (batter) player_name, NULL::int as pitcher, batter
-        FROM pitches WHERE batter = ${safeBatter} AND player_name IS NOT NULL
-      ) sub
-      LIMIT 2
+      SELECT id, name as player_name FROM players WHERE id IN (${safePitcher}, ${safeBatter})
     `
 
     // Run all queries in parallel (trim to ensure run_query's SELECT check passes)
@@ -175,8 +167,8 @@ export async function POST(req: NextRequest) {
 
     // Resolve names
     const names = namesRes.data || []
-    const pitcherRec = names.find((n: any) => n.pitcher === safePitcher)
-    const batterRec = names.find((n: any) => n.batter === safeBatter)
+    const pitcherRec = names.find((n: any) => n.id === safePitcher)
+    const batterRec = names.find((n: any) => n.id === safeBatter)
 
     return NextResponse.json({
       arsenal: arsenalRes.data || [],
@@ -187,6 +179,8 @@ export async function POST(req: NextRequest) {
       h2h: h2hRes.data || [],
       pitcherName: pitcherRec?.player_name || `Pitcher ${safePitcher}`,
       batterName: batterRec?.player_name || `Batter ${safeBatter}`,
+    }, {
+      headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' },
     })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
