@@ -75,6 +75,126 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'No valid metrics' }, { status: 400 })
       }
 
+      // ── MV fast path: no role filter, no date filters → use pre-aggregated MVs ──
+      const canUseMV = !pitcherRole && !dateFrom && !dateTo && gameYear
+      if (canUseMV) {
+        const yr = parseInt(gameYear)
+        const mvPitchingCols: Record<string, boolean> = {
+          avg_velo:true, whiff_pct:true, k_pct:true, bb_pct:true, avg_xwoba:true,
+          csw_pct:true, zone_pct:true, chase_pct:true, pitches:true, games:true, pa:true, ip:true,
+          swstr_pct:true, contact_pct:true, z_swing_pct:true, o_contact_pct:true,
+          ba:true, slg:true, obp:true, avg_xba:true, avg_xslg:true, avg_woba:true,
+          avg_ev:true, max_ev:true, avg_la:true, hard_hit_pct:true, barrel_pct:true, gb_pct:true, fb_pct:true, ld_pct:true,
+        }
+        const mvBattingCols: Record<string, boolean> = {
+          avg_ev:true, ba:true, slg:true, k_pct:true, bb_pct:true, avg_xwoba:true,
+          hard_hit_pct:true, barrel_pct:true, pitches:true, games:true, pa:true,
+        }
+        const mvCols = statScope === 'hitting' ? mvBattingCols : mvPitchingCols
+        const allPitchesInMV = pitchesMetrics.every(m => mvCols[m])
+
+        if (allPitchesInMV) {
+          const mvTable = statScope === 'hitting' ? 'mv_team_batting_stats' : 'mv_team_pitching_stats'
+          const colList = pitchesMetrics.length > 0 ? `, ${pitchesMetrics.join(', ')}` : ''
+
+          // Fetch MV data for pitches metrics
+          const { data: mvRows, error: mvErr } = await q(`SELECT team${colList} FROM ${mvTable} WHERE game_year = ${yr}`)
+          if (mvErr) return NextResponse.json({ error: mvErr.message }, { status: 500 })
+          let allTeams: Record<string, any>[] = (mvRows || []) as Record<string, any>[]
+
+          // ERA metrics from MV ERA components
+          if (eraMetrics.length > 0 && statScope !== 'hitting') {
+            const { data: eraRows, error: eraErr } = await q(
+              `SELECT team, strikeouts as k, walks as bb, hbp, home_runs as hr, ip, pa, xwoba_raw as xwoba FROM mv_team_pitching_stats WHERE game_year = ${yr}`
+            )
+            if (!eraErr) {
+              const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+              const eraByTeam = new Map<string, Record<string, any>>()
+              for (const row of (eraRows || []) as any[]) {
+                const fip = computeFIP(row, constants)
+                const xera = computeXERA(row, constants)
+                eraByTeam.set(row.team, { era: fip, fip, xera })
+              }
+              for (const row of allTeams) {
+                const eraVals = eraByTeam.get(row.team)
+                if (eraVals) Object.assign(row, eraVals)
+              }
+            }
+          }
+
+          // wRC+ from batting MV
+          if (computedMetrics.includes('wrc_plus')) {
+            const { data: wrcRows, error: wrcErr } = await q(
+              `SELECT team, woba_raw as woba, pa FROM mv_team_batting_stats WHERE game_year = ${yr}`
+            )
+            if (!wrcErr) {
+              const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+              for (const row of (wrcRows || []) as any[]) {
+                const woba = row.woba != null ? Number(row.woba) : null
+                if (woba == null) continue
+                const pf = PARK_FACTORS[row.team]?.basic || 100
+                const wrcPlus = computeWRCPlus(woba, constants, pf)
+                const target = allTeams.find(r => r.team === row.team)
+                if (target) target.wrc_plus = wrcPlus
+              }
+            }
+          }
+
+          // Runs from batting MV
+          if (computedMetrics.includes('runs')) {
+            if (statScope === 'hitting') {
+              // runs already in allTeams from mv_team_batting_stats
+            } else {
+              // For pitching scope, runs-against is not in pitching MV. Skip — not common.
+            }
+          }
+
+          const thisTeam = allTeams.find(r => r.team === team)
+          const LOWER_IS_BETTER = new Set(['bb_pct', 'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'era', 'fip', 'xera'])
+          const ranks: Record<string, { rank: number; total: number }> = {}
+          for (const m of validMetrics) {
+            const vals = allTeams.filter(r => r[m] != null).map(r => ({ team: r.team, val: Number(r[m]) }))
+              .sort((a, b) => LOWER_IS_BETTER.has(m) ? a.val - b.val : b.val - a.val)
+            const idx = vals.findIndex(v => v.team === team)
+            ranks[m] = { rank: idx >= 0 ? idx + 1 : vals.length + 1, total: vals.length }
+          }
+          if (statScope === 'pitching') {
+            const PITCHER_LOWER_BETTER = new Set(['ba','slg','obp','ops','avg_ev','max_ev','avg_la','avg_dist','hard_hit_pct','barrel_pct','avg_xba','avg_xwoba','avg_xslg','avg_woba','bb_pct'])
+            for (const m of validMetrics) {
+              if (PITCHER_LOWER_BETTER.has(m) && !LOWER_IS_BETTER.has(m)) {
+                const vals = allTeams.filter(r => r[m] != null).map(r => ({ team: r.team, val: Number(r[m]) })).sort((a, b) => a.val - b.val)
+                const idx = vals.findIndex(v => v.team === team)
+                ranks[m] = { rank: idx >= 0 ? idx + 1 : vals.length + 1, total: vals.length }
+              }
+            }
+          }
+          if (statScope === 'hitting') {
+            const HITTER_LOWER_BETTER = new Set(['k_pct','chase_pct','whiff_pct','swstr_pct'])
+            for (const m of validMetrics) {
+              if (HITTER_LOWER_BETTER.has(m)) {
+                const vals = allTeams.filter(r => r[m] != null).map(r => ({ team: r.team, val: Number(r[m]) })).sort((a, b) => a.val - b.val)
+                const idx = vals.findIndex(v => v.team === team)
+                ranks[m] = { rank: idx >= 0 ? idx + 1 : vals.length + 1, total: vals.length }
+              }
+            }
+          }
+
+          const TEAM_NAMES: Record<string, string> = {
+            ARI:'Arizona Diamondbacks',ATL:'Atlanta Braves',BAL:'Baltimore Orioles',BOS:'Boston Red Sox',
+            CHC:'Chicago Cubs',CWS:'Chicago White Sox',CIN:'Cincinnati Reds',CLE:'Cleveland Guardians',
+            COL:'Colorado Rockies',DET:'Detroit Tigers',HOU:'Houston Astros',KC:'Kansas City Royals',
+            LAA:'Los Angeles Angels',LAD:'Los Angeles Dodgers',MIA:'Miami Marlins',MIL:'Milwaukee Brewers',
+            MIN:'Minnesota Twins',NYM:'New York Mets',NYY:'New York Yankees',OAK:'Oakland Athletics',
+            PHI:'Philadelphia Phillies',PIT:'Pittsburgh Pirates',SD:'San Diego Padres',SF:'San Francisco Giants',
+            SEA:'Seattle Mariners',STL:'St. Louis Cardinals',TB:'Tampa Bay Rays',TEX:'Texas Rangers',
+            TOR:'Toronto Blue Jays',WSH:'Washington Nationals',
+          }
+          const stats: Record<string, any> = {}
+          if (thisTeam) { for (const m of validMetrics) stats[m] = thisTeam[m] ?? null }
+          return NextResponse.json({ teamStats: { team, teamName: TEAM_NAMES[team] || team, stats, ranks } })
+        }
+      }
+
       // Run pitches-table query and ERA components query in parallel
       const tasks: Promise<void>[] = []
       let allTeams: Record<string, any>[] = []
@@ -1068,21 +1188,42 @@ export async function GET(req: NextRequest) {
         const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
         const minPitches = parseInt(sp.get('minSample') || '300')
 
-        const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
-        if (gameYear) where.push(`game_year = ${year}`)
-        if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
-        if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
-        if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+        // MV fast path: no date/pitchType filters
+        const canUseMV = !dateFrom && !dateTo && !pitchType && gameYear
+        let data: any[] | null = null
+        let error: any = null
 
-        const sql = `
-          SELECT p.pitcher as player_id, pl.name as player_name, COUNT(*) as pitches,
-            ${ERA_COMPONENTS_SQL}
-          FROM pitches p JOIN players pl ON pl.id = p.pitcher
-          WHERE ${where.join(' AND ')} ${starterSubquery}
-          GROUP BY p.pitcher, pl.name HAVING COUNT(*) >= ${minPitches}
-        `
+        if (canUseMV) {
+          const roleFilter = pitcherRole === 'starter'
+            ? `AND mv.player_id IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+            : pitcherRole === 'reliever'
+            ? `AND mv.player_id NOT IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+            : ''
+          const res = await q(`
+            SELECT mv.player_id, pl.name as player_name, mv.pitches,
+              mv.strikeouts as k, mv.walks as bb, mv.hbp, mv.home_runs as hr, mv.ip, mv.pa,
+              mv.avg_xwoba as xwoba, mv.xwoba_n
+            FROM mv_pitcher_season_stats mv
+            JOIN players pl ON pl.id = mv.player_id
+            WHERE mv.game_year = ${year} AND mv.pitches >= ${minPitches} ${roleFilter}
+          `)
+          data = res.data; error = res.error
+        } else {
+          const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
+          if (gameYear) where.push(`game_year = ${year}`)
+          if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+          if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
+          if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+          const res = await q(`
+            SELECT p.pitcher as player_id, pl.name as player_name, COUNT(*) as pitches,
+              ${ERA_COMPONENTS_SQL}
+            FROM pitches p JOIN players pl ON pl.id = p.pitcher
+            WHERE ${where.join(' AND ')} ${starterSubquery}
+            GROUP BY p.pitcher, pl.name HAVING COUNT(*) >= ${minPitches}
+          `)
+          data = res.data; error = res.error
+        }
 
-        const { data, error } = await q(sql)
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
         let rows = ((data || []) as any[]).map(r => {
@@ -1131,31 +1272,70 @@ export async function GET(req: NextRequest) {
       const defaultMin = playerType === 'batter' ? 150 : 300
       const minSample = parseInt(sp.get('minSample') || String(defaultMin))
 
-      const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
-      if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
-      if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
-      if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
-      if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+      // MV fast path: no date/pitchType filters → use pre-aggregated MV
+      const canUseMVLeaderboard = !dateFrom && !dateTo && !pitchType && gameYear
+      const mvLeaderboardCols: Record<string, boolean> = {
+        avg_velo:true, max_velo:true, avg_spin:true, avg_ext:true, avg_arm_angle:true,
+        k_pct:true, bb_pct:true, whiff_pct:true, csw_pct:true, swstr_pct:true,
+        zone_pct:true, chase_pct:true, contact_pct:true, z_swing_pct:true, o_contact_pct:true,
+        ba:true, slg:true, obp:true, avg_xwoba:true, avg_xba:true, avg_xslg:true, avg_woba:true,
+        avg_ev:true, max_ev:true, avg_la:true, hard_hit_pct:true, barrel_pct:true,
+        gb_pct:true, fb_pct:true, ld_pct:true, avg_stuff_plus:true,
+        avg_bat_speed:true, avg_swing_length:true, total_re24:true,
+      }
+      const requestedMetricKeys = [metric, ...(secondaryMetric ? [secondaryMetric] : []), ...(tertiaryMetric ? [tertiaryMetric] : [])]
+        .filter(m => METRICS[m] && !TRITON_PLUS_METRIC_KEYS.has(m) && !DECEPTION_METRIC_KEYS.has(m) && !ERA_METRIC_KEYS.has(m))
+      const allMetricsInMV = canUseMVLeaderboard && requestedMetricKeys.every(m => mvLeaderboardCols[m])
 
-      const selects = [`${METRICS[metric]} as primary_value`]
-      if (secondaryMetric && METRICS[secondaryMetric]) selects.push(`${METRICS[secondaryMetric]} as secondary_value`)
-      if (tertiaryMetric && METRICS[tertiaryMetric]) selects.push(`${METRICS[tertiaryMetric]} as tertiary_value`)
+      let data: any[] | null = null
+      let error: any = null
 
-      const sql = `
-        SELECT
-          p.${groupCol} as player_id,
-          pl.name as player_name,
-          ${selects.join(',\n          ')}
-        FROM pitches p
-        JOIN players pl ON pl.id = p.${groupCol}
-        WHERE ${where.join(' AND ')} ${playerType === 'pitcher' ? starterSubquery : ''}
-        GROUP BY p.${groupCol}, pl.name
-        HAVING COUNT(*) >= ${minSample}
-        ORDER BY primary_value ${sortDir} NULLS LAST
-        LIMIT ${limit}
-      `
+      if (allMetricsInMV) {
+        const mvTable = playerType === 'batter' ? 'mv_batter_season_stats' : 'mv_pitcher_season_stats'
+        const yr = parseInt(gameYear)
+        const roleFilter = playerType === 'pitcher' && pitcherRole === 'starter'
+          ? `AND mv.player_id IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${yr} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+          : playerType === 'pitcher' && pitcherRole === 'reliever'
+          ? `AND mv.player_id NOT IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${yr} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+          : ''
 
-      const { data, error } = await q(sql)
+        const mvSelects = [`mv.${metric} as primary_value`]
+        if (secondaryMetric && mvLeaderboardCols[secondaryMetric]) mvSelects.push(`mv.${secondaryMetric} as secondary_value`)
+        if (tertiaryMetric && mvLeaderboardCols[tertiaryMetric]) mvSelects.push(`mv.${tertiaryMetric} as tertiary_value`)
+
+        const res = await q(`
+          SELECT mv.player_id, pl.name as player_name, ${mvSelects.join(', ')}
+          FROM ${mvTable} mv
+          JOIN players pl ON pl.id = mv.player_id
+          WHERE mv.game_year = ${yr} AND mv.pitches >= ${minSample} ${roleFilter}
+          ORDER BY primary_value ${sortDir} NULLS LAST
+          LIMIT ${limit}
+        `)
+        data = res.data; error = res.error
+      } else {
+        const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
+        if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
+        if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
+        if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
+        if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
+
+        const selects = [`${METRICS[metric]} as primary_value`]
+        if (secondaryMetric && METRICS[secondaryMetric]) selects.push(`${METRICS[secondaryMetric]} as secondary_value`)
+        if (tertiaryMetric && METRICS[tertiaryMetric]) selects.push(`${METRICS[tertiaryMetric]} as tertiary_value`)
+
+        const res = await q(`
+          SELECT p.${groupCol} as player_id, pl.name as player_name, ${selects.join(',\n            ')}
+          FROM pitches p
+          JOIN players pl ON pl.id = p.${groupCol}
+          WHERE ${where.join(' AND ')} ${playerType === 'pitcher' ? starterSubquery : ''}
+          GROUP BY p.${groupCol}, pl.name
+          HAVING COUNT(*) >= ${minSample}
+          ORDER BY primary_value ${sortDir} NULLS LAST
+          LIMIT ${limit}
+        `)
+        data = res.data; error = res.error
+      }
+
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
       const result: any[] = data || []
@@ -1222,30 +1402,34 @@ export async function GET(req: NextRequest) {
 
       const metrics = playerType === 'batter' ? batterMetrics : pitcherMetrics
 
-      // Run one query per metric in parallel
-      const results = await Promise.all(metrics.map(async (m) => {
-        const orderDir = m.invert ? 'DESC' : 'ASC'
-        const sql = `
-          SELECT player_id, metric_value,
-            ROUND(PERCENT_RANK() OVER (ORDER BY metric_value ${orderDir}) * 100) AS pctl
-          FROM (
-            SELECT p.${groupCol} AS player_id, ${m.expr} AS metric_value
-            FROM pitches p JOIN players pl ON pl.id = p.${groupCol}
-            WHERE game_year = ${gameYear} AND pitch_type NOT IN ('PO','IN')
-            GROUP BY p.${groupCol} HAVING COUNT(*) >= ${minSample}
-          ) sub
-        `
-        const { data, error } = await q(sql)
-        if (error) return { key: m.key, label: m.label, value: null, percentile: 50 }
-        const row = (data || []).find((r: any) => r.player_id === pid)
-        if (!row) return { key: m.key, label: m.label, value: null, percentile: 50 }
-        return {
-          key: m.key,
-          label: m.label,
-          value: row.metric_value,
-          percentile: Number(row.pctl) || 0,
-        }
-      }))
+      // Single MV query replaces 10 parallel pitches-table queries
+      const mvTable = playerType === 'batter' ? 'mv_batter_season_stats' : 'mv_pitcher_season_stats'
+      const mvCols = metrics.map(m => m.key).join(', ')
+      const { data: mvData, error: mvErr } = await q(`
+        SELECT player_id, ${mvCols}
+        FROM ${mvTable}
+        WHERE game_year = ${gameYear} AND pitches >= ${minSample}
+      `)
+      if (mvErr) return NextResponse.json({ error: mvErr.message }, { status: 500 })
+
+      const allRows = (mvData || []) as Record<string, any>[]
+      const playerRow = allRows.find(r => r.player_id === pid)
+
+      const results = metrics.map(m => {
+        const vals = allRows.map(r => Number(r[m.key])).filter(v => v != null && !isNaN(v))
+        vals.sort((a, b) => a - b)
+        const playerVal = playerRow?.[m.key] != null ? Number(playerRow[m.key]) : null
+        if (playerVal == null) return { key: m.key, label: m.label, value: null, percentile: 50 }
+
+        // PERCENT_RANK: count of values strictly less (or greater for inverted) / (n-1)
+        const n = vals.length
+        const below = m.invert
+          ? vals.filter(v => v > playerVal).length  // lower is better → rank by how many are worse (higher)
+          : vals.filter(v => v < playerVal).length   // higher is better → rank by how many are worse (lower)
+        const pctl = n > 1 ? Math.round((below / (n - 1)) * 100) : 50
+
+        return { key: m.key, label: m.label, value: playerVal, percentile: pctl }
+      })
 
       return NextResponse.json({ percentiles: results })
     }

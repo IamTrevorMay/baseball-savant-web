@@ -78,6 +78,15 @@ export async function GET(req: NextRequest) {
         leaguePercentilesResult = { error: e.message }
       }
 
+      // Refresh materialized views (pre-aggregated stats for fast API routes).
+      let materializedViewsResult: { ok: true } | { error: string }
+      try {
+        const { error } = await supabaseAdmin.rpc('refresh_materialized_views')
+        materializedViewsResult = error ? { error: error.message } : { ok: true }
+      } catch (e: any) {
+        materializedViewsResult = { error: e.message }
+      }
+
       // Invalidate query caches after fresh data sync
       await Promise.all([
         invalidateCache('trends:'),
@@ -93,9 +102,10 @@ export async function GET(req: NextRequest) {
         computeResults,
         leagueAverages: leagueAveragesResult,
         leaguePercentiles: leaguePercentilesResult,
+        materializedViews: materializedViewsResult,
       }
 
-      return { result: payload, counts: { gameTypes, results, leagueAverages: leagueAveragesResult, leaguePercentiles: leaguePercentilesResult } }
+      return { result: payload, counts: { gameTypes, results, leagueAverages: leagueAveragesResult, leaguePercentiles: leaguePercentilesResult, materializedViews: materializedViewsResult } }
     })
 
     return NextResponse.json(result)

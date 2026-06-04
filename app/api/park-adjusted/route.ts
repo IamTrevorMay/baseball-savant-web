@@ -11,36 +11,30 @@ export async function POST(req: NextRequest) {
     if (isNaN(safeSeason)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
 
     const isPitching = category === 'pitching'
-    const playerCol = isPitching ? 'pitcher' : 'batter'
-    const teamExpr = isPitching
-      ? "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END"
-      : "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
-
     const mp = Math.max(parseInt(String(minPitches)) || 0, 0)
     const mpa = Math.max(parseInt(String(minPA)) || 0, 0)
-    const havingParts: string[] = []
-    if (mp > 0) havingParts.push(`COUNT(*) >= ${mp}`)
-    if (mpa > 0) havingParts.push(`COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) >= ${mpa}`)
-    const having = havingParts.length > 0 ? `HAVING ${havingParts.join(' AND ')}` : ''
+
+    // Use materialized views for pre-aggregated data (regular season)
+    const mvTable = isPitching ? 'mv_pitcher_season_stats' : 'mv_batter_season_stats'
+    const filterParts: string[] = []
+    if (mp > 0) filterParts.push(`mv.pitches >= ${mp}`)
+    if (mpa > 0) filterParts.push(`mv.pa >= ${mpa}`)
+    const mvWhere = filterParts.length > 0 ? `AND ${filterParts.join(' AND ')}` : ''
+
+    // pitcher MV has home_runs for hr_pct; batter MV does not
+    const hrCol = isPitching
+      ? 'ROUND(100.0 * mv.home_runs / NULLIF(mv.pa, 0), 1) as hr_pct,'
+      : 'NULL::numeric as hr_pct,'
 
     const { data, error } = await q(`
-      SELECT p.${playerCol} as player_id, pl.name as player_name,
-        MODE() WITHIN GROUP (ORDER BY ${teamExpr}) as team,
-        COUNT(*) as pitches,
-        COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
-        ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'home_run')
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as hr_pct,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%')
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk')
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct
-      FROM pitches p
-      JOIN players pl ON pl.id = p.${playerCol}
-      WHERE game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN')
-      GROUP BY p.${playerCol}, pl.name
-      ${having}
-      ORDER BY xwoba ${isPitching ? 'ASC' : 'DESC'} NULLS LAST
+      SELECT mv.player_id, pl.name as player_name, mv.team,
+        mv.pitches, mv.pa, mv.avg_xwoba as xwoba,
+        ${hrCol}
+        mv.k_pct, mv.bb_pct
+      FROM ${mvTable} mv
+      JOIN players pl ON pl.id = mv.player_id
+      WHERE mv.game_year = ${safeSeason} ${mvWhere}
+      ORDER BY mv.avg_xwoba ${isPitching ? 'ASC' : 'DESC'} NULLS LAST
       LIMIT 300
     `)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

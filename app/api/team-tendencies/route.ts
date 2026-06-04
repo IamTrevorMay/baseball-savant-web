@@ -23,6 +23,45 @@ export async function POST(req: NextRequest) {
 
     const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}${dateFilter}`
 
+    // Use materialized views for regular-season full-season queries (no date filters)
+    const canUseMV = (gameType === 'regular' || gameType === 'all') && !safeStart && !safeEnd
+
+    if (canUseMV && tab === 'pitching') {
+      const { data, error } = await q(`
+        SELECT team, pitches, games, pa, avg_velo, whiff_pct, k_pct, bb_pct, avg_xwoba, csw_pct, zone_pct, chase_pct
+        FROM mv_team_pitching_stats WHERE game_year = ${safeSeason} ORDER BY avg_xwoba ASC
+      `)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ rows: data || [] })
+    }
+
+    if (canUseMV && tab === 'hitting') {
+      const { data, error } = await q(`
+        SELECT team, pitches, games, pa, runs, avg_ev, ba, slg, k_pct, bb_pct, avg_xwoba, hard_hit_pct, barrel_pct
+        FROM mv_team_batting_stats WHERE game_year = ${safeSeason} ORDER BY avg_xwoba DESC
+      `)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ rows: data || [] })
+    }
+
+    if (canUseMV && tab === 'bullpen') {
+      const { data, error } = await q(`
+        SELECT team, games, unique_pitchers, pitchers_per_game, pitches, avg_velo, whiff_pct, k_pct, avg_xwoba
+        FROM mv_team_bullpen_stats WHERE game_year = ${safeSeason} ORDER BY whiff_pct DESC
+      `)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ rows: data || [] })
+    }
+
+    if (canUseMV && tab === 'platoon') {
+      const { data, error } = await q(`
+        SELECT team, p_throws, pitches, pa, k_pct, bb_pct, whiff_pct, avg_xwoba, ba, slg
+        FROM mv_team_platoon_stats WHERE game_year = ${safeSeason} ORDER BY team, p_throws
+      `)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ rows: data || [] })
+    }
+
     if (tab === 'momentum' || tab === 'leverage') {
       // Momentum: Shutdowns & Responses (for + against). Spring is excluded even on "All".
       const momentumGt =
