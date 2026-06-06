@@ -284,6 +284,12 @@ export default function MilbPlayerDashboard() {
       <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
+            <img
+              src={`https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${pitcherId}/headshot/67/current`}
+              alt={info.player_name}
+              className="w-16 h-16 rounded-full object-cover bg-zinc-800 border border-zinc-700"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
             <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold text-white"
               style={{ backgroundColor: TEAM_COLORS[info.parent_org_abbrev || info.team] || '#52525b' }}>
               {info.team}
