@@ -149,8 +149,12 @@ function LauncherContent() {
   const denied = searchParams.get('denied')
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
   // If no user session (preview mode or not logged in), show all tools as accessible
-  const effectivePermissions = !user ? ['research', 'mechanics', 'models', 'compete', 'visualize'] : isAdmin ? TOOLS.map(t => t.id) : permissions
-  const visibleTools = isAdmin ? [...TOOLS, DATA_TOOL, ADMIN_TOOL] : TOOLS
+  const effectivePermissions = !user ? ['research', 'mechanics', 'models', 'compete', 'visualize'] : isAdmin ? [...TOOLS.map(t => t.id), 'data'] : permissions
+  const visibleTools = isAdmin
+    ? [...TOOLS, DATA_TOOL, ADMIN_TOOL]
+    : permissions.includes('data')
+      ? [...TOOLS, DATA_TOOL]
+      : TOOLS
 
   // In PWA standalone mode, redirect to Compete tab
   useEffect(() => {
@@ -187,7 +191,7 @@ function LauncherContent() {
       {/* Tool Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {visibleTools.map(tool => {
-          const hasAccess = tool.id === 'admin' || tool.id === 'data' || effectivePermissions.includes(tool.id)
+          const hasAccess = tool.id === 'admin' || effectivePermissions.includes(tool.id)
           const colors = COLOR_MAP[tool.color]
           const locked = !hasAccess && tool.available
 

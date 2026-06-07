@@ -12,14 +12,13 @@ export default async function DataLayout({ children }: { children: React.ReactNo
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+    const [{ data: profile }, { data: perm }] = await Promise.all([
+      supabaseAdmin.from('profiles').select('role').eq('id', user.id).single(),
+      supabaseAdmin.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'data').single(),
+    ])
 
-    const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
-    if (!isAdmin) redirect('/?denied=data')
+    const isPrivileged = profile?.role === 'owner' || profile?.role === 'admin'
+    if (!isPrivileged && !perm) redirect('/?denied=data')
   }
 
   return (

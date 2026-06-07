@@ -1,6 +1,7 @@
 'use client'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '../chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 export default function ArmAngleBreak({ data }: { data: any[] }) {
   const f = data.filter(d => d.arm_angle != null && d.pfx_x != null && d.pfx_z != null && d.pitch_name)
@@ -11,7 +12,7 @@ export default function ArmAngleBreak({ data }: { data: any[] }) {
   const hTraces = pitchTypes.map(pt => {
     const pts = f.filter(d => d.pitch_name === pt)
     return {
-      x: pts.map(d => d.arm_angle), y: pts.map(d => d.pfx_x * 12),
+      x: pts.map(d => d.arm_angle), y: pts.map(d => toPitcherX(d.pfx_x) * 12),
       type: 'scatter' as any, mode: 'markers' as any,
       name: pt, legendgroup: pt,
       marker: { color: getPitchColor(pt), size: 4, opacity: 0.4 },

@@ -3,6 +3,7 @@ import { useMemo, useState, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 interface TemplateProps {
   data: any[]
@@ -39,12 +40,12 @@ interface AxisOption {
 const AXIS_OPTIONS: AxisOption[] = [
   { key: 'release_speed',    label: 'Velocity',              unit: 'mph',  field: 'release_speed' },
   { key: 'release_spin_rate',label: 'Spin Rate',             unit: 'rpm',  field: 'release_spin_rate' },
-  { key: 'pfx_x_in',        label: 'Horizontal Break (+ → 1B)',      unit: 'in',   field: 'pfx_x', multiplier: 12 },
+  { key: 'pfx_x_in',        label: 'Horizontal Break (in)',      unit: 'in',   field: 'pfx_x', multiplier: 12 },
   { key: 'pfx_z_in',        label: 'Induced Vertical Break', unit: 'in',   field: 'pfx_z', multiplier: 12 },
   { key: 'release_extension',label: 'Extension',             unit: 'ft',   field: 'release_extension' },
   { key: 'vaa',              label: 'VAA',                   unit: '\u00b0', field: 'vaa' },
   { key: 'haa',              label: 'HAA',                   unit: '\u00b0', field: 'haa' },
-  { key: 'plate_x',         label: 'Plate X (+ → 1B)',               unit: 'ft',   field: 'plate_x' },
+  { key: 'plate_x',         label: 'Plate X (ft)',               unit: 'ft',   field: 'plate_x' },
   { key: 'plate_z',         label: 'Plate Z',               unit: 'ft',   field: 'plate_z' },
   { key: 'spin_axis',        label: 'Spin Axis',             unit: '\u00b0', field: 'spin_axis' },
   { key: 'launch_speed',     label: 'Launch Speed',          unit: 'mph',  field: 'launch_speed' },
@@ -56,10 +57,13 @@ function getAxisOption(key: AxisKey): AxisOption {
   return AXIS_OPTIONS.find(a => a.key === key)!
 }
 
+const NEGATE_FIELDS = new Set(['pfx_x', 'plate_x'])
+
 function getFieldValue(d: any, opt: AxisOption): number | null {
   const raw = d[opt.field]
   if (raw == null) return null
-  return opt.multiplier ? raw * opt.multiplier : raw
+  const val = opt.multiplier ? raw * opt.multiplier : raw
+  return NEGATE_FIELDS.has(opt.field) ? toPitcherX(val) : val
 }
 
 function sampleData(arr: any[], max: number): any[] {

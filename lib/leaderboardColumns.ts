@@ -169,7 +169,7 @@ export const COLUMNS: Record<string, ColumnDef[]> = {
   // ── PITCHING ───────────────────────────────────────────────────
   'pitching:traditional': [pitcherName, pitcherId, games, ip, pa, pitches, h, doubles, triples, hr, bb, k, hbp, ba, obp, slg, ops, kPct, bbPct, re24],
   'pitching:advanced': [pitcherName, pitcherId, pitches, kPct, bbPct, kMinusBb, whiffPct, swstrPct, cswPct, xba, xwoba, xslg, woba, re24, sos],
-  'pitching:stuff': [pitcherName, pitcherId, pitches, velo, maxVelo, spin, hBreak, ivb, ext, armAngle, whiffPct, cswPct],
+  'pitching:stuff': [pitcherName, pitcherId, pitches, spin, hBreak, ivb, ext, armAngle, whiffPct, cswPct],
   'pitching:battedball': [pitcherName, pitcherId, pitches, avgEv, maxEv, avgLa, hardHit, barrel, gbPct, fbPct, ldPct, puPct],
   'pitching:discipline': [pitcherName, pitcherId, pitches, zonePct, chasePct, whiffPct, swstrPct, cswPct, contactPct, zSwingPct, oContactPct],
 

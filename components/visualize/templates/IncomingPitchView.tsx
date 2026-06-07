@@ -86,7 +86,8 @@ function worldToCanvas(
   centerX: number, centerY: number,
 ): { x: number; y: number } {
   const dy = Math.max(wy - CAMERA_Y, 0.01)
-  const dx = wx
+  // Negate dx to convert from Statcast catcher-perspective to pitcher's perspective
+  const dx = -wx
   const dz = wz - CAMERA_Z
   return {
     x: centerX + (dx / dy) * focalLength,

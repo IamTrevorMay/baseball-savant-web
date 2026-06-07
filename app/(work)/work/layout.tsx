@@ -8,13 +8,14 @@ export default async function WorkLayout({ children }: { children: React.ReactNo
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [{ data: triton }, { data: workRole }] = await Promise.all([
+  const [{ data: triton }, { data: workRole }, { data: perm }] = await Promise.all([
     supabaseAdmin.from('profiles').select('role').eq('id', user.id).single(),
     supabaseAdmin.from('work_roles').select('role').eq('user_id', user.id).maybeSingle(),
+    supabaseAdmin.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'work').single(),
   ])
 
   const isTritonAdmin = triton?.role === 'owner' || triton?.role === 'admin'
-  if (!isTritonAdmin && !workRole) redirect('/?denied=work')
+  if (!isTritonAdmin && !workRole && !perm) redirect('/?denied=work')
 
   // Triton admins without an explicit work_role default to work-admin behavior.
   const role: 'admin' | 'assistant' | 'member' = (workRole?.role as any) ?? (isTritonAdmin ? 'admin' : 'member')

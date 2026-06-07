@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { Line, Text } from '@react-three/drei'
 import { PitchKinematics, computeTrajectory, TrajectoryPoint } from '@/lib/trajectoryPhysics'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 interface AnnotationFlags {
   showVAA: boolean
@@ -171,7 +172,7 @@ export default function Annotations({ kinematics, annotations, progress, pitchCo
             anchorX="left"
             anchorY="middle"
           >
-            {`HB: ${pfx_x_in.toFixed(1)} in`}
+            {`HB: ${toPitcherX(pfx_x_in).toFixed(1)} in`}
           </Text>
 
           {/* Induced vertical break arrow */}

@@ -1,6 +1,7 @@
 'use client'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '../chartConfig'
+import { toPitcherX, MOVEMENT_X_TITLE } from '@/lib/pitcherPerspective'
 
 export default function PitchMovement({ data }: { data: any[] }) {
   const f = data.filter(d => d.pfx_x != null && d.pfx_z != null && d.pitch_name)
@@ -11,7 +12,7 @@ export default function PitchMovement({ data }: { data: any[] }) {
   const traces = pitchTypes.map(pt => {
     const pts = f.filter(d => d.pitch_name === pt)
     return {
-      x: pts.map(d => d.pfx_x * 12), y: pts.map(d => d.pfx_z * 12),
+      x: pts.map(d => toPitcherX(d.pfx_x) * 12), y: pts.map(d => d.pfx_z * 12),
       type: 'scatter' as any, mode: 'markers' as any,
       name: pt,
       marker: { color: getPitchColor(pt), size: 5, opacity: 0.6 },
@@ -22,7 +23,7 @@ export default function PitchMovement({ data }: { data: any[] }) {
   const layout = {
     ...BASE_LAYOUT,
     title: { text: 'Pitch Movement', font: { size: 14, color: COLORS.textLight } },
-    xaxis: { ...BASE_LAYOUT.xaxis, title: 'Horizontal Break (in) — Catcher View (+x → 1B)', zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1 },
+    xaxis: { ...BASE_LAYOUT.xaxis, title: MOVEMENT_X_TITLE, zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1 },
     yaxis: { ...BASE_LAYOUT.yaxis, title: 'Induced Vertical Break (in)', zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1 },
     height: 500,
     legend: { ...BASE_LAYOUT.legend, x: 1, xanchor: 'right', y: 1 },

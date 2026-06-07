@@ -2,14 +2,16 @@
 import Plot from '../PlotWrapper'
 import { COLORS } from '../chartConfig'
 import type { HitterZoneScore, BatterZone } from '@/lib/engines/types'
+import { toPitcherZoneCoords } from '@/lib/pitcherPerspective'
 
-const ZONE_COORDS: Record<number, { x: number; z: number }> = {
+const ZONE_COORDS_RAW: Record<number, { x: number; z: number }> = {
   1: { x: -0.472, z: 3.167 }, 2: { x: 0, z: 3.167 }, 3: { x: 0.472, z: 3.167 },
   4: { x: -0.472, z: 2.5 },   5: { x: 0, z: 2.5 },   6: { x: 0.472, z: 2.5 },
   7: { x: -0.472, z: 1.833 }, 8: { x: 0, z: 1.833 }, 9: { x: 0.472, z: 1.833 },
   11: { x: -1.0, z: 3.7 },  12: { x: 1.0, z: 3.7 },
   13: { x: -1.0, z: 1.3 },  14: { x: 1.0, z: 1.3 },
 }
+const ZONE_COORDS = toPitcherZoneCoords(ZONE_COORDS_RAW)
 
 const ZONE_SHAPES = [
   { type: 'rect' as const, x0: -0.708, x1: 0.708, y0: 1.5, y1: 3.5, line: { color: '#fff', width: 2 }, fillcolor: 'transparent' },

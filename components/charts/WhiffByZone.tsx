@@ -1,6 +1,7 @@
 'use client'
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '../chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 export default function WhiffByZone({ data }: { data: any[] }) {
   const f = data.filter(d => d.zone != null && d.description)
@@ -19,11 +20,11 @@ export default function WhiffByZone({ data }: { data: any[] }) {
   })
 
   const zonePos: Record<number, [number, number]> = {
-    1:[-0.472,3.167],2:[0,3.167],3:[0.472,3.167],
-    4:[-0.472,2.5],5:[0,2.5],6:[0.472,2.5],
-    7:[-0.472,1.833],8:[0,1.833],9:[0.472,1.833],
-    11:[-0.472,3.8],12:[0.472,3.8],
-    13:[-0.472,1.1],14:[0.472,1.1],
+    1:[toPitcherX(-0.472),3.167],2:[0,3.167],3:[toPitcherX(0.472),3.167],
+    4:[toPitcherX(-0.472),2.5],5:[0,2.5],6:[toPitcherX(0.472),2.5],
+    7:[toPitcherX(-0.472),1.833],8:[0,1.833],9:[toPitcherX(0.472),1.833],
+    11:[toPitcherX(-0.472),3.8],12:[toPitcherX(0.472),3.8],
+    13:[toPitcherX(-0.472),1.1],14:[toPitcherX(0.472),1.1],
   }
 
   const zX: number[] = [], zY: number[] = [], zColors: number[] = [], zText: string[] = []

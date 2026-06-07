@@ -3,6 +3,7 @@ import { useMemo, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
+import { toPitcherX, RELEASE_X_TITLE } from '@/lib/pitcherPerspective'
 
 interface TemplateProps {
   data: any[]
@@ -53,7 +54,7 @@ export default function ReleasePoint({ data, playerName, quality }: TemplateProp
     const allTraces: any[] = []
 
     for (const [name, pitches] of sorted) {
-      const xs = pitches.map((d: any) => d.release_pos_x as number)
+      const xs = pitches.map((d: any) => toPitcherX(d.release_pos_x as number))
       const zs = pitches.map((d: any) => d.release_pos_z as number)
       const color = getPitchColor(name)
       const meanX = xs.reduce((a: number, b: number) => a + b, 0) / xs.length
@@ -113,7 +114,7 @@ export default function ReleasePoint({ data, playerName, quality }: TemplateProp
     },
     xaxis: {
       ...BASE_LAYOUT.xaxis,
-      title: 'Horizontal Release (ft) — Catcher View',
+      title: RELEASE_X_TITLE,
       zeroline: true, zerolinecolor: '#52525b', zerolinewidth: 1,
     },
     yaxis: {
@@ -126,7 +127,7 @@ export default function ReleasePoint({ data, playerName, quality }: TemplateProp
     margin: { t: 45, r: 130, b: 50, l: 60 },
     annotations: [{
       x: 0.5, y: -0.1, xref: 'paper' as const, yref: 'paper' as const,
-      text: 'Dashed ellipse = 1σ spread • Cross = mean • +x = toward 1B (catcher view)', font: { size: 9, color: COLORS.text }, showarrow: false,
+      text: 'Dashed ellipse = 1σ spread • Cross = mean • Pitcher\u2019s perspective', font: { size: 9, color: COLORS.text }, showarrow: false,
     }],
   }
 

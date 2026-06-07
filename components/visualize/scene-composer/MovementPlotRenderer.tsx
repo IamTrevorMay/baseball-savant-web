@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { getPitchColor } from '@/components/chartConfig'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 interface MovementPitch {
   hb: number   // horizontal break in inches
@@ -27,13 +28,15 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Normalize pitches: accept hb/ivb (correct) or pfx_x/pfx_z (Statcast raw, in feet → convert to inches)
   const pitches: MovementPitch[] = (p.pitches || []).map((pt: any) => {
-    if (pt.hb !== undefined && pt.ivb !== undefined) return pt as MovementPitch
+    if (pt.hb !== undefined && pt.ivb !== undefined) {
+      return { ...pt, hb: toPitcherX(pt.hb) } as MovementPitch
+    }
     // Fallback: pfx_x/pfx_z in feet → multiply by 12 for inches
     const rawHb = pt.pfx_x ?? pt.hb ?? 0
     const rawIvb = pt.pfx_z ?? pt.ivb ?? 0
     const needsConversion = Math.abs(rawHb) < 5 && Math.abs(rawIvb) < 5 // heuristic: feet if values are small
     return {
-      hb: needsConversion ? rawHb * 12 : rawHb,
+      hb: toPitcherX(needsConversion ? rawHb * 12 : rawHb),
       ivb: needsConversion ? rawIvb * 12 : rawIvb,
       pitch_name: pt.pitch_name || 'Unknown',
     }
@@ -143,14 +146,14 @@ export default function MovementPlotRenderer({ props: p, width, height }: Props)
     ctx.fillText('Drop', cx, height - pad + 4)
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
-    ctx.fillText('Glove', pad - 4, cy)
+    ctx.fillText('1B', pad - 4, cy)
     ctx.textAlign = 'left'
-    ctx.fillText('Arm', width - pad + 4, cy)
+    ctx.fillText('3B', width - pad + 4, cy)
 
     // Season shapes (ellipses: avg ± 1 stddev)
     if (showSeasonShapes && seasonShapes.length > 0) {
       for (const shape of seasonShapes) {
-        const sx = toX(shape.avg_hb)
+        const sx = toX(toPitcherX(shape.avg_hb))
         const sy = toY(shape.avg_ivb)
         const rx = (shape.std_hb / (maxRange * 2)) * plotW
         const ry = (shape.std_ivb / (maxRange * 2)) * plotH

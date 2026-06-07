@@ -37,7 +37,7 @@ export default function GameLogTab({ data }: { data: any[] }) {
     }
   }).sort((a, b) => b.date.localeCompare(a.date))
 
-  const colCount = 10 // chevron + 9 data columns
+  const colCount = 8 // chevron + 7 data columns
 
   return (
     <div className="bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden">
@@ -48,8 +48,6 @@ export default function GameLogTab({ data }: { data: any[] }) {
             <th className="text-left px-4 py-2"><Tip label="Date" col="game_date" /></th>
             <th className="text-left px-4 py-2">Matchup</th>
             <th className="text-right px-4 py-2"><Tip label="Pitches" /></th>
-            <th className="text-right px-4 py-2"><Tip label="Avg Velo" /></th>
-            <th className="text-right px-4 py-2"><Tip label="Max Velo" /></th>
             <th className="text-right px-4 py-2"><Tip label="K" /></th>
             <th className="text-right px-4 py-2"><Tip label="BB" /></th>
             <th className="text-right px-4 py-2"><Tip label="H" /></th>
@@ -78,8 +76,6 @@ export default function GameLogTab({ data }: { data: any[] }) {
                   <td className="px-4 py-2 text-sm text-white font-mono">{r.date}</td>
                   <td className="px-4 py-2 text-sm text-zinc-400">{r.opponent}</td>
                   <td className="px-4 py-2 text-sm text-zinc-400 text-right font-mono">{r.pitches}</td>
-                  <td className="px-4 py-2 text-sm text-amber-400 text-right font-mono">{r.avgVelo}</td>
-                  <td className="px-4 py-2 text-sm text-amber-400/70 text-right font-mono">{r.maxVelo}</td>
                   <td className="px-4 py-2 text-sm text-emerald-400 text-right font-mono">{r.ks}</td>
                   <td className="px-4 py-2 text-sm text-red-400 text-right font-mono">{r.bbs}</td>
                   <td className="px-4 py-2 text-sm text-sky-400 text-right font-mono">{r.hits}</td>

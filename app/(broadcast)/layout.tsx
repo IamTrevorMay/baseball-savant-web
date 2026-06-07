@@ -12,7 +12,7 @@ export default async function BroadcastLayout({ children }: { children: React.Re
 
   const [{ data: profile }, { data: perm }] = await Promise.all([
     supabaseAdmin.from('profiles').select('role').eq('id', user.id).single(),
-    supabaseAdmin.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'broadcast').single(),
+    supabaseAdmin.from('tool_permissions').select('id').eq('user_id', user.id).eq('tool', 'design').single(),
   ])
 
   const isPrivileged = profile?.role === 'owner' || profile?.role === 'admin'

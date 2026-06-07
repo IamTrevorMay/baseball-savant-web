@@ -3,6 +3,7 @@ import { useMemo, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
+import { toPitcherX, MOVEMENT_X_TITLE } from '@/lib/pitcherPerspective'
 
 interface TemplateProps {
   data: any[]
@@ -79,7 +80,7 @@ export default function ArsenalOverlay({
     const sorted = [...typeMap.entries()].sort((a, b) => b[1].length - a[1].length)
 
     const pitchStats: PitchStats[] = sorted.map(([name, pitches]) => {
-      const xVals = pitches.map(d => (d.pfx_x as number) * 12)
+      const xVals = pitches.map(d => toPitcherX(d.pfx_x as number) * 12)
       const yVals = pitches.map(d => (d.pfx_z as number) * 12)
       const meanX = xVals.reduce((a, b) => a + b, 0) / xVals.length
       const meanY = yVals.reduce((a, b) => a + b, 0) / yVals.length
@@ -184,7 +185,7 @@ export default function ArsenalOverlay({
     },
     xaxis: {
       ...BASE_LAYOUT.xaxis,
-      title: 'Horizontal Break (in) — Catcher View',
+      title: MOVEMENT_X_TITLE,
       zeroline: true,
       zerolinecolor: '#52525b',
       zerolinewidth: 1.5,
@@ -210,7 +211,7 @@ export default function ArsenalOverlay({
         y: -0.1,
         xref: 'paper' as const,
         yref: 'paper' as const,
-        text: 'Dashed ellipse = 1\u03c3 spread \u2022 Cross = mean \u2022 +x = toward 1B (catcher view)',
+        text: 'Dashed ellipse = 1\u03c3 spread \u2022 Cross = mean \u2022 Pitcher\u2019s perspective',
         font: { size: 9, color: COLORS.text },
         showarrow: false,
       },

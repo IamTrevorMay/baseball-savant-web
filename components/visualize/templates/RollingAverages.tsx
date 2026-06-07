@@ -3,6 +3,7 @@ import { useMemo, useState, RefObject } from 'react'
 import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
+import { toPitcherX } from '@/lib/pitcherPerspective'
 
 interface TemplateProps {
   data: any[]
@@ -18,7 +19,7 @@ const METRICS: { id: Metric; label: string; unit: string }[] = [
   { id: 'release_speed', label: 'Velocity', unit: 'mph' },
   { id: 'release_spin_rate', label: 'Spin Rate', unit: 'rpm' },
   { id: 'pfx_z_in', label: 'Induced Vertical Break', unit: 'in' },
-  { id: 'pfx_x_in', label: 'Horizontal Break (+ → 1B)', unit: 'in' },
+  { id: 'pfx_x_in', label: 'Horizontal Break', unit: 'in' },
   { id: 'vaa', label: 'Vertical Approach Angle', unit: '°' },
   { id: 'release_extension', label: 'Extension', unit: 'ft' },
 ]
@@ -64,7 +65,10 @@ export default function RollingAverages({ data, playerName, quality }: TemplateP
 
     for (const [name, pitches] of types) {
       if (pitches.length < 3) continue
-      const values = pitches.map((d: any) => d[metric] as number | null)
+      const values = pitches.map((d: any) => {
+        const v = d[metric] as number | null
+        return v != null && metric === 'pfx_x_in' ? toPitcherX(v) : v
+      })
       const dates = pitches.map((d: any) => d.game_date as string)
       const rolling = rollingAvg(values, window)
       const color = getPitchColor(name)
