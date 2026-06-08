@@ -53,14 +53,14 @@ Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches
 6. **Unit tests for core math** — `computeFIP`, `computeXERA`, `computeWRCPlus` (sql.ts) and `computeOutingCommand` (outingCommand.ts) — 23 new tests
 7. **Zod schema validation** — schemas for player-data, pitcher-outing, movement-percentiles, scene-stats routes; graceful degradation (log + return raw on validation failure)
 
+### Work Board Fixes (June 2026)
+- **MyBoard duplicate card creation** — added `useRef` guard (`creatingRef`) so Enter + blur can't both fire `createTask`
+- **MyBoard delete error handling** — optimistic UI with snapshot rollback + toast notification on failure
+- **MyBoard drag-and-drop** — full `@hello-pangea/dnd` integration with `Droppable` columns + `Draggable` cards, position reindexing, optimistic updates
+
 ## Planned
 
 ### Near-term
-- Fix Work board duplicate card creation (`onKeyDown` + `onBlur` both fire `createTask`; needs `useRef` guard)
-- Fix Work board delete failing silently (no error surfaced to user)
-- Add drag-and-drop to MyBoard (only WorkBoard sprint view has DnD currently)
-
-### Long-term
 - Build out Work app placeholder pages (Resources, Jobs, Assessments)
 
 ---
@@ -116,9 +116,6 @@ In-memory sliding window limiter in `lib/rateLimit.ts`, applied to broadcast tri
 
 | Issue | Area | Notes |
 |-------|------|-------|
-| Work board: duplicate card creation | Work | `onKeyDown` + `onBlur` both fire `createTask`; needs `useRef` guard |
-| Work board: delete fails silently | Work | No error surfaced to user on delete failure |
-| Work board: no drag-and-drop on MyBoard | Work | Only WorkBoard (sprint view) has DnD via `@hello-pangea/dnd` |
 | Work app placeholder pages | Work | Resources, Jobs, Assessments are placeholder pages |
 
 ## Architecture Notes
@@ -164,7 +161,6 @@ In-memory sliding window limiter in `lib/rateLimit.ts`, applied to broadcast tri
 
 ## Open Risks
 
-- Work board bugs (duplicate creation, silent delete failure) affect daily use
 - Work app placeholder pages give incomplete impression of the product
 - No error aggregation (Sentry, etc.) — production errors visible only in Vercel logs
 - Integration test and CI coverage still needed (unit tests added for core math)
