@@ -43,6 +43,34 @@ export async function setCache(key: string, response: any, opts?: CacheOptions):
 }
 
 /**
+ * Registry mapping data sources to their cache key prefixes.
+ * When a source is updated (e.g. by cron), all its prefixes should be invalidated.
+ *
+ * Key naming convention:
+ * - `trends:` — trend/sparkline queries (pitches table)
+ * - `mvpct:` — movement percentile breakpoints (pitches table)
+ * - `player:` — player-level aggregation caches (pitches table)
+ * - `scene:` — scene-stats caches (pitches table)
+ * - `milb:` — MiLB-specific caches (milb_pitches table)
+ * - `league:` — league average caches (league_averages table)
+ * - `pctile:` — percentile breakpoint caches (league_percentiles table)
+ */
+export const CACHE_TAG_REGISTRY = {
+  pitches: ['trends:', 'mvpct:', 'player:', 'scene:'],
+  milb_pitches: ['milb:'],
+  league_averages: ['league:', 'pctile:'],
+} as const
+
+/**
+ * Invalidate all cache entries for a given data source.
+ * Loops through all prefixes registered to that source.
+ */
+export async function invalidateBySource(source: keyof typeof CACHE_TAG_REGISTRY): Promise<void> {
+  const prefixes = CACHE_TAG_REGISTRY[source]
+  await Promise.all(prefixes.map(p => invalidateCache(p)))
+}
+
+/**
  * Invalidate cache entries matching a prefix (e.g., "trends:" clears all trends caches).
  */
 export async function invalidateCache(prefix: string): Promise<void> {

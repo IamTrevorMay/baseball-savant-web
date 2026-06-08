@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export default async function DataLayout({ children }: { children: React.ReactNode }) {
   // Dev bypass: set DATA_DEV_BYPASS=1 in .env.local to skip auth gate locally.
@@ -23,7 +24,9 @@ export default async function DataLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
-      {children}
+      <ErrorBoundary>
+        {children}
+      </ErrorBoundary>
     </div>
   )
 }

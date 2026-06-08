@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { getCached, setCache } from '@/lib/queryCache'
+import { parseMovementPercentilesRows } from '@/lib/schemas/movementPercentiles'
 
 /**
  * GET /api/movement-percentiles?season=2026&hand=R&entries=FF:95.5,SI:93.2,SL:87.1
@@ -87,8 +88,9 @@ GROUP BY pitch_type`
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Filter out pitch types that didn't meet the 20-pitcher minimum
-  const results = (data || []).filter(
+  // Validate schema, then filter out pitch types that didn't meet the 20-pitcher minimum
+  const validated = parseMovementPercentilesRows(data || [])
+  const results = (validated as any[]).filter(
     (r: any) => r.hb_breakpoints != null && r.ivb_breakpoints != null
   )
 

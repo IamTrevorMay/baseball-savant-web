@@ -42,6 +42,17 @@ Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches
 - **Resilience Score composite** — Run Diff (70%) + Close-Game Win% (30%) → R² = 0.929, best predictor tested
 - **Conversion Bucket Metrics** — Edge Rate strongest single momentum-derived metric (r = 0.757)
 
+### Infrastructure Quick Wins (June 2026)
+7 items from the inefficiency audit implemented in a single batch:
+
+1. **Toast notifications + Error boundaries** — `ToastProvider` in root layout, `ErrorBoundary` wrapping Work, Broadcast, and Data route groups
+2. **Cron pipeline hardening** — skip downstream steps when no new pitches ingested; dependency gate (all compute failures → skip league_averages); MV freshness tracked in `system_metadata` table
+3. **Cache invalidation tags** — `CACHE_TAG_REGISTRY` in `lib/queryCache.ts` maps data sources → cache key prefixes; `invalidateBySource()` replaces manual prefix invalidation
+4. **MiLB event normalization** — `EVENT_NORMALIZE_MAP` in MiLB ingest converts Title Case events to MLB lowercase at write time
+5. **Rate limiting on broadcast trigger** — in-memory sliding window limiter (`lib/rateLimit.ts`), 60 req/min per session ID, returns 429 with Retry-After header
+6. **Unit tests for core math** — `computeFIP`, `computeXERA`, `computeWRCPlus` (sql.ts) and `computeOutingCommand` (outingCommand.ts) — 23 new tests
+7. **Zod schema validation** — schemas for player-data, pitcher-outing, movement-percentiles, scene-stats routes; graceful degradation (log + return raw on validation failure)
+
 ## Planned
 
 ### Near-term
@@ -51,6 +62,55 @@ Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches
 
 ### Long-term
 - Build out Work app placeholder pages (Resources, Jobs, Assessments)
+
+---
+
+## Improvement Priorities
+
+Findings from the June 2026 inefficiency audit. Items below are validated recommendations — speculative or inapplicable suggestions from the original report have been filtered out.
+
+### ~~Agreed — Cron Pipeline Hardening~~ ✓ Done
+Freshness check, dependency gating, MV timestamp tracking in `system_metadata`.
+
+### ~~Agreed — Cache Invalidation Strategy~~ ✓ Done
+`CACHE_TAG_REGISTRY` + `invalidateBySource()` in `lib/queryCache.ts`.
+
+### Agreed — Broadcast Context Decomposition
+`BroadcastContext.tsx` manages project, assets, segments, sessions, visibility, animations, slideshows, widgets, OBS, clip markers, and access control in a single context. This is the most bloated single component in the codebase.
+
+**Action items:**
+- Split into focused stores: assets, session/visibility, widgets, OBS/recording
+- Use React context composition (multiple providers) to reduce re-render blast radius
+
+### ~~Agreed — MiLB Event Normalization at Ingest~~ ✓ Done
+`EVENT_NORMALIZE_MAP` applied at write time in `app/api/update/milb/route.ts`.
+
+### Agreed — Observability
+No structured logging, no request tracing, no error aggregation, no query performance monitoring. `cron_runs` tracking and `console.error` are the only signals.
+
+**Action items:**
+- Add Sentry (or similar) for error aggregation with source maps
+- Add structured logging for API routes (request duration, query count, cache hit/miss)
+- Surface cron job health in admin dashboard (last run, duration, error count)
+
+### ~~Additional — Error Boundaries & User Feedback~~ ✓ Done
+`ToastProvider` + `useToast()` in root layout; `ErrorBoundary` wrapping Work, Broadcast, Data route groups.
+
+### ~~Additional — Type Safety on `run_query` Results~~ ✓ Done
+Zod schemas in `lib/schemas/` for player-data, pitcher-outing, movement-percentiles, scene-stats. Graceful degradation on validation failure.
+
+### ~~Additional — Test Coverage~~ ✓ Partially Done
+Unit tests added for `lib/sql.ts` (FIP, xERA, wRC+) and `lib/outingCommand.ts`. Remaining: integration tests for API routes, CI setup.
+
+### ~~Additional — Rate Limiting on Public Endpoints~~ ✓ Done
+In-memory sliding window limiter in `lib/rateLimit.ts`, applied to broadcast trigger (60/min per session ID).
+
+### Additional — Connection Pooling
+`supabaseAdminLong` uses 120s timeouts for season-wide scans. Multiple concurrent users hitting heavy routes could exhaust Supabase's connection pool.
+
+**Action items:**
+- Enable Supabase pgBouncer mode for connection pooling
+- Add request-level queuing or concurrency limits for expensive queries
 
 ## Known Issues
 
@@ -75,7 +135,8 @@ Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches
 
 ### Database
 - **pitches**: 8.65M rows, 90+ columns, 4.9GB data, ~5GB indexes (29 indexes after Tier 2)
-- **milb_pitches**: parallel MiLB data (2023+), Title Case events vs MLB lowercase
+- **milb_pitches**: parallel MiLB data (2023+), events normalized to MLB lowercase at ingest
+- **system_metadata**: key/value store for freshness tracking (e.g., `mv_last_refreshed`)
 - **players**: 4,017 rows — use for name lookups instead of pitches table
 - **Materialized views**: 7 MVs refreshed nightly by cron job
 - **league_averages**: 50th-percentile benchmarks, refreshed by `refresh_league_averages(p_season)`
@@ -105,3 +166,6 @@ Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches
 
 - Work board bugs (duplicate creation, silent delete failure) affect daily use
 - Work app placeholder pages give incomplete impression of the product
+- No error aggregation (Sentry, etc.) — production errors visible only in Vercel logs
+- Integration test and CI coverage still needed (unit tests added for core math)
+- `BroadcastContext.tsx` (1,438 lines) — needs decomposition into focused stores

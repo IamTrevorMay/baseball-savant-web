@@ -5,6 +5,7 @@ import AuthProvider from '@/components/AuthProvider'
 import QueryProvider from '@/lib/QueryProvider'
 import { DeviceProvider } from '@/lib/hooks/useDeviceContext'
 import { ThemeProvider } from '@/lib/hooks/useTheme'
+import { ToastProvider } from '@/components/ui/Toast'
 import MobileTabBar from '@/components/MobileTabBar'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
 import { Analytics } from '@vercel/analytics/next'
@@ -47,8 +48,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <DeviceProvider>
               <ThemeProvider>
-                {children}
-                <MobileTabBar />
+                <ToastProvider>
+                  {children}
+                  <MobileTabBar />
+                </ToastProvider>
               </ThemeProvider>
             </DeviceProvider>
           </AuthProvider>

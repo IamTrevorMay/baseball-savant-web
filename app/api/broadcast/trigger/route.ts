@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { checkRateLimit } from '@/lib/rateLimit'
 import type { BroadcastSession } from '@/lib/broadcastTypes'
 
 const VALID_ACTIONS = ['toggle', 'show', 'hide', 'slideshow_next', 'slideshow_prev', 'slideshow_visible_next', 'slideshow_visible_prev', 'topic_next', 'topic_prev', 'countdown_start', 'countdown_stop', 'countdown_preset', 'lowerthird_clear', 'clip_short_in', 'clip_short_out', 'clip_long_in', 'clip_long_out', 'producer_panel_show', 'producer_panel_hide'] as const
@@ -20,6 +21,15 @@ export async function GET(req: NextRequest) {
     }
     if (!aid && !aidOptionalActions.includes(action)) {
       return NextResponse.json({ error: 'aid is required for this action' }, { status: 400 })
+    }
+
+    // Rate limit: 60 requests per minute per session ID
+    const rl = checkRateLimit(sid, 60, 60_000)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs ?? 1000) / 1000)) } },
+      )
     }
 
     // Fetch session — session ID acts as capability token (no auth required)

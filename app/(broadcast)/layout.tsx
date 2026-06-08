@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import BroadcastNav from '@/components/broadcast/BroadcastNav'
 import TridentLogo from '@/components/TridentLogo'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export default async function BroadcastLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -27,7 +28,9 @@ export default async function BroadcastLayout({ children }: { children: React.Re
         <span className="font-[family-name:var(--font-bebas)] text-red-400 tracking-wide text-sm">Broadcast</span>
         <BroadcastNav />
       </nav>
-      {children}
+      <ErrorBoundary>
+        {children}
+      </ErrorBoundary>
     </div>
   )
 }

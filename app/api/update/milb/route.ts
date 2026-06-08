@@ -70,6 +70,33 @@ const TYPE_MAP: Record<string, string> = {
   V: 'B',   // Automatic ball (violation)
 }
 
+// MiLB Title Case events → MLB lowercase event normalization
+const EVENT_NORMALIZE_MAP: Record<string, string> = {
+  'Strikeout': 'strikeout',
+  'Walk': 'walk',
+  'Single': 'single',
+  'Double': 'double',
+  'Triple': 'triple',
+  'Home Run': 'home_run',
+  'Groundout': 'field_out',
+  'Flyout': 'field_out',
+  'Lineout': 'field_out',
+  'Pop Out': 'field_out',
+  'Forceout': 'field_out',
+  'Grounded Into DP': 'grounded_into_double_play',
+  'Double Play': 'double_play',
+  'Sac Fly': 'sac_fly',
+  'Sac Bunt': 'sac_bunt',
+  'Field Error': 'field_error',
+  'Hit By Pitch': 'hit_by_pitch',
+  'Intent Walk': 'intent_walk',
+  'Fielders Choice': 'fielders_choice',
+  'Fielders Choice Out': 'fielders_choice_out',
+  'Caught Stealing 2B': 'caught_stealing_2b',
+  'Strikeout Double Play': 'strikeout_double_play',
+  'Runner Out': 'runner_out',
+}
+
 // hitData.trajectory → bb_type mapping
 const BB_TYPE_MAP: Record<string, string> = {
   ground_ball: 'ground_ball',
@@ -207,7 +234,7 @@ async function extractPitchesFromGame(
         // Pitch result
         description: details.description ? (DESCRIPTION_MAP[details.description] || details.description) : null,
         type: details.call?.code ? (TYPE_MAP[details.call.code] || null) : null,
-        events: event,
+        events: event ? (EVENT_NORMALIZE_MAP[event] ?? event.toLowerCase().replace(/ /g, '_')) : null,
 
         // Velocity
         release_speed: pd.startSpeed ?? null,

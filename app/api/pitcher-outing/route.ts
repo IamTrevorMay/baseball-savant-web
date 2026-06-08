@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
 import { computeStuffRV } from '@/lib/leagueStats'
+import { parsePitcherOutingRows } from '@/lib/schemas/pitcherOuting'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -116,8 +117,8 @@ export async function GET(req: NextRequest) {
     const { data: playerRow } = await q(`SELECT name FROM players WHERE id = ${pitcherId} LIMIT 1`)
     const pitcherName = playerRow?.[0]?.name || 'Unknown'
 
-    const allPitches: any[] = allPitchesRes.data || []
     if (allPitchesRes.error) return NextResponse.json({ error: allPitchesRes.error.message }, { status: 500 })
+    const allPitches: any[] = parsePitcherOutingRows(allPitchesRes.data || []) as any[]
 
     // Extract metadata from first row
     const firstRow = allPitches[0] || {}

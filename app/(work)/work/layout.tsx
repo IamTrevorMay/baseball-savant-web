@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import WorkNav from '@/components/work/WorkNav'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export default async function WorkLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -24,7 +25,9 @@ export default async function WorkLayout({ children }: { children: React.ReactNo
     <div className="h-screen bg-zinc-950 text-zinc-200 flex overflow-hidden">
       <WorkNav role={role} />
       <main className="flex-1 overflow-y-auto">
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
       </main>
     </div>
   )
