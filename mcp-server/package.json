@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "triton-mcp": "./build/index.js"
+    "triton-mcp": "./build/index.js",
+    "triton-mcp-http": "./build/http.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "start:http": "tsx src/http.ts",
+    "start:stdio": "tsx src/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
