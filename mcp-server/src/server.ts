@@ -75,11 +75,18 @@ export function createTritonServer(): McpServer {
     async ({ sql, long }) => {
       try {
         const rows = long ? await runQueryLong(sql) : await runQuery(sql);
+        if (rows.length === 0) {
+          return { content: [{ type: "text", text: "Summary: The query returned no results." }] };
+        }
+        const cols = Object.keys(rows[0]);
         const preview = rows.slice(0, 50);
-        const text = rows.length === 0
-          ? "No results."
-          : `${rows.length} rows returned${rows.length > 50 ? " (showing first 50)" : ""}:\n${JSON.stringify(preview, null, 2)}`;
-        return { content: [{ type: "text", text }] };
+        const summary = `Summary: Query returned ${rows.length.toLocaleString()} row${rows.length === 1 ? "" : "s"} with ${cols.length} column${cols.length === 1 ? "" : "s"} (${cols.slice(0, 6).join(", ")}${cols.length > 6 ? ", ..." : ""}).${rows.length > 50 ? " Showing first 50." : ""}`;
+        return {
+          content: [
+            { type: "text", text: summary },
+            { type: "text", text: JSON.stringify(preview, null, 2) },
+          ],
+        };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }] };
       }
@@ -104,8 +111,18 @@ export function createTritonServer(): McpServer {
           result_limit: limit || 10,
         });
         if (error) throw new Error(error.message);
-        if (!data || data.length === 0) return { content: [{ type: "text", text: `No players found matching "${name}".` }] };
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        if (!data || data.length === 0) {
+          return { content: [{ type: "text", text: `Summary: No players found matching "${name}".` }] };
+        }
+        const playerList = data.map((p: any) => `${p.player_name} (${p.player_position}, ID: ${p.player_id})`).join("; ");
+        const filterLabel = type && type !== "all" ? ` ${type}s` : " players";
+        const summary = `Summary: Found ${data.length}${filterLabel} matching "${name}" — ${playerList}.`;
+        return {
+          content: [
+            { type: "text", text: summary },
+            { type: "text", text: JSON.stringify(data, null, 2) },
+          ],
+        };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }] };
       }
@@ -126,7 +143,7 @@ export function createTritonServer(): McpServer {
     async ({ sql, filename, output_dir, long }) => {
       try {
         const rows = long ? await runQueryLong(sql) : await runQuery(sql);
-        if (rows.length === 0) return { content: [{ type: "text", text: "No results to export." }] };
+        if (rows.length === 0) return { content: [{ type: "text", text: "Summary: No results to export." }] };
 
         const csv = toCsv(rows);
         const dir = output_dir || path.join(process.env.HOME || "/tmp", "Desktop");
@@ -135,8 +152,13 @@ export function createTritonServer(): McpServer {
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(filePath, csv, "utf-8");
 
+        const cols = Object.keys(rows[0]);
+        const summary = `Summary: Exported ${rows.length.toLocaleString()} rows and ${cols.length} columns to ${filename}.csv.`;
         return {
-          content: [{ type: "text", text: `Exported ${rows.length} rows to ${filePath}` }],
+          content: [
+            { type: "text", text: summary },
+            { type: "text", text: `File saved to: ${filePath}` },
+          ],
         };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }] };
@@ -173,8 +195,12 @@ export function createTritonServer(): McpServer {
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(filePath, png);
 
+        const summary = `Summary: Rendered a ${scene.width}x${scene.height} graphic with ${scene.elements.length} element${scene.elements.length === 1 ? "" : "s"} to ${filename}.png.`;
         return {
-          content: [{ type: "text", text: `Rendered ${scene.width}x${scene.height} graphic to ${filePath}` }],
+          content: [
+            { type: "text", text: summary },
+            { type: "text", text: `File saved to: ${filePath}` },
+          ],
         };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Render error: ${err.message}\n\nNote: render_graphic requires the Triton project's dependencies. Run from the project root.` }] };
@@ -250,11 +276,18 @@ export function createTritonServer(): McpServer {
           stats.ops = stats.obp && stats.slg ? (parseFloat(stats.obp) + parseFloat(stats.slg)).toFixed(3) : null;
         }
 
+        const playerName = player?.name || `Player ${player_id}`;
+        let summary: string;
+        if (type === "pitcher") {
+          summary = `Summary: ${playerName} pitched in ${stats.games} games in ${year}, throwing ${Number(stats.pitches).toLocaleString()} pitches. He averaged ${stats.avg_velo} mph (max ${stats.max_velo}), struck out ${stats.k_pct}% of batters, walked ${stats.bb_pct}%, and had a ${stats.whiff_pct}% whiff rate. Opponents posted a ${stats.xwoba} xwOBA against him with a ${stats.hard_hit_pct}% hard-hit rate.${stats.avg_stuff_plus ? ` Average Stuff+ was ${stats.avg_stuff_plus}.` : ""}`;
+        } else {
+          summary = `Summary: ${playerName} played ${stats.games} games in ${year} with ${stats.pa} plate appearances. He hit ${stats.avg || "N/A"}/${stats.obp || "N/A"}/${stats.slg || "N/A"} (${stats.ops || "N/A"} OPS) with ${stats.hr} home runs and ${stats.hits} total hits. His average exit velocity was ${stats.avg_ev} mph at a ${stats.avg_la}-degree launch angle, with a ${stats.hard_hit_pct}% hard-hit rate and ${stats.barrel_pct}% barrel rate.${stats.bat_speed ? ` Bat speed averaged ${stats.bat_speed} mph.` : ""}`;
+        }
         return {
-          content: [{
-            type: "text",
-            text: `${player?.name || `Player ${player_id}`} — ${year} ${type === "pitcher" ? "Pitching" : "Hitting"} Stats:\n${JSON.stringify(stats, null, 2)}`,
-          }],
+          content: [
+            { type: "text", text: summary },
+            { type: "text", text: JSON.stringify(stats, null, 2) },
+          ],
         };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }] };
