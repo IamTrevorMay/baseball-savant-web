@@ -72,7 +72,63 @@ export function createTritonServer(): McpServer {
 
   server.tool(
     "query_database",
-    "Run a SQL query against the Triton baseball database. The database has 7.4M+ pitch rows (2015-2026) with 90+ columns including velocity, movement, location, events, and Statcast metrics. Key tables: pitches, players, game_umpires, umpire_challenges, pitcher_season_command, pitcher_season_deception, league_metric_baselines, daily_cards, briefs. Use run_query for fast queries, run_query_long for heavy ones (50k+ rows).",
+    `Run a SQL query against the Triton baseball database. Use run_query for fast queries, run_query_long for heavy ones (50k+ rows).
+
+Core Tables:
+- pitches: 7.4M+ Statcast rows (2015-2026), 90+ columns (velocity, movement, location, events, Statcast metrics)
+- milb_pitches: MiLB pitch data (2023+), Title Case events
+- wbc_pitches: World Baseball Classic pitch data
+- players: 4,017 players (id, name, position)
+- player_season_stats: aggregated season-level stats
+- player_summary: quick-lookup player summaries
+
+Pitching Analytics:
+- pitcher_season_command: per pitcher x pitch_type x year command metrics + plus stats
+- pitcher_season_deception: per pitcher x pitch_type x year deception/unique scores (2017+)
+- pitch_baselines / milb_pitch_baselines: pitch-level baselines
+- sos_scores / milb_sos_scores: strength-of-schedule scores
+- bullpen_pitchers: bullpen usage data
+
+League & Season:
+- league_averages: 50th-percentile benchmarks per season/level/role/metric
+- league_metric_baselines: league-wide metric baselines
+- league_percentiles: percentile distributions
+- season_constants: season-level constants (e.g. wOBA weights)
+- park_factors: park factor adjustments
+
+Historical (Lahman / Baseball Reference):
+- lahman_batting / lahman_batting_calc: historical batting stats + calculated metrics
+- lahman_pitching / lahman_pitching_calc: historical pitching stats + calculated metrics
+- lahman_fielding: historical fielding stats
+- lahman_people: player biographical data
+- lahman_halloffame: Hall of Fame voting records
+- lahman_allstars: All-Star appearances
+- lahman_awards: awards history
+
+Retrosheet (play-by-play):
+- retro_events: play-by-play event data
+- retro_games: game-level data
+- retro_rosters: historical rosters
+- retro_people: player IDs and bio
+- retro_parks: ballpark info
+- retro_starter_outings: starter game logs
+
+Defensive Metrics:
+- defensive_oaa: Outs Above Average
+- defensive_oaa_outfield: outfield OAA
+- defensive_arm_strength: arm strength data
+- defensive_catch_probability: catch probability
+- defensive_catcher_framing: catcher framing metrics
+- defensive_run_value: defensive run values
+
+Other:
+- game_scores: game-level scores
+- game_umpires / umpire_challenges: umpire data
+- sprint_speed: sprint speed leaderboard data
+- transactions: player transactions
+- glossary: stat definitions
+- daily_cards: daily content cards
+- briefs: scouting briefs`,
     {
       sql: z.string().describe("SQL SELECT query to execute"),
       long: z.boolean().optional().describe("Use long-running query (120s timeout) for heavy queries. Default false."),
