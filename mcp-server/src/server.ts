@@ -18,18 +18,23 @@ if (!SUPABASE_KEY) {
   console.error("Warning: SUPABASE_SERVICE_ROLE_KEY not set. Database tools will fail.");
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+function requireSupabase() {
+  if (!supabase) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set. Cannot connect to database.");
+  return supabase;
+}
+
 async function runQuery(sql: string): Promise<any[]> {
-  const { data, error } = await supabase.rpc("run_query", { query_text: sql.trim() });
+  const { data, error } = await requireSupabase().rpc("run_query", { query_text: sql.trim() });
   if (error) throw new Error(`Query failed: ${error.message}`);
   return data || [];
 }
 
 async function runQueryLong(sql: string): Promise<any[]> {
-  const { data, error } = await supabase.rpc("run_query_long", { query_text: sql.trim() });
+  const { data, error } = await requireSupabase().rpc("run_query_long", { query_text: sql.trim() });
   if (error) throw new Error(`Query failed: ${error.message}`);
   return data || [];
 }
@@ -106,7 +111,7 @@ export function createTritonServer(): McpServer {
     async ({ name, type, limit }) => {
       try {
         const rpcName = type === "batter" ? "search_batters" : type === "pitcher" ? "search_players" : "search_all_players";
-        const { data, error } = await supabase.rpc(rpcName, {
+        const { data, error } = await requireSupabase().rpc(rpcName, {
           search_term: name.trim(),
           result_limit: limit || 10,
         });
@@ -263,7 +268,7 @@ export function createTritonServer(): McpServer {
         }
 
         // Get player name
-        const { data: player } = await supabase.from("players").select("name").eq("id", player_id).single();
+        const { data: player } = await requireSupabase().from("players").select("name").eq("id", player_id).single();
         const stats = rows[0];
 
         // Compute derived stats for hitters
