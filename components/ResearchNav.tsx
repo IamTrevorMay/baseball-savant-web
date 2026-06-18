@@ -5,6 +5,7 @@ import GlobalPlayerSearch from '@/components/GlobalPlayerSearch'
 
 const PRIMARY_LINKS = [
   { href: '/home', label: 'Home' },
+  { href: '/hot', label: 'Hot' },
   { href: '/explore', label: 'Explore' },
   { href: '/pitchers', label: 'Pitchers' },
   { href: '/hitters', label: 'Hitters' },

@@ -33,6 +33,7 @@ Update the matching section whenever you touch one of these files:
 | `DataSchemaType`, `GlobalFilterType`, `ElementType`, format types | §8 |
 | New stats source table | §9 |
 | First time a new raw `pitches` column is referenced by an aggregation | §10 |
+| Anything in `scripts/create-retro-tables.sql` or new `retro_*` column | §11 |
 
 ### What an entry needs
 
@@ -369,6 +370,23 @@ Higher For % = better; lower Against % = better. `sd_for_% + r_against_%` and `s
 
 ---
 
+## 8.6 Hot — Relief Scoreless Streaks — `/api/hot`
+
+GET `?year=<2015..2026>` (default 2026) → `{ year, latestDate, active[], completed[] }`, each list the top 25 RP scoreless streaks ranked by scoreless `outs` then `outings`. Backs the `/(research)/hot` page. Regular season only (`game_type='R'`).
+
+| Key | Meaning |
+|---|---|
+| `year` | Query param. Single season; all streaks scoped within it. |
+| Appearance | One `(pitcher, game_pk)` row. **Runs charged** = `SUM(post_bat_score − bat_score)` over PA-ending pitches (run attributed to pitcher on the mound). Any run > 0 breaks the streak. |
+| `outs` | Outs recorded in the streak via an `events`→outs CASE (1 for outs/K/CS/PO, 2 for DPs, 3 for TP). Displayed as `ip` in X.Y baseball notation (`outs/3`). |
+| `outings` | Consecutive scoreless appearances in the streak. |
+| RP filter | SP if ≥3 games with `comp_pitches` (`COUNT(*)` excl `pitch_type IN ('PO','IN')`) ≥ 50 that season; else RP. Only RP kept. |
+| `active` | Streak still unbroken: the pitcher's trailing island and their most recent appearance was scoreless (idle days don't end it). Lives only in the `active` list. |
+| `completed` | Each pitcher's longest **ended** scoreless run that season (an active streak hasn't completed, so it's excluded here). |
+| `latestDate` | League's most recent regular-season date for the year — shown as the data-through date, no longer used to gate `active`. |
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |
@@ -382,6 +400,11 @@ Higher For % = better; lower Against % = better. `sd_for_% + r_against_%` and `s
 | `player_season_stats` | player × season × stat_group | 2015+ | ERA, W, L, SV, HLD, IP, ER, R, RBI, SB from MLB Stats API. Populated by `/api/cron/player-stats` nightly. |
 | `glossary` | metric definitions | — | UI tooltips |
 | `filter_templates` | saved filter configs | — | |
+| `retro_events` | one row per play | 1914+ (partial pre-1914) | Retrosheet PBP. See §11. |
+| `retro_games` | one row per game | 1871+ | Retrosheet game logs (authoritative) + cwgame supplement |
+| `retro_people` | one row per person | all eras | Chadwick Register + biofile |
+| `retro_id_map` (MV) | one row per retro_id | ~22K | retro_id ↔ mlbam_id ↔ bbref_id ↔ fg_id |
+| `retro_parks`, `retro_rosters`, `retro_id_map_conflicts`, `retro_ingest_runs` | support | — | See §11 |
 
 ---
 
@@ -405,9 +428,133 @@ When writing a new model or formula against the same labels, here are the raw co
 
 ---
 
+## 11. Retrosheet (`retro_*`) — Historical Tables
+
+Historical spine. Different grain from `pitches` (PA/play, not pitch). DDL: `scripts/create-retro-tables.sql`. Operator guide: `docs/retrosheet.md`. Spec: `retrosheet.planning.md`.
+
+**Attribution required:** any UI/API consuming retro_ data must display the Retrosheet notice (see `docs/retrosheet.md §Attribution requirement`).
+
+### 11.1 Tables
+
+| Table | Grain | Rows (target) | Source |
+|---|---|---|---|
+| `retro_people` | one per person | ~22K | Chadwick Register + Retrosheet biofile |
+| `retro_id_map` (MV) | one per retro_id | ~22K | Materialized view over `retro_people` |
+| `retro_id_map_conflicts` | one per ambiguity | 0 (ideal) | Populated by ingest when crosswalk multi-maps |
+| `retro_parks` | one per park | ~300 | Retrosheet `parkcode.txt` + manual MLBAM venue map |
+| `retro_rosters` | one per (player, team, season) | ~150K | Chadwick `cwroster` |
+| `retro_games` | one per game | ~220K | Retrosheet game logs (authoritative) + `cwgame` supplement |
+| `retro_events` | one per play | ~15M | Chadwick `cwevent` |
+| `retro_ingest_runs` | bookkeeping | per run | Ingest pipeline self-logs |
+
+### 11.2 Key columns — `retro_people`
+
+| Column | Notes |
+|---|---|
+| `retro_id` | 8-char Retrosheet ID, PK (e.g. `ruthb101`) |
+| `mlbam_id` | Maps to `pitches.pitcher`/`pitches.batter`. Nullable for pre-MLBAM-era players. |
+| `bbref_id` | Baseball-Reference ID |
+| `fg_id` | FanGraphs ID |
+| `name_first`, `name_last`, `name_given`, `name_suffix` | |
+| `birth_date`, `birth_city`, `birth_country`, `death_date` | |
+| `bats`, `throws` | `L`/`R`/`S` |
+| `debut_date`, `final_date` | MLB debut / final |
+| `source_version` | Chadwick Register release tag |
+
+### 11.3 Key columns — `retro_games`
+
+| Column | Notes |
+|---|---|
+| `game_id` | Retrosheet game ID, PK (e.g. `BOS201804040` = team + date + dh-number) |
+| `game_date`, `game_number` | |
+| `season` | Year, derived from `game_id` |
+| `home_team_id`, `away_team_id` | Retrosheet 3-char codes |
+| `home_league`, `away_league` | `AL`/`NL`/`FL`/`NNL`/`NAL`/etc. (Negro Leagues recognized as first-class) |
+| `park_id` | FK → `retro_parks` |
+| `home_score`, `away_score`, `innings` | |
+| `attendance`, `duration_min`, `temperature_f`, `wind_dir`, `wind_speed` | |
+| `winning_pitcher`, `losing_pitcher`, `save_pitcher` | retro_ids |
+| `home_manager`, `away_manager`, `ump_home_id`, `ump_1b_id`, `ump_2b_id`, `ump_3b_id` | retro_ids |
+| `source` | `gamelog` (default) or `gamelog+cwgame` |
+| `source_version` | Retrosheet release tag |
+
+### 11.4 Key columns — `retro_events` (the big one)
+
+| Column | Notes |
+|---|---|
+| `game_id`, `event_id` | Natural key; FK to `retro_games` |
+| `inning`, `bat_team` | `bat_team` = 0 (away) / 1 (home) |
+| `outs`, `balls`, `strikes`, `pitch_seq` | Counts at end of PA + pitch-by-pitch sequence string |
+| `batter_id`, `batter_hand`, `pitcher_id`, `pitcher_hand` | retro_ids + handedness |
+| `catcher_id`, `first_id`, `second_id`, `third_id`, `shortstop_id`, `left_id`, `center_id`, `right_id` | Defensive lineup at play time |
+| `runner_1b_id`, `runner_2b_id`, `runner_3b_id` | Baserunner retro_ids |
+| `event_text` | Raw Retrosheet event string (e.g. `S8/L`, `HR/F89D`) |
+| `event_type` | Chadwick coded event type 0–24 (3=K, 14=BB, 15=IBB, 16=HBP, 20=1B, 21=2B, 22=3B, 23=HR) |
+| `bat_event_flag` | True = PA-ending event |
+| `ab_flag` | True = counts as official AB |
+| `hit_value` | 0=out, 1=1B, 2=2B, 3=3B, 4=HR |
+| `sh_flag`, `sf_flag` | Sac hit / sac fly |
+| `outs_on_play`, `rbi_on_play` | |
+| `wp_flag`, `pb_flag` | Wild pitch / passed ball |
+| `batted_ball_type` | `F`/`G`/`L`/`P` (when known, post-~1989) |
+| `bunt_flag`, `foul_flag` | |
+| `batter_dest`, `runner_1b_dest`, `runner_2b_dest`, `runner_3b_dest` | 0=out, 1–4=base reached/scored |
+| `source_version` | Retrosheet release tag |
+| `raw` | Full Chadwick CSV row (jsonb) for forward-compat |
+
+### 11.5 Key columns — `retro_parks`
+
+| Column | Notes |
+|---|---|
+| `park_id` | 5-char Retrosheet code, PK (e.g. `BOS07` = Fenway) |
+| `name`, `aka`, `city`, `state`, `country` | |
+| `first_game`, `last_game` | `last_game` nullable for active parks |
+| `league` | |
+| `mlbam_venue_id` | **MLBAM venue ID for cross-era park queries.** Nullable; manually curated for ~30 active parks. |
+| `notes` | |
+
+### 11.6 Bridge usage
+
+`retro_id_map` is the canonical bridge between Statcast and Retrosheet. Always join through it; never assume `retro_id == mlbam_id`.
+
+```sql
+-- Statcast pitcher → Retrosheet career events
+SELECT e.*
+FROM pitches p
+JOIN retro_id_map m ON m.mlbam_id = p.pitcher
+JOIN retro_events e ON e.pitcher_id = m.retro_id
+WHERE p.pitcher = 434378;  -- Verlander
+```
+
+### 11.7 Common event_type codes (Chadwick `cwevent`)
+
+| Code | Event |
+|---|---|
+| 2 | Generic out |
+| 3 | Strikeout |
+| 14 | Walk (BB) |
+| 15 | Intentional walk (IBB) |
+| 16 | Hit by pitch |
+| 20 | Single |
+| 21 | Double |
+| 22 | Triple |
+| 23 | Home run |
+| 4 | Stolen base |
+| 6 | Caught stealing |
+| 8 | Pickoff |
+| 9 | Wild pitch |
+| 10 | Passed ball |
+| 11 | Balk |
+| 13 | Foul fly error |
+
+(Full list in Chadwick docs: `cwevent --help`.)
+
+---
+
 ## Quick Lookup
 
 - **"What's the variable for ___?"** → §1–§4 (alphabetical within group)
 - **"What query param do I send?"** → §6
 - **"What raw column does this come from?"** → column shown next to the metric in §1, or §10 for the full list
 - **"Where does this metric live?"** → §2 (Triton), §3 (Deception), §4 (ERA), else aggregated from `pitches`/`milb_pitches`
+- **"Historical (pre-2015) data?"** → §11 (retro_ tables) + `docs/retrosheet.md`

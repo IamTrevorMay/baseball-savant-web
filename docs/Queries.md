@@ -152,3 +152,25 @@ GROUP BY team, bucket ORDER BY team, bucket
 **Result (per-pair r for close_win_pct YoY):** 2021→22: .270, 2022→23: -.116, 2023→24: -.001, 2024→25: .382, 2025→26: .098.
 **Pooled (150 pairs):** Close Win% YoY r = .123, Win% YoY r = .523, Run Diff YoY r = .580.
 **Predictive:** Close Win% → next year Win%: r = .190. Run Diff → next year Win%: r = .564. Run Diff → next year Close Win%: r = .314.
+
+## 2026-06-16
+
+### Validate /api/hot scoreless-streak logic (RP, 2026)
+Sanity-check appearance aggregation + gaps-and-islands streak logic backing the new `/(research)/hot` page.
+```sql
+-- Appearance = (pitcher, game_pk). runs = SUM(post_bat_score-bat_score) on PA-ending pitches.
+-- outs via events CASE. RP = <3 games of 50+ competitive pitches. Longest scoreless island per RP.
+WITH app AS (
+  SELECT pitcher, MAX(player_name) AS player_name, game_pk, MAX(game_date) AS game_date,
+    SUM(CASE WHEN events IS NOT NULL THEN COALESCE(post_bat_score,0)-COALESCE(bat_score,0) ELSE 0 END) AS runs,
+    SUM(CASE events WHEN 'strikeout' THEN 1 WHEN 'field_out' THEN 1 ... WHEN 'triple_play' THEN 3 ELSE 0 END) AS outs,
+    COUNT(*) FILTER (WHERE pitch_type NOT IN ('PO','IN') OR pitch_type IS NULL) AS comp_pitches
+  FROM pitches WHERE game_year=2026 AND game_type='R' GROUP BY pitcher, game_pk
+), rp AS (SELECT pitcher FROM app GROUP BY pitcher HAVING COUNT(*) FILTER (WHERE comp_pitches>=50) < 3),
+ord AS (SELECT *, SUM(CASE WHEN runs>0 THEN 1 ELSE 0 END)
+    OVER (PARTITION BY pitcher ORDER BY game_date, game_pk ROWS UNBOUNDED PRECEDING) AS grp
+  FROM app WHERE pitcher IN (SELECT pitcher FROM rp))
+SELECT player_name, COUNT(*) outings, SUM(outs) outs, MIN(game_date), MAX(game_date)
+FROM ord WHERE runs=0 GROUP BY pitcher, player_name, grp ORDER BY outs DESC LIMIT 12;
+```
+**Result:** 9,058 appearance rows / 688 pitchers / latest 2026-06-14 / 4,954 scoreless apps. Top completed RP streak: Luke Weaver 18.0 IP (16 G, 5/1–6/11). Iglesias, Miller, Chapman, Suarez follow — all legit RP, no starters leaking through. Logic confirmed.
