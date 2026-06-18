@@ -186,3 +186,11 @@ SELECT game_year, COUNT(miss_distance) miss_nonnull, COUNT(*) total,
 FROM pitches WHERE game_year>=2023 GROUP BY game_year ORDER BY game_year;
 ```
 **Result:** miss_distance present 2023+ (3.8% / 8.4% / 8.6% / 7.0% of all pitches — i.e. ~whiff rate, since miss only exists on swing-and-miss). Built `bat_tracking_swing_miss` table + daily cron snapshot of the swing-timing/miss-distance leaderboard (season-cumulative, no date slice). Initial snapshot 2026-06-18: 2,946 rows (pitcher/batter × overall/per-pitch). Sanity: Mason Miller #1 pitcher miss distance 6.9 in, matches MLB.com article.
+
+### Bat Tracking leaderboard page — data-path verification
+Verified `bat_tracking_swing_miss_latest` view feeds `/api/bat-tracking` for pitcher/batter × overall/per-pitch-type.
+```sql
+SELECT player_type, (pitch_type='ALL') AS overall, COUNT(*)
+FROM bat_tracking_swing_miss_latest WHERE season=2026 GROUP BY 1,2 ORDER BY 1,2;
+```
+**Result:** pitcher ALL 311 / split 940; batter ALL 353 / split 1342 — matches the snapshot insert. Page added under nav More → Bat Tracking.

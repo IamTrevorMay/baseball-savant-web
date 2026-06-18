@@ -387,6 +387,25 @@ GET `?year=<2015..2026>` (default 2026) → `{ year, latestDate, active[], compl
 
 ---
 
+## 8.7 Bat Tracking — Swing Timing & Miss Distance — `/api/bat-tracking`
+
+GET `?type=pitcher|batter&season=<2023..2026>&pitchType=ALL|FF|SI|…&minSwings=<n>` (defaults `pitcher`, `2026`, `ALL`, `50`) → `{ type, season, pitchType, minSwings, latestDate, pitchTypes[], rows[] }`. Backs the `/(research)/bat-tracking` leaderboard. Reads the `bat_tracking_swing_miss_latest` view (most-recent daily snapshot per player). Source: Savant swing-timing/miss-distance leaderboard (season-cumulative; snapshotted nightly by `lib/syncBatTracking.ts`).
+
+| Key | Meaning |
+|---|---|
+| `type` | `pitcher` (how they make hitters miss) or `batter` (swing quality). |
+| `pitchType` | `ALL` = overall aggregate row; else a pitch type (FF/SI/SL/CH/FC/…) from the per-pitch-type split. `pitchTypes[]` lists those present. |
+| `minSwings` | Qualifier on `n_swings` (default 50). |
+| `miss_distance` | Avg miss distance (inches) on swing-and-miss — the headline stat. Only whiffs have a miss. |
+| `flawed_percent` / `perfect_percent` | Contact-quality shares (0–1). |
+| Tied-up/flail (x) | `tied_up_percent`, `centered_percent`, `flailed_percent` (0–1) + `avg_x_tied_up`, `avg_x_flail` (inches, horizontal bat-ball offset). |
+| Early/late (y) | `early_percent`, `on_time_percent`, `late_percent` (0–1) + `avg_y_early`, `avg_y_late` (ms timing). |
+| Over/under (z) | `over_percent`, `lined_up_percent`, `under_percent` (0–1) + `avg_z_over`, `avg_z_under` (inches, vertical bat-ball offset). |
+| `n_swings`, `whiff_rate`, `competitive_percent` | Sample + whiff/competitive shares (0–1). |
+| `latestDate` | `snapshot_date` of the rows returned (data-through date). |
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |
@@ -400,6 +419,7 @@ GET `?year=<2015..2026>` (default 2026) → `{ year, latestDate, active[], compl
 | `player_season_stats` | player × season × stat_group | 2015+ | ERA, W, L, SV, HLD, IP, ER, R, RBI, SB from MLB Stats API. Populated by `/api/cron/player-stats` nightly. |
 | `glossary` | metric definitions | — | UI tooltips |
 | `filter_templates` | saved filter configs | — | |
+| `bat_tracking_swing_miss` | snapshot × player_type × player × season × pitch_type | 2023+ | Daily snapshots of Savant swing-timing/miss-distance board. `_latest` view = most-recent per player. See §8.7. |
 | `retro_events` | one row per play | 1914+ (partial pre-1914) | Retrosheet PBP. See §11. |
 | `retro_games` | one row per game | 1871+ | Retrosheet game logs (authoritative) + cwgame supplement |
 | `retro_people` | one row per person | all eras | Chadwick Register + biofile |

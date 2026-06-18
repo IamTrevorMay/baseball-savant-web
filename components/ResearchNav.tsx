@@ -24,6 +24,7 @@ const ADVANCED_LINKS = [
 ]
 
 const MORE_LINKS = [
+  { href: '/bat-tracking', label: 'Bat Tracking' },
   { href: '/leaders', label: 'Historical' },
   { href: '/briefs', label: 'Briefs' },
   { href: '/wbc', label: 'WBC' },
