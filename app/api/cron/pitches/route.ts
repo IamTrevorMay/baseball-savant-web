@@ -3,6 +3,7 @@ import { syncPitches } from '@/app/api/update/route'
 import { invalidateBySource, purgeExpired } from '@/lib/queryCache'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { trackCronRun } from '@/lib/cronTracker'
+import { syncBatTrackingSwingMiss } from '@/lib/syncBatTracking'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
@@ -124,6 +125,16 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Snapshot the Savant swing-timing/miss-distance bat-tracking leaderboard.
+      // Season-cumulative with no date slicing, so we snapshot it daily regardless of
+      // whether new pitches landed (it refreshes on Savant's side independently).
+      let batTrackingResult: Awaited<ReturnType<typeof syncBatTrackingSwingMiss>> | { error: string }
+      try {
+        batTrackingResult = await syncBatTrackingSwingMiss(year, fmt(now))
+      } catch (e: any) {
+        batTrackingResult = { error: e.message }
+      }
+
       // Invalidate query caches (always purge expired; only invalidate sources if new data)
       await Promise.all([
         skipDownstream ? Promise.resolve() : invalidateBySource('pitches'),
@@ -142,9 +153,10 @@ export async function GET(req: NextRequest) {
         leagueAverages: leagueAveragesResult,
         leaguePercentiles: leaguePercentilesResult,
         materializedViews: materializedViewsResult,
+        batTracking: batTrackingResult,
       }
 
-      return { result: payload, counts: { gameTypes, results, leagueAverages: leagueAveragesResult, leaguePercentiles: leaguePercentilesResult, materializedViews: materializedViewsResult } }
+      return { result: payload, counts: { gameTypes, results, leagueAverages: leagueAveragesResult, leaguePercentiles: leaguePercentilesResult, materializedViews: materializedViewsResult, batTracking: batTrackingResult } }
     })
 
     return NextResponse.json(result)

@@ -174,3 +174,15 @@ SELECT player_name, COUNT(*) outings, SUM(outs) outs, MIN(game_date), MAX(game_d
 FROM ord WHERE runs=0 GROUP BY pitcher, player_name, grp ORDER BY outs DESC LIMIT 12;
 ```
 **Result:** 9,058 appearance rows / 688 pitchers / latest 2026-06-14 / 4,954 scoreless apps. Top completed RP streak: Luke Weaver 18.0 IP (16 G, 5/1–6/11). Iglesias, Miller, Chapman, Suarez follow — all legit RP, no starters leaking through. Logic confirmed.
+
+## 2026-06-18
+
+### Bat-tracking coverage audit + miss-distance leaderboard ingest
+Confirmed `pitches` table holds every Savant pitch-level CSV column (diffed live 119-col header vs table — 0 missing; DB-only extras `id`, `stuff_plus`). Verified new `miss_distance` column populating daily.
+```sql
+-- non-null bat-tracking coverage by year
+SELECT game_year, COUNT(miss_distance) miss_nonnull, COUNT(*) total,
+  ROUND(100.0*COUNT(miss_distance)/COUNT(*),1) pct
+FROM pitches WHERE game_year>=2023 GROUP BY game_year ORDER BY game_year;
+```
+**Result:** miss_distance present 2023+ (3.8% / 8.4% / 8.6% / 7.0% of all pitches — i.e. ~whiff rate, since miss only exists on swing-and-miss). Built `bat_tracking_swing_miss` table + daily cron snapshot of the swing-timing/miss-distance leaderboard (season-cumulative, no date slice). Initial snapshot 2026-06-18: 2,946 rows (pitcher/batter × overall/per-pitch). Sanity: Mason Miller #1 pitcher miss distance 6.9 in, matches MLB.com article.
