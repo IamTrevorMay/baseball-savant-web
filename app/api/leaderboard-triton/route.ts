@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { PITCH_NAME_TO_ABBREV } from '@/lib/constants-data'
 
+// In-memory cache of the fully-built (pivoted/filtered/sorted) rows, keyed by the
+// query params that affect them (NOT limit/offset, so client paging reuses it).
+// Avoids re-running the full-season stuff_plus scan on every load. 30-min TTL,
+// nightly cron refreshes the underlying data. Bounded to avoid unbounded growth.
+const lbCache = new Map<string, { rows: any[]; ts: number }>()
+const LB_CACHE_TTL = 30 * 60 * 1000
+
 /**
  * Query pre-computed Triton command metrics for the leaderboard.
  * Returns one flat row per pitcher with per-pitch-type metric columns.
@@ -30,6 +37,14 @@ export async function POST(req: NextRequest) {
     const safeLimit = Math.min(Math.max(parseInt(String(limit)), 1), 1000)
     const safeOffset = Math.max(parseInt(String(offset)) || 0, 0)
     const safeSortDir = sortDir === 'ASC' ? 1 : -1
+
+    // Serve from cache when the heavy result for these params is still warm.
+    const cacheKey = JSON.stringify({ safeYear, gameType, safeMinPitches, sortBy, safeSortDir, mode })
+    const hit = lbCache.get(cacheKey)
+    if (hit && Date.now() - hit.ts < LB_CACHE_TTL) {
+      const paged = hit.rows.slice(safeOffset, safeOffset + safeLimit)
+      return NextResponse.json({ rows: paged, count: paged.length, cached: true })
+    }
 
     // Fetch all rows (one per pitcher × pitch type) for the year
     const sql = `
@@ -157,7 +172,10 @@ export async function POST(req: NextRequest) {
       return (va - vb) * safeSortDir
     })
 
-    // Paginate
+    // Cache the fully-built rows (bounded), then paginate.
+    if (lbCache.size > 100) lbCache.clear()
+    lbCache.set(cacheKey, { rows, ts: Date.now() })
+
     const paged = rows.slice(safeOffset, safeOffset + safeLimit)
 
     return NextResponse.json({ rows: paged, count: paged.length })
