@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { checkMachineAuth } from '@/lib/apiAuth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -426,6 +427,8 @@ export async function computeSOSForYears(
 }
 
 export async function POST(req: NextRequest) {
+  const denied = checkMachineAuth(req)
+  if (denied) return denied
   try {
     const { start_date, end_date, game_type } = await req.json()
     const result = await syncPitches(start_date, end_date, game_type || 'R')

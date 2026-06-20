@@ -1,13 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { PARK_FACTORS } from '@/lib/constants-data'
+import { checkMachineAuth } from '@/lib/apiAuth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const denied = checkMachineAuth(req)
+  if (denied) return denied
   try {
     // Apply the same park factors for each season 2015–2025
     // (5-year rolling factors are stable enough for this purpose)

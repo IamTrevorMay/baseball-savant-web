@@ -5,6 +5,7 @@ import { decrypt } from '@/lib/encryption'
 import { renderEmail } from '@/lib/emails/renderBlock'
 import { resolveAllBindings } from '@/lib/emails/resolveBindings'
 import type { EmailProduct, EmailTemplate, ProductBranding, TemplateSettings } from '@/lib/emailTypes'
+import { requireSessionAdmin } from '@/lib/apiAuth'
 
 export const maxDuration = 120
 
@@ -13,6 +14,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tritonapex.io'
 const BATCH_SIZE = 100
 
 export async function POST(request: NextRequest) {
+  const auth = await requireSessionAdmin()
+  if (auth instanceof NextResponse) return auth
+
   const body = await request.json()
   const { product_id, template_id, send_type, audience_ids, test_emails, subject_override } = body
 

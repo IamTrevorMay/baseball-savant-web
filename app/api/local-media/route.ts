@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFile, stat } from 'fs/promises'
+import { readFile, stat, realpath } from 'fs/promises'
 import path from 'path'
+import os from 'os'
+
+// Containment: only files under an allowlisted root may be served. Without this,
+// `?path=` is an unauthenticated arbitrary-file read (limited to media extensions).
+// Operators can set LOCAL_MEDIA_ROOTS (colon-separated absolute dirs); default to
+// the server user's home + cwd so the broadcast operator's own media keeps working
+// while system dirs and other users' files are blocked. (Overlay/OBS reads are
+// cookie-less, so auth isn't an option here — containment is the fix.)
+const MEDIA_ROOTS = (process.env.LOCAL_MEDIA_ROOTS
+  ? process.env.LOCAL_MEDIA_ROOTS.split(':')
+  : [os.homedir(), process.cwd()]
+).map(r => path.resolve(r.trim())).filter(Boolean)
+
+function isInsideAllowedRoot(target: string): boolean {
+  return MEDIA_ROOTS.some(root => {
+    const rel = path.relative(root, target)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  })
+}
 
 const ALLOWED_EXTENSIONS = new Set([
   '.mp4', '.mov', '.webm', '.mkv', '.avi',
@@ -34,10 +53,21 @@ export async function GET(req: NextRequest) {
   }
 
   // Resolve to absolute path (support both absolute and relative paths)
-  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(filePath)
+  const resolved = path.resolve(filePath)
 
   try {
-    const fileStat = await stat(resolved)
+    // Canonicalize (resolves symlinks) then enforce root containment before any read.
+    let real: string
+    try {
+      real = await realpath(resolved)
+    } catch {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 })
+    }
+    if (!isInsideAllowedRoot(real)) {
+      return NextResponse.json({ error: 'Path not allowed' }, { status: 403 })
+    }
+
+    const fileStat = await stat(real)
     if (!fileStat.isFile()) {
       return NextResponse.json({ error: 'Not a file' }, { status: 404 })
     }
@@ -55,7 +85,7 @@ export async function GET(req: NextRequest) {
 
         // Read the specific byte range
         const { createReadStream } = await import('fs')
-        const stream = createReadStream(resolved, { start, end })
+        const stream = createReadStream(real, { start, end })
         const chunks: Uint8Array[] = []
         for await (const chunk of stream) {
           chunks.push(chunk)
@@ -75,7 +105,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const buffer = await readFile(resolved)
+    const buffer = await readFile(real)
     return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,

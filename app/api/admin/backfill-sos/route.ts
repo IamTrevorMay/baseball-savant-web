@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { computeSOSForYears } from '@/app/api/update/route'
+import { checkMachineAuth } from '@/lib/apiAuth'
 
 // Use a long-timeout client for heavy SOS computation
 const supabase = createClient(
@@ -22,6 +23,8 @@ const supabase = createClient(
  * and upserts into sos_scores table.
  */
 export async function GET(req: NextRequest) {
+  const denied = checkMachineAuth(req)
+  if (denied) return denied
   try {
     const yearParam = req.nextUrl.searchParams.get('year')
     if (!yearParam) {

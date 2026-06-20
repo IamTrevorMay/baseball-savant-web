@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdminLong } from '@/lib/supabase-admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSessionUser } from '@/lib/apiAuth'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -94,6 +95,8 @@ You MUST respond with a JSON object (no markdown fences, pure JSON) with these f
 }`
 
 export async function POST(req: NextRequest) {
+  const auth = await requireSessionUser()
+  if (auth instanceof NextResponse) return auth
   try {
     const { question, history, confirmed, sql: confirmedSql, viz_config: confirmedViz } = await req.json()
 

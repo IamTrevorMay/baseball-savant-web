@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
+import { checkMachineAuth } from '@/lib/apiAuth'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 const m = (sql: string) => supabase.rpc('run_mutation', { query_text: sql.trim() })
@@ -11,6 +12,8 @@ const m = (sql: string) => supabase.rpc('run_mutation', { query_text: sql.trim()
  * Processes in batches of 50,000 rows via OFFSET to avoid timeouts.
  */
 export async function GET(req: NextRequest) {
+  const denied = checkMachineAuth(req)
+  if (denied) return denied
   try {
     const yearParam = req.nextUrl.searchParams.get('year')
     if (!yearParam || isNaN(parseInt(yearParam, 10))) {
