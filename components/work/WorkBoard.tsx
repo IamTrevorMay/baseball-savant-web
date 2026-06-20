@@ -432,23 +432,30 @@ export default function WorkBoard({ onBoardChange, sprintVersion = 0 }: Props) {
   }
 
   // ── Quick capture ──
+  const addingRef = useRef(false)
   async function addTask() {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const inboxTasks = tasks.filter(t => t.status === 'inbox')
-    const minPos = inboxTasks.length > 0 ? Math.min(...inboxTasks.map(t => t.position)) : 10
-    const { data, error } = await supabase.from('work_tasks').insert({
-      user_id: user.id,
-      title: '',
-      status: 'inbox',
-      position: minPos - 10,
-      priority: '3',
-    }).select().single()
-    if (!error && data) {
-      setTasks(prev => [...prev, data as Task])
-      setEditingTask(data as Task)
-      isNewTaskRef.current = true
+    if (addingRef.current) return // guard against double-fire creating duplicate empty tasks
+    addingRef.current = true
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const inboxTasks = tasks.filter(t => t.status === 'inbox')
+      const minPos = inboxTasks.length > 0 ? Math.min(...inboxTasks.map(t => t.position)) : 10
+      const { data, error } = await supabase.from('work_tasks').insert({
+        user_id: user.id,
+        title: '',
+        status: 'inbox',
+        position: minPos - 10,
+        priority: '3',
+      }).select().single()
+      if (!error && data) {
+        setTasks(prev => [...prev, data as Task])
+        setEditingTask(data as Task)
+        isNewTaskRef.current = true
+      }
+    } finally {
+      addingRef.current = false
     }
   }
 

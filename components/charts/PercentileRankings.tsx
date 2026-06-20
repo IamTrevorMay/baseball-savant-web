@@ -57,14 +57,17 @@ export default function PercentileRankings({ data }: { data: any[] }) {
       const { data: rows } = await supabase.rpc('run_query', { query_text: sql })
       if (!rows?.length) return
 
-      let uniqueSum = 0, decSum = 0, totalW = 0
+      let uniqueSum = 0, decSum = 0, totalW = 0, decW = 0
       const fbZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
       const osZ = { vaa: 0, haa: 0, vb: 0, hb: 0, ext: 0, w: 0 }
 
       for (const r of rows) {
         const w = Number(r.pitches) || 0
         if (r.unique_score != null) { uniqueSum += Number(r.unique_score) * w; totalW += w }
-        if (r.deception_score != null) { decSum += Number(r.deception_score) * w }
+        // Track deception's own weight — rows with a deception_score but null
+        // unique_score were adding to decSum without adding to totalW, inflating
+        // the weighted average.
+        if (r.deception_score != null) { decSum += Number(r.deception_score) * w; decW += w }
         const bucket = isFastball(r.pitch_type) ? fbZ : osZ
         if (r.z_vaa != null) {
           bucket.vaa += Number(r.z_vaa) * w
@@ -86,7 +89,7 @@ export default function PercentileRankings({ data }: { data: any[] }) {
 
       setDeceptionVals({
         unique_score: totalW > 0 ? uniqueSum / totalW : null,
-        deception_score: totalW > 0 ? decSum / totalW : null,
+        deception_score: decW > 0 ? decSum / decW : null,
         xdeception_score: xdec,
       })
     }
