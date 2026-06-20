@@ -481,23 +481,25 @@ function ReportsPageInner() {
 
       const extraFilters: ActiveFilter[] = []
 
-      if (yearsParam) {
-        const yearDef = FILTER_CATALOG.find(f => f.key === 'game_year')!
+      // Guard each catalog lookup — a missing/renamed key would otherwise push a
+      // filter with def:undefined and crash report hydration downstream.
+      const yearDef = FILTER_CATALOG.find(f => f.key === 'game_year')
+      if (yearsParam && yearDef) {
         extraFilters.push({ def: yearDef, values: yearsParam.split(',') })
       }
 
-      if (startDateParam || endDateParam) {
-        const dateDef = FILTER_CATALOG.find(f => f.key === 'game_date')!
+      const dateDef = FILTER_CATALOG.find(f => f.key === 'game_date')
+      if ((startDateParam || endDateParam) && dateDef) {
         extraFilters.push({ def: dateDef, startDate: startDateParam || '', endDate: endDateParam || '' })
       }
 
       if (oppTypeParam && oppIdParam) {
         if (oppTypeParam === 'team') {
-          const teamDef = FILTER_CATALOG.find(f => f.key === 'vs_team')!
-          extraFilters.push({ def: teamDef, values: [oppIdParam] })
+          const teamDef = FILTER_CATALOG.find(f => f.key === 'vs_team')
+          if (teamDef) extraFilters.push({ def: teamDef, values: [oppIdParam] })
         } else if (oppTypeParam === 'hitter') {
-          const batterDef = FILTER_CATALOG.find(f => f.key === 'batter_name')!
-          extraFilters.push({ def: batterDef, values: [oppNameParam || oppIdParam] })
+          const batterDef = FILTER_CATALOG.find(f => f.key === 'batter_name')
+          if (batterDef) extraFilters.push({ def: batterDef, values: [oppNameParam || oppIdParam] })
         }
       }
 

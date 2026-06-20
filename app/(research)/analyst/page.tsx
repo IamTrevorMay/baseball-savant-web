@@ -126,7 +126,7 @@ export default function AnalystPage() {
       const data = await res.json()
       const assistantMsg: Message = data.error
         ? { role: 'assistant', content: `Error: ${data.error}` }
-        : { role: 'assistant', content: data.response }
+        : { role: 'assistant', content: data.response ?? 'No response.' }
 
       setMessages([...newMessages, assistantMsg])
 

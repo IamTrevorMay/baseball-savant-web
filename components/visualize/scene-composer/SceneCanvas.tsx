@@ -404,7 +404,9 @@ export default function SceneCanvas({ scene, selectedId, selectedIds, highlighte
     const raw = e.dataTransfer.getData('application/x-triton-field')
     if (!raw) return
     e.preventDefault()
-    const { field, fieldType } = JSON.parse(raw)
+    let parsed: any
+    try { parsed = JSON.parse(raw) } catch { return } // ignore malformed drag payloads
+    const { field, fieldType } = parsed
     // Convert page coords to scene coords (accounting for zoom + canvas offset)
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return

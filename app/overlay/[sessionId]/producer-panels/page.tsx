@@ -38,7 +38,7 @@ function ProducerPanelsInner({ sessionId }: { sessionId: string }) {
       }}
     >
       {/* Lower Bar Panel */}
-      {(lowerBar.visible || lowerBar.animating === 'exiting') && lowerBar.content && (
+      {(lowerBar?.visible || lowerBar?.animating === 'exiting') && lowerBar?.content && (
         <LowerBarPanel
           content={lowerBar.content}
           animating={lowerBar.animating}
@@ -46,7 +46,7 @@ function ProducerPanelsInner({ sessionId }: { sessionId: string }) {
       )}
 
       {/* Right Panel */}
-      {(rightPanel.visible || rightPanel.animating === 'exiting') && rightPanel.content && (
+      {(rightPanel?.visible || rightPanel?.animating === 'exiting') && rightPanel?.content && (
         <RightPanel
           content={rightPanel.content}
           animating={rightPanel.animating}

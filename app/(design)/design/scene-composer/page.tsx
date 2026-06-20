@@ -266,7 +266,12 @@ export default function SceneComposerPage() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) setScene(JSON.parse(saved))
+      if (saved) {
+        // Validate shape — a corrupt/old-schema value would crash the editor on the
+        // first scene.elements access if we set it blindly.
+        const parsed = JSON.parse(saved)
+        if (parsed && Array.isArray(parsed.elements)) setScene(parsed)
+      }
     } catch {}
     // Check for pushed design from Asset Designer
     try {
