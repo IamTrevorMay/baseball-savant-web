@@ -1,0 +1,91 @@
+name: retro-ingest
+
+on:
+  schedule:
+    - cron: '0 12 * * 0'   # Sunday 12:00 UTC — weekly poll for new Retrosheet releases
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'Season to ingest (blank = auto-detect new release)'
+        required: false
+        default: ''
+      force:
+        description: 'Force ingest even if release-detector says no new release'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chadwick from source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool build-essential unzip
+          git clone --depth=1 https://github.com/chadwickbureau/chadwick.git /tmp/chadwick
+          cd /tmp/chadwick
+          autoreconf -if
+          ./configure
+          make -j"$(nproc)"
+          sudo make install
+          sudo ldconfig
+          cwevent --help | head -1 || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node deps
+        run: npm ci
+
+      - name: Detect new Retrosheet release
+        id: detect
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/check-retrosheet-release.js
+
+      - name: Resolve target season
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.season }}" ]; then
+            echo "season=${{ github.event.inputs.season }}" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.detect.outputs.new_release }}" = "true" ]; then
+            echo "season=${{ steps.detect.outputs.season }}" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "season=$(date -u +%Y)" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run ingest
+        if: steps.target.outputs.should_run == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/ingest-retrosheet.ts --season ${{ steps.target.outputs.season }}
+
+      - name: Validate
+        if: steps.target.outputs.should_run == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/validate-retrosheet.ts --season ${{ steps.target.outputs.season }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Retro ingest" >> $GITHUB_STEP_SUMMARY
+          echo "- detect.new_release: ${{ steps.detect.outputs.new_release }}" >> $GITHUB_STEP_SUMMARY
+          echo "- target.season: ${{ steps.target.outputs.season }}" >> $GITHUB_STEP_SUMMARY
+          echo "- target.should_run: ${{ steps.target.outputs.should_run }}" >> $GITHUB_STEP_SUMMARY
+          echo "- job.status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
