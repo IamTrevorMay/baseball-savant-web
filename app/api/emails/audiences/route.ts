@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { requireSessionAdmin } from '@/lib/apiAuth'
 
 export async function GET(request: NextRequest) {
+  const auth = await requireSessionAdmin()
+  if (auth instanceof NextResponse) return auth
   try {
     const productId = request.nextUrl.searchParams.get('product_id')
 
@@ -25,6 +28,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireSessionAdmin()
+  if (auth instanceof NextResponse) return auth
   try {
     const body = await request.json()
     const { name, product_id } = body

@@ -144,14 +144,27 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
   let errors = 0
   const batchSize = 500
 
+  const upsertOpts = { onConflict: 'game_pk,at_bat_number,pitch_number', ignoreDuplicates: false }
+
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize)
-    const { error } = await supabase.from('pitches').upsert(batch, {
-      onConflict: 'game_pk,at_bat_number,pitch_number',
-      ignoreDuplicates: false
-    })
-    if (error) errors += batch.length
-    else inserted += batch.length
+    const { error } = await supabase.from('pitches').upsert(batch, upsertOpts)
+    if (!error) {
+      inserted += batch.length
+      continue
+    }
+    // One bad row fails the whole batch. Isolate it: retry each row individually so
+    // the other ~499 good rows still land, and only the truly-failing rows count as errors.
+    console.error(`[update] batch upsert failed (${error.message}); retrying ${batch.length} rows individually`)
+    for (const row of batch) {
+      const { error: rowErr } = await supabase.from('pitches').upsert([row], upsertOpts)
+      if (rowErr) {
+        errors++
+        console.error(`[update] row upsert failed (game_pk=${row.game_pk}, ab=${row.at_bat_number}, pitch=${row.pitch_number}): ${rowErr.message}`)
+      } else {
+        inserted++
+      }
+    }
   }
 
   // Sync any new players that appeared in the ingested data

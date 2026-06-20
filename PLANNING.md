@@ -123,13 +123,13 @@ In-memory sliding window limiter in `lib/rateLimit.ts`, applied to broadcast tri
 Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (commit `c41731c`): added `lib/apiAuth.ts` (`checkMachineAuth` / `requireSessionAdmin` / `requireSessionUser`) on `emails/send`, `explore/query`, `update`, `populate-*`, `admin/backfill-*`; path containment (`LOCAL_MEDIA_ROOTS`, realpath) on `local-media`. Root cause: middleware exempts all `/api/*`, so every route must self-auth. Remaining items below, by severity.
 
 **HIGH — open:**
-- `emails/audiences` (+ `[id]`, `import`, `subscribers`): no auth → IDOR (list/exfil/rename/delete audiences & subscribers). Add `requireSessionAdmin`.
+- ✓ **Done** — `emails/audiences` (+ `[id]`, `import`, `subscribers`): IDOR closed — `requireSessionAdmin` on all 9 handlers.
 - `emails/webhook`: no Resend/Svix signature verify + no idempotency → forged/duplicate events corrupt analytics. Verify signature; dedupe on `(send_id, resend_event_id, event_type)`.
-- `update/route.ts:148`: batch upsert all-or-nothing — one bad row fails the 500-row batch and failures are counted as inserted. Split-retry on error; log `error.message`.
+- ✓ **Done** — `update/route.ts`: batch upsert no longer all-or-nothing — on error, retry rows individually; only true failures count; both logged.
 - `update` Stuff+/SOS compute window keys off the request's UTC 3-day window, not the ingested `game_date`s → TZ-edge pitches ingested but never scored. Compute over distinct dates present in inserted rows.
 - Cron UTC date bug: `toISOString().split('T')[0]` (+ `new Date(x.toLocaleString())` double-convert) in `cron/pitches`, `briefs`, `emails`, `newsletter`, `daily-cards` → off-by-one slates. Use a TZ-aware formatter (the `janitor`/`cleanup` pattern).
-- `lib/leagueStats.ts` `computePlus:1313` + `computeStuffRV:1184`: divide by stddev with no zero guard → Inf/NaN into plus-stats (stddev=0 is a documented baseline case). Return 100/null when stddev ≤ 0.
-- `compete/performance/upload:50`: `onConflict:'tm_pitch_uid'` but column is nullable → re-upload duplicates rows missing `PitchUID`. Use composite key `(session_id, pitch_no)` or reject null UID.
+- ✓ **Done** — `lib/leagueStats.ts` `computePlus` + `computeStuffRV`: stddev ≤ 0 / NaN now returns neutral 100 (per-component 0) instead of Inf/NaN.
+- ✓ **Done** — `compete/performance/upload`: synthesize deterministic `tm_pitch_uid` from session + pitch_no when `PitchUID` absent → re-uploads dedupe.
 - `broadcast/trigger` + `sessions`: `active_state` non-atomic read-modify-write → concurrent Stream Deck/producer writes clobber. Use `jsonb_set`/RPC or a version column; whitelist PUT columns.
 - `emails/track/click`: open redirect (`new URL()` accepts any scheme/host). Enforce http(s) + host allowlist.
 - Email open/click double-counted (pixel + webhook both increment, no per-subscriber dedup).

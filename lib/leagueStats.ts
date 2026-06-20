@@ -1181,9 +1181,14 @@ export function computeStuffRV(p: any): number | null {
   const move = Math.sqrt(Math.pow(p.pfx_x * 12, 2) + Math.pow(p.pfx_z * 12, 2))
   const ext = p.release_extension ?? bl.avg_ext
 
-  const veloZ = (p.release_speed - bl.avg_velo) / bl.std_velo
-  const moveZ = (move - bl.avg_move) / bl.std_move
-  const extZ  = (ext - bl.avg_ext) / bl.std_ext
+  // Guard against zero/NaN stddev baselines (a documented data-integrity case):
+  // a component with no spread contributes 0 (treated as league-average) rather
+  // than producing ±Infinity → garbage Stuff+.
+  const zscore = (val: number, mean: number, std: number) =>
+    std > 0 && Number.isFinite(std) ? (val - mean) / std : 0
+  const veloZ = zscore(p.release_speed, bl.avg_velo, bl.std_velo)
+  const moveZ = zscore(move, bl.avg_move, bl.std_move)
+  const extZ  = zscore(ext, bl.avg_ext, bl.std_ext)
 
   const raw = 100 + veloZ * 4.5 + moveZ * 3.5 + extZ * 2.0
   return Math.max(0, Math.min(200, Math.round(raw)))
@@ -1311,6 +1316,8 @@ export function percentileColor(pct: number): string {
 }
 
 export function computePlus(pitcherAvg: number, leagueMean: number, leagueStddev: number): number {
+  // Guard zero/NaN stddev → return the neutral 100 instead of ±Infinity/NaN.
+  if (!(leagueStddev > 0) || !Number.isFinite(leagueStddev)) return 100
   return ((pitcherAvg - leagueMean) / leagueStddev) * 15 + 100
 }
 

@@ -41,7 +41,19 @@ export async function POST(req: NextRequest) {
 
   // Bulk insert with tm_pitch_uid conflict → ignore (idempotent re-uploads).
   let inserted = 0
-  const dbRows = rows.map(r => rowToDb(r, { session_id: session.id, uploaded_by: user.id }))
+  const dbRows = rows.map((r, idx) => {
+    const db = rowToDb(r, { session_id: session.id, uploaded_by: user.id })
+    // The conflict key is tm_pitch_uid, but it's nullable and Postgres treats NULLs
+    // as distinct — so rows missing PitchUID would duplicate on every re-upload.
+    // Synthesize a deterministic uid from stable CSV fields (session id + pitch no,
+    // falling back to row index) so re-uploads of the same file still dedupe.
+    if (!db.tm_pitch_uid) {
+      const sess = db.tm_session_id ?? firstSessionId ?? 'nosess'
+      const pno = db.pitch_no ?? idx
+      db.tm_pitch_uid = `synthetic:${sess}:${pno}`
+    }
+    return db
+  })
 
   for (let i = 0; i < dbRows.length; i += CHUNK_SIZE) {
     const chunk = dbRows.slice(i, i + CHUNK_SIZE)

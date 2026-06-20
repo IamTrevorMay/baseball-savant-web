@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { encrypt, blindIndex } from '@/lib/encryption'
+import { requireSessionAdmin } from '@/lib/apiAuth'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireSessionAdmin()
+  if (auth instanceof NextResponse) return auth
   const { id } = await params
 
   try {
