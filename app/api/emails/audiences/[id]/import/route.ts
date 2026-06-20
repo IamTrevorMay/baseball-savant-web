@@ -55,91 +55,98 @@ export async function POST(
     let skipped = 0
     const errors: string[] = []
 
-    // Process each data row
+    const chunk = <T,>(arr: T[], n: number): T[][] => {
+      const out: T[][] = []
+      for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
+      return out
+    }
+
+    // Parse + encrypt all rows up front; dedupe by email hash (last occurrence wins).
+    const byHash = new Map<string, { encEmail: string; encName: string | null }>()
     for (let i = 1; i < lines.length; i++) {
       const cols = parseCsvLine(lines[i])
       const rawEmail = cols[emailIdx]?.trim()
-
-      if (!rawEmail || !rawEmail.includes('@')) {
-        skipped++
-        continue
-      }
-
+      if (!rawEmail || !rawEmail.includes('@')) { skipped++; continue }
       const normalizedEmail = rawEmail.toLowerCase()
       const rawName = nameIdx !== -1 ? cols[nameIdx]?.trim() || null : null
-
       try {
-        const emailHash = blindIndex(normalizedEmail)
-        const encryptedEmail = encrypt(normalizedEmail)
-        const encryptedName = rawName ? encrypt(rawName) : null
-
-        // Upsert subscriber
-        const { data: existing } = await supabaseAdmin
-          .from('email_subscribers')
-          .select('id')
-          .eq('email_hash', emailHash)
-          .maybeSingle()
-
-        let subscriberId: string
-
-        if (existing) {
-          subscriberId = existing.id
-          // Update name if provided and subscriber exists
-          if (encryptedName) {
-            await supabaseAdmin
-              .from('email_subscribers')
-              .update({ encrypted_name: encryptedName, updated_at: new Date().toISOString() })
-              .eq('id', existing.id)
-          }
-        } else {
-          const { data: newSub, error: insertError } = await supabaseAdmin
-            .from('email_subscribers')
-            .insert({
-              encrypted_email: encryptedEmail,
-              email_hash: emailHash,
-              encrypted_name: encryptedName,
-              source: 'csv_import',
-            })
-            .select('id')
-            .single()
-
-          if (insertError || !newSub) {
-            errors.push(`Row ${i + 1}: ${insertError?.message || 'insert failed'}`)
-            skipped++
-            continue
-          }
-          subscriberId = newSub.id
-        }
-
-        // Add to audience (upsert)
-        const { data: existingMember } = await supabaseAdmin
-          .from('email_audience_members')
-          .select('subscriber_id, is_active')
-          .eq('audience_id', id)
-          .eq('subscriber_id', subscriberId)
-          .maybeSingle()
-
-        if (existingMember) {
-          if (!existingMember.is_active) {
-            await supabaseAdmin
-              .from('email_audience_members')
-              .update({ is_active: true, unsubscribed_at: null })
-              .eq('audience_id', id)
-              .eq('subscriber_id', subscriberId)
-            imported++
-          } else {
-            skipped++ // Already active member
-          }
-        } else {
-          await supabaseAdmin
-            .from('email_audience_members')
-            .insert({ audience_id: id, subscriber_id: subscriberId })
-          imported++
-        }
-      } catch (rowErr: any) {
-        errors.push(`Row ${i + 1}: ${rowErr.message}`)
+        byHash.set(blindIndex(normalizedEmail), {
+          encEmail: encrypt(normalizedEmail),
+          encName: rawName ? encrypt(rawName) : null,
+        })
+      } catch (e: any) {
+        errors.push(`Row ${i + 1}: ${e.message}`)
         skipped++
       }
+    }
+
+    const allHashes = [...byHash.keys()]
+
+    // Bulk-resolve existing subscribers by hash (instead of one SELECT per row).
+    const hashToId = new Map<string, string>()
+    for (const part of chunk(allHashes, 100)) {
+      const { data } = await supabaseAdmin
+        .from('email_subscribers')
+        .select('id, email_hash')
+        .in('email_hash', part)
+      for (const r of data || []) hashToId.set(r.email_hash, r.id)
+    }
+
+    // Bulk-insert new subscribers.
+    const newHashes = new Set(allHashes.filter(h => !hashToId.has(h)))
+    for (const part of chunk([...newHashes], 100)) {
+      const payload = part.map(h => {
+        const v = byHash.get(h)!
+        return { encrypted_email: v.encEmail, email_hash: h, encrypted_name: v.encName, source: 'csv_import' }
+      })
+      const { data, error } = await supabaseAdmin
+        .from('email_subscribers')
+        .insert(payload)
+        .select('id, email_hash')
+      if (error) { errors.push(`subscriber insert: ${error.message}`); continue }
+      for (const r of data || []) hashToId.set(r.email_hash, r.id)
+    }
+
+    // Bulk-update names for pre-existing subscribers that arrived with a name.
+    const nameUpdates = allHashes
+      .filter(h => !newHashes.has(h) && hashToId.has(h) && byHash.get(h)!.encName)
+      .map(h => ({ id: hashToId.get(h)!, encrypted_name: byHash.get(h)!.encName, updated_at: new Date().toISOString() }))
+    for (const part of chunk(nameUpdates, 100)) {
+      await supabaseAdmin.from('email_subscribers').upsert(part, { onConflict: 'id' })
+    }
+
+    const subIds = allHashes.map(h => hashToId.get(h)).filter((x): x is string => !!x)
+
+    // Bulk-resolve existing audience members.
+    const activeMap = new Map<string, boolean>()
+    for (const part of chunk(subIds, 100)) {
+      const { data } = await supabaseAdmin
+        .from('email_audience_members')
+        .select('subscriber_id, is_active')
+        .eq('audience_id', id)
+        .in('subscriber_id', part)
+      for (const r of data || []) activeMap.set(r.subscriber_id, r.is_active)
+    }
+
+    const toInsert = subIds.filter(sid => !activeMap.has(sid))
+    const toReactivate = subIds.filter(sid => activeMap.get(sid) === false)
+    skipped += subIds.filter(sid => activeMap.get(sid) === true).length // already active
+
+    for (const part of chunk(toInsert, 100)) {
+      const { error } = await supabaseAdmin
+        .from('email_audience_members')
+        .insert(part.map(sid => ({ audience_id: id, subscriber_id: sid })))
+      if (error) errors.push(`member insert: ${error.message}`)
+      else imported += part.length
+    }
+    for (const part of chunk(toReactivate, 100)) {
+      const { error } = await supabaseAdmin
+        .from('email_audience_members')
+        .update({ is_active: true, unsubscribed_at: null })
+        .eq('audience_id', id)
+        .in('subscriber_id', part)
+      if (error) errors.push(`member reactivate: ${error.message}`)
+      else imported += part.length
     }
 
     return NextResponse.json({
