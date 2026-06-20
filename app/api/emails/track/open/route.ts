@@ -9,20 +9,35 @@ export async function GET(request: NextRequest) {
   const sub = request.nextUrl.searchParams.get('sub')
 
   if (sid) {
-    // Record open event (fire-and-forget, don't block the pixel response)
-    void (async () => {
-      try {
-        await supabaseAdmin.from('email_events').insert({
-          send_id: sid,
-          subscriber_id: sub || null,
-          event_type: 'open',
-        })
+    // Await the write so the serverless function can't freeze before it lands.
+    // opened_count tracks UNIQUE opens: only increment on a subscriber's first open
+    // for this send. The Resend webhook no longer touches opened_count (this pixel
+    // owns it), so opens aren't double-counted.
+    try {
+      let isFirstOpen = true
+      if (sub) {
+        const { count } = await supabaseAdmin
+          .from('email_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('send_id', sid)
+          .eq('subscriber_id', sub)
+          .eq('event_type', 'open')
+        isFirstOpen = (count ?? 0) === 0
+      }
+
+      await supabaseAdmin.from('email_events').insert({
+        send_id: sid,
+        subscriber_id: sub || null,
+        event_type: 'open',
+      })
+
+      if (isFirstOpen) {
         await supabaseAdmin.rpc('increment_email_send_counter', {
           p_send_id: sid,
           p_column: 'opened_count',
         })
-      } catch { /* fire-and-forget */ }
-    })()
+      }
+    } catch { /* best-effort tracking */ }
   }
 
   return new NextResponse(PIXEL, {

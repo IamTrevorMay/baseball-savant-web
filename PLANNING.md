@@ -132,7 +132,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 - ✓ **Done** — `compete/performance/upload`: synthesize deterministic `tm_pitch_uid` from session + pitch_no when `PitchUID` absent → re-uploads dedupe.
 - `broadcast/trigger` + `sessions`: `active_state` non-atomic read-modify-write → concurrent Stream Deck/producer writes clobber. Use `jsonb_set`/RPC or a version column; whitelist PUT columns.
 - ✓ **Done** — `emails/track/click`: redirect now restricted to http(s) schemes (blocks `javascript:`/`data:`). Host allowlist intentionally skipped — emails legitimately link to arbitrary hosts.
-- Email open/click double-counted (pixel + webhook both increment, no per-subscriber dedup).
+- ✓ **Done** — Email open/click double-count: the pixel (`track/open`) and redirect (`track/click`) now own `opened_count`/`clicked_count` and increment only on a subscriber's first open/click (unique opens/clicks); the webhook no longer increments those counters. Tracking writes are awaited (no fire-and-forget loss).
 - ✓ **Done** — `emails/audiences/[id]/import`: replaced per-row N+1 with chunked bulk lookups/inserts (subscribers + members resolved in batches of 100) — large lists no longer time out.
 - ✓ **Done** — `leaderboard-triton`: added a 30-min in-memory result cache keyed by query params (not paging) so repeated/paged loads skip the season `stuff_plus` scan; `hot` was already cached. `(game_year, game_type)` is already covered by the Tier-2 composite index prefixes (`idx_pitches_year_type_*`). Deeper MV pre-aggregation deferred.
 

@@ -32,21 +32,36 @@ export async function GET(request: NextRequest) {
   }
 
   if (sid) {
-    // Record click event (fire-and-forget)
-    void (async () => {
-      try {
-        await supabaseAdmin.from('email_events').insert({
-          send_id: sid,
-          subscriber_id: sub || null,
-          event_type: 'click',
-          link_url: targetUrl,
-        })
+    // Await the write so the serverless function can't freeze before it lands.
+    // clicked_count tracks UNIQUE clickers: only increment on a subscriber's first
+    // click for this send (individual link rows are still recorded for audit). The
+    // Resend webhook no longer touches clicked_count (this redirect owns it).
+    try {
+      let isFirstClick = true
+      if (sub) {
+        const { count } = await supabaseAdmin
+          .from('email_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('send_id', sid)
+          .eq('subscriber_id', sub)
+          .eq('event_type', 'click')
+        isFirstClick = (count ?? 0) === 0
+      }
+
+      await supabaseAdmin.from('email_events').insert({
+        send_id: sid,
+        subscriber_id: sub || null,
+        event_type: 'click',
+        link_url: targetUrl,
+      })
+
+      if (isFirstClick) {
         await supabaseAdmin.rpc('increment_email_send_counter', {
           p_send_id: sid,
           p_column: 'clicked_count',
         })
-      } catch { /* fire-and-forget */ }
-    })()
+      }
+    } catch { /* best-effort tracking */ }
   }
 
   return NextResponse.redirect(targetUrl, 302)

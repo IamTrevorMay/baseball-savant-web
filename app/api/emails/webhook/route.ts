@@ -82,11 +82,12 @@ export async function POST(request: NextRequest) {
       break
     case 'email.opened':
       ourType = 'open'
-      counterColumn = 'opened_count'
+      // opened_count is owned by the open pixel (track/open), which dedupes per
+      // subscriber. Recording the event here is fine; incrementing would double-count.
       break
     case 'email.clicked':
       ourType = 'click'
-      counterColumn = 'clicked_count'
+      // clicked_count is owned by the click redirect (track/click); don't double-count.
       break
     default:
       // Unhandled event type, acknowledge but don't process
