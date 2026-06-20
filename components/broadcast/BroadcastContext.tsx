@@ -1315,6 +1315,13 @@ export function BroadcastProvider({ projectId, children }: { projectId: string; 
         } catch {}
 
         const sessionId = data.session.id
+        // Tear down any prior live channel first — a second goLive (double-click /
+        // re-render) would otherwise overwrite channelRef and leak the old channel
+        // with its duplicate asset:show / ad:ended handlers.
+        if (channelRef.current) {
+          supabaseRef.current.removeChannel(channelRef.current)
+          channelRef.current = null
+        }
         const channel = supabaseRef.current.channel(channelName)
         channel
           .on('broadcast', { event: 'clip:marker-update' }, (payload: any) => {

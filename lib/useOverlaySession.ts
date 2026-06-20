@@ -119,10 +119,12 @@ export function useOverlaySession(sessionId: string) {
   }, [hideAsset, showAsset])
 
   useEffect(() => {
+    let cancelled = false
     async function init() {
       try {
         const sessionRes = await fetch(`/api/broadcast/sessions?id=${sessionId}`)
         const sessionData = await sessionRes.json()
+        if (cancelled) return
         if (!sessionData.session) {
           setState(prev => ({ ...prev, error: 'Session not found' }))
           return
@@ -132,6 +134,7 @@ export function useOverlaySession(sessionId: string) {
 
         const assetsRes = await fetch(`/api/broadcast/assets?project_id=${session.project_id}`)
         const assetsData = await assetsRes.json()
+        if (cancelled) return
         const assets = (assetsData.assets || []) as BroadcastAsset[]
 
         const activeVisible = new Set<string>(session.active_state?.visibleAssets || [])
@@ -301,17 +304,26 @@ export function useOverlaySession(sessionId: string) {
             setState(prev => ({ ...prev, connected: status === 'SUBSCRIBED' }))
           })
 
+        // If the effect was torn down (sessionId change / unmount) while we were
+        // awaiting above, the cleanup already ran with channelRef null — remove this
+        // just-created channel ourselves so it doesn't leak with live handlers.
+        if (cancelled) {
+          supabaseRef.current.removeChannel(channel)
+          return
+        }
         channelRef.current = channel
       } catch (err: any) {
-        setState(prev => ({ ...prev, error: err.message }))
+        if (!cancelled) setState(prev => ({ ...prev, error: err.message }))
       }
     }
 
     init()
 
     return () => {
+      cancelled = true
       if (channelRef.current && supabaseRef.current) {
         supabaseRef.current.removeChannel(channelRef.current)
+        channelRef.current = null
       }
     }
   }, [sessionId, showAsset, hideAsset, performSegmentSwap])
