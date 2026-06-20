@@ -198,8 +198,8 @@ export default function ChannelsPage() {
     const channel = supabase
       .channel(`work-ch-${activeChannel.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'work_channel_messages', filter: `channel_id=eq.${activeChannel.id}` }, async (payload) => {
-        const { data } = await supabase.from('work_channel_messages').select('*, profile:profiles(id, full_name, title)').eq('id', payload.new.id).single()
-        if (data && mounted) setMessages(prev => [...prev, data as Message])
+        const { data } = await supabase.from('work_channel_messages').select('*, profile:profiles(id, full_name, title)').eq('id', payload.new.id).maybeSingle()
+        if (data && mounted) setMessages(prev => prev.some(m => m.id === (data as Message).id) ? prev : [...prev, data as Message])
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'work_channel_messages', filter: `channel_id=eq.${activeChannel.id}` }, (payload) => {
         if (!mounted) return

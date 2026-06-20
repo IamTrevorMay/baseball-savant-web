@@ -134,6 +134,10 @@ export function applyFiltersToData(data: any[], filters: ActiveFilter[]): any[] 
     for (const f of filters) {
       const col = f.def.key
       if (f.def.type === 'multi' && f.values && f.values.length > 0) {
+        // Null/undefined never matches a multi filter — without this guard
+        // Number(null)===0 spuriously matches "0" and Number(undefined)===NaN
+        // silently drops rows.
+        if (d[col] == null) return false
         const val = f.def.numberCast ? Number(d[col]) : String(d[col])
         const check = f.def.numberCast ? f.values.map(Number) : f.values
         if (!(check as any[]).includes(val)) return false

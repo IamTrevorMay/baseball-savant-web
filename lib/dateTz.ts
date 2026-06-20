@@ -17,6 +17,12 @@ export function ymdInTimeZone(date: Date = new Date(), timeZone = 'America/New_Y
   }).format(date)
 }
 
+/** YYYY-MM-DD from a Date's LOCAL components (browser-local) — no UTC day-shift.
+ *  Use for client-side calendar/day grouping where you want the user's local date. */
+export function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** Add n calendar days to a YYYY-MM-DD string (pure calendar math, tz-agnostic). */
 export function addDaysToYmd(ymd: string, n: number): string {
   const [y, m, d] = ymd.split('-').map(Number)

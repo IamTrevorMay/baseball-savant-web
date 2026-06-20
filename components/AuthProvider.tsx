@@ -1,5 +1,5 @@
 'use client'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
@@ -66,9 +66,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setLoading(false)
   }
 
-  return (
-    <AuthCtx.Provider value={{ user, profile, permissions, loading }}>
-      {children}
-    </AuthCtx.Provider>
+  // Memoize so consumers don't re-render on every provider render (this wraps the app).
+  const value = useMemo(
+    () => ({ user, profile, permissions, loading }),
+    [user, profile, permissions, loading],
   )
+
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>
 }

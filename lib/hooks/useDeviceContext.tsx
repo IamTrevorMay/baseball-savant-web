@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react'
 
 interface DeviceContextType {
   isMobile: boolean
@@ -27,9 +27,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  return (
-    <DeviceCtx.Provider value={{ isMobile, isLoading }}>
-      {children}
-    </DeviceCtx.Provider>
-  )
+  const value = useMemo(() => ({ isMobile, isLoading }), [isMobile, isLoading])
+
+  return <DeviceCtx.Provider value={value}>{children}</DeviceCtx.Provider>
 }

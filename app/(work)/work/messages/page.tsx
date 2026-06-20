@@ -133,8 +133,10 @@ export default function MessagesPage() {
           .from('work_direct_messages')
           .select('*, profile:profiles(id, full_name, title)')
           .eq('id', payload.new.id)
-          .single()
-        if (data && mounted) setMessages(prev => [...prev, data as DirectMessage])
+          .maybeSingle()
+        if (data && mounted) {
+          setMessages(prev => prev.some(m => m.id === (data as DirectMessage).id) ? prev : [...prev, data as DirectMessage])
+        }
       })
       .subscribe()
     return () => { mounted = false; supabase.removeChannel(channel) }

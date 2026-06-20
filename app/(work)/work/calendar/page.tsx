@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { ymdLocal } from '@/lib/dateTz'
 import { useDevice } from '@/lib/hooks/useDeviceContext'
 import MobileWorkCalendar from '@/components/mobile/work/MobileWorkCalendar'
 
@@ -106,9 +107,9 @@ export default function CalendarPage() {
           <div key={d} className="bg-zinc-900 text-xs uppercase tracking-wider text-zinc-500 px-2 py-1.5">{d}</div>
         ))}
         {cells.map(({ date, inMonth }, idx) => {
-          const key = date.toISOString().slice(0,10)
-          const dayEvents = events.filter(e => e.start_at.slice(0,10) === key)
-          const isToday = key === new Date().toISOString().slice(0,10)
+          const key = ymdLocal(date)
+          const dayEvents = events.filter(e => ymdLocal(new Date(e.start_at)) === key)
+          const isToday = key === ymdLocal(new Date())
           return (
             <div
               key={idx}

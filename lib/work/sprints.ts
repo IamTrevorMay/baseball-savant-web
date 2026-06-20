@@ -1,5 +1,11 @@
 // Weekly-sprint helpers. Mon (start) → Sun (end).
 
+/** YYYY-MM-DD from a Date's LOCAL components — avoids the toISOString() UTC day-shift
+ *  that rolled sprint week keys back a day in timezones behind UTC. */
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function weekStart(d: Date = new Date()): Date {
   const out = new Date(d)
   out.setHours(0, 0, 0, 0)
@@ -17,7 +23,7 @@ export function weekEnd(d: Date = new Date()): Date {
 }
 
 export function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return ymd(d)
 }
 
 export function daysBetween(a: Date, b: Date): number {
@@ -63,8 +69,8 @@ export function getSprintWeek(date: Date = new Date()) {
   const sunday = new Date(monday)
   sunday.setDate(monday.getDate() + 6)
   return {
-    start: monday.toISOString().split('T')[0],
-    end: sunday.toISOString().split('T')[0],
+    start: ymd(monday),
+    end: ymd(sunday),
   }
 }
 
