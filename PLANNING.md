@@ -148,7 +148,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 - ✓ **Done** — `update/milb`: last-pitch detection now targets the last actual *pitch* event (non-pitch trailing events no longer null the at-bat outcome).
 - ✓ **Done** — `emails/analytics/cohort`: only computes the 12 returned retention weeks (was computing every week to the present, then slicing). Full SQL aggregation deferred.
 
-**Follow-up:** `explore/query` now requires login but still executes arbitrary SELECT for any logged-in user — rebuild SQL server-side / sign the AI-proposed query.
+**Follow-up:** ✓ **Done** — `explore/query` confirmed SQL is now validated server-side (`validateExploreSql`): read-only, single-statement, no system schemas, and every `FROM`/`JOIN` relation must be an allowlisted analytics table or a CTE. A logged-in user can no longer exfiltrate `profiles`/`email_subscribers`/`auth.*` etc. (Auth gate from `c41731c` still applies.)
 
 **Good-model routes to copy:** `leaderboard-defence` (table+sort whitelist, numeric coercion), `bat-tracking` (parameterized `.eq`/`.gte`).
 

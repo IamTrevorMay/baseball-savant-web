@@ -5,6 +5,56 @@ import { requireSessionUser } from '@/lib/apiAuth'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+// Tables the explore tool is allowed to read. The route runs arbitrary confirmed
+// SQL via run_query_long, so without this any logged-in user could SELECT from
+// sensitive tables (profiles, email_subscribers, auth.*, …). Restrict to the
+// analytics surface the AI is prompted to use.
+const ALLOWED_TABLES = new Set([
+  'pitches', 'milb_pitches', 'players', 'player_summary', 'batter_summary',
+  'pitcher_season_command', 'pitcher_season_deception', 'league_averages', 'league_percentiles',
+  'glossary', 'pitch_baselines', 'sos_scores', 'park_factors',
+  'bat_tracking_swing_miss', 'bat_tracking_swing_miss_latest',
+  'mv_batter_season_stats', 'mv_pitcher_season_stats',
+  'retro_events', 'retro_games', 'retro_people', 'retro_parks', 'retro_rosters',
+  'retro_id_map', 'retro_id_map_conflicts', 'retro_starter_outings', 'retro_ingest_runs',
+])
+
+/** Validate a confirmed SELECT before execution. Read-only, single-statement, analytics tables only. */
+function validateExploreSql(raw: string): { ok: true } | { ok: false; error: string } {
+  const sql = raw.trim().replace(/;+\s*$/, '') // tolerate a single trailing semicolon
+  const lower = sql.toLowerCase()
+
+  if (!lower.startsWith('select') && !lower.startsWith('with')) {
+    return { ok: false, error: 'Only SELECT queries are allowed.' }
+  }
+  if (sql.includes(';')) {
+    return { ok: false, error: 'Multiple statements are not allowed.' }
+  }
+  // Block writes/DDL even nested in CTEs or function bodies.
+  if (/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|merge|call|do)\b/i.test(sql)) {
+    return { ok: false, error: 'Only read-only SELECT queries are allowed.' }
+  }
+  // Block system catalogs / non-public schemas.
+  if (/\b(pg_catalog|pg_|information_schema|auth|storage|vault|pgsodium|extensions)\s*\./i.test(sql)) {
+    return { ok: false, error: 'Access to system schemas is not allowed.' }
+  }
+  // Collect CTE names so they don't trip the table allowlist.
+  const cteNames = new Set<string>()
+  for (const m of sql.matchAll(/(?:with|,)\s+([a-z_][a-z0-9_]*)\s+as\s*\(/gi)) {
+    cteNames.add(m[1].toLowerCase())
+  }
+  // Every relation referenced after FROM/JOIN must be allowlisted (or a CTE).
+  for (const m of sql.matchAll(/\b(?:from|join)\s+("?)([a-z_][a-z0-9_.]*)\1/gi)) {
+    let ref = m[2].toLowerCase()
+    if (ref.startsWith('public.')) ref = ref.slice('public.'.length)
+    if (ref.includes('.')) return { ok: false, error: `Table not allowed: ${m[2]}` }
+    if (!ALLOWED_TABLES.has(ref) && !cteNames.has(ref)) {
+      return { ok: false, error: `Table not allowed: ${ref}` }
+    }
+  }
+  return { ok: true }
+}
+
 const SYSTEM_PROMPT = `You are a baseball data analyst embedded in the Triton analytics platform. You help users explore Statcast pitch-level data by generating SQL queries and visualization configurations.
 
 DATABASE SCHEMA — Table: pitches (7.4M+ rows, 2015–2025)
@@ -101,10 +151,10 @@ export async function POST(req: NextRequest) {
     const { question, history, confirmed, sql: confirmedSql, viz_config: confirmedViz } = await req.json()
 
     if (confirmed && confirmedSql) {
-      // Execute the confirmed SQL
-      const sqlLower = confirmedSql.toLowerCase().trim()
-      if (!sqlLower.startsWith('select') && !sqlLower.startsWith('with')) {
-        return NextResponse.json({ error: 'Only SELECT queries are allowed.' }, { status: 400 })
+      // Validate before execution: read-only, single-statement, analytics tables only.
+      const check = validateExploreSql(String(confirmedSql))
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 })
       }
 
       console.log('[explore] Executing SQL:', confirmedSql.slice(0, 500))
