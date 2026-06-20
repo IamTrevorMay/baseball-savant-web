@@ -124,7 +124,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 
 **HIGH — open:**
 - ✓ **Done** — `emails/audiences` (+ `[id]`, `import`, `subscribers`): IDOR closed — `requireSessionAdmin` on all 9 handlers.
-- `emails/webhook`: no Resend/Svix signature verify + no idempotency → forged/duplicate events corrupt analytics. Verify signature; dedupe on `(send_id, resend_event_id, event_type)`.
+- ✓ **Done** — `emails/webhook`: Svix signature verification (`RESEND_WEBHOOK_SECRET`; fail-open + warn if unset) + idempotent insert keyed on the svix-id (new `email_events.provider_event_id` unique index). Counter increments only on first insert, so retries/replays no longer double-count. **Set `RESEND_WEBHOOK_SECRET` in env to enable verification.**
 - ✓ **Done** — `update/route.ts`: batch upsert no longer all-or-nothing — on error, retry rows individually; only true failures count; both logged.
 - ✓ **Done** — `update` Stuff+/SOS now compute over the min/max of the ingested `game_date`s (not the request window), so TZ-edge pitches get scored.
 - ✓ **Done** — Cron UTC date bug: added `lib/dateTz.ts` (`ymdInTimeZone` + `addDaysToYmd`); `cron/pitches`, `milb-pitches`, `briefs`, `emails`, `newsletter`, `cleanup`, `daily-cards` now use ET calendar dates instead of UTC slices / `toLocaleString` double-convert.
