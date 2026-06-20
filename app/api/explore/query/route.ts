@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdminLong } from '@/lib/supabase-admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSessionUser } from '@/lib/apiAuth'
+import { reportError } from '@/lib/observability'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -205,7 +206,7 @@ export async function POST(req: NextRequest) {
       clarification: parsed.clarification || null,
     })
   } catch (error: any) {
-    console.error('Explore query error:', error)
+    reportError(error, { route: 'explore/query' })
     return NextResponse.json({ error: error.message || 'Something went wrong' }, { status: 500 })
   }
 }

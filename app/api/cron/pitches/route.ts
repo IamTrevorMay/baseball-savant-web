@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { trackCronRun } from '@/lib/cronTracker'
 import { syncBatTrackingSwingMiss } from '@/lib/syncBatTracking'
 import { ymdInTimeZone, addDaysToYmd } from '@/lib/dateTz'
+import { reportError } from '@/lib/observability'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
@@ -159,6 +160,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(result)
   } catch (err: unknown) {
+    reportError(err, { route: 'cron/pitches' })
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: msg }, { status: 500 })
   }

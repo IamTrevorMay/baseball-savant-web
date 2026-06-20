@@ -92,13 +92,12 @@ Freshness check, dependency gating, MV timestamp tracking in `system_metadata`.
 ### ~~Agreed — MiLB Event Normalization at Ingest~~ ✓ Done
 `EVENT_NORMALIZE_MAP` applied at write time in `app/api/update/milb/route.ts`.
 
-### Agreed — Observability
-No structured logging, no request tracing, no error aggregation, no query performance monitoring. `cron_runs` tracking and `console.error` are the only signals.
+### ~~Agreed — Observability~~ ✓ Partially Done
+`lib/observability.ts` provides structured JSON logging (`logApiEvent`), a single error-reporting chokepoint (`reportError`), and a `withApiLogging` wrapper. `reportError` wired into `explore/query` + `cron/pitches` catch blocks (pattern to extend). **Cron Health dashboard** shipped: `/api/admin/cron-health` (admin-gated) + a section on `/(admin)/admin` showing last run / status / duration / error per job, 24h failures, and MV freshness from `cron_runs` + `system_metadata`.
 
-**Action items:**
-- Add Sentry (or similar) for error aggregation with source maps
-- Add structured logging for API routes (request duration, query count, cache hit/miss)
-- Surface cron job health in admin dashboard (last run, duration, error count)
+**Remaining:**
+- Wire a real aggregator (Sentry SDK) into `reportError` — needs a project DSN (`SENTRY_DSN`); the chokepoint + TODO are in place.
+- Extend `reportError`/`withApiLogging` across the rest of the API routes.
 
 ### ~~Additional — Error Boundaries & User Feedback~~ ✓ Done
 `ToastProvider` + `useToast()` in root layout; `ErrorBoundary` wrapping Work, Broadcast, Data route groups.

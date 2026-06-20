@@ -61,10 +61,20 @@ export default function AdminPage() {
     setLoadingInvites(false)
   }, [])
 
+  // Cron health
+  const [cronHealth, setCronHealth] = useState<any | null>(null)
+  const fetchCronHealth = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/cron-health')
+      if (res.ok) setCronHealth(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
     fetchInvitations()
-  }, [fetchUsers, fetchInvitations])
+    fetchCronHealth()
+  }, [fetchUsers, fetchInvitations, fetchCronHealth])
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -151,6 +161,58 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-10">
+      {/* Section: Cron Health */}
+      <section>
+        <h2 className="font-[family-name:var(--font-bebas)] text-2xl uppercase tracking-wider text-white mb-4">
+          Cron Health
+        </h2>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          {!cronHealth ? (
+            <div className="p-6 text-center text-zinc-500 text-sm">Loading…</div>
+          ) : (cronHealth.jobs?.length ?? 0) === 0 ? (
+            <div className="p-6 text-center text-zinc-600 text-sm">No cron runs recorded</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase">
+                  <th className="text-left px-4 py-3 font-medium">Job</th>
+                  <th className="text-left px-4 py-3 font-medium">Status</th>
+                  <th className="text-right px-4 py-3 font-medium">Last run</th>
+                  <th className="text-right px-4 py-3 font-medium">Duration</th>
+                  <th className="text-left px-4 py-3 font-medium">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cronHealth.jobs.map((j: any) => (
+                  <tr key={j.job} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                    <td className="px-4 py-3 text-white">{j.job}</td>
+                    <td className="px-4 py-3">
+                      <span className={
+                        j.status === 'success' ? 'text-emerald-400'
+                          : j.status === 'error' ? 'text-red-400'
+                            : 'text-amber-400'
+                      }>{j.status}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-zinc-400 tabular-nums">
+                      {j.age_minutes == null ? '—' : j.age_minutes < 60 ? `${j.age_minutes}m ago` : `${Math.round(j.age_minutes / 60)}h ago`}
+                    </td>
+                    <td className="px-4 py-3 text-right text-zinc-400 tabular-nums">
+                      {j.duration_ms == null ? '—' : `${(j.duration_ms / 1000).toFixed(1)}s`}
+                    </td>
+                    <td className="px-4 py-3 text-red-400/80 text-xs truncate max-w-xs">{j.error_message || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {cronHealth?.mvLastRefreshed && (
+            <div className="px-4 py-2 text-xs text-zinc-600 border-t border-zinc-800">
+              MV last refreshed: {String(cronHealth.mvLastRefreshed)}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Section A: Invite Users */}
       <section>
         <h2 className="font-[family-name:var(--font-bebas)] text-2xl uppercase tracking-wider text-white mb-4">
