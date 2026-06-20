@@ -125,7 +125,9 @@ export async function GET(request: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([cohortWeek, subscriberIds]) => {
         const cohortWeekIdx = allWeeks.indexOf(cohortWeek)
-        const weeksAfter = allWeeks.slice(cohortWeekIdx)
+        // Only the first 12 weeks are returned, so only compute those — previously
+        // this computed engagement for every week up to the present, then sliced.
+        const weeksAfter = allWeeks.slice(cohortWeekIdx, cohortWeekIdx + 12)
 
         // retention[i] = fraction of this cohort who opened in week cohortWeekIdx + i
         const retention = weeksAfter.map(week => {
@@ -137,11 +139,10 @@ export async function GET(request: NextRequest) {
           return subscriberIds.length > 0 ? engaged / subscriberIds.length : 0
         })
 
-        // Limit retention to 12 weeks max
         return {
           week: cohortWeek,
           new_subscribers: subscriberIds.length,
-          retention: retention.slice(0, 12),
+          retention,
         }
       })
 

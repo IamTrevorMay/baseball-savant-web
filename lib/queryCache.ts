@@ -19,7 +19,7 @@ export async function getCached<T = any>(key: string): Promise<T | null> {
     .select('response')
     .eq('cache_key', key)
     .gt('expires_at', new Date().toISOString())
-    .single()
+    .maybeSingle() // 0 rows (the normal cache miss) returns null without erroring
 
   if (error || !data) return null
   return data.response as T

@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
         .eq('status', 'running')
         .order('started_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle() // tolerate 0/>1 running rows (overlapping runs) instead of throwing
 
       const runId = runRow?.id ?? null
 
@@ -78,7 +78,12 @@ export async function GET(req: NextRequest) {
         details: r.details,
       }))
 
-      await supabaseAdmin.from('integrity_checks').insert(rows)
+      if (runId) {
+        const { error: insErr } = await supabaseAdmin.from('integrity_checks').insert(rows)
+        if (insErr) console.error('[cron/integrity] integrity_checks insert failed:', insErr.message)
+      } else {
+        console.warn('[cron/integrity] no running cron_runs row found; skipping integrity_checks insert')
+      }
 
       // Build summary counts
       const summary = {

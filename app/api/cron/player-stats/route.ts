@@ -93,9 +93,10 @@ export async function syncPlayerStats(year: number) {
         const { error } = await supabaseAdmin
           .from('player_season_stats')
           .upsert(rows, { onConflict: 'player_id,season,stat_group' })
-        if (!error) pitchingUpserted += rows.length
+        if (error) console.error('[cron/player-stats] pitching upsert failed:', error.message)
+        else pitchingUpserted += rows.length
       }
-    } catch { /* skip batch on error */ }
+    } catch (e: any) { console.error('[cron/player-stats] pitching batch error:', e?.message ?? e) }
   }
 
   // Fetch hitting stats in batches of 50
@@ -137,9 +138,10 @@ export async function syncPlayerStats(year: number) {
         const { error } = await supabaseAdmin
           .from('player_season_stats')
           .upsert(rows, { onConflict: 'player_id,season,stat_group' })
-        if (!error) hittingUpserted += rows.length
+        if (error) console.error('[cron/player-stats] hitting upsert failed:', error.message)
+        else hittingUpserted += rows.length
       }
-    } catch { /* skip batch on error */ }
+    } catch (e: any) { console.error('[cron/player-stats] hitting batch error:', e?.message ?? e) }
   }
 
   return {

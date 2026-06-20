@@ -170,28 +170,29 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
   // Sync any new players that appeared in the ingested data
   await syncNewPlayers(rows)
 
-  // Refresh materialized views
-  await supabase.rpc('refresh_player_summary')
-  await supabase.rpc('refresh_batter_summary')
+  let stuffResult: any = { ok: true, skipped: 'no rows inserted' }
+  let sosResult: any = { ok: true, skipped: 'no rows inserted' }
 
-  // Compute over the date span actually ingested, not the request window. Savant can
-  // deliver pitches whose game_date falls just outside [start_date, end_date] (late
-  // west-coast games / TZ boundary); keying off the request window would ingest them
-  // but never score them. Min/max of the ingested game_dates covers every such date.
-  const ingestedDates = rows.map(r => r.game_date).filter(Boolean).sort()
-  const computeStart = ingestedDates[0] || start_date
-  const computeEnd = ingestedDates[ingestedDates.length - 1] || end_date
+  // Only refresh materialized views + recompute metrics when rows actually landed.
+  // The cron loops syncPitches per game_type; an empty game_type (e.g. 'S' out of
+  // spring) shouldn't trigger a full MV refresh + whole-season SOS recompute.
+  if (inserted > 0) {
+    await supabase.rpc('refresh_player_summary')
+    await supabase.rpc('refresh_batter_summary')
 
-  // Compute Stuff+ for the ingested date range
-  const stuffResult = await computeStuffPlusForDateRange(supabase as any, computeStart, computeEnd)
-  if (!stuffResult.ok) {
-    console.error('Stuff+ computation failed:', stuffResult.error)
-  }
+    // Compute over the date span actually ingested, not the request window. Savant can
+    // deliver pitches whose game_date falls just outside [start_date, end_date] (late
+    // west-coast games / TZ boundary); keying off the request window would ingest them
+    // but never score them. Min/max of the ingested game_dates covers every such date.
+    const ingestedDates = rows.map(r => r.game_date).filter(Boolean).sort()
+    const computeStart = ingestedDates[0] || start_date
+    const computeEnd = ingestedDates[ingestedDates.length - 1] || end_date
 
-  // Recompute SOS for affected years
-  const sosResult = await computeSOSForYears(supabase as any, computeStart, computeEnd)
-  if (!sosResult.ok) {
-    console.error('SOS computation failed:', sosResult.error)
+    stuffResult = await computeStuffPlusForDateRange(supabase as any, computeStart, computeEnd)
+    if (!stuffResult.ok) console.error('Stuff+ computation failed:', stuffResult.error)
+
+    sosResult = await computeSOSForYears(supabase as any, computeStart, computeEnd)
+    if (!sosResult.ok) console.error('SOS computation failed:', sosResult.error)
   }
 
   return {

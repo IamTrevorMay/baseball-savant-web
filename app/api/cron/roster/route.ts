@@ -115,7 +115,8 @@ async function syncUmpires(): Promise<{ inserted: number; errors: number; total_
     if (rows.length >= 100 || i === games.length - 1) {
       if (rows.length > 0) {
         const { error } = await supabaseAdmin.from('game_umpires').upsert(rows, { onConflict: 'game_pk' })
-        if (!error) inserted += rows.length
+        if (error) console.error('[cron/roster] game_umpires upsert failed:', error.message)
+        else inserted += rows.length
         rows.length = 0
       }
     }

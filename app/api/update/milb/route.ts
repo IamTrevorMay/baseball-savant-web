@@ -186,6 +186,13 @@ async function extractPitchesFromGame(
     const atBatNumber = (about.atBatIndex ?? 0) + 1 // 0-indexed → 1-indexed
 
     const playEvents = play.playEvents || []
+    // The last element may be a non-pitch event (pickoff, step-off, mound visit), so
+    // find the index of the last actual PITCH — that's the one the at-bat outcome
+    // attaches to. Comparing against playEvents[last] would leave outcomes null.
+    let lastPitchIndex: number | null = null
+    for (let i = playEvents.length - 1; i >= 0; i--) {
+      if (playEvents[i].isPitch) { lastPitchIndex = playEvents[i].index; break }
+    }
     for (const ev of playEvents) {
       if (!ev.isPitch) continue
 
@@ -198,7 +205,7 @@ async function extractPitchesFromGame(
       const count = ev.count || {}
 
       // Determine event — only on the last pitch of the at-bat
-      const isLastPitch = ev.index === playEvents[playEvents.length - 1]?.index
+      const isLastPitch = ev.index === lastPitchIndex
       const event = isLastPitch ? result.event || null : null
       const eventType = isLastPitch ? result.eventType || null : null
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { isFastball, computeUniqueScore, computeDeceptionScore, ZScores } from '@/lib/leagueStats'
+import { ymdInTimeZone } from '@/lib/dateTz'
 
 /**
  * Batch compute Deception metrics and store in pitcher_season_deception.
@@ -15,7 +16,12 @@ export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || '2025')
   const gameType = searchParams.get('gameType') || 'R'
-  const month = new Date().getMonth() + 1
+  // Qualification threshold depends on the TARGET season's completeness, not the
+  // current wall-clock month — so backfilling a past season is deterministic
+  // (always full-sample) instead of varying by when the job runs.
+  const today = ymdInTimeZone()
+  const isEarlyCurrentSeason = year === Number(today.slice(0, 4)) && Number(today.slice(5, 7)) <= 5
+  const minPitches = isEarlyCurrentSeason ? 30 : 100
 
   try {
     // Step 1: Compute per-pitcher, per-pitch-type averages
@@ -40,7 +46,7 @@ export async function POST(req: NextRequest) {
         AND pfx_z IS NOT NULL
         AND pfx_x IS NOT NULL
       GROUP BY pitcher, player_name, pitch_type, pitch_name, p_throws
-      HAVING COUNT(*) >= ${month <= 5 ? 30 : 100}
+      HAVING COUNT(*) >= ${minPitches}
     `.trim()
 
     const { data: pitcherRows, error: pitcherErr } = await supabase.rpc('run_query', { query_text: pitcherSql })

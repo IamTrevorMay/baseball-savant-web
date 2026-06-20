@@ -118,6 +118,16 @@ export async function POST(req: NextRequest) {
     const upsertRows: any[] = []
     let pitcherCount = 0
 
+    // Baselines depend only on (metric, pitchName, year), not the pitcher — memoize
+    // so we don't recompute the same lookup thousands of times across the pitcher loop.
+    const baselineCache = new Map<string, ReturnType<typeof getLeagueBaseline>>()
+    const bl = (metric: Parameters<typeof getLeagueBaseline>[0], pitchName: string) => {
+      const k = `${metric}:${pitchName}`
+      let v = baselineCache.get(k)
+      if (v === undefined) { v = getLeagueBaseline(metric, pitchName, year); baselineCache.set(k, v) }
+      return v
+    }
+
     for (const [pitcherId, pitchTypes] of Object.entries(groups)) {
       const playerName = pitchTypes[Object.keys(pitchTypes)[0]][0]?.player_name
       pitcherCount++
@@ -187,16 +197,16 @@ export async function POST(req: NextRequest) {
         const avgMissfire = missfireCount > 0 ? missfireSum / missfireCount : null
         const closePct = outsideCount > 0 ? (closeCount / outsideCount) * 100 : null
 
-        // Compute plus stats
-        const brinkBl = getLeagueBaseline('brink', pitchName, year)
-        const clusterBl = getLeagueBaseline('cluster', pitchName, year)
-        const hdevBl = getLeagueBaseline('hdev', pitchName, year)
-        const vdevBl = getLeagueBaseline('vdev', pitchName, year)
-        const missfireBl = getLeagueBaseline('missfire', pitchName, year)
-        const closePctBl = getLeagueBaseline('close_pct', pitchName, year)
+        // Compute plus stats (baselines memoized per metric × pitch_name)
+        const brinkBl = bl('brink', pitchName)
+        const clusterBl = bl('cluster', pitchName)
+        const hdevBl = bl('hdev', pitchName)
+        const vdevBl = bl('vdev', pitchName)
+        const missfireBl = bl('missfire', pitchName)
+        const closePctBl = bl('close_pct', pitchName)
 
-        const clusterRBl = getLeagueBaseline('cluster_r', pitchName, year)
-        const clusterLBl = getLeagueBaseline('cluster_l', pitchName, year)
+        const clusterRBl = bl('cluster_r', pitchName)
+        const clusterLBl = bl('cluster_l', pitchName)
 
         const brinkPlus = avgBrink != null && brinkBl ? computePlus(avgBrink, brinkBl.mean, brinkBl.stddev) : null
         // For cluster/hdev/vdev/missfire: lower is better, so invert

@@ -137,16 +137,16 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 - ✓ **Done** — `leaderboard-triton`: added a 30-min in-memory result cache keyed by query params (not paging) so repeated/paged loads skip the season `stuff_plus` scan; `hot` was already cached. `(game_year, game_type)` is already covered by the Tier-2 composite index prefixes (`idx_pitches_year_type_*`). Deeper MV pre-aggregation deferred.
 
 **MED — open:**
-- `compute-triton`: `getLeagueBaseline` recomputed per pitcher×pitch_type — memoize per `(metric,pitchName,year)` before the loop.
-- `movement-percentiles`: cache key embeds raw float velo → ~0 hit rate + unbounded `query_cache` growth. Bucket to integer mph.
-- `lib/queryCache.ts:16`: `.single()` errors on 0/>1 rows (normal miss + dup keys silently disable cache). Use `.maybeSingle()` + unique `cache_key`.
-- `compute-deception`: qualification threshold keys off `Date.now().getMonth()` not target season → non-deterministic backfills.
-- `update/route.ts:160`: MV refresh + Stuff+/SOS run per game_type even on 0 inserts. Gate on `inserted>0`; hoist MV refresh to cron.
-- `computeSOSForYears`: recomputes whole-season pitcher×batter nightly for a 3-day delta. Scope to affected players.
-- `lib/leagueStats.ts:1238`: no-year path averages stddevs arithmetically (should pool variances).
-- `cron/player-stats`, `cron/roster`, `cron/integrity`: upsert/insert errors silently dropped; integrity re-queries its own run_id with `.single()` (throws on overlap).
-- `update/milb:201`: last-pitch detection compares against a possibly-non-pitch last event → at-bat `events` silently null.
-- `emails/analytics/cohort`: loads all members/sends/events into memory, O(cohorts×weeks×subs) JS. Aggregate in SQL.
+- ✓ **Done** — `compute-triton`: `getLeagueBaseline` memoized per `(metric, pitchName)` before the pitcher loop (was recomputed thousands of times).
+- ✓ **Done** — `movement-percentiles`: velo bucketed to integer mph for the cache key + band → stable, high-hit-rate keys instead of single-use floats.
+- ✓ **Done** — `lib/queryCache.ts`: `getCached` uses `.maybeSingle()` (cache miss no longer errors).
+- ✓ **Done** — `compute-deception`: qualification threshold derived from the target season's completeness (deterministic backfills), not `Date.now()`.
+- ✓ **Done** — `update`: MV refresh + Stuff+/SOS now gated on `inserted>0` (empty game-types skip the work). Hoisting MV refresh to the cron deferred.
+- ⏳ **Deferred (perf-only)** — `computeSOSForYears` recomputes whole-season pitcher×batter nightly for a 3-day delta. Correctness is fine; incremental scoping risks wrong SOS (opponent quality shifts season-wide), so it needs careful design — not bundled here.
+- ✓ **Done** — `lib/leagueStats.ts`: no-year baseline path now pools variances (`sqrt(mean σ²)`) instead of averaging stddevs (both the lookup and `_buildPooled`).
+- ✓ **Done** — `cron/player-stats`, `cron/roster`, `cron/integrity`: upsert/insert errors now logged; integrity uses `.maybeSingle()` + guards the missing-run_id case.
+- ✓ **Done** — `update/milb`: last-pitch detection now targets the last actual *pitch* event (non-pitch trailing events no longer null the at-bat outcome).
+- ✓ **Done** — `emails/analytics/cohort`: only computes the 12 returned retention weeks (was computing every week to the present, then slicing). Full SQL aggregation deferred.
 
 **Follow-up:** `explore/query` now requires login but still executes arbitrary SELECT for any logged-in user — rebuild SQL server-side / sign the AI-proposed query.
 

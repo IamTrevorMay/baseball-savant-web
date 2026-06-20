@@ -1240,14 +1240,16 @@ export function getLeagueBaseline(
     if (bestYear != null) return table[bestYear]![pitchName]
   }
 
-  // No year: average across all available years for this pitch type
-  let sum_mean = 0, sum_stddev = 0, count = 0
+  // No year: pool across all available years for this pitch type. Mean is averaged;
+  // stddev is pooled by variance (sqrt of mean variance) — averaging stddevs directly
+  // understates the spread.
+  let sum_mean = 0, sum_var = 0, count = 0
   for (const y of AVAILABLE_YEARS) {
     const entry = table[y]?.[pitchName]
-    if (entry) { sum_mean += entry.mean; sum_stddev += entry.stddev; count++ }
+    if (entry) { sum_mean += entry.mean; sum_var += entry.stddev * entry.stddev; count++ }
   }
   if (count === 0) return undefined
-  return { mean: sum_mean / count, stddev: sum_stddev / count }
+  return { mean: sum_mean / count, stddev: Math.sqrt(sum_var / count) }
 }
 
 // ── Legacy flat exports (for backward compat — averaged across all years) ────
@@ -1266,12 +1268,12 @@ function _buildPooled(table: YearLeague): Record<string, LeagueEntry> {
   }
   const result: Record<string, LeagueEntry> = {}
   for (const p of pitchSet) {
-    let sm = 0, ss = 0, n = 0
+    let sm = 0, sv = 0, n = 0
     for (const y of AVAILABLE_YEARS) {
       const e = table[y]?.[p]
-      if (e) { sm += e.mean; ss += e.stddev; n++ }
+      if (e) { sm += e.mean; sv += e.stddev * e.stddev; n++ } // pool variance, not stddev
     }
-    if (n > 0) result[p] = { mean: sm / n, stddev: ss / n }
+    if (n > 0) result[p] = { mean: sm / n, stddev: Math.sqrt(sv / n) }
   }
   return result
 }

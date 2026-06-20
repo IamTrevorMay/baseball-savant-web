@@ -27,10 +27,12 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // Parse entries: "FF:95.5,SI:93.2,SL:87.1"
+  // Parse entries: "FF:95.5,SI:93.2,SL:87.1". Bucket velo to integer mph so the
+  // cache key (and the ±1 mph band) is stable — raw floats produced a unique
+  // single-use key per request and the cache almost never hit.
   const entries = entriesRaw.split(',').map(e => {
     const [pt, vStr] = e.split(':')
-    return { pitch_type: pt, velo: Number(vStr) }
+    return { pitch_type: pt, velo: Math.round(Number(vStr)) }
   }).filter(e => e.pitch_type && !isNaN(e.velo) && /^[A-Z0-9]{1,4}$/.test(e.pitch_type))
 
   if (entries.length === 0) {
