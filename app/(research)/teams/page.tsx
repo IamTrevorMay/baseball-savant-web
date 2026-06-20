@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import ResearchNav from '@/components/ResearchNav'
 import { TEAM_COLORS } from '@/lib/teamColors'
 
@@ -147,7 +147,9 @@ export default function TeamsPage() {
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
+  const reqRef = useRef(0)
   const handleFetch = useCallback(async (t: Tab, s: string, gt: GameType, sd: string, ed: string) => {
+    const my = ++reqRef.current // discard out-of-order responses
     setLoading(true); setError(null)
     try {
       const res = await fetch('/api/team-tendencies', {
@@ -157,6 +159,7 @@ export default function TeamsPage() {
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const data = await res.json()
+      if (my !== reqRef.current) return // a newer request superseded this one
       const enriched = (data.rows || []).map((r: TeamRow) => ({
         ...r,
         diff: r.sd_for_pct != null && r.sd_against_pct != null ? r.sd_for_pct - r.sd_against_pct : null,
@@ -164,8 +167,8 @@ export default function TeamsPage() {
       }))
       setRows(enriched)
       setSortCol(null)
-    } catch (e: any) { setError(e.message) }
-    setLoading(false)
+    } catch (e: any) { if (my === reqRef.current) setError(e.message) }
+    if (my === reqRef.current) setLoading(false)
   }, [])
 
   // Auto-fetch on mount and when filters change

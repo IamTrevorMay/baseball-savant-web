@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { loadGlossary } from '@/lib/glossary'
@@ -136,7 +136,9 @@ export default function MilbPlayerDashboard() {
     setSearchResults(data || [])
     setShowSearch(true)
   }
+  const dataReqRef = useRef(0)
   async function fetchData() {
+    const my = ++dataReqRef.current // discard stale responses when navigating between players
     setDataLoading(true)
     try {
       const res = await fetch(`/api/milb/player-data?id=${pitcherId}&col=pitcher`)
@@ -212,6 +214,7 @@ export default function MilbPlayerDashboard() {
         }
       })
       const cleaned = allRows.filter((r: any) => r.pitch_type !== 'PO' && r.pitch_type !== 'IN')
+      if (my !== dataReqRef.current) return // superseded by a newer player load
       setAllData(cleaned)
       setData(cleaned)
       setResultCount(cleaned.length)
@@ -245,7 +248,7 @@ export default function MilbPlayerDashboard() {
     } catch (e) {
       console.error("fetchData error:", e)
     }
-    setDataLoading(false)
+    if (my === dataReqRef.current) setDataLoading(false)
   }
 
   if (loading || !info) return (

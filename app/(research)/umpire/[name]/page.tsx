@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import ResearchNav from '@/components/ResearchNav'
 import dynamic from 'next/dynamic'
@@ -88,10 +88,12 @@ export default function UmpireScorecardPage() {
   const [batterSide, setBatterSide] = useState<string | null>(null)
   const [chalSummary, setChalSummary] = useState<any>(null)
   const [chalEvents, setChalEvents] = useState<any[]>([])
+  const reqRef = useRef(0)
 
   useEffect(() => { loadData() }, [umpireName, selectedSeason, gameType, pitcherHand, batterSide])
 
   async function loadData() {
+    const my = ++reqRef.current // discard stale (out-of-order) scorecard responses
     setLoading(true)
     try {
       const res = await fetch('/api/umpire', {
@@ -101,10 +103,11 @@ export default function UmpireScorecardPage() {
       })
       if (!res.ok) {
         console.error('Scorecard error:', await res.text())
-        setLoading(false)
+        if (my === reqRef.current) setLoading(false)
         return
       }
       const data = await res.json()
+      if (my !== reqRef.current) return // superseded by a newer request
 
       if (data.summary) {
         const s = data.summary
@@ -165,7 +168,7 @@ export default function UmpireScorecardPage() {
     } catch (err) {
       console.error('Failed to load scorecard:', err)
     } finally {
-      setLoading(false)
+      if (my === reqRef.current) setLoading(false)
     }
   }
 

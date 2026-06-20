@@ -243,19 +243,22 @@ function ReportsPageInner() {
   }
 
   // Load pitch data
+  const playerReqRef = useRef(0)
   async function loadPlayerData(playerId: number) {
+    const my = ++playerReqRef.current // discard out-of-order player-data responses
     setLoading(true)
     const col = subjectType === "hitting" ? "batter" : "pitcher"
     try {
       const res = await fetch(`/api/player-data?id=${playerId}&col=${col}`)
       const json = await res.json()
+      if (my !== playerReqRef.current) return // a newer player load superseded this
       if (json.error) { console.error("Load error:", json.error); setLoading(false); return }
       const allRows = json.rows || []
       enrichData(allRows)
       setRawData(allRows)
       buildOptions(allRows)
     } catch (e) { console.error("Load failed:", e) }
-    setLoading(false)
+    if (my === playerReqRef.current) setLoading(false)
   }
 
   function buildOptions(rows: any[]) {
