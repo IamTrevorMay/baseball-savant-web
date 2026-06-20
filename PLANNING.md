@@ -126,7 +126,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 - ✓ **Done** — `emails/audiences` (+ `[id]`, `import`, `subscribers`): IDOR closed — `requireSessionAdmin` on all 9 handlers.
 - `emails/webhook`: no Resend/Svix signature verify + no idempotency → forged/duplicate events corrupt analytics. Verify signature; dedupe on `(send_id, resend_event_id, event_type)`.
 - ✓ **Done** — `update/route.ts`: batch upsert no longer all-or-nothing — on error, retry rows individually; only true failures count; both logged.
-- `update` Stuff+/SOS compute window keys off the request's UTC 3-day window, not the ingested `game_date`s → TZ-edge pitches ingested but never scored. Compute over distinct dates present in inserted rows.
+- ✓ **Done** — `update` Stuff+/SOS now compute over the min/max of the ingested `game_date`s (not the request window), so TZ-edge pitches get scored.
 - ✓ **Done** — Cron UTC date bug: added `lib/dateTz.ts` (`ymdInTimeZone` + `addDaysToYmd`); `cron/pitches`, `milb-pitches`, `briefs`, `emails`, `newsletter`, `cleanup`, `daily-cards` now use ET calendar dates instead of UTC slices / `toLocaleString` double-convert.
 - ✓ **Done** — `lib/leagueStats.ts` `computePlus` + `computeStuffRV`: stddev ≤ 0 / NaN now returns neutral 100 (per-component 0) instead of Inf/NaN.
 - ✓ **Done** — `compete/performance/upload`: synthesize deterministic `tm_pitch_uid` from session + pitch_no when `PitchUID` absent → re-uploads dedupe.
