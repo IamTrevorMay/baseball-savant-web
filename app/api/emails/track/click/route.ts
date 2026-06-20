@@ -18,11 +18,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid redirect URL' }, { status: 400 })
   }
 
-  // Validate URL
+  // Validate URL — restrict to http(s) so a crafted tracking link can't redirect
+  // recipients to a javascript:/data:/other-scheme target. (Arbitrary external
+  // hosts are allowed by design; emails legitimately link anywhere.)
+  let parsed: URL
   try {
-    new URL(targetUrl)
+    parsed = new URL(targetUrl)
   } catch {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return NextResponse.json({ error: 'Disallowed redirect protocol' }, { status: 400 })
   }
 
   if (sid) {

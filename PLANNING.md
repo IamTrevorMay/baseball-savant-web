@@ -131,7 +131,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 - ✓ **Done** — `lib/leagueStats.ts` `computePlus` + `computeStuffRV`: stddev ≤ 0 / NaN now returns neutral 100 (per-component 0) instead of Inf/NaN.
 - ✓ **Done** — `compete/performance/upload`: synthesize deterministic `tm_pitch_uid` from session + pitch_no when `PitchUID` absent → re-uploads dedupe.
 - `broadcast/trigger` + `sessions`: `active_state` non-atomic read-modify-write → concurrent Stream Deck/producer writes clobber. Use `jsonb_set`/RPC or a version column; whitelist PUT columns.
-- `emails/track/click`: open redirect (`new URL()` accepts any scheme/host). Enforce http(s) + host allowlist.
+- ✓ **Done** — `emails/track/click`: redirect now restricted to http(s) schemes (blocks `javascript:`/`data:`). Host allowlist intentionally skipped — emails legitimately link to arbitrary hosts.
 - Email open/click double-counted (pixel + webhook both increment, no per-subscriber dedup).
 - `emails/audiences/[id]/import`: per-row N+1 (4+ awaits/row, no cap) → serverless timeout on large lists. Bulk upsert.
 - `hot` + `leaderboard-triton`: full-season `pitches` scans grouped in Node, `game_year` non-indexed, no LIMIT, weak/cold-start cache. Pre-aggregate (MV / `pitcher_season_command`) or add `(game_year, game_type)` index.
