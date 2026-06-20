@@ -171,11 +171,12 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
   await syncNewPlayers(rows)
 
   let stuffResult: any = { ok: true, skipped: 'no rows inserted' }
-  let sosResult: any = { ok: true, skipped: 'no rows inserted' }
 
-  // Only refresh materialized views + recompute metrics when rows actually landed.
+  // Only refresh materialized views + recompute Stuff+ when rows actually landed.
   // The cron loops syncPitches per game_type; an empty game_type (e.g. 'S' out of
-  // spring) shouldn't trigger a full MV refresh + whole-season SOS recompute.
+  // spring) shouldn't trigger a full MV refresh.
+  // (SOS recompute is whole-season and slow — moved out of the ingest path to the
+  // weekly /api/cron/sos-weekly job; it changes too slowly to need nightly recompute.)
   if (inserted > 0) {
     await supabase.rpc('refresh_player_summary')
     await supabase.rpc('refresh_batter_summary')
@@ -190,9 +191,6 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
 
     stuffResult = await computeStuffPlusForDateRange(supabase as any, computeStart, computeEnd)
     if (!stuffResult.ok) console.error('Stuff+ computation failed:', stuffResult.error)
-
-    sosResult = await computeSOSForYears(supabase as any, computeStart, computeEnd)
-    if (!sosResult.ok) console.error('SOS computation failed:', sosResult.error)
   }
 
   return {
@@ -201,7 +199,6 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     errors,
     message: `Fetched ${rows.length} pitches, ${inserted} processed`,
     stuff_plus: stuffResult,
-    sos: sosResult,
   }
 }
 

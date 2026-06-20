@@ -141,7 +141,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 - ✓ **Done** — `lib/queryCache.ts`: `getCached` uses `.maybeSingle()` (cache miss no longer errors).
 - ✓ **Done** — `compute-deception`: qualification threshold derived from the target season's completeness (deterministic backfills), not `Date.now()`.
 - ✓ **Done** — `update`: MV refresh + Stuff+/SOS now gated on `inserted>0` (empty game-types skip the work). Hoisting MV refresh to the cron deferred.
-- ⏳ **Deferred (perf-only)** — `computeSOSForYears` recomputes whole-season pitcher×batter nightly for a 3-day delta. Correctness is fine; incremental scoping risks wrong SOS (opponent quality shifts season-wide), so it needs careful design — not bundled here.
+- ✓ **Done** — `computeSOSForYears` whole-season recompute moved out of the nightly pitches ingest (a big part of that cron hitting the 300s ceiling) into a weekly `/api/cron/sos-weekly` job. SOS shifts slowly, so weekly full recompute is correct and keeps the nightly path fast — avoids the risky incremental-scoping rewrite.
 - ✓ **Done** — `lib/leagueStats.ts`: no-year baseline path now pools variances (`sqrt(mean σ²)`) instead of averaging stddevs (both the lookup and `_buildPooled`).
 - ✓ **Done** — `cron/player-stats`, `cron/roster`, `cron/integrity`: upsert/insert errors now logged; integrity uses `.maybeSingle()` + guards the missing-run_id case.
 - ✓ **Done** — `update/milb`: last-pitch detection now targets the last actual *pitch* event (non-pitch trailing events no longer null the at-bat outcome).
