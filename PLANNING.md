@@ -2,6 +2,13 @@
 
 ## Recently Completed
 
+### Bat-Tracking Miss-Distance Leaderboard Ingest (June 2026)
+Savant released the "Swing Timing & Miss Distance" metric (June 2026). The per-pitch `miss_distance` scalar already flows into `pitches` via the allowlist-free CSV ingest (verified: every Savant pitch-level column is captured, 0 missing). The full directional decomposition (tied-up/flail, early/late, over/under + flawed/perfect contact, timing ms) lives only on the leaderboard endpoint, which is season-cumulative with no date slicing.
+
+**Shipped:** `bat_tracking_swing_miss` table (`scripts/create-bat-tracking-swing-miss.sql`) + `bat_tracking_swing_miss_latest` view, snapshotted nightly. `lib/syncBatTracking.ts` pulls 4 CSVs (pitcher/batter × overall/per-pitch-type via `split[]=api_pitch_type_group03`) keyed by `snapshot_date` to build a time-series; wired into `/api/cron/pitches`. Granularity: one row per snapshot × player_type × player × season × pitch_type (`pitch_type='ALL'` = overall). Initial snapshot: 2,946 rows.
+
+**Leaderboard UI:** `/(research)/bat-tracking` page (under nav **More → Bat Tracking**) backed by `/api/bat-tracking`. Pitcher/batter toggle, season + pitch-type selectors, min-swings qualifier, sortable columns, and a Miss-Breakdown axis toggle (Tied-Up/Flail ↔ Early/Late ↔ Over/Under) mirroring Savant's board. See `docs/VARIABLES.md §8.7`.
+
 ### Performance Optimization (June 2026)
 Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches` table).
 
