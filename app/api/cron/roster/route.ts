@@ -69,11 +69,17 @@ async function syncPlayers(): Promise<{ updated: number; errors: number; remaini
 async function syncUmpires(): Promise<{ inserted: number; errors: number; total_games: number }> {
   const year = new Date().getFullYear()
 
+  // Only look at recently-played games missing umpires. The old query did a
+  // SELECT DISTINCT over the whole season's pitches (~800k rows) + a LEFT JOIN
+  // anti-pattern, which timed out (failed 26/28 nightly runs). Windowing to the
+  // last 14 days uses the game_date index and keeps the DISTINCT cheap.
+  // (Older missing games predate this fix — backfill separately with a wider window.)
   const { data: games, error: gErr } = await supabaseAdmin.rpc('run_query', {
     query_text: `SELECT DISTINCT p.game_pk, p.game_date, p.home_team, p.away_team
       FROM pitches p
-      LEFT JOIN game_umpires u ON p.game_pk = u.game_pk
-      WHERE p.game_year = ${year} AND u.game_pk IS NULL
+      WHERE p.game_year = ${year}
+        AND p.game_date > (now() - interval '14 days')::date
+        AND NOT EXISTS (SELECT 1 FROM game_umpires u WHERE u.game_pk = p.game_pk)
       ORDER BY p.game_date DESC
       LIMIT 500`,
   })

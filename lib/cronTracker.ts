@@ -20,6 +20,26 @@ export async function trackCronRun<T>(
   const startMs = Date.now()
   let runId: number | null = null
 
+  // Reconcile orphaned 'running' rows from prior invocations that were killed
+  // (Vercel function timeout / OOM) before they could record success or error —
+  // otherwise they stay 'running' forever and pollute cron-health. No real cron
+  // runs >30 min, so older 'running' rows are dead. Best-effort; never throws.
+  try {
+    const staleCutoff = new Date(startMs - 30 * 60 * 1000).toISOString()
+    await supabaseAdmin
+      .from('cron_runs')
+      .update({
+        status: 'timeout',
+        finished_at: startedAt.toISOString(),
+        error_message: 'orphaned running row — function likely killed (timeout/OOM)',
+      })
+      .eq('job', job)
+      .eq('status', 'running')
+      .lt('started_at', staleCutoff)
+  } catch (err: any) {
+    console.error('[cronTracker] reconcile threw:', err?.message || String(err))
+  }
+
   // Best-effort INSERT. Never throw out of this block.
   try {
     const { data, error } = await supabaseAdmin
