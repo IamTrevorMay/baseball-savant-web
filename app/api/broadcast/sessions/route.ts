@@ -74,7 +74,9 @@ export async function PUT(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { id, ...updates } = body
+    // active_state is owned by the trigger route (atomic merge); never let a raw
+    // PUT body overwrite live visibility/recording state.
+    const { id, active_state: _ignoredActiveState, ...updates } = body
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
     // Resolve project from session

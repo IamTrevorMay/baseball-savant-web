@@ -155,15 +155,12 @@ export async function GET(req: NextRequest) {
         payload: { running: true, remaining: preset.seconds, total: preset.seconds, startedAt, autoHide: preset.autoHide, countdownAssetId: countdownAsset.id, source: 'trigger-api', timestamp: Date.now() },
       })
 
-      // Update active_state with new visible assets
-      const newActiveState = {
-        visibleAssets: Array.from(visibleAssets),
-        slideshowIndexes,
-      }
-      await supabaseAdmin
-        .from('broadcast_sessions')
-        .update({ active_state: newActiveState })
-        .eq('id', sid)
+      // Atomically merge the changed keys so concurrent triggers (Stream Deck +
+      // producer) don't clobber each other's unrelated active_state.
+      await supabaseAdmin.rpc('broadcast_merge_active_state', {
+        p_session_id: sid,
+        p_patch: { visibleAssets: Array.from(visibleAssets), slideshowIndexes },
+      })
 
       supabaseAdmin.removeChannel(channel)
 
@@ -395,16 +392,12 @@ export async function GET(req: NextRequest) {
       eventPayload = { assetId: aid!, source: 'trigger-api' }
     }
 
-    // Update active_state in DB
-    const newActiveState = {
-      visibleAssets: Array.from(visibleAssets),
-      slideshowIndexes,
-    }
-
-    const { error: updateErr } = await supabaseAdmin
-      .from('broadcast_sessions')
-      .update({ active_state: newActiveState })
-      .eq('id', sid)
+    // Atomically merge the changed keys (see broadcast_merge_active_state) so a
+    // concurrent trigger can't overwrite unrelated active_state keys.
+    const { error: updateErr } = await supabaseAdmin.rpc('broadcast_merge_active_state', {
+      p_session_id: sid,
+      p_patch: { visibleAssets: Array.from(visibleAssets), slideshowIndexes },
+    })
 
     if (updateErr) {
       return NextResponse.json({ error: 'Failed to update session state' }, { status: 500 })
