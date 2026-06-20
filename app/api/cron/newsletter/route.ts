@@ -3,6 +3,7 @@ import { Resend } from 'resend'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/encryption'
 import { buildNewsletterHtml, highlightsToStandouts, fetchLatestSubstackPost } from '@/lib/newsletterHtml'
+import { ymdInTimeZone, addDaysToYmd } from '@/lib/dateTz'
 
 export const maxDuration = 120
 
@@ -16,14 +17,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Compute yesterday's date in ET
-  const now = new Date()
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  et.setDate(et.getDate() - 1)
-  const briefDate = et.toISOString().slice(0, 10)
+  // Yesterday's date in ET
+  const briefDate = addDaysToYmd(ymdInTimeZone(), -1)
 
   // Skip offseason (Dec, Jan)
-  const month = et.getMonth() + 1
+  const month = Number(briefDate.slice(5, 7))
   if (month === 12 || month === 1) {
     return NextResponse.json({ ok: true, skipped: true, reason: 'offseason' })
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { ymdInTimeZone, addDaysToYmd } from '@/lib/dateTz'
 
 export const maxDuration = 30
 
@@ -18,11 +19,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders })
   }
 
-  // Delete briefs and daily_cards older than 5 days
-  const now = new Date()
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  et.setDate(et.getDate() - 5)
-  const cutoff = et.toISOString().slice(0, 10)
+  // Delete briefs and daily_cards older than 5 days (ET calendar)
+  const cutoff = addDaysToYmd(ymdInTimeZone(), -5)
 
   const [briefsResult, cardsResult] = await Promise.all([
     supabaseAdmin.from('briefs').delete().lt('date', cutoff).select('id'),

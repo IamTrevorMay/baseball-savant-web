@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/encryption'
 import { renderEmail } from '@/lib/emails/renderBlock'
 import { resolveAllBindings } from '@/lib/emails/resolveBindings'
+import { ymdInTimeZone, addDaysToYmd } from '@/lib/dateTz'
 import type { EmailProduct, EmailTemplate, ProductBranding, TemplateSettings } from '@/lib/emailTypes'
 
 export const maxDuration = 120
@@ -18,12 +19,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Compute yesterday's date in ET
-  const now = new Date()
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
-  et.setDate(et.getDate() - 1)
-  const sendDate = et.toISOString().slice(0, 10)
-  const month = et.getMonth() + 1
+  // Yesterday's date in ET
+  const sendDate = addDaysToYmd(ymdInTimeZone(), -1)
+  const month = Number(sendDate.slice(5, 7))
 
   // Fetch all active recurring products
   const { data: products } = await supabaseAdmin

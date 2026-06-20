@@ -4,6 +4,7 @@ import { invalidateBySource, purgeExpired } from '@/lib/queryCache'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { trackCronRun } from '@/lib/cronTracker'
 import { syncBatTrackingSwingMiss } from '@/lib/syncBatTracking'
+import { ymdInTimeZone, addDaysToYmd } from '@/lib/dateTz'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
@@ -13,10 +14,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Determine game type(s) based on current month
-  const now = new Date()
-  const month = now.getMonth() + 1
-  const year = now.getFullYear()
+  // Determine game type(s) based on current month (ET calendar, not UTC)
+  const today = ymdInTimeZone() // YYYY-MM-DD in America/New_York
+  const year = Number(today.slice(0, 4))
+  const month = Number(today.slice(5, 7))
   const gameTypes: string[] = []
   if (month >= 2 && month <= 3) gameTypes.push('S')
   if (month === 3 || (month >= 4 && month <= 9)) gameTypes.push('R')
@@ -24,17 +25,14 @@ export async function GET(req: NextRequest) {
   if (gameTypes.length === 0) gameTypes.push('R')
 
   // Sync last 3 days (covers delayed Savant uploads)
-  const end = new Date(now)
-  const start = new Date(now)
-  start.setDate(start.getDate() - 3)
-
-  const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const end = today
+  const start = addDaysToYmd(today, -3)
 
   try {
     const result = await trackCronRun('pitches', async () => {
       const results: Record<string, any> = {}
       for (const gt of gameTypes) {
-        results[gt] = await syncPitches(fmt(start), fmt(end), gt)
+        results[gt] = await syncPitches(start, end, gt)
       }
 
       // Check total rows inserted across game types. If 0, skip downstream steps.
@@ -130,7 +128,7 @@ export async function GET(req: NextRequest) {
       // whether new pitches landed (it refreshes on Savant's side independently).
       let batTrackingResult: Awaited<ReturnType<typeof syncBatTrackingSwingMiss>> | { error: string }
       try {
-        batTrackingResult = await syncBatTrackingSwingMiss(year, fmt(now))
+        batTrackingResult = await syncBatTrackingSwingMiss(year, today)
       } catch (e: any) {
         batTrackingResult = { error: e.message }
       }
@@ -144,8 +142,8 @@ export async function GET(req: NextRequest) {
       const payload = {
         ok: true as const,
         gameTypes,
-        start: fmt(start),
-        end: fmt(end),
+        start,
+        end,
         totalInserted,
         skippedDownstream: skipDownstream,
         results,

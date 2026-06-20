@@ -36,8 +36,9 @@ export async function GET(req: NextRequest) {
   }
   const cardDate = dateRows[0].latest
 
-  // Skip offseason (Dec, Jan)
-  const month = new Date(cardDate).getMonth() + 1
+  // Skip offseason (Dec, Jan). cardDate is a YYYY-MM-DD string from the DB —
+  // parse the month directly to avoid new Date() UTC-vs-local month drift.
+  const month = Number(String(cardDate).slice(5, 7))
   if (month === 12 || month === 1) {
     return json({ ok: true, skipped: true, reason: 'offseason' })
   }
