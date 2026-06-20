@@ -119,6 +119,39 @@ In-memory sliding window limiter in `lib/rateLimit.ts`, applied to broadcast tri
 - Enable Supabase pgBouncer mode for connection pooling
 - Add request-level queuing or concurrency limits for expensive queries
 
+### Backend Security & Correctness Audit (June 2026)
+Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (commit `c41731c`): added `lib/apiAuth.ts` (`checkMachineAuth` / `requireSessionAdmin` / `requireSessionUser`) on `emails/send`, `explore/query`, `update`, `populate-*`, `admin/backfill-*`; path containment (`LOCAL_MEDIA_ROOTS`, realpath) on `local-media`. Root cause: middleware exempts all `/api/*`, so every route must self-auth. Remaining items below, by severity.
+
+**HIGH — open:**
+- `emails/audiences` (+ `[id]`, `import`, `subscribers`): no auth → IDOR (list/exfil/rename/delete audiences & subscribers). Add `requireSessionAdmin`.
+- `emails/webhook`: no Resend/Svix signature verify + no idempotency → forged/duplicate events corrupt analytics. Verify signature; dedupe on `(send_id, resend_event_id, event_type)`.
+- `update/route.ts:148`: batch upsert all-or-nothing — one bad row fails the 500-row batch and failures are counted as inserted. Split-retry on error; log `error.message`.
+- `update` Stuff+/SOS compute window keys off the request's UTC 3-day window, not the ingested `game_date`s → TZ-edge pitches ingested but never scored. Compute over distinct dates present in inserted rows.
+- Cron UTC date bug: `toISOString().split('T')[0]` (+ `new Date(x.toLocaleString())` double-convert) in `cron/pitches`, `briefs`, `emails`, `newsletter`, `daily-cards` → off-by-one slates. Use a TZ-aware formatter (the `janitor`/`cleanup` pattern).
+- `lib/leagueStats.ts` `computePlus:1313` + `computeStuffRV:1184`: divide by stddev with no zero guard → Inf/NaN into plus-stats (stddev=0 is a documented baseline case). Return 100/null when stddev ≤ 0.
+- `compete/performance/upload:50`: `onConflict:'tm_pitch_uid'` but column is nullable → re-upload duplicates rows missing `PitchUID`. Use composite key `(session_id, pitch_no)` or reject null UID.
+- `broadcast/trigger` + `sessions`: `active_state` non-atomic read-modify-write → concurrent Stream Deck/producer writes clobber. Use `jsonb_set`/RPC or a version column; whitelist PUT columns.
+- `emails/track/click`: open redirect (`new URL()` accepts any scheme/host). Enforce http(s) + host allowlist.
+- Email open/click double-counted (pixel + webhook both increment, no per-subscriber dedup).
+- `emails/audiences/[id]/import`: per-row N+1 (4+ awaits/row, no cap) → serverless timeout on large lists. Bulk upsert.
+- `hot` + `leaderboard-triton`: full-season `pitches` scans grouped in Node, `game_year` non-indexed, no LIMIT, weak/cold-start cache. Pre-aggregate (MV / `pitcher_season_command`) or add `(game_year, game_type)` index.
+
+**MED — open:**
+- `compute-triton`: `getLeagueBaseline` recomputed per pitcher×pitch_type — memoize per `(metric,pitchName,year)` before the loop.
+- `movement-percentiles`: cache key embeds raw float velo → ~0 hit rate + unbounded `query_cache` growth. Bucket to integer mph.
+- `lib/queryCache.ts:16`: `.single()` errors on 0/>1 rows (normal miss + dup keys silently disable cache). Use `.maybeSingle()` + unique `cache_key`.
+- `compute-deception`: qualification threshold keys off `Date.now().getMonth()` not target season → non-deterministic backfills.
+- `update/route.ts:160`: MV refresh + Stuff+/SOS run per game_type even on 0 inserts. Gate on `inserted>0`; hoist MV refresh to cron.
+- `computeSOSForYears`: recomputes whole-season pitcher×batter nightly for a 3-day delta. Scope to affected players.
+- `lib/leagueStats.ts:1238`: no-year path averages stddevs arithmetically (should pool variances).
+- `cron/player-stats`, `cron/roster`, `cron/integrity`: upsert/insert errors silently dropped; integrity re-queries its own run_id with `.single()` (throws on overlap).
+- `update/milb:201`: last-pitch detection compares against a possibly-non-pitch last event → at-bat `events` silently null.
+- `emails/analytics/cohort`: loads all members/sends/events into memory, O(cohorts×weeks×subs) JS. Aggregate in SQL.
+
+**Follow-up:** `explore/query` now requires login but still executes arbitrary SELECT for any logged-in user — rebuild SQL server-side / sign the AI-proposed query.
+
+**Good-model routes to copy:** `leaderboard-defence` (table+sort whitelist, numeric coercion), `bat-tracking` (parameterized `.eq`/`.gte`).
+
 ## Known Issues
 
 | Issue | Area | Notes |
