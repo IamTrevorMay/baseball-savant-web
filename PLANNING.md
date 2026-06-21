@@ -2,6 +2,9 @@
 
 ## Recently Completed
 
+### Data App — TrackMan Session Zone & Movement Plots (June 2026)
+Added linked Zone Location and Movement plots to the session review page (`app/(data)/data/trackman/[sessionId]`). New client component `SessionReview.tsx` owns shared hover state and renders both Plotly scatters (reusing `components/PlotWrapper`, `chartConfig` `BASE_LAYOUT`/`ZONE_SHAPES`/`getPitchColor`) plus the (lifted-in) pitches table. Hovering a point on either plot — or a table row — highlights the matching point on **both** plots, fills a metrics readout card, and highlights the table row (bidirectional). Custom clickable pitch-type legend toggles types on both plots; a pitcher selector appears only when a session has >1 pitcher. Plots use raw TrackMan `plate_loc_side/height` (catcher view, ft) and `horz_break`/`induced_vert_break` (in) so values stay consistent with the table columns. No schema/query change — uses fields already selected by `loadSession()`.
+
 ### Bat-Tracking Miss-Distance Leaderboard Ingest (June 2026)
 Savant released the "Swing Timing & Miss Distance" metric (June 2026). The per-pitch `miss_distance` scalar already flows into `pitches` via the allowlist-free CSV ingest (verified: every Savant pitch-level column is captured, 0 missing). The full directional decomposition (tied-up/flail, early/late, over/under + flawed/perfect contact, timing ms) lives only on the leaderboard endpoint, which is season-cumulative with no date slicing.
 

@@ -194,3 +194,13 @@ SELECT player_type, (pitch_type='ALL') AS overall, COUNT(*)
 FROM bat_tracking_swing_miss_latest WHERE season=2026 GROUP BY 1,2 ORDER BY 1,2;
 ```
 **Result:** pitcher ALL 311 / split 940; batter ALL 353 / split 1342 — matches the snapshot insert. Page added under nav More → Bat Tracking.
+
+## 2026-06-20
+
+### Vision↔Tools ingest pipeline status check
+Confirmed the Triton Vision → Tools TrackMan ingest is live (not just built) before adding the Zone/Movement review plots.
+```sql
+SELECT id, source, started_at, finished_at, pitches_inserted, pitches_skipped, error_text
+FROM public.trackman_ingest_log ORDER BY started_at DESC LIMIT 12;
+```
+**Result:** 9 `vision_live` ingests May 26 → Jun 9, all succeeded (error_text null), 51 pitches total — matches `trackman_pitches` rowcount. Token in macOS Keychain already matches Vercel `VISION_INGEST_TOKEN` (no 401s), so the pipeline is fully wired end-to-end.

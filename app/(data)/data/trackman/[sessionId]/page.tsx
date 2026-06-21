@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import SessionReview from './SessionReview'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,11 +70,6 @@ function fmtTs(iso: string | null) {
   return new Date(iso).toLocaleString()
 }
 
-function fmtNum(n: number | null, digits = 1) {
-  if (n === null || n === undefined || Number.isNaN(n)) return '—'
-  return n.toFixed(digits)
-}
-
 const SOURCE_COLOR: Record<string, string> = {
   vision_live:    'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
   webhook:        'bg-amber-500/15 text-amber-300 border-amber-500/30',
@@ -84,23 +80,6 @@ const SOURCE_COLOR: Record<string, string> = {
 function SourcePill({ source }: { source: string }) {
   const cls = SOURCE_COLOR[source] || 'bg-zinc-700/40 text-zinc-300 border-zinc-600'
   return <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cls}`}>{source}</span>
-}
-
-const CALL_COLOR: Record<string, string> = {
-  StrikeCalled:   'text-emerald-300',
-  StrikeSwinging: 'text-emerald-300',
-  BallCalled:     'text-zinc-400',
-  BallinDirt:     'text-zinc-400',
-  HitByPitch:     'text-amber-300',
-  FoulBall:       'text-zinc-300',
-  FoulBallNotFieldable: 'text-zinc-300',
-  FoulBallFieldable:    'text-zinc-300',
-  InPlay:         'text-cyan-300',
-}
-
-function PitchCallText({ call }: { call: string | null }) {
-  if (!call) return <span className="text-zinc-600">—</span>
-  return <span className={CALL_COLOR[call] || 'text-zinc-300'}>{call}</span>
 }
 
 type RouteParams = Promise<{ sessionId: string }>
@@ -114,8 +93,8 @@ export default async function SessionPitchesPage({ params }: { params: RoutePara
   // Quick aggregates
   const pitchersSet = new Set<string>()
   const typesMap: Record<string, number> = {}
-  let speeds: number[] = []
-  let spins: number[] = []
+  const speeds: number[] = []
+  const spins: number[] = []
   for (const p of pitches) {
     if (p.pitcher_name) pitchersSet.add(p.pitcher_name)
     const t = p.tagged_pitch_type || 'Unknown'
@@ -176,62 +155,11 @@ export default async function SessionPitchesPage({ params }: { params: RoutePara
         </section>
       )}
 
-      {/* Pitches table */}
-      <section>
-        <h2 className="text-xs uppercase tracking-wider text-zinc-500 mb-2">Pitches</h2>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-zinc-900/80 text-[10px] uppercase tracking-wider text-zinc-500">
-              <tr>
-                <th className="text-right px-2 py-2 font-medium">#</th>
-                <th className="text-left  px-2 py-2 font-medium">Pitcher</th>
-                <th className="text-left  px-2 py-2 font-medium">Hand</th>
-                <th className="text-left  px-2 py-2 font-medium">Type</th>
-                <th className="text-left  px-2 py-2 font-medium">Call</th>
-                <th className="text-right px-2 py-2 font-medium">Count</th>
-                <th className="text-right px-2 py-2 font-medium">Velo</th>
-                <th className="text-right px-2 py-2 font-medium">Spin</th>
-                <th className="text-right px-2 py-2 font-medium">Tilt</th>
-                <th className="text-right px-2 py-2 font-medium">IVB</th>
-                <th className="text-right px-2 py-2 font-medium">HB</th>
-                <th className="text-right px-2 py-2 font-medium">Ext</th>
-                <th className="text-right px-2 py-2 font-medium">Rel ht</th>
-                <th className="text-right px-2 py-2 font-medium">Rel sd</th>
-                <th className="text-right px-2 py-2 font-medium">Plate H</th>
-                <th className="text-right px-2 py-2 font-medium">Plate S</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pitches.length === 0 && (
-                <tr><td colSpan={16} className="px-3 py-10 text-center text-zinc-500">No pitches recorded in this session.</td></tr>
-              )}
-              {pitches.map(p => (
-                <tr key={p.id} className="border-t border-zinc-800 hover:bg-zinc-800/40">
-                  <td className="px-2 py-1.5 text-right text-zinc-500 tabular-nums">{p.pitch_no ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-zinc-300 whitespace-nowrap">{p.pitcher_name ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-zinc-500">{p.pitcher_throws ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-zinc-300">{p.tagged_pitch_type ?? '—'}</td>
-                  <td className="px-2 py-1.5"><PitchCallText call={p.pitch_call} /></td>
-                  <td className="px-2 py-1.5 text-right text-zinc-500 tabular-nums">{p.balls ?? 0}-{p.strikes ?? 0}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-100 tabular-nums">{fmtNum(p.rel_speed, 1)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-300 tabular-nums">{p.spin_rate != null ? Math.round(p.spin_rate) : '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400 tabular-nums">{p.tilt ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-300 tabular-nums">{fmtNum(p.induced_vert_break, 1)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-300 tabular-nums">{fmtNum(p.horz_break, 1)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400 tabular-nums">{fmtNum(p.extension, 2)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400 tabular-nums">{fmtNum(p.rel_height, 2)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400 tabular-nums">{fmtNum(p.rel_side, 2)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400 tabular-nums">{fmtNum(p.plate_loc_height, 2)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400 tabular-nums">{fmtNum(p.plate_loc_side, 2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {pitches.length === 2000 && (
-          <p className="text-xs text-zinc-500 mt-2">Showing first 2000 pitches. Pagination not yet wired.</p>
-        )}
-      </section>
+      {/* Zone + Movement plots and the linked pitches table */}
+      <SessionReview pitches={pitches} />
+      {pitches.length === 2000 && (
+        <p className="text-xs text-zinc-500 mt-2">Showing first 2000 pitches. Pagination not yet wired.</p>
+      )}
 
       {/* Raw meta (collapsed by default) */}
       {(session.raw_file_path || session.raw_meta) && (
