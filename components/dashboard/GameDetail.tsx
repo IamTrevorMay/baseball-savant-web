@@ -39,10 +39,13 @@ export default function GameDetail({ pitches }: Props) {
     const outs = outsEvents.length
     const ip = `${Math.floor(outs / 3)}.${outs % 3}`
 
-    const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+    const whiffs = pitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+    }).length
     const swings = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
     const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
     const zoneP = pitches.filter(p => p.zone && p.zone >= 1 && p.zone <= 9).length
@@ -68,10 +71,13 @@ export default function GameDetail({ pitches }: Props) {
       const spins = pts.map(p => p.release_spin_rate).filter(Boolean)
       const ivb = pts.map(p => p.pfx_z_in).filter((v: any) => v != null)
       const hb = pts.map(p => p.pfx_x_in).filter((v: any) => v != null)
-      const whiffs = pts.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+      const whiffs = pts.filter(p => {
+        const d = (p.description || '').toLowerCase()
+        return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+      }).length
       const swings = pts.filter(p => {
         const d = (p.description || '').toLowerCase()
-        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
       }).length
       const cs = pts.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
       const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null

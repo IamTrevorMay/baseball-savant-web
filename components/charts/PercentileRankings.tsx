@@ -105,16 +105,16 @@ export default function PercentileRankings({ data }: { data: any[] }) {
     const battedBalls = data.filter(p => p.bb_type != null)
     const swings = data.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     })
     const whiffs = swings.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d === 'swinging_strike' || d === 'swinging_strike_blocked'
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
     })
     const outsideZone = data.filter(d => d.zone != null && Number(d.zone) >= 11)
     const chasePitches = outsideZone.filter(d => {
       const desc = (d.description || '').toLowerCase()
-      return desc.includes('swing') || desc.includes('foul') || desc.includes('hit_into_play')
+      return desc.includes('swinging_strike') || desc.includes('foul') || desc.includes('hit_into_play') || desc === 'missed_bunt' || desc === 'swinging_pitchout'
     })
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null

@@ -68,19 +68,23 @@ function calcAdvancedByYear(data: any[]) {
     const hardHits = battedBalls.filter(p => p.launch_speed >= 95).length
     const barrels = battedBalls.filter(p => p.launch_speed >= 98 && p.launch_angle >= 8 && p.launch_angle <= 32).length
 
-    const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+    const whiffs = pitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+    }).length
     const swings = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
-    const zoneP = pitches.filter(p => p.zone && p.zone >= 1 && p.zone <= 9).length
+    const pitchesWithZone = pitches.filter(p => p.zone != null)
+    const zoneP = pitchesWithZone.filter(p => p.zone >= 1 && p.zone <= 9).length
     const zoneSwings = pitches.filter(p => p.zone && p.zone >= 1 && p.zone <= 9 && (() => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     })()).length
     const chaseSwings = pitches.filter(p => p.zone && p.zone >= 11 && (() => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     })()).length
     const outOfZone = pitches.filter(p => p.zone && p.zone >= 11).length
 
@@ -94,7 +98,7 @@ function calcAdvancedByYear(data: any[]) {
       year: Number(year), pitches: pitches.length,
       kPct: pct(ks, pas), bbPct: pct(bbs, pas),
       whiffPct: pct(whiffs, swings), contactPct: swings > 0 ? ((1 - whiffs / swings) * 100).toFixed(1) : '—',
-      zonePct: pct(zoneP, pitches.length),
+      zonePct: pct(zoneP, pitchesWithZone.length),
       chasePct: pct(chaseSwings, outOfZone),
       avgEV: f(avg(evs)), maxEV: f(evs.length ? Math.max(...evs) : null),
       avgLA: f(avg(las)),
@@ -120,10 +124,13 @@ function calcVsPitchType(data: any[]) {
     const hbps = pitches.filter(p => p.events === 'hit_by_pitch').length
     const abEst = pas - bbs - hbps
 
-    const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+    const whiffs = pitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+    }).length
     const swings = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
 
     const battedBalls = pitches.filter(p => p.bb_type != null)

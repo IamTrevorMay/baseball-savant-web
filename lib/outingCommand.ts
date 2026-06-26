@@ -14,7 +14,7 @@ import {
 const SWING_DESCRIPTIONS = new Set([
   'swinging_strike', 'swinging_strike_blocked', 'foul', 'foul_tip',
   'foul_bunt', 'hit_into_play', 'hit_into_play_no_out', 'hit_into_play_score',
-  'missed_bunt',
+  'missed_bunt', 'swinging_pitchout', 'foul_pitchout', 'bunt_foul_tip',
 ])
 
 export interface PitchRow {

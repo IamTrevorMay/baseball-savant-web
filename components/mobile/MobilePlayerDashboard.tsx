@@ -45,10 +45,13 @@ function computeSummary(data: any[]) {
   const hits = data.filter(p => ['single', 'double', 'triple', 'home_run'].includes(p.events)).length
   const hbps = data.filter(p => p.events === 'hit_by_pitch').length
 
-  const whiffs = data.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+  const whiffs = data.filter(p => {
+    const d = (p.description || '').toLowerCase()
+    return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+  }).length
   const swings = data.filter(p => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   }).length
   const calledStrikes = data.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
 
@@ -126,10 +129,13 @@ function computeArsenal(data: any[]) {
       const hb = pitches.map(p => p.pfx_x_in).filter((v: any) => v != null)
       const vb = pitches.map(p => p.pfx_z_in).filter((v: any) => v != null)
 
-      const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+      const whiffs = pitches.filter(p => {
+        const d = (p.description || '').toLowerCase()
+        return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+      }).length
       const swings = pitches.filter(p => {
         const d = (p.description || '').toLowerCase()
-        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
       }).length
 
       const stuffArr = pitches.map(p => p.stuff_plus).filter((v: any) => v != null)
@@ -239,10 +245,13 @@ function computeRanks(data: any[]): RankBar[] {
   const evs = data.filter(p => p.bb_type != null).map(p => p.launch_speed)
   const xwobas = data.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
 
-  const whiffs = data.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+  const whiffs = data.filter(p => {
+    const d = (p.description || '').toLowerCase()
+    return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+  }).length
   const swings = data.filter(p => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   }).length
   const pas = data.filter(p => p.events).length
   const ks = data.filter(p => p.events?.includes('strikeout')).length

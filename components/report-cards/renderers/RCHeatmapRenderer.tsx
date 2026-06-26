@@ -85,7 +85,7 @@ const HM_NON_AB_EVENTS = new Set(['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt',
 function calcHeatmapMetric(pitches: any[], metric: string): number | null {
   if (!pitches.length) return null
   const avg = (vals: number[]) => vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
-  const isSwing = (d: string) => d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+  const isSwing = (d: string) => d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   switch (metric) {
     case 'frequency': return pitches.length
     case 'ba': {
@@ -106,15 +106,12 @@ function calcHeatmapMetric(pitches: any[], metric: string): number | null {
     case 'ev':    return avg(pitches.map(p => p.launch_speed).filter((x: any) => x != null))
     case 'whiff_pct': {
       const sw = pitches.filter(p => isSwing(((p.description || '') as string).toLowerCase()))
-      const wh = pitches.filter(p => ((p.description || '') as string).toLowerCase().includes('swinging_strike'))
+      const wh = pitches.filter(p => { const d = ((p.description || '') as string).toLowerCase(); return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout' })
       return sw.length ? wh.length / sw.length : null
     }
     case 'chase_pct': {
       const oz = pitches.filter(p => p.zone > 9)
-      const sw = oz.filter(p => {
-        const s = ((p.description || '') as string).toLowerCase()
-        return s.includes('swinging_strike') || s.includes('foul') || s.includes('hit_into_play')
-      })
+      const sw = oz.filter(p => isSwing(((p.description || '') as string).toLowerCase()))
       return oz.length ? sw.length / oz.length : null
     }
     default: return null

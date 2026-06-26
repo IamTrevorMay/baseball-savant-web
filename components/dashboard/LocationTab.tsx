@@ -93,9 +93,12 @@ function calcMetric(pitches: any[], metric: MetricMode): number | null {
     case 'whiff_pct': {
       const swings = pitches.filter(p => {
         const d = (p.description || '').toLowerCase()
-        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
       })
-      const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike'))
+      const whiffs = pitches.filter(p => {
+        const d = (p.description || '').toLowerCase()
+        return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+      })
       return swings.length > 0 ? whiffs.length / swings.length : null
     }
     default: return null

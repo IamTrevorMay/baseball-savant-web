@@ -90,10 +90,10 @@ SELECT
   COUNT(*) FILTER (WHERE bb_type IS NOT NULL)::int AS bbe,
   COUNT(*) FILTER (WHERE launch_speed_angle = 6)::int AS barrels,
   COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)::int AS hard_hits,
-  COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play'))::int AS swings,
-  COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked'))::int AS whiffs,
+  COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout'))::int AS swings,
+  COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout'))::int AS whiffs,
   COUNT(*) FILTER (WHERE zone >= 11)::int AS ooz,
-  COUNT(*) FILTER (WHERE zone >= 11 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play'))::int AS chases
+  COUNT(*) FILTER (WHERE zone >= 11 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout'))::int AS chases
 FROM pitches
 WHERE game_year = ${year}
   AND pitch_name IN (${names})

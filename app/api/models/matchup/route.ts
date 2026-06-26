@@ -31,14 +31,14 @@ export async function POST(req: NextRequest) {
         ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) as usage_pct,
         ROUND(AVG(release_speed)::numeric, 1) as avg_velo,
         ROUND(AVG(release_spin_rate)::numeric, 0) as avg_spin,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%')
+        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
           / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%'
-            OR description LIKE '%foul%' OR description = 'hit_into_play'
-            OR description = 'foul_tip'), 0), 1) as whiff_pct,
+            OR description LIKE '%foul%' OR description LIKE 'hit_into_play%'
+            OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct,
         ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9)
           / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1) as zone_pct,
         ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%'
-          OR description LIKE '%foul%' OR description = 'hit_into_play'))
+          OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'))
           / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1) as chase_pct,
         ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%'
           OR description = 'called_strike')
@@ -98,10 +98,10 @@ export async function POST(req: NextRequest) {
           OR description LIKE '%foul%' OR description = 'hit_into_play'
           OR description = 'foul_tip')
           / NULLIF(COUNT(*), 0), 1) as swing_pct,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%')
+        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
           / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%'
-            OR description LIKE '%foul%' OR description = 'hit_into_play'
-            OR description = 'foul_tip'), 0), 1) as whiff_pct
+            OR description LIKE '%foul%' OR description LIKE 'hit_into_play%'
+            OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct
       FROM pitches
       WHERE batter = ${safeBatter} AND ${seasonFilter}
         AND zone > 9
@@ -130,10 +130,10 @@ export async function POST(req: NextRequest) {
     const h2hSQL = `
       SELECT pitch_name,
         COUNT(*) as pitches,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%')
+        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
           / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%'
-            OR description LIKE '%foul%' OR description = 'hit_into_play'
-            OR description = 'foul_tip'), 0), 1) as whiff_pct,
+            OR description LIKE '%foul%' OR description LIKE 'hit_into_play%'
+            OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct,
         ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba,
         ROUND(AVG(launch_speed)::numeric, 1) as avg_ev,
         ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric

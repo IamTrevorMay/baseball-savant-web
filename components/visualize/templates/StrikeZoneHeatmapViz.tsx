@@ -74,9 +74,12 @@ function calcBinValue(cell: any[], metric: MetricKey): number | null {
     case 'whiff': {
       const swings = cell.filter(p => {
         const d = (p.description || '').toLowerCase()
-        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+        return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
       })
-      const whiffs = cell.filter(p => (p.description || '').toLowerCase().includes('swinging_strike'))
+      const whiffs = cell.filter(p => {
+        const d = (p.description || '').toLowerCase()
+        return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+      })
       return swings.length ? whiffs.length / swings.length : null
     }
     case 'called_strike': {

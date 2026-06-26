@@ -8,8 +8,8 @@ function calcSplitStats(pitches: any[]) {
   const velos = pitches.map(p => p.release_speed).filter(Boolean)
   const spins = pitches.map(p => p.release_spin_rate).filter(Boolean)
 
-  const swingDescs = ['swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','foul_bunt','missed_bunt']
-  const whiffDescs = ['swinging_strike','swinging_strike_blocked']
+  const swingDescs = ['swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','foul_bunt','missed_bunt','swinging_pitchout']
+  const whiffDescs = ['swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout']
 
   const swings = pitches.filter(p => {
     const d = (p.description || '').toLowerCase()

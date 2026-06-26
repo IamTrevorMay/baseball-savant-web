@@ -68,24 +68,39 @@ export function calcTraditionalByYear(data: any[]): TraditionalRow[] {
     const triples = pitches.filter(p => p.events === 'triple').length
     const hbps = pitches.filter(p => p.events === 'hit_by_pitch').length
 
-    // Innings: count outs recorded (rough estimate from events)
-    const outsEvents = pitches.filter(p => p.events && !['walk','hit_by_pitch','single','double','triple','home_run','catcher_interf','sac_bunt','sac_fly_double_play'].includes(p.events) && !p.events.includes('error'))
-    const outsFromEvents = outsEvents.length
+    // Innings: count outs recorded, weighting multi-out events properly
+    let outsFromEvents = 0
+    for (const p of pitches) {
+      if (!p.events) continue
+      const e = p.events
+      if (['walk','hit_by_pitch','single','double','triple','home_run','catcher_interf'].includes(e) || e.includes('error')) continue
+      if (['double_play','grounded_into_double_play','strikeout_double_play','sac_fly_double_play'].includes(e)) outsFromEvents += 2
+      else if (e === 'triple_play') outsFromEvents += 3
+      else outsFromEvents += 1 // strikeout, field_out, force_out, fielders_choice, fielders_choice_out, sac_fly, sac_bunt, etc.
+    }
     const fullInnings = Math.floor(outsFromEvents / 3)
     const partialOuts = outsFromEvents % 3
     const ipDisplay = `${fullInnings}.${partialOuts}`
 
-    const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+    const whiffs = pitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+    }).length
     const swings = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip') || d.includes('foul_bunt') || d.includes('missed_bunt')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
     const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
 
     const tb = hits + doubles + triples * 2 + hrs * 3
-    const ba = pas > 0 ? (hits / pas) : 0
-    const obp = pas > 0 ? ((hits + bbs + hbps) / pas) : 0
-    const slg = pas > 0 ? (tb / pas) : 0
+    // AB = PA - BB - HBP - SF - SH (sacrifice hits/bunts)
+    const sacFlies = pitches.filter(p => p.events && p.events.includes('sac_fly')).length
+    const sacBunts = pitches.filter(p => p.events === 'sac_bunt').length
+    const abs = pas - bbs - hbps - sacFlies - sacBunts
+    const ba = abs > 0 ? (hits / abs) : 0
+    const obpDenom = pas - sacBunts - pitches.filter(p => p.events === 'catcher_interf').length
+    const obp = obpDenom > 0 ? ((hits + bbs + hbps) / obpDenom) : 0
+    const slg = abs > 0 ? (tb / abs) : 0
 
     return {
       year: Number(year), pitches: pitches.length, games, pa: pas, ip: ipDisplay,
@@ -127,19 +142,23 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
     const pus = battedBalls.filter(p => p.bb_type === 'popup').length
     const bbT = battedBalls.length || 1
 
-    const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+    const whiffs = pitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+    }).length
     const swings = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
     const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
-    const zoneP = pitches.filter(p => p.zone && p.zone >= 1 && p.zone <= 9).length
+    const pitchesWithZone = pitches.filter(p => p.zone != null)
+    const zoneP = pitchesWithZone.filter(p => p.zone >= 1 && p.zone <= 9).length
 
     // First Pitch Strike %
     const firstPitches = pitches.filter(p => p.pitch_number === 1)
     const firstPitchStrikes = firstPitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d === 'called_strike' || d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'foul_tip'
+      return d === 'called_strike' || d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a,b) => a+b,0) / arr.length : null
@@ -180,9 +199,16 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
       }
     })
 
-    // Compute IP from outs (same logic as traditional tab)
-    const outsEvents = pitches.filter(p => p.events && !['walk','hit_by_pitch','single','double','triple','home_run','catcher_interf','sac_bunt','sac_fly_double_play'].includes(p.events) && !p.events.includes('error'))
-    const outsCount = outsEvents.length
+    // Compute IP from outs, weighting multi-out events properly
+    let outsCount = 0
+    for (const p of pitches) {
+      if (!p.events) continue
+      const e = p.events
+      if (['walk','hit_by_pitch','single','double','triple','home_run','catcher_interf'].includes(e) || e.includes('error')) continue
+      if (['double_play','grounded_into_double_play','strikeout_double_play','sac_fly_double_play'].includes(e)) outsCount += 2
+      else if (e === 'triple_play') outsCount += 3
+      else outsCount += 1
+    }
     const ipDecimal = outsCount / 3
     const ipDisplay = `${Math.floor(outsCount / 3)}.${outsCount % 3}`
 
@@ -201,7 +227,7 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
       year: Number(year), pitches: pitches.length,
       kPct: pct(ks, pas), bbPct: pct(bbs, pas), kbbPct: pas > 0 ? ((ks - bbs) / pas * 100).toFixed(1) : '—',
       whiffPct: pct(whiffs, swings), csPct: pct(calledStrikes, pitches.length),
-      swStrPct: pct(whiffs, pitches.length), zonePct: pct(zoneP, pitches.length),
+      swStrPct: pct(whiffs, pitches.length), zonePct: pct(zoneP, pitchesWithZone.length),
       avgEV: f(avg(evs)), maxEV: f(evs.length ? Math.max(...evs) : null),
       avgLA: f(avg(las)),
       gbPct: pct(gbs, bbT), fbPct: pct(fbs, bbT), ldPct: pct(lds, bbT), puPct: pct(pus, bbT),
@@ -232,10 +258,13 @@ export function calcArsenal(data: any[]): ArsenalRow[] {
     const exts = pitches.map(p => p.release_extension).filter(Boolean)
     const arms = pitches.map(p => p.arm_angle).filter(Boolean)
 
-    const whiffs = pitches.filter(p => (p.description || '').toLowerCase().includes('swinging_strike')).length
+    const whiffs = pitches.filter(p => {
+      const d = (p.description || '').toLowerCase()
+      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+    }).length
     const swings = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
     }).length
     const cs = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
     const evs = pitches.filter(p => p.bb_type != null).map(p => p.launch_speed)

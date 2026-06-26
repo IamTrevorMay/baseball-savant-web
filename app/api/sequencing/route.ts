@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
           COUNT(*) as pitches,
           ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) as usage_pct,
           ROUND(AVG(release_speed)::numeric, 1) as avg_velo,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt')
-            / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt'), 0), 1) as whiff_pct
+          ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
+            / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct
         FROM pitches
         WHERE pitcher = ${safeId} ${yearFilterSimple}
           AND pitch_name IS NOT NULL AND pitch_type NOT IN ('PO', 'IN')

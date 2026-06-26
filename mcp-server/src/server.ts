@@ -293,7 +293,7 @@ Other:
               ROUND(MAX(release_speed)::numeric, 1) as max_velo,
               ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
               ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
-              ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')), 0), 1) as whiff_pct,
+              ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout')), 0), 1) as whiff_pct,
               ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba,
               ROUND(AVG(launch_speed)::numeric FILTER (WHERE bb_type IS NOT NULL), 1) as avg_ev,
               ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as hard_hit_pct,

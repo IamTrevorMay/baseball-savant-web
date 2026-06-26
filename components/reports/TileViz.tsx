@@ -52,16 +52,16 @@ function calcMetric(pitches: any[], metric: MetricKey): number|null {
     case 'ev': { const v=pitches.map(p=>p.launch_speed).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
     case 'la': { const v=pitches.map(p=>p.launch_angle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
     case 'whiff_pct': {
-      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d.includes('foul_tip')})
-      const wh=pitches.filter(p=>(p.description||'').toLowerCase().includes('swinging_strike'))
+      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d==='missed_bunt'||d==='swinging_pitchout'})
+      const wh=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d==='missed_bunt'||d==='swinging_pitchout'})
       return sw.length?wh.length/sw.length:null
     }
     case 'chase_pct': {
-      const oz=pitches.filter(p=>p.zone>9);const sw=oz.filter(p=>{const s=(p.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')})
+      const oz=pitches.filter(p=>p.zone>9);const sw=oz.filter(p=>{const s=(p.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')||s==='missed_bunt'||s==='swinging_pitchout'})
       return oz.length?sw.length/oz.length:null
     }
     case 'swing_pct': {
-      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d.includes('foul_tip')})
+      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d==='missed_bunt'||d==='swinging_pitchout'})
       return pitches.length?sw.length/pitches.length:null
     }
     default: return null

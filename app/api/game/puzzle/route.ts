@@ -79,13 +79,13 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       100.0 * COUNT(*) FILTER (WHERE pitch_type IN ('FF','SI')) / NULLIF(COUNT(*), 0) AS fb_usage_pct,
       -- T3: csw_pct, chase_rate, avg_ev_against, swstr_pct, put_away_pct, contact_pct_against
       100.0 * COUNT(*) FILTER (WHERE description IN ('called_strike','swinging_strike','swinging_strike_blocked','foul_tip','missed_bunt')) / NULLIF(COUNT(*), 0) AS csw_pct,
-      100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0) AS chase_rate,
+      100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0) AS chase_rate,
       AVG(CASE WHEN bb_type IS NOT NULL THEN launch_speed END) AS avg_ev_against,
-      100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*), 0) AS swstr_pct,
+      100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*), 0) AS swstr_pct,
       100.0 * COUNT(DISTINCT CASE WHEN strikes = 2 AND events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN strikes = 2 AND events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END), 0) AS put_away_pct,
       100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked','swinging_pitchout','foul_pitchout')), 0) AS contact_pct_against,
       -- T4: whiff_pct, barrel_pct_against, hard_hit_pct_against, fip(computed), xwoba_against, babip_against
-      100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul_tip')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul_tip','foul','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_pitchout','swinging_pitchout')), 0) AS whiff_pct,
+      100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout')), 0) AS whiff_pct,
       100.0 * COUNT(*) FILTER (WHERE launch_speed_angle = 6) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS barrel_pct_against,
       100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS hard_hit_pct_against,
       AVG(estimated_woba_using_speedangle) AS xwoba_against,

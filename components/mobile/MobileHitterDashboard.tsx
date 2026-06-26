@@ -67,11 +67,11 @@ function computeSummary(data: any[]) {
 
   const whiffs = data.filter(p => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('swinging_strike')
+    return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
   }).length
   const swings = data.filter(p => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   }).length
 
   // Chase rate: swings at pitches outside zone / pitches outside zone
@@ -79,7 +79,7 @@ function computeSummary(data: any[]) {
   const outsideZone = data.filter(p => p.zone != null && p.zone >= 11 && p.zone <= 14)
   const chasePitches = outsideZone.filter(p => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   }).length
 
   return {
@@ -115,13 +115,16 @@ function computePlateDiscipline(data: any[]) {
 
   const isSwing = (p: any) => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+    return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   }
   const isContact = (p: any) => {
     const d = (p.description || '').toLowerCase()
-    return d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip')
+    return d.includes('foul') || d.includes('hit_into_play')
   }
-  const isWhiff = (p: any) => (p.description || '').toLowerCase().includes('swinging_strike')
+  const isWhiff = (p: any) => {
+    const d = (p.description || '').toLowerCase()
+    return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
+  }
 
   const zoneSwings = inZone.filter(isSwing).length
   const zoneContact = inZone.filter(isContact).length

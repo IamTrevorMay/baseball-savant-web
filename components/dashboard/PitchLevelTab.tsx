@@ -138,12 +138,12 @@ export default function PitchLevelTab({ data }: Props) {
         _pitchType: pt,
         // Performance metrics
         whiffPct: (() => {
-          const swings = pitches.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d.includes('foul_tip') })
-          const whiffs = swings.filter(p => { const d = (p.description || '').toLowerCase(); return d === 'swinging_strike' || d === 'swinging_strike_blocked' })
+          const swings = pitches.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout' })
+          const whiffs = swings.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout' })
           return swings.length > 0 ? (whiffs.length / swings.length * 100).toFixed(1) + '%' : '—'
         })(),
         cswPct: (() => {
-          const csw = pitches.filter(p => { const d = (p.description || '').toLowerCase(); return d === 'called_strike' || d === 'swinging_strike' || d === 'swinging_strike_blocked' })
+          const csw = pitches.filter(p => { const d = (p.description || '').toLowerCase(); return d === 'called_strike' || d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout' })
           return pitches.length > 0 ? (csw.length / pitches.length * 100).toFixed(1) + '%' : '—'
         })(),
         zonePct: (() => {
@@ -153,7 +153,7 @@ export default function PitchLevelTab({ data }: Props) {
         })(),
         chasePct: (() => {
           const oz = pitches.filter(p => p.zone != null && Number(p.zone) >= 11)
-          const chases = oz.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') })
+          const chases = oz.filter(p => { const d = (p.description || '').toLowerCase(); return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout' })
           return oz.length > 0 ? (chases.length / oz.length * 100).toFixed(1) + '%' : '—'
         })(),
         avgEv: (() => {
