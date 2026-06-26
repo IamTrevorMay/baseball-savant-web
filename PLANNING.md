@@ -2,6 +2,11 @@
 
 ## Recently Completed
 
+### Metric Accuracy Audit — Whiff / Chase / CSW / Swing (June 2026)
+Full-platform audit aligning all swing/whiff/chase/CSW definitions with Baseball Savant's canonical `description` values. **29 application files fixed** (commit `1967d5a`): added `swinging_pitchout` and `missed_bunt` to whiff numerators, fixed `hit_into_play` exact-match bugs to `LIKE 'hit_into_play%'` in swing denominators, corrected BA/SLG denominators (at-bats, not PA), fixed IP double-play counting, and fixed Zone% denominators.
+
+**4 materialized views recreated** with corrected SQL definitions (`mv_team_bullpen_stats`, `mv_team_pitching_stats`, `mv_team_platoon_stats`, `mv_batter_season_stats`). League averages refreshed for 2025–2026. All other MVs refreshed.
+
 ### Data App — TrackMan Session Zone & Movement Plots (June 2026)
 Added linked Zone Location and Movement plots to the session review page (`app/(data)/data/trackman/[sessionId]`). New client component `SessionReview.tsx` owns shared hover state and renders both Plotly scatters (reusing `components/PlotWrapper`, `chartConfig` `BASE_LAYOUT`/`ZONE_SHAPES`/`getPitchColor`) plus the (lifted-in) pitches table. Hovering a point on either plot — or a table row — highlights the matching point on **both** plots, fills a metrics readout card, and highlights the table row (bidirectional). Custom clickable pitch-type legend toggles types on both plots; a pitcher selector appears only when a session has >1 pitcher. Plots use raw TrackMan `plate_loc_side/height` (catcher view, ft) and `horz_break`/`induced_vert_break` (in) so values stay consistent with the table columns. No schema/query change — uses fields already selected by `loadSession()`.
 

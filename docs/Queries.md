@@ -204,3 +204,27 @@ SELECT id, source, started_at, finished_at, pitches_inserted, pitches_skipped, e
 FROM public.trackman_ingest_log ORDER BY started_at DESC LIMIT 12;
 ```
 **Result:** 9 `vision_live` ingests May 26 → Jun 9, all succeeded (error_text null), 51 pitches total — matches `trackman_pitches` rowcount. Token in macOS Keychain already matches Vercel `VISION_INGEST_TOKEN` (no 401s), so the pipeline is fully wired end-to-end.
+
+## 2026-06-26
+
+### Recreated 4 materialized views with corrected whiff/chase/CSW formulas
+
+Part of the full metric-accuracy audit. All 4 MVs had the same bugs baked into their SQL definitions:
+- Whiff numerator missing `swinging_pitchout`
+- Swing denominator using `= 'hit_into_play'` (exact match, misses `_no_out` / `_score` variants)
+- Swing denominator missing `swinging_pitchout`
+- Redundant `= 'foul_tip'` (already caught by `LIKE '%foul%'`)
+- `mv_team_pitching_stats` csw_pct missing `missed_bunt` and `swinging_pitchout`
+
+```sql
+-- Applied via Supabase migrations:
+-- fix_mv_team_bullpen_stats_whiff
+-- fix_mv_team_pitching_stats_whiff_csw_chase
+-- fix_mv_team_platoon_stats_whiff
+-- fix_mv_batter_season_stats_whiff_chase
+
+-- Each: DROP MATERIALIZED VIEW + CREATE MATERIALIZED VIEW with corrected formulas + recreate indexes
+-- Canonical whiff numerator: description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'
+-- Canonical swing denominator: LIKE '%swinging_strike%' OR LIKE '%foul%' OR LIKE 'hit_into_play%' OR = 'missed_bunt' OR = 'swinging_pitchout'
+```
+**Result:** All 4 MVs recreated and populated. Verified `swinging_pitchout` present and `= 'hit_into_play'` exact match removed in all definitions.
