@@ -51,7 +51,17 @@ export function useOBSWebSocket(options?: UseOBSWebSocketOptions) {
       const obs = new OBSWebSocket()
 
       const url = `ws://${config.host}:${config.port}`
-      const { obsWebSocketVersion } = await obs.connect(url, config.password || undefined)
+      // obs.connect never settles if the socket stays in CONNECTING (firewall
+      // drop, Chrome local-network permission prompt) — race a hard timeout so
+      // the UI shows an error instead of hanging on "connecting" forever.
+      const { obsWebSocketVersion } = await Promise.race([
+        obs.connect(url, config.password || undefined),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(
+            `Connection to ${url} timed out after 8s — check OBS WebSocket server is enabled, and that the browser allows local network access for this site`
+          )), 8000)
+        ),
+      ])
 
       // Get current scene
       const { currentProgramSceneName } = await obs.call('GetCurrentProgramScene')
