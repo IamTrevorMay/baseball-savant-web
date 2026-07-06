@@ -17,6 +17,26 @@ Savant released the "Swing Timing & Miss Distance" metric (June 2026). The per-p
 
 **Leaderboard UI:** `/(research)/bat-tracking` page (under nav **More → Bat Tracking**) backed by `/api/bat-tracking`. Pitcher/batter toggle, season + pitch-type selectors, min-swings qualifier, sortable columns, and a Miss-Breakdown axis toggle (Tied-Up/Flail ↔ Early/Late ↔ Over/Under) mirroring Savant's board. See `docs/VARIABLES.md §8.7`.
 
+### Retrosheet Historical Database (June 2026)
+Backend-only historical spine in `retro_*` namespace, complementing Statcast (`pitches`, 2015+) with play-by-play 1914+ and game logs 1871+.
+
+**Tables shipped:** `retro_people` (~22K, Chadwick Register + biofile), `retro_parks` (~300 + `mlbam_venue_id` cross-era bridge), `retro_rosters` (~150K), `retro_games` (~220K, game-logs authoritative), `retro_events` (~15M PBP), `retro_id_map` (materialized view crosswalk), `retro_id_map_conflicts`, `retro_ingest_runs`.
+
+**Ingestion:** local CLI (`scripts/ingest-retrosheet.ts`) drives Chadwick `cwevent`/`cwgame`/`cwroster` → staging → upsert. Idempotent on natural PKs. Validator (`scripts/validate-retrosheet.ts`) checks referential integrity, date sanity, crosswalk coverage ≥99.5%, season totals. GitHub Actions workflow (`.github/workflows/retro-ingest.yml`) polls Retrosheet weekly and auto-runs on new release.
+
+**MCP exposure:** 8 new curated tools in `mcp-server/src/index.ts` (`retro_player_career`, `retro_player_season`, `retro_player_splits`, `retro_game_lookup`, `retro_game_events`, `retro_era_leaderboard`, `retro_team_season`, `retro_id_lookup`) + raw SQL via existing `query_database`. All retro tool outputs auto-append Retrosheet attribution.
+
+**BREAKING:** existing MCP tool `search_players` renamed to `search_statcast_players` to disambiguate from `retro_id_lookup`. Update any client configs pinning the old name.
+
+**Action items before initial seed:**
+- Upgrade Supabase plan to Pro 25 GB or Team (current 8 GB Pro plan + ~7.3 GB pitches + ~18 GB retro = overflow)
+- Apply `scripts/create-retro-tables.sql` to Supabase
+- Add GH secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- Run `npx tsx scripts/ingest-retrosheet.ts --full` (~6-10h Chadwick + ~1-2h upsert)
+
+Docs: `docs/retrosheet.md` (operator guide), `docs/VARIABLES.md §11` (column glossary), `retrosheet.planning.md` (full spec).
+
+
 ### Performance Optimization (June 2026)
 Three-tier speed improvement plan for the analytics platform (8.65M-row `pitches` table).
 

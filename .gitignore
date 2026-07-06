@@ -16,3 +16,7 @@ tsconfig.tsbuildinfo
 .mcp.json
 mcp-server/build/
 mcp-server/node_modules/
+
+# Local retrosheet raw data + seed logs
+data/
+logs/
