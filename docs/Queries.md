@@ -229,6 +229,32 @@ Part of the full metric-accuracy audit. All 4 MVs had the same bugs baked into t
 ```
 **Result:** All 4 MVs recreated and populated. Verified `swinging_pitchout` present and `= 'hit_into_play'` exact match removed in all definitions.
 
+## 2026-07-01
+
+### Trade-video player pull (11 players): season stats + advanced metrics
+Player ID lookup, traditional line from `player_season_stats`, and pitch-level aggregates for a batch of trade-candidate players.
+```sql
+-- IDs
+SELECT id, name, position FROM players WHERE name IN ('Ryan, Joe','Ward, Taylor','Ray, Robbie','Detmers, Reid','Chapman, Aroldis','Whitlock, Garrett','Fairbanks, Pete','Wacha, Michael','Peralta, Freddy','Gray, Sonny','Skubal, Tarik');
+
+-- Traditional line
+SELECT player_id, era, wins, losses, saves, holds, innings_pitched, earned_runs
+FROM player_season_stats WHERE season=2026 AND stat_group='pitching'
+AND player_id IN (657746,592662,672282,547973,676477,664126,608379,642547,543243,669373);
+
+-- Pitch-level advanced (K%, BB%, whiff%, CSW%, FF velo, xwOBAcon, EV, hardhit%, GB%) grouped by pitcher, game_year=2026 (run_query_long)
+-- Taylor Ward (621493) hitting aggregate: PA/AB/H/HR/BB/K, slash components, xwOBA, EV, hardhit% (run_query_long)
+```
+**Result:** All 11 players returned 2026 mid-season data (through ~2026-06-29). Used to build trade-video writeups. Note: `get_player_stats` MCP tool errored (`syntax error near "FILTER"`) — aggregated manually from `pitches`.
+
+### Trade-video follow-up: Statcast percentile rankings
+Mapped each player's `mv_pitcher_season_stats` rate values to `league_percentiles` breakpoints (2026, MLB), role-split SP/RP; Taylor Ward's hitter metrics computed from `pitches` and mapped to hitter breakpoints.
+```sql
+-- Per player/metric: percentile = count of 99 breakpoints <= value (higher_better) or >= value (lower_better)
+-- Roles: SP = Ryan/Ray/Detmers/Wacha/Peralta/Gray/Skubal; RP = Chapman/Whitlock/Fairbanks; hitter = Ward
+```
+**Result:** Full percentile tables built for all 11 players. Output written to `~/Desktop/Notes/trade-targets-2026.md`. Highlights: Skubal 98th-pct BB%/94th K-BB; Fairbanks 1st-pct GB% (explains 6.75 ERA vs 94th-pct K); Ryan 95th-pct BB%; Ward 98th-pct BB% but 33rd-pct SLG.
+
 ## 2026-07-06
 
 ### Scoped 2026 pitch video archive backfill
@@ -294,3 +320,43 @@ SELECT
   (SELECT count(*) FROM pitches WHERE game_year = 2026) AS pitches_2026;
 ```
 **Result:** 529,893 index rows / 1,796 games; 529,390 of 530,763 2026 pitches matched = **99.74% coverage** (remainder = feed rows without play_id, mostly untracked pitches).
+
+## 2026-07-07
+
+### Download-worker test batch triage (5 games)
+First NAS batch (`--limit 5`) reported 350 failures on game 822715 and a status-upsert error on 822716. Checked per-game status + sample errors.
+```sql
+SELECT status, count(*) AS n, min(error) AS sample_error
+FROM pitch_videos WHERE game_pk IN (776136, 822714, 822715, 822716, 822717)
+GROUP BY status ORDER BY status;
+
+SELECT game_pk, status, count(*) AS n
+FROM pitch_videos WHERE game_pk IN (776136, 822714, 822715, 822716, 822717)
+GROUP BY game_pk, status ORDER BY game_pk, status;
+
+-- Probe: first two play_ids of 822715 for manual Savant page + mp4 HEAD check
+SELECT play_id, at_bat_number, pitch_number FROM pitch_videos
+WHERE game_pk = 822715 ORDER BY at_bat_number, pitch_number LIMIT 2;
+```
+**Result:** 822715 = 350× `mp4 fetch 404` (Savant page 200 with an mp4 URL, but the sporty-clips asset 404s — MLB never published clips for that game; rows stay `failed` for the `--include-failed` retry pass). 822716 stuck `pending` because mixed downloaded/failed upsert batches wrote `attempts = NULL` (NOT NULL violation) — fixed by including `attempts` in every `processPitch` return path; re-run adopted the on-disk files and flipped all 309 rows.
+
+### Worker game-list query needs run_query_long
+Full-season run (no `--limit`) died on the game-list query with `57014 statement timeout`. Confirmed the join is index-backed and timed it on the long RPC.
+```sql
+SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'pitches' AND indexdef ILIKE '%game_pk%';
+
+-- run_query_long (120s):
+SELECT v.game_pk, max(p.game_year) AS game_year, count(*) AS n
+FROM pitch_videos v
+LEFT JOIN pitches p ON p.game_pk = v.game_pk
+  AND p.at_bat_number = v.at_bat_number AND p.pitch_number = v.pitch_number
+WHERE v.status = 'pending'
+GROUP BY v.game_pk ORDER BY v.game_pk;
+```
+**Result:** `pitches` has the unique `(game_pk, at_bat_number, pitch_number)` index; the query runs in 28s — just over the 30s `run_query` ceiling. Worker's game-list query switched to `run_query_long`; 1,791 pending games returned.
+
+### Post-fix archive status
+```sql
+SELECT status, count(*) AS n FROM pitch_videos GROUP BY status ORDER BY status;
+```
+**Result:** 934 downloaded / 350 failed / 528,609 pending. Full-season download run started (concurrency 3, ~148 clips/min ≈ 2.5–3 days).

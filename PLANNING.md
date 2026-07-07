@@ -13,14 +13,20 @@ Searchable local archive of Savant pitch clips on the Mayday Cloud NAS (`/PitchV
 - `/api/pitch-video` — external search/resolve API (Bearer keys via `PITCH_VIDEO_API_KEYS`); pitch metadata + Mayday stream URLs; on-demand misses live-resolve + queue. Spec: `docs/pitch-video-api.md` (§8.8 in VARIABLES.md). Tested: auth, search, single resolve, on-demand path.
 - `/api/play-video` — Research UI redirect now archive-first (Mayday stream when downloaded, Savant fallback + queue otherwise). Tested.
 
-**Next — on the work machine (Mayday Cloud host, NAS/external drive attached):**
-1. Pull this repo (or copy `scripts/download-pitch-videos.ts` + a `.env.local` with `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`).
-2. Decide archive root. Worker defaults to `/Volumes/May Server` (Mayday `ASSETS_ROOT`). **The clips must be reachable under Mayday's `ASSETS_ROOT` for `/api/nas/stream` to serve them** — if they should live on a different external drive, either symlink `ASSETS_ROOT/PitchVideos → /Volumes/<drive>/PitchVideos` or point the worker there with `--root`/`PITCH_VIDEO_ROOT` and mirror the symlink. Confirm ≥3TB free (worker halts below 100GB).
-3. Run: `npx tsx scripts/download-pitch-videos.ts` (optionally `--limit N` games per chunk, `--concurrency 3` default). ~530k clips ≈ 3–5 days; fully resumable, safe to interrupt. Re-run with `--include-failed` at the end to retry transient failures.
-4. Create Mayday API key: **viewer role, scoped to `/PitchVideos`** → set as `MAYDAY_PITCH_VIDEO_TOKEN` in Vercel (plus `MAYDAY_CLOUD_API_URL` if not the default `https://cloud-api.maydaystudio.net`).
-5. Generate consumer key(s) for Mayday Studio → `PITCH_VIDEO_API_KEYS` in Vercel; redeploy.
-6. Verify end-to-end: `GET /api/pitch-video?only_archived=true&game_year=2026&limit=3` returns rows with playable `video_url`; a PitchLogTab play button streams from Mayday.
-7. Optional hardening: run the worker under pm2/launchd next to `mayday-api` so nightly `pending` rows (queued by `/api/cron/refresh` + on-demand requests) drain automatically.
+**2026-07-07 — full download run STARTED on the work machine** (root `/Volumes/May Server`, 46TB free): 1,791 games / 528,609 pitches queued, concurrency 3, ~148 clips/min ≈ 2.5–3 days. Resumable — if interrupted, re-run `npx tsx scripts/download-pitch-videos.ts`.
+
+Two worker fixes from the 5-game test batch (uncommitted):
+- **NULL-attempts upsert bug** — mixed downloaded/failed batches violated the `attempts` NOT NULL constraint (statuses silently unsaved; game 822716 stuck `pending` with clips on disk). All `processPitch` return paths now include `attempts`; re-run adopted the files.
+- **Game-list query timeout** — the season-wide game list (528k rows joined to `pitches`) takes ~28s, over the 30s `run_query` ceiling; switched to `run_query_long` (120s).
+
+Known data gap: game 822715 — Savant page renders an mp4 URL but the asset 404s on MLB's CDN (clips never published). 350 rows `failed`; the end-of-run `--include-failed` pass will retry then settle them as `missing`.
+
+**Remaining steps:**
+1. When the run finishes: re-run with `--include-failed` to retry transient failures.
+2. Create Mayday API key: **viewer role, scoped to `/PitchVideos`** → set as `MAYDAY_PITCH_VIDEO_TOKEN` in Vercel (plus `MAYDAY_CLOUD_API_URL` if not the default `https://cloud-api.maydaystudio.net`).
+3. Generate consumer key(s) for Mayday Studio → `PITCH_VIDEO_API_KEYS` in Vercel; redeploy.
+4. Verify end-to-end: `GET /api/pitch-video?only_archived=true&game_year=2026&limit=3` returns rows with playable `video_url`; a PitchLogTab play button streams from Mayday.
+5. Optional hardening: run the worker under pm2/launchd next to `mayday-api` so nightly `pending` rows (queued by `/api/cron/refresh` + on-demand requests) drain automatically.
 
 **Later ideas:** Triton Research UI page over the archive (FilterEngine-style clip browser); short-lived signed URLs from Mayday instead of embedding the long-lived `mck_*` token; MiLB clips.
 

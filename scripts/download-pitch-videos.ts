@@ -56,6 +56,8 @@ const supabase = createClient(
 )
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+// Season-wide game list joins 500k+ index rows against pitches — needs the 120s RPC
+const qLong = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const MAX_ATTEMPTS = 3
@@ -117,6 +119,7 @@ async function processPitch(row: VideoRow, year: number, root: string): Promise<
       status: 'downloaded',
       file_path: relPath,
       size_bytes: statSync(absPath).size,
+      attempts: row.attempts,
       error: null,
       downloaded_at: new Date().toISOString()
     }
@@ -132,6 +135,7 @@ async function processPitch(row: VideoRow, year: number, root: string): Promise<
       status: 'downloaded',
       file_path: relPath,
       size_bytes: size,
+      attempts: row.attempts + 1,
       error: null,
       downloaded_at: new Date().toISOString()
     }
@@ -169,7 +173,7 @@ async function main() {
     : `status = 'pending'`
 
   // Work game by game: one year lookup per game, one status upsert per game
-  const { data: gameRows, error: gameErr } = await q(`
+  const { data: gameRows, error: gameErr } = await qLong(`
     SELECT v.game_pk, max(p.game_year) AS game_year, count(*) AS n
     FROM pitch_videos v
     LEFT JOIN pitches p ON p.game_pk = v.game_pk
