@@ -21,12 +21,12 @@ Two worker fixes from the 5-game test batch (uncommitted):
 
 Known data gap: game 822715 — Savant page renders an mp4 URL but the asset 404s on MLB's CDN (clips never published). 350 rows `failed`; the end-of-run `--include-failed` pass will retry then settle them as `missing`.
 
+**2026-07-07 — keys wired + END-TO-END VERIFIED.** `MAYDAY_PITCH_VIDEO_TOKEN` + `PITCH_VIDEO_API_KEYS` set in Vercel and redeployed; authenticated search returns rows and `video_url` streams 206/video-mp4 from Mayday. Required a Mayday-side fix: `sanitizePath` in mayday-cloud `api/src/routes/nas.js` treated leading-slash paths as fs-absolute (path.resolve) and blocked Triton's root-relative `/PitchVideos/...` as traversal — now strips leading slashes (boundary check unchanged).
+
 **Remaining steps:**
 1. When the run finishes: re-run with `--include-failed` to retry transient failures.
-2. Create Mayday API key: **viewer role, scoped to `/PitchVideos`** → set as `MAYDAY_PITCH_VIDEO_TOKEN` in Vercel (plus `MAYDAY_CLOUD_API_URL` if not the default `https://cloud-api.maydaystudio.net`).
-3. Generate consumer key(s) for Mayday Studio → `PITCH_VIDEO_API_KEYS` in Vercel; redeploy.
-4. Verify end-to-end: `GET /api/pitch-video?only_archived=true&game_year=2026&limit=3` returns rows with playable `video_url`; a PitchLogTab play button streams from Mayday.
-5. Optional hardening: run the worker under pm2/launchd next to `mayday-api` so nightly `pending` rows (queued by `/api/cron/refresh` + on-demand requests) drain automatically.
+2. Optional hardening: run the worker under pm2/launchd next to `mayday-api` so nightly `pending` rows (queued by `/api/cron/refresh` + on-demand requests) drain automatically.
+3. Optional: recreate the Mayday key as a viewer-role account scoped to `/PitchVideos` if the current one was created unscoped from an admin account (key inherits creator's profile role; scoped_path settable only via POST /api/keys).
 
 **Later ideas:** Triton Research UI page over the archive (FilterEngine-style clip browser); short-lived signed URLs from Mayday instead of embedding the long-lived `mck_*` token; MiLB clips.
 
