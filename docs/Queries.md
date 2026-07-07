@@ -279,3 +279,18 @@ After archive-first rewrite of `/api/play-video`, confirmed a request for an uni
 SELECT game_pk, at_bat_number, pitch_number, status, play_id FROM pitch_videos WHERE game_pk = 776136 ORDER BY at_bat_number, pitch_number;
 ```
 **Result:** 2 rows (AB 41 pitches 1–2), both `pending` with resolved play_ids — one from the /api/pitch-video test, one from the /api/play-video test.
+
+### Full 2026 play_id backfill — final coverage
+
+`scripts/backfill-pitch-videos.ts 2026` finished: 1,792 games, 528,915 rows, 0 failures.
+```sql
+SELECT
+  (SELECT count(*) FROM pitch_videos) AS total_rows,
+  (SELECT count(DISTINCT game_pk) FROM pitch_videos) AS games,
+  (SELECT count(*) FROM pitches p WHERE p.game_year = 2026
+     AND EXISTS (SELECT 1 FROM pitch_videos v
+       WHERE v.game_pk = p.game_pk AND v.at_bat_number = p.at_bat_number
+         AND v.pitch_number = p.pitch_number)) AS matched_2026,
+  (SELECT count(*) FROM pitches WHERE game_year = 2026) AS pitches_2026;
+```
+**Result:** 529,893 index rows / 1,796 games; 529,390 of 530,763 2026 pitches matched = **99.74% coverage** (remainder = feed rows without play_id, mostly untracked pitches).
