@@ -59,6 +59,13 @@ the API resolves the play_id live, queues it for the download worker
 (`"queued": true` in the response), and returns `savant_url` for immediate
 playback. Ask again later and `video_url` will be populated.
 
+**Embedding not-yet-archived clips:** add `resolve_mp4=true` to a single
+resolve and, when the clip isn't archived (`video_url` null), the API scrapes
+the Savant page server-side and returns `savant_mp4_url` — a direct
+`sporty-clips.mlb.com` CDN link that plays in a `<video>` tag. Best-effort
+(null when Savant has no clip); adds ~0.5–1s to the request. Don't store it
+long-term — CDN URLs aren't guaranteed stable.
+
 ### 2. Search
 
 Any combination of filters (at least one required):

@@ -160,13 +160,20 @@ async function main() {
   const root = argVal('--root') || process.env.PITCH_VIDEO_ROOT || '/Volumes/May Server'
   const includeFailed = args.includes('--include-failed')
   const maxPitches = parseInt(argVal('--max-pitches') || '') || Infinity
+  // Only process games on/after this date (YYYY-MM-DD). Earlier games stay
+  // pending and fill organically via the on-demand queue.
+  const dateFrom = argVal('--date-from') || ''
+  if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+    console.error(`Invalid --date-from (want YYYY-MM-DD): ${dateFrom}`)
+    process.exit(1)
+  }
 
   if (!existsSync(root)) {
     console.error(`Archive root not found: ${root} — is the NAS mounted?`)
     process.exit(1)
   }
   console.log(`=== Pitch video download worker ===`)
-  console.log(`root=${root} concurrency=${concurrency} limit=${gameLimit === Infinity ? 'none' : gameLimit} freeGB=${freeSpaceGB(root).toFixed(0)}`)
+  console.log(`root=${root} concurrency=${concurrency} limit=${gameLimit === Infinity ? 'none' : gameLimit} dateFrom=${dateFrom || 'none'} freeGB=${freeSpaceGB(root).toFixed(0)}`)
 
   const statusFilter = includeFailed
     ? `(status = 'pending' OR (status = 'failed' AND attempts < ${MAX_ATTEMPTS}))`
@@ -180,6 +187,7 @@ async function main() {
       AND p.at_bat_number = v.at_bat_number AND p.pitch_number = v.pitch_number
     WHERE ${statusFilter}
     GROUP BY v.game_pk
+    ${dateFrom ? `HAVING max(p.game_date) >= '${dateFrom}'` : ''}
     ORDER BY v.game_pk
     ${gameLimit !== Infinity ? `LIMIT ${gameLimit}` : ''}
   `)

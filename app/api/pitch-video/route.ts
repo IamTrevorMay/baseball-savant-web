@@ -67,6 +67,30 @@ function toVideoRow(r: any) {
   }
 }
 
+const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
+
+/**
+ * Live-resolve the direct CDN mp4 for a play by scraping its sporty-videos
+ * page (same extraction as the download worker). Used by single resolve with
+ * resolve_mp4=true so clients can embed not-yet-archived clips in a player —
+ * the browser can't scrape the page itself (CORS), but the mp4 plays fine in
+ * a <video> tag. Best-effort: returns null if Savant has no clip.
+ */
+async function resolveSavantMp4(playId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://baseballsavant.mlb.com/sporty-videos?playId=${playId}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    const m = html.match(MP4_RE)
+    return m ? m[0] : null
+  } catch {
+    return null
+  }
+}
+
 /** Resolve a play_id live from the Savant game feed (on-demand cache path). */
 async function resolvePlayIdLive(gamePk: number, ab: number, pitch: number): Promise<string | null> {
   const res = await fetch(`https://baseballsavant.mlb.com/gf?game_pk=${gamePk}`, {
@@ -133,7 +157,12 @@ export async function GET(req: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
       if (data && data.length > 0) {
-        return NextResponse.json({ row: toVideoRow(data[0]) })
+        const row: any = toVideoRow(data[0])
+        // Not archived yet + caller wants to embed: resolve the CDN mp4 live.
+        if (!row.video_url && row.play_id && sp.get('resolve_mp4') === 'true') {
+          row.savant_mp4_url = await resolveSavantMp4(row.play_id)
+        }
+        return NextResponse.json({ row })
       }
 
       // On-demand cache: not indexed yet — resolve live, queue for the worker
@@ -149,6 +178,9 @@ export async function GET(req: NextRequest) {
             game_pk: gamePk, at_bat_number: ab, pitch_number: pitch,
             play_id: livePlayId, status: 'pending', video_url: null,
             savant_url: `https://baseballsavant.mlb.com/sporty-videos?playId=${livePlayId}`,
+            ...(sp.get('resolve_mp4') === 'true'
+              ? { savant_mp4_url: await resolveSavantMp4(livePlayId) }
+              : {}),
           },
           queued: true,
         })
