@@ -360,3 +360,33 @@ GROUP BY v.game_pk ORDER BY v.game_pk;
 SELECT status, count(*) AS n FROM pitch_videos GROUP BY status ORDER BY status;
 ```
 **Result:** 934 downloaded / 350 failed / 528,609 pending. Full-season download run started (concurrency 3, ~148 clips/min ≈ 2.5–3 days).
+
+### Scoped-run failure triage (June 29+ run)
+Cumulative log counters suggested game 823446 failed wholesale; checked per-game status + global failure reasons.
+```sql
+SELECT game_pk, error, count(*) FROM pitch_videos WHERE status='failed' AND game_pk IN (823446,823525) GROUP BY 1,2;
+SELECT v.game_pk, v.status, count(*), min(p.game_date::text) FROM pitch_videos v
+LEFT JOIN pitches p ON p.game_pk = v.game_pk AND p.at_bat_number = v.at_bat_number AND p.pitch_number = v.pitch_number
+WHERE v.game_pk IN (823446,823525) GROUP BY 1,2;
+SELECT error, count(*) FROM pitch_videos WHERE status='failed' GROUP BY 1 ORDER BY 2 DESC;
+```
+**Result:** 823446 fully downloaded (355/355 — log counters are cumulative, not per-game). 823525 (2026-07-05) = 311× `mp4 fetch 404`, same MLB-CDN-gap as 822715. Global failures: 1,203× mp4 404 + 14× transient Savant 500 — no worker bug.
+
+### Player-search RPCs: anon permission fix
+Mayday Studio's `/api/triton-search` proxy (anon key) got `permission denied for materialized view batter_summary` from `search_batters`.
+```sql
+SELECT proname, prosecdef FROM pg_proc ... WHERE proname IN ('search_players','search_batters','search_all_players');
+-- Migration player_search_rpcs_security_definer:
+ALTER FUNCTION search_batters(text,integer) SECURITY DEFINER SET search_path = public;  -- + search_players, search_all_players(text,text,integer)
+```
+**Result:** `search_batters`/`search_players` were SECURITY INVOKER (ran as anon → no MV grant) while `search_all_players` was already DEFINER. All three aligned to SECURITY DEFINER with pinned search_path; anon RPC call verified returning rows.
+
+### Trevor May vs. José Abreu HBP lookup (video-search "how far back" question)
+```sql
+SELECT game_pk, game_date, at_bat_number, pitch_number, pitch_type, release_speed, description, events
+FROM pitches
+WHERE player_name = 'May, Trevor'
+  AND batter = (SELECT id FROM players WHERE name ILIKE '%Abreu, Jos%' ORDER BY id LIMIT 1)
+  AND (description = 'hit_by_pitch' OR events = 'hit_by_pitch');
+```
+**Result:** one row — **2016-05-06**, game 447301 AB 73 pitch 2, 97.4 mph FF HBP. Not findable in the video search because the `pitch_videos` index is 2026-only (pitches data goes back to 2015); resolved on-demand via `/api/pitch-video?game_pk=447301&ab=73&pitch=2&resolve_mp4=true` (clip exists on Savant's CDN; row queued).

@@ -309,10 +309,34 @@ export default function VideosPage() {
   }
 
   // ── Downloads ──
-  const downloadClip = async (row: VideoRow): Promise<boolean> => {
-    if (!row.video_url) return false
+  // Archived clips stream from the Mayday NAS; unarchived ones resolve the
+  // Savant CDN mp4 on demand (MLB's CDN allows cross-origin fetches), so any
+  // pitch with a clip is downloadable with the formatted filename.
+  const getPlayableUrl = async (row: VideoRow): Promise<string | null> => {
+    if (row.video_url) return row.video_url
+    const key = rowKey(row)
+    if (savantMp4[key] !== undefined) return savantMp4[key]
     try {
-      const res = await fetch(row.video_url)
+      const res = await fetch(
+        `/api/pitch-video?game_pk=${row.game_pk}&ab=${row.at_bat_number}&pitch=${row.pitch_number}&resolve_mp4=true`,
+      )
+      const json = await res.json().catch(() => ({}))
+      const url: string | null = json?.row?.savant_mp4_url || null
+      setSavantMp4(m => ({ ...m, [key]: url }))
+      return url
+    } catch {
+      return null
+    }
+  }
+
+  const downloadClip = async (row: VideoRow): Promise<boolean> => {
+    const src = await getPlayableUrl(row)
+    if (!src) {
+      if (row.savant_url) window.open(row.savant_url, '_blank', 'noopener')
+      return false
+    }
+    try {
+      const res = await fetch(src)
       if (!res.ok) throw new Error(`fetch ${res.status}`)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -325,7 +349,7 @@ export default function VideosPage() {
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
       return true
     } catch {
-      window.open(row.video_url, '_blank', 'noopener')
+      window.open(src, '_blank', 'noopener')
       return false
     }
   }
@@ -610,19 +634,18 @@ export default function VideosPage() {
                           <td className="px-2 py-1.5 text-zinc-300">{row.inning ?? '—'}</td>
                           <td className="px-2 py-1.5 whitespace-nowrap capitalize text-zinc-300">{outcome(row)}</td>
                           <td className="px-2 py-1.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            {row.video_url ? (
-                              <button
-                                className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-emerald-400 hover:bg-zinc-800"
-                                title="Download clip"
-                                onClick={() => downloadClip(row)}
-                              >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                                </svg>
-                              </button>
-                            ) : (
-                              <span className="text-[11px] italic text-zinc-600" title={`Status: ${row.status}`}>{row.status}</span>
+                            {!row.video_url && (
+                              <span className="text-[11px] italic text-zinc-600 mr-1.5" title={`Status: ${row.status} — downloads via Savant CDN`}>{row.status}</span>
                             )}
+                            <button
+                              className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-emerald-400 hover:bg-zinc-800"
+                              title={row.video_url ? 'Download clip' : 'Download via Savant'}
+                              onClick={() => downloadClip(row)}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                              </svg>
+                            </button>
                           </td>
                         </tr>
                       )
@@ -710,9 +733,7 @@ export default function VideosPage() {
                   <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalNext} disabled={modal.index === modal.clips.length - 1}>Next ›</button>
                 </>
               )}
-              {modalClip.video_url && (
-                <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => downloadClip(modalClip)}>Download</button>
-              )}
+              <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => downloadClip(modalClip)}>Download</button>
               <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-emerald-400">Savant ↗</a>
             </div>
           </div>
