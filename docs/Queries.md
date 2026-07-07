@@ -228,3 +228,54 @@ Part of the full metric-accuracy audit. All 4 MVs had the same bugs baked into t
 -- Canonical swing denominator: LIKE '%swinging_strike%' OR LIKE '%foul%' OR LIKE 'hit_into_play%' OR = 'missed_bunt' OR = 'swinging_pitchout'
 ```
 **Result:** All 4 MVs recreated and populated. Verified `swinging_pitchout` present and `= 'hit_into_play'` exact match removed in all definitions.
+
+## 2026-07-06
+
+### Scoped 2026 pitch video archive backfill
+
+Sizing the new `pitch_videos` archive index (Savant clip archive on Mayday Cloud NAS).
+```sql
+SELECT count(DISTINCT game_pk) AS games, count(*) AS pitches FROM pitches WHERE game_year = 2026;
+```
+**Result:** 1,795 games, 530,763 pitches. At ~15–25MB/clip the full-season archive is ~8–13TB.
+
+### Verified play_id backfill join coverage (3-game test)
+
+After test run of `scripts/backfill-pitch-videos.ts` (new `pitch_videos` table, migration `create_pitch_videos`).
+```sql
+WITH g AS (SELECT DISTINCT game_pk FROM pitch_videos)
+SELECT
+  (SELECT count(*) FROM pitch_videos) AS video_rows,
+  (SELECT count(*) FROM pitches p JOIN g ON p.game_pk = g.game_pk) AS pitch_rows,
+  (SELECT count(*) FROM pitches p
+     JOIN pitch_videos v ON v.game_pk = p.game_pk
+      AND v.at_bat_number = p.at_bat_number
+      AND v.pitch_number = p.pitch_number) AS matched;
+```
+**Result:** 976 video rows / 933 statcast pitches / 933 matched — 100% coverage; extra 43 feed rows are pickoffs/non-pitch events.
+
+### Reset smoke-test rows in pitch_videos
+
+Download-worker smoke test (`scripts/download-pitch-videos.ts --max-pitches 5 --root <scratchpad>`) marked 5 rows `downloaded` with files in a temp dir, not the NAS. Reset them.
+```sql
+UPDATE pitch_videos
+SET status = 'pending', file_path = NULL, size_bytes = NULL, downloaded_at = NULL, attempts = 0
+WHERE status = 'downloaded'
+RETURNING game_pk, at_bat_number, pitch_number;
+```
+**Result:** 5 rows (game 822714, AB 1, pitches 1–5) back to pending. Test clips averaged ~5MB each → revised full-2026 archive estimate ~2.8TB.
+
+### Picked a 2025 pitch to test /api/pitch-video on-demand cache path
+
+```sql
+SELECT game_pk, at_bat_number, pitch_number, player_name, pitch_type FROM pitches WHERE game_year = 2025 AND game_type = 'R' ORDER BY game_date DESC LIMIT 1;
+```
+**Result:** game 776136, AB 41, pitch 2 (Sears FF). API live-resolved play_id from the Savant game feed, inserted a `pending` row (`queued: true`), and served the row from the index on the second call — on-demand path verified.
+
+### Verified /api/play-video on-demand queue insert
+
+After archive-first rewrite of `/api/play-video`, confirmed a request for an unindexed 2025 pitch queued it.
+```sql
+SELECT game_pk, at_bat_number, pitch_number, status, play_id FROM pitch_videos WHERE game_pk = 776136 ORDER BY at_bat_number, pitch_number;
+```
+**Result:** 2 rows (AB 41 pitches 1–2), both `pending` with resolved play_ids — one from the /api/pitch-video test, one from the /api/play-video test.

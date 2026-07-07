@@ -406,6 +406,28 @@ GET `?type=pitcher|batter&season=<2023..2026>&pitchType=ALL|FF|SI|…&minSwings=
 
 ---
 
+## 8.8 Pitch Video Archive — `/api/pitch-video`
+
+GET, Bearer-key auth (`PITCH_VIDEO_API_KEYS`). Two modes: single resolve (`?play_id=<uuid>` or `?game_pk=&ab=&pitch=`) and search (any combination of the filter params below; at least one required). Returns pitch metadata joined from `pitches` + `pitch_videos`, plus `video_url` (Mayday Cloud stream, only when `status=downloaded`) and `savant_url` (always). Single-resolve misses are resolved live from the Savant game feed and queued `pending` for the download worker (on-demand cache). Full spec: `docs/pitch-video-api.md`.
+
+| Param | Type / Values | Notes |
+|---|---|---|
+| `play_id` | uuid | Savant play id (single resolve) |
+| `game_pk` / `ab` / `pitch` | int | composite pitch key (single resolve); `ab` = `at_bat_number`, `pitch` = `pitch_number` |
+| `pitcher` / `batter` | int | MLB player ids |
+| `pitcher_name` / `batter_name` | string | ILIKE substring |
+| `team` | 2–3 letter code | matches `home_team` or `away_team` |
+| `pitch_type` | comma list, Statcast codes | `FF,SL,CH` |
+| `event` / `description` | comma list, lowercase Statcast values | `home_run,strikeout` / `swinging_strike` |
+| `date_from` / `date_to` | YYYY-MM-DD | inclusive on `game_date` |
+| `game_year`, `inning`, `balls`, `strikes`, `zone` | int | direct equality |
+| `velo_min` / `velo_max` | float | `release_speed` bounds |
+| `stand` / `p_throws` | `L`/`R` | |
+| `status` | `pending`/`downloaded`/`failed`/`missing` | archive state; `only_archived=true` = `status=downloaded` |
+| `limit` / `offset` | int | default 50, max 500 |
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |
@@ -420,6 +442,7 @@ GET `?type=pitcher|batter&season=<2023..2026>&pitchType=ALL|FF|SI|…&minSwings=
 | `glossary` | metric definitions | — | UI tooltips |
 | `filter_templates` | saved filter configs | — | |
 | `bat_tracking_swing_miss` | snapshot × player_type × player × season × pitch_type | 2023+ | Daily snapshots of Savant swing-timing/miss-distance board. `_latest` view = most-recent per player. See §8.7. |
+| `pitch_videos` | (game_pk, at_bat_number, pitch_number) | 2026+ (on-demand older) | Savant clip archive index: `play_id`, `status`, NAS `file_path`. See §8.8 + `docs/pitch-video-api.md`. |
 | `retro_events` | one row per play | 1914+ (partial pre-1914) | Retrosheet PBP. See §11. |
 | `retro_games` | one row per game | 1871+ | Retrosheet game logs (authoritative) + cwgame supplement |
 | `retro_people` | one row per person | all eras | Chadwick Register + biofile |

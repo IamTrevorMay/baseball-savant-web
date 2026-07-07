@@ -2,6 +2,16 @@
 
 ## Recently Completed
 
+### Pitch Video Archive (July 2026)
+Searchable local archive of Savant pitch clips on the Mayday Cloud NAS (`/PitchVideos/{year}/{game_pk}/{play_id}.mp4`), indexed in the new `pitch_videos` table (composite key `game_pk + at_bat_number + pitch_number`, play_id, status lifecycle `pending → downloaded/failed/missing`). Pipeline:
+- `scripts/backfill-pitch-videos.ts` — season-level play_id resolution via Savant game feeds (one fetch/game); 2026 backfill = 1,795 games / ~530k pitches
+- `scripts/download-pitch-videos.ts` — download worker; runs on the machine with the NAS mounted (clips avg ~5MB → full 2026 ≈ 2.8TB); resumable, free-space guard, adopts existing files
+- `lib/pitchVideos.ts` + `/api/cron/refresh` — nightly play_id indexing for new games (self-healing, capped per run)
+- `/api/pitch-video` — external search/resolve API (Bearer keys via `PITCH_VIDEO_API_KEYS`); returns metadata + Mayday stream URLs; on-demand misses are queued for the worker. Spec: `docs/pitch-video-api.md` (§8.8 in VARIABLES.md)
+- `/api/play-video` — Research UI redirect now archive-first (Mayday stream when downloaded, Savant fallback + queue otherwise)
+
+**Pending ops:** run download worker on Mayday machine; create Mayday viewer-role `mck_*` key scoped to `/PitchVideos`; set `MAYDAY_PITCH_VIDEO_TOKEN` + `PITCH_VIDEO_API_KEYS` in Vercel env.
+
 ### Metric Accuracy Audit — Whiff / Chase / CSW / Swing (June 2026)
 Full-platform audit aligning all swing/whiff/chase/CSW definitions with Baseball Savant's canonical `description` values. **29 application files fixed** (commit `1967d5a`): added `swinging_pitchout` and `missed_bunt` to whiff numerators, fixed `hit_into_play` exact-match bugs to `LIKE 'hit_into_play%'` in swing denominators, corrected BA/SLG denominators (at-bats, not PA), fixed IP double-play counting, and fixed Zone% denominators.
 

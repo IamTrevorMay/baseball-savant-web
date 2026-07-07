@@ -3,6 +3,7 @@ import { invalidateBySource, purgeExpired } from '@/lib/queryCache'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { trackCronRun } from '@/lib/cronTracker'
 import { syncBatTrackingSwingMiss } from '@/lib/syncBatTracking'
+import { indexRecentPitchVideos } from '@/lib/pitchVideos'
 import { ymdInTimeZone } from '@/lib/dateTz'
 import { reportError } from '@/lib/observability'
 
@@ -129,6 +130,16 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Queue new games' pitch clips for the video archive download worker.
+      // Runs regardless of skipDownstream — cheap no-op when nothing is missing,
+      // and it self-heals gaps left by a failed prior run.
+      let pitchVideosResult: Awaited<ReturnType<typeof indexRecentPitchVideos>> | { error: string }
+      try {
+        pitchVideosResult = await indexRecentPitchVideos()
+      } catch (e: any) {
+        pitchVideosResult = { error: e.message }
+      }
+
       // Invalidate query caches (always purge expired; invalidate sources only on new data).
       await Promise.all([
         skipDownstream ? Promise.resolve() : invalidateBySource('pitches'),
@@ -146,6 +157,7 @@ export async function GET(req: NextRequest) {
         leaguePercentiles: leaguePercentilesResult,
         materializedViews: materializedViewsResult,
         batTracking: batTrackingResult,
+        pitchVideos: pitchVideosResult,
       }
       return {
         result: payload,
@@ -155,6 +167,7 @@ export async function GET(req: NextRequest) {
           leaguePercentiles: leaguePercentilesResult,
           materializedViews: materializedViewsResult,
           batTracking: batTrackingResult,
+          pitchVideos: pitchVideosResult,
         },
       }
     })
