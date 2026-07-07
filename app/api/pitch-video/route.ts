@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { createClient } from '@/lib/supabase/server'
 
 /**
  * Pitch video archive API — search and resolve archived Savant pitch clips.
@@ -45,12 +46,20 @@ function esc(s: string): string {
   return s.replace(/'/g, "''")
 }
 
-function authorized(req: NextRequest): boolean {
+async function authorized(req: NextRequest): Promise<boolean> {
+  // Machine consumers (Mayday Studio, broadcast tools): Bearer consumer key.
   const keys = (process.env.PITCH_VIDEO_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean)
-  if (keys.length === 0) return false
   const header = req.headers.get('authorization') || ''
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
-  return token.length > 0 && keys.includes(token)
+  if (token.length > 0 && keys.includes(token)) return true
+  // Internal Research UI (/videos): any logged-in Triton session (cookie auth).
+  try {
+    const sb = await createClient()
+    const { data: { user } } = await sb.auth.getUser()
+    return !!user
+  } catch {
+    return false
+  }
 }
 
 function toVideoRow(r: any) {
@@ -110,7 +119,7 @@ async function resolvePlayIdLive(gamePk: number, ab: number, pitch: number): Pro
 }
 
 export async function GET(req: NextRequest) {
-  if (!authorized(req)) {
+  if (!(await authorized(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
