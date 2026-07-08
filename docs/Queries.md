@@ -390,3 +390,18 @@ WHERE player_name = 'May, Trevor'
   AND (description = 'hit_by_pitch' OR events = 'hit_by_pitch');
 ```
 **Result:** one row — **2016-05-06**, game 447301 AB 73 pitch 2, 97.4 mph FF HBP. Not findable in the video search because the `pitch_videos` index is 2026-only (pitches data goes back to 2015); resolved on-demand via `/api/pitch-video?game_pk=447301&ab=73&pitch=2&resolve_mp4=true` (clip exists on Savant's CDN; row queued).
+
+### Pitch video archive — download progress check (laptop)
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e9::numeric, 1) AS gb, max(downloaded_at) AS last_download
+FROM pitch_videos GROUP BY status ORDER BY n DESC;
+
+SELECT count(*) FILTER (WHERE downloaded_at > now() - interval '1 hour') AS last_hour,
+       count(*) FILTER (WHERE downloaded_at > now() - interval '24 hours') AS last_24h,
+       min(downloaded_at) AS first_download
+FROM pitch_videos WHERE status = 'downloaded';
+
+SELECT left(coalesce(error,'(none)'), 80) AS err, count(*) AS n
+FROM pitch_videos WHERE status = 'failed' GROUP BY 1 ORDER BY n DESC LIMIT 10;
+```
+**Result:** 30,257 downloaded (164.2 GB), 493,337 pending, 6,300 failed (6,282 `mp4 fetch 404`, 18 `sporty-videos 500`). Worker ran 14:34–21:47 UTC today (~4,200 clips/hr) then stopped — 0 downloads in last hour.

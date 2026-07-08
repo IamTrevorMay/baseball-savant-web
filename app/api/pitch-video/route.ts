@@ -271,8 +271,12 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(intParam('limit') || 50, 1), 500)
     const offset = Math.max(intParam('offset') || 0, 0)
 
+    // LEFT JOIN: pitches never indexed for archiving (pre-2026 seasons) must
+    // still be searchable — they return status null and resolve their clip
+    // via the single-resolve resolve_mp4 path. only_archived/status filters
+    // on v.status naturally exclude the unindexed rows.
     const sql = `SELECT ${META_COLS} FROM pitches p
-      JOIN pitch_videos v ON v.game_pk = p.game_pk
+      LEFT JOIN pitch_videos v ON v.game_pk = p.game_pk
         AND v.at_bat_number = p.at_bat_number AND v.pitch_number = p.pitch_number
       LEFT JOIN players pl ON pl.id = p.batter
       WHERE ${conds.join(' AND ')}
