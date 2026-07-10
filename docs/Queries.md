@@ -405,3 +405,24 @@ SELECT left(coalesce(error,'(none)'), 80) AS err, count(*) AS n
 FROM pitch_videos WHERE status = 'failed' GROUP BY 1 ORDER BY n DESC LIMIT 10;
 ```
 **Result:** 30,257 downloaded (164.2 GB), 493,337 pending, 6,300 failed (6,282 `mp4 fetch 404`, 18 `sporty-videos 500`). Worker ran 14:34–21:47 UTC today (~4,200 clips/hr) then stopped — 0 downloads in last hour.
+
+## 2026-07-09
+
+### Backfill progress checks (status of the 2026 download run)
+Point-in-time status counts for the running `pitch-video-worker` (checked twice, ~3.5h apart).
+```sql
+SELECT status, count(*) AS n FROM pitch_videos GROUP BY status ORDER BY n DESC;
+SELECT attempts, count(*) AS n FROM pitch_videos WHERE status='failed' GROUP BY attempts ORDER BY attempts;
+SELECT game_pk, count(*) AS n FROM pitch_videos WHERE status='failed' GROUP BY game_pk ORDER BY n DESC LIMIT 12;
+```
+**Result:** 12:40 — 158,287 downloaded / 362,860 pending / 15,976 failed / 6 missing (29.5%). 16:13 — 174,110 downloaded / 346,174 pending / 16,839 failed (32.4%, ~4,500 clips/h). Failures cluster as whole games (~320–356 rows each, e.g. 824980/825062/822715 — Savant pages not serving clips yet); all at attempts 1–3 of 6, retried by the nightly `--include-failed` runs.
+
+## 2026-07-10
+
+### Playlist port: schema pre-checks + migration
+Verified target tables for the Videos-page playlist port from Mayday Studio.
+```sql
+SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('profiles','pitch_video_searches','pitch_playlists','pitch_playlist_items');
+SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' ORDER BY ordinal_position LIMIT 8;
+```
+**Result:** `profiles` (uuid id) + `pitch_video_searches` present; playlist tables absent → applied migration `pitch_playlists` (DDL in `scripts/create-pitch-playlists.sql`): `pitch_playlists` + `pitch_playlist_items`, RLS owner-only via `created_by = auth.uid()`.
