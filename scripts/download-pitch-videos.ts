@@ -22,7 +22,7 @@
  * are adopted without re-downloading. Stops if free space drops below 100GB.
  */
 import { createClient } from '@supabase/supabase-js'
-import { readFileSync, existsSync, mkdirSync, statSync, renameSync, unlinkSync, createWriteStream } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, renameSync, unlinkSync, createWriteStream } from 'fs'
 import { resolve, dirname } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
@@ -60,7 +60,37 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 const qLong = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-const MAX_ATTEMPTS = 3
+// Recent games' clips can take days to appear on MLB's CDN — with the nightly
+// pm2 job retrying failed rows once per run, 6 attempts ≈ a week of retries
+// before a row is settled as terminal 'missing'.
+const MAX_ATTEMPTS = 6
+
+// Single-instance lock: the nightly pm2 job must not overlap a long manual
+// backfill (or a previous night still running). PID-checked so a stale file
+// from a killed run never wedges the schedule.
+const LOCK_PATH = resolve(process.cwd(), '.pitch-video-worker.lock')
+function acquireLock(): boolean {
+  try {
+    if (existsSync(LOCK_PATH)) {
+      const pid = parseInt(readFileSync(LOCK_PATH, 'utf-8').trim())
+      if (pid && !isNaN(pid)) {
+        try { process.kill(pid, 0); return false } catch { /* stale lock */ }
+      }
+    }
+    writeFileSync(LOCK_PATH, String(process.pid))
+    return true
+  } catch {
+    return false
+  }
+}
+process.on('exit', () => {
+  try {
+    if (readFileSync(LOCK_PATH, 'utf-8').trim() === String(process.pid)) unlinkSync(LOCK_PATH)
+  } catch { /* nothing to clean */ }
+})
+// Run 'exit' handlers on signals so the lock is released (SIGTERM default wouldn't).
+process.on('SIGINT', () => process.exit(130))
+process.on('SIGTERM', () => process.exit(143))
 const MIN_FREE_GB = 100
 const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
 
@@ -74,8 +104,25 @@ interface VideoRow {
 }
 
 function freeSpaceGB(path: string): number {
-  const out = execSync(`df -k "${path}" | tail -1`).toString().trim().split(/\s+/)
-  return parseInt(out[3]) / 1024 / 1024
+  // NaN when df fails (e.g. volume briefly unmounted) — callers must treat
+  // NaN as "unknown", not zero, or a flap would false-trigger the stop.
+  try {
+    const out = execSync(`df -k "${path}" | tail -1`, { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim().split(/\s+/)
+    return parseInt(out[3]) / 1024 / 1024
+  } catch {
+    return NaN
+  }
+}
+
+// True only when root is a real mountpoint (its device differs from its
+// parent's). Guards against macOS recreating a phantom /Volumes/<name> dir on
+// the boot disk after an unmount — writing there would fill the boot drive.
+function isMounted(root: string): boolean {
+  try {
+    return statSync(root).dev !== statSync(dirname(root)).dev
+  } catch {
+    return false
+  }
 }
 
 async function resolveMp4Url(playId: string): Promise<string | null> {
@@ -168,8 +215,12 @@ async function main() {
     process.exit(1)
   }
 
-  if (!existsSync(root)) {
-    console.error(`Archive root not found: ${root} — is the NAS mounted?`)
+  if (!acquireLock()) {
+    console.log('Another worker run is active — exiting.')
+    return
+  }
+  if (!isMounted(root)) {
+    console.error(`Archive root not mounted: ${root} — is the NAS attached?`)
     process.exit(1)
   }
   console.log(`=== Pitch video download worker ===`)
@@ -203,7 +254,12 @@ async function main() {
   let bytes = 0
 
   for (const game of games) {
-    if (freeSpaceGB(root) < MIN_FREE_GB) {
+    if (!isMounted(root)) {
+      console.error(`Archive root unmounted mid-run — stopping. Resume after remounting.`)
+      break
+    }
+    const freeGB = freeSpaceGB(root)
+    if (!isNaN(freeGB) && freeGB < MIN_FREE_GB) {
       console.error(`Free space below ${MIN_FREE_GB}GB — stopping. Resume after freeing space.`)
       break
     }

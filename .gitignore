@@ -20,3 +20,6 @@ mcp-server/node_modules/
 # Local retrosheet raw data + seed logs
 data/
 logs/
+
+# Pitch video worker runtime lock (PID file)
+.pitch-video-worker.lock

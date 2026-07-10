@@ -23,10 +23,10 @@ Known data gap: game 822715 — Savant page renders an mp4 URL but the asset 404
 
 **2026-07-07 — keys wired + END-TO-END VERIFIED.** `MAYDAY_PITCH_VIDEO_TOKEN` + `PITCH_VIDEO_API_KEYS` set in Vercel and redeployed; authenticated search returns rows and `video_url` streams 206/video-mp4 from Mayday. Required a Mayday-side fix: `sanitizePath` in mayday-cloud `api/src/routes/nas.js` treated leading-slash paths as fs-absolute (path.resolve) and blocked Triton's root-relative `/PitchVideos/...` as traversal — now strips leading slashes (boundary check unchanged).
 
+**2026-07-08 — full-2026 backfill resumed + nightly worker scheduled.** After a June-29+ scoped interlude (91 games, 20,827 clips, 112GB; ~5.9k failures are MLB publication lag on recent games, mostly July 5), the full backfill was restarted (1,681 games / 495,777 pitches remaining ≈ 2.5 days). **Nightly drain is now automated:** pm2 app `pitch-video-worker` (next to `mayday-api`) runs `tsx scripts/download-pitch-videos.ts --include-failed` daily at 4am; the worker has a PID-checked single-instance lock (`.pitch-video-worker.lock`) so scheduled runs defer to any in-flight backfill, and `MAX_ATTEMPTS` was raised 3→6 (≈ a week of nightly retries before a row settles as terminal `missing`). `pm2 save` persisted.
+
 **Remaining steps:**
-1. When the run finishes: re-run with `--include-failed` to retry transient failures.
-2. Optional hardening: run the worker under pm2/launchd next to `mayday-api` so nightly `pending` rows (queued by `/api/cron/refresh` + on-demand requests) drain automatically.
-3. Optional: recreate the Mayday key as a viewer-role account scoped to `/PitchVideos` if the current one was created unscoped from an admin account (key inherits creator's profile role; scoped_path settable only via POST /api/keys).
+1. Optional: recreate the Mayday key as a viewer-role account scoped to `/PitchVideos` if the current one was created unscoped from an admin account (key inherits creator's profile role; scoped_path settable only via POST /api/keys).
 
 **Later ideas:** Triton Research UI page over the archive (FilterEngine-style clip browser); short-lived signed URLs from Mayday instead of embedding the long-lived `mck_*` token; MiLB clips.
 
