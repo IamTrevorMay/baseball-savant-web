@@ -426,3 +426,12 @@ SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND
 SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' ORDER BY ordinal_position LIMIT 8;
 ```
 **Result:** `profiles` (uuid id) + `pitch_video_searches` present; playlist tables absent → applied migration `pitch_playlists` (DDL in `scripts/create-pitch-playlists.sql`): `pitch_playlists` + `pitch_playlist_items`, RLS owner-only via `created_by = auth.uid()`.
+
+### Pitch video archive — ingest progress check
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e9::numeric, 1) AS gb FROM pitch_videos GROUP BY status;
+-- + rate: downloads in last hour / 24h, minutes since last download
+SELECT left(coalesce(error,'(none)'),60) AS err, count(*) AS n
+FROM pitch_videos WHERE status = 'failed' GROUP BY 1 ORDER BY n DESC LIMIT 8;
+```
+**Result:** 287,602 downloaded (1.54 TB), 229,507 pending, 24,208 failed, 35 missing. Worker live (last download 2 min ago), ~3,959/hr, 98,894 last 24h → ~2.3 days to drain. Failures 99.9% `mp4 fetch 404` (MLB CDN gaps), 34 transient (500/502/timeout/abort) for `--include-failed` retry pass.
