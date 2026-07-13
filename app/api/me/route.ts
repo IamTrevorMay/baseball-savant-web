@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { resolvePermissions } from '@/lib/roles'
 
 export async function GET() {
   const supabase = await createClient()
@@ -16,12 +17,7 @@ export async function GET() {
     supabaseAdmin.from('tool_permissions').select('tool').eq('user_id', user.id),
   ])
 
-  let permissions: string[]
-  if (profile?.role === 'owner' || profile?.role === 'admin') {
-    permissions = ['research', 'mechanics', 'models', 'compete', 'visualize', 'work', 'design', 'data']
-  } else {
-    permissions = perms?.map((p: any) => p.tool) ?? []
-  }
+  const permissions = resolvePermissions(profile?.role, perms?.map((p: any) => p.tool) ?? [])
 
   // Mark pending invitation as accepted on first login
   if (user.email) {

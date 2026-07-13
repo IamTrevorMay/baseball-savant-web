@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { Resend } from 'resend'
+import { hasImplicitTools } from '@/lib/roles'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -75,8 +76,9 @@ export async function POST(request: Request) {
     role,
   }, { onConflict: 'id' })
 
-  // Insert tool permissions for non-admin roles
-  if (role !== 'owner' && role !== 'admin' && tools.length > 0) {
+  // Insert tool permissions only for roles without implicit access
+  // (owner/admin = all tools, athlete = Compete-only — both are role-derived).
+  if (!hasImplicitTools(role) && tools.length > 0) {
     const permRows = tools.map((tool: string) => ({
       user_id: invitedUserId,
       granted_by: user.id,

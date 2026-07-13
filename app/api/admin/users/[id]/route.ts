@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { hasImplicitTools } from '@/lib/roles'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -40,8 +41,8 @@ export async function PATCH(
     if (delErr) {
       return NextResponse.json({ error: `Failed to clear permissions: ${delErr.message}` }, { status: 500 })
     }
-    // Insert new ones (only for non-admin roles)
-    if (role !== 'owner' && role !== 'admin' && tools.length > 0) {
+    // Insert new ones (skip roles with implicit access: owner/admin/athlete)
+    if (!hasImplicitTools(role) && tools.length > 0) {
       const permRows = tools.map((tool: string) => ({
         user_id: id,
         granted_by: admin.id,

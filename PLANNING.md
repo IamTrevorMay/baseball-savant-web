@@ -2,6 +2,9 @@
 
 ## Recently Completed
 
+### Roles Auth — Athlete Role (July 2026)
+First step of the roles-auth build-out. New `athlete` role in `profiles.role`: Compete-only, launcher-less. Central `lib/roles.ts` now encodes the access model (`isAdminRole`, `isAthleteRole`, `resolvePermissions`, `hasImplicitTools`, `roleLandingPath`, `ALL_TOOLS`, `ATHLETE_TOOLS`) so `/api/me`, the Compete layout, the launcher, and the Admin page stay in sync. Athletes get implicit `['compete']` access (no `tool_permissions` rows), are bounced from the launcher straight to `/compete` (client redirect in `app/(launcher)/page.tsx`), and are hard-locked out of every other app — each app layout already redirects the unpermitted to `/?denied=…`, which bounces athletes back to Compete. Inside Compete the "TRITON APEX" wordmark is not a link for athletes (no app-menu escape). Admin page: `Athlete` option in invite + edit role dropdowns, implicit "Compete only" access (tool toggles hidden), amber role badge.
+
 ### Pitch Video Archive (July 2026)
 Searchable local archive of Savant pitch clips on the Mayday Cloud NAS (`/PitchVideos/{year}/{game_pk}/{play_id}.mp4`), indexed in the new `pitch_videos` table (composite key `game_pk + at_bat_number + pitch_number`, play_id, status lifecycle `pending → downloaded/failed/missing`).
 

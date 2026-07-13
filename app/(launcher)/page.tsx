@@ -5,6 +5,7 @@ import UserMenu from '@/components/UserMenu'
 import TridentLogo from '@/components/TridentLogo'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { isAthleteRole } from '@/lib/roles'
 
 const TOOLS = [
   {
@@ -148,6 +149,7 @@ function LauncherContent() {
   const router = useRouter()
   const denied = searchParams.get('denied')
   const isAdmin = profile?.role === 'owner' || profile?.role === 'admin'
+  const isAthlete = isAthleteRole(profile?.role)
   // If no user session (preview mode or not logged in), show all tools as accessible
   const effectivePermissions = !user ? ['research', 'mechanics', 'models', 'compete', 'visualize'] : isAdmin ? [...TOOLS.map(t => t.id), 'data'] : permissions
   const visibleTools = isAdmin
@@ -156,14 +158,22 @@ function LauncherContent() {
       ? [...TOOLS, DATA_TOOL]
       : TOOLS
 
-  // In PWA standalone mode, redirect to Compete tab
+  // Athletes have no launcher — bounce straight into Compete. This is also the
+  // keystone of the hard lock: any other app that denies an athlete redirects
+  // here, and this sends them back to Compete.
   useEffect(() => {
-    if (!loading && user && window.matchMedia('(display-mode: standalone)').matches && !denied) {
+    if (loading || !user) return
+    if (isAthlete) {
+      router.replace('/compete')
+      return
+    }
+    // In PWA standalone mode, redirect to Compete tab
+    if (window.matchMedia('(display-mode: standalone)').matches && !denied) {
       router.replace('/compete')
     }
-  }, [loading, user, denied, router])
+  }, [loading, user, isAthlete, denied, router])
 
-  if (loading) {
+  if (loading || isAthlete) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-zinc-700 border-t-emerald-500 rounded-full animate-spin" />

@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-
-const ALL_TOOLS = ['research', 'mechanics', 'models', 'compete', 'visualize', 'work', 'design', 'data'] as const
+import { ALL_TOOLS, hasImplicitTools } from '@/lib/roles'
 
 interface Invitation {
   id: string
@@ -127,7 +126,7 @@ export default function AdminPage() {
     setSaveMsg(null)
     setEditingId(u.id)
     setEditRole(u.role)
-    setEditTools(u.role === 'owner' || u.role === 'admin' ? [] : [...u.tools])
+    setEditTools(hasImplicitTools(u.role) ? [] : [...u.tools])
   }
 
   async function handleSaveEdit(id: string) {
@@ -249,10 +248,17 @@ export default function AdminPage() {
                 className="w-full px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:border-red-500 focus:outline-none transition"
               >
                 <option value="user">User</option>
+                <option value="athlete">Athlete</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
           </div>
+
+          {inviteRole === 'athlete' && (
+            <p className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+              Athletes see only the Compete app — no launcher, no other tools. Tool access is automatic.
+            </p>
+          )}
 
           {inviteRole === 'user' && (
             <div>
@@ -387,6 +393,7 @@ export default function AdminPage() {
                           className="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-white focus:border-red-500 focus:outline-none"
                         >
                           <option value="user">user</option>
+                          <option value="athlete">athlete</option>
                           <option value="admin">admin</option>
                           <option value="owner">owner</option>
                         </select>
@@ -414,6 +421,8 @@ export default function AdminPage() {
                         </div>
                       ) : (u.role === 'owner' || u.role === 'admin') ? (
                         <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-medium">All Access</span>
+                      ) : u.role === 'athlete' ? (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-medium">Compete only</span>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {u.tools.map(t => (
@@ -502,6 +511,7 @@ function RoleBadge({ role }: { role: string }) {
   const colors: Record<string, string> = {
     owner: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
     admin: 'bg-red-500/15 text-red-400 border-red-500/30',
+    athlete: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
     user: 'bg-zinc-800 text-zinc-400 border-zinc-700',
   }
   return (
