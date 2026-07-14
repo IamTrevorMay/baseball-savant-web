@@ -36,7 +36,9 @@ const TEAM_RE = /^[A-Z]{2,3}$/
 
 const META_COLS = `p.game_pk, p.game_date, p.game_year, p.pitcher, p.player_name, p.batter,
   pl.name AS batter_name, p.stand, p.p_throws, p.pitch_type, p.pitch_name,
-  p.release_speed, p.release_spin_rate, p.pfx_x, p.pfx_z, p.plate_x, p.plate_z, p.zone,
+  p.release_speed, p.release_spin_rate, p.spin_axis, p.release_extension,
+  p.pfx_x, p.pfx_z, p.plate_x, p.plate_z, p.zone,
+  p.vx0, p.vy0, p.vz0, p.ax, p.ay, p.az, p.sz_top, p.sz_bot,
   p.events, p.description, p.balls, p.strikes, p.outs_when_up, p.inning, p.inning_topbot,
   p.home_team, p.away_team, p.launch_speed, p.launch_angle,
   p.at_bat_number, p.pitch_number,

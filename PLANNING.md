@@ -2,6 +2,9 @@
 
 ## Recently Completed
 
+### Compete — Video Page (July 2026)
+New `/compete/video` — a copy of the Research Videos page (search, frame-step player, zip batch downloads, DB-backed playlists) adapted to the amber Compete theme, plus two additions: (1) a toggleable **Extended Statcast pitch-data panel** docked in the player (single-video modal + playlist), showing velo/spin/tilt/spin-axis/IVB/HB/VAA/HAA/extension/location/zone/count/result/EV/LA — derived fields (VAA/HAA/pfx-inches) via `lib/enrichDerivedFields`, tilt via a new `spinAxisToTilt`; (2) per-user playlists (reuses the owner-only `pitch_playlists`/`pitch_playlist_items` tables). `/api/pitch-video` META_COLS extended with the raw trajectory/spin/extension columns (`vx0,vy0,vz0,ax,ay,az,spin_axis,release_extension,sz_top,sz_bot`) — passes through to Research too, harmless. History drawer scoped to the current user's own searches (Compete is athlete-facing; `pitch_video_searches` is world-readable, unlike the shared Research feed).
+
 ### Compete — Left Nav + Dashboard Consolidation (July 2026)
 Replaced the Compete top nav bar with a left sidebar (`components/compete/CompeteSidebar.tsx`): fixed sidebar on desktop, hamburger drawer on mobile, text-label nav items, brand at top, profile + sign-out at bottom (Compete previously had no sign-out). Removed the old `CompeteNav`. The standalone Today page was rolled into the Dashboard as a "Today's Schedule" section below Notifications (reuses `/api/compete/schedule?date=today`); `/compete/today` now redirects to `/compete`. `MobileTabBar` (cross-app switch bar) is now suppressed for athletes — closes the mobile app-menu leak in the athlete hard lock.
 
