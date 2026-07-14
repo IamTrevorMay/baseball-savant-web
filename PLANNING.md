@@ -2,6 +2,9 @@
 
 ## Recently Completed
 
+### Video — Game Search + Sortable Table (July 2026, both Research & Compete)
+Added to both `/videos` and `/compete/video`: a **Pitches / Game mode toggle** in the filter panel. Game mode = date picker → matchup dropdown (that day's games from our pitch DB) → **Load game**, which pulls every pitch in the game in chronological order. New **Half** column (Top/Bot). **All column headers are sortable** (click cycles none→asc→desc, back to chronological); sorting works in both modes and is client-side over loaded rows. Pitches without video still show but are **greyed** (opacity-40) and remain clickable (live Savant resolve). API: `/api/pitch-video` gains `games_on=DATE` (distinct games for a date) and a `game_pk` search filter; row LIMIT cap raised 500→1000 so a full game never truncates.
+
 ### Compete — Video Page (July 2026)
 New `/compete/video` — a copy of the Research Videos page (search, frame-step player, zip batch downloads, DB-backed playlists) adapted to the amber Compete theme, plus two additions: (1) a toggleable **Extended Statcast pitch-data panel** docked in the player (single-video modal + playlist), showing velo/spin/tilt/spin-axis/IVB/HB/VAA/HAA/extension/location/zone/count/result/EV/LA — derived fields (VAA/HAA/pfx-inches) via `lib/enrichDerivedFields`, tilt via a new `spinAxisToTilt`; (2) per-user playlists (reuses the owner-only `pitch_playlists`/`pitch_playlist_items` tables). `/api/pitch-video` META_COLS extended with the raw trajectory/spin/extension columns (`vx0,vy0,vz0,ax,ay,az,spin_axis,release_extension,sz_top,sz_bot`) — passes through to Research too, harmless. History drawer scoped to the current user's own searches (Compete is athlete-facing; `pitch_video_searches` is world-readable, unlike the shared Research feed).
 

@@ -199,9 +199,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Pitch not found' }, { status: 404 })
     }
 
-    // ── Mode 2: search ──
+    // ── Mode 2: list a date's games (matchups) for the Game finder ──
+    const gamesOn = sp.get('games_on')
+    if (gamesOn) {
+      if (!DATE_RE.test(gamesOn)) return NextResponse.json({ error: 'Invalid games_on' }, { status: 400 })
+      const gsql = `SELECT p.game_pk,
+          MAX(p.game_date) AS game_date,
+          MAX(p.home_team) AS home_team,
+          MAX(p.away_team) AS away_team,
+          COUNT(*) AS pitch_count
+        FROM pitches p
+        WHERE p.game_date = '${gamesOn}'
+        GROUP BY p.game_pk
+        ORDER BY MAX(p.away_team)`
+      const { data, error } = await supabase.rpc('run_query', { query_text: gsql })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ games: data || [] })
+    }
+
+    // ── Mode 3: search ──
     const conds: string[] = []
 
+    const searchGamePk = intParam('game_pk')
+    if (searchGamePk != null) { if (isNaN(searchGamePk)) return NextResponse.json({ error: 'Invalid game_pk' }, { status: 400 }); conds.push(`p.game_pk = ${searchGamePk}`) }
     const pitcher = intParam('pitcher')
     if (pitcher != null) { if (isNaN(pitcher)) return NextResponse.json({ error: 'Invalid pitcher' }, { status: 400 }); conds.push(`p.pitcher = ${pitcher}`) }
     const batter = intParam('batter')
@@ -270,7 +290,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'At least one filter required for search' }, { status: 400 })
     }
 
-    const limit = Math.min(Math.max(intParam('limit') || 50, 1), 500)
+    // Cap at 1000 so a full game (a few hundred pitches, up to extra innings)
+    // is never truncated when loaded via game_pk.
+    const limit = Math.min(Math.max(intParam('limit') || 50, 1), 1000)
     const offset = Math.max(intParam('offset') || 0, 0)
 
     // LEFT JOIN: pitches never indexed for archiving (pre-2026 seasons) must

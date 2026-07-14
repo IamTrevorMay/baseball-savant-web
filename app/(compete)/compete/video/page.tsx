@@ -17,7 +17,7 @@
 // Data comes from our own /api/pitch-video (session cookie auth); the page
 // never needs a consumer key.
 
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import { zipSync } from 'fflate'
 import { supabase } from '@/lib/supabase'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
@@ -200,6 +200,45 @@ function enrichClip(clip: VideoRow): VideoRow {
 const fmtNum = (v: number | null | undefined, d = 1, suffix = '') =>
   v == null || isNaN(v) ? '—' : `${v.toFixed(d)}${suffix}`
 
+interface GameOption {
+  game_pk: number
+  game_date: string
+  home_team: string
+  away_team: string
+  pitch_count: number
+}
+
+// Results-table columns. `key` drives header-click sorting; null = not sortable.
+const SORT_COLUMNS: { label: string; key: string | null }[] = [
+  { label: 'Date', key: 'game_date' },
+  { label: 'Pitcher', key: 'player_name' },
+  { label: 'Batter', key: 'batter_name' },
+  { label: 'Pitch', key: 'pitch_type' },
+  { label: 'Velo', key: 'release_speed' },
+  { label: 'Count', key: 'count' },
+  { label: 'Inn', key: 'inning' },
+  { label: 'Half', key: 'half' },
+  { label: 'Result', key: 'result' },
+  { label: '', key: null },
+]
+
+function sortVal(r: VideoRow, key: string): number | string {
+  switch (key) {
+    case 'count': return (r.balls ?? 0) * 10 + (r.strikes ?? 0)
+    case 'half': return r.inning_topbot === 'Top' ? 0 : 1
+    case 'result': return outcome(r).toLowerCase()
+    case 'release_speed': return r.release_speed ?? -Infinity
+    case 'inning': return r.inning ?? -Infinity
+    case 'pitch_type': return r.pitch_type || ''
+    case 'player_name': return r.player_name || ''
+    case 'batter_name': return r.batter_name || ''
+    case 'game_date': return r.game_date || ''
+    default: return ''
+  }
+}
+
+const halfLabel = (t: string | null) => (t === 'Top' ? 'Top' : t === 'Bot' ? 'Bot' : '—')
+
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
   if (s < 60) return 'just now'
@@ -239,6 +278,17 @@ export default function VideosPage() {
   const [rows, setRows] = useState<VideoRow[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+
+  // Search sub-mode: filter by pitch criteria, or load an entire game.
+  const [mode, setMode] = useState<'pitches' | 'game'>('pitches')
+  const [gameDate, setGameDate] = useState('')
+  const [games, setGames] = useState<GameOption[]>([])
+  const [gamesLoading, setGamesLoading] = useState(false)
+  const [selectedGamePk, setSelectedGamePk] = useState('')
+
+  // Column sorting (both modes). null col = API order (chronological for a game).
+  const [sortCol, setSortCol] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<{ clips: VideoRow[]; index: number } | null>(null)
@@ -383,6 +433,64 @@ export default function VideosPage() {
       setSearching(false)
     }
   }
+
+  // ── Game finder ──
+  const loadGamesForDate = useCallback(async (date: string) => {
+    setGames([])
+    setSelectedGamePk('')
+    if (!date) return
+    setGamesLoading(true)
+    try {
+      const res = await fetch(`/api/pitch-video?games_on=${date}`)
+      const json = await res.json().catch(() => ({}))
+      setGames((json.games as GameOption[]) || [])
+    } catch {
+      setGames([])
+    } finally {
+      setGamesLoading(false)
+    }
+  }, [])
+
+  const loadGame = async () => {
+    if (!selectedGamePk) return
+    setSearching(true)
+    setSearchError(null)
+    setSelectedKeys(new Set())
+    setSortCol(null)
+    try {
+      // All pitches in the game (no only_archived), chronological (API order).
+      const res = await fetch(`/api/pitch-video?game_pk=${selectedGamePk}&limit=1000`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `Load failed (${res.status})`)
+      setRows((json.rows as VideoRow[]) || [])
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Load failed')
+      setRows(null)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  // ── Sorting ── click a header: none → asc → desc → none (back to API order)
+  const clickSort = (key: string) => {
+    if (sortCol !== key) { setSortCol(key); setSortDir('asc') }
+    else if (sortDir === 'asc') setSortDir('desc')
+    else setSortCol(null)
+  }
+
+  const displayRows = useMemo(() => {
+    if (!rows || !sortCol) return rows
+    const arr = [...rows]
+    arr.sort((a, b) => {
+      const av = sortVal(a, sortCol)
+      const bv = sortVal(b, sortCol)
+      const c = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv))
+      return sortDir === 'asc' ? c : -c
+    })
+    return arr
+  }, [rows, sortCol, sortDir])
 
   // ── Selection ──
   // Any pitch can be selected — playlists and downloads resolve the Savant
@@ -756,14 +864,40 @@ export default function VideosPage() {
                 <span className={infoKeyCls}>Inning</span>
                 <span>{playClip.inning_topbot} {playClip.inning}</span>
               </div>
-              {playClip.savant_url && (
-                <a href={playClip.savant_url} target="_blank" rel="noreferrer" className="text-xs text-amber-400 mt-2 inline-block">Savant ↗</a>
-              )}
+              <div className="flex items-center gap-3 mt-2.5">
+                <button
+                  className={`${btnCls} bg-amber-600/20 border border-amber-600 text-amber-400`}
+                  onClick={() => downloadClip(playClip)}
+                  title={playClip.video_url ? 'Download this clip' : 'Download via Savant'}
+                >
+                  Download
+                </button>
+                {playClip.savant_url && (
+                  <a href={playClip.savant_url} target="_blank" rel="noreferrer" className="text-xs text-amber-400">Savant ↗</a>
+                )}
+              </div>
             </div>
           )}
 
           <div>
-            <label className={labelCls}>Queue ({playlistItems.length})</label>
+            <div className="flex items-center justify-between">
+              <label className={labelCls}>Queue ({playlistItems.length})</label>
+              {playlistItems.length > 0 && (
+                batch ? (
+                  <span className="text-[11px] text-amber-400">
+                    ↓ {batch.done}/{batch.total}{batch.failed ? ` (${batch.failed}✗)` : ''}
+                  </span>
+                ) : (
+                  <button
+                    className="text-[11px] text-amber-400 hover:text-amber-300"
+                    onClick={() => runBatchDownload(playlistItems.map(it => it.clip))}
+                    title="Download every clip in this playlist as a zip"
+                  >
+                    Download all
+                  </button>
+                )
+              )}
+            </div>
             <div className="space-y-1 max-h-[45vh] overflow-y-auto">
               {playlistLoading && <div className="py-4 text-center text-sm text-zinc-600">Loading…</div>}
               {!playlistLoading && !activePlaylistId && (
@@ -889,6 +1023,63 @@ export default function VideosPage() {
         {view === 'search' && (<>
         {/* ── Left: filters ── */}
         <div className="w-[260px] shrink-0 space-y-3">
+          {/* Pitches / Game mode toggle */}
+          <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+            {(['pitches', 'game'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`flex-1 px-2 py-1 rounded text-xs font-semibold capitalize transition ${mode === m ? 'bg-amber-600/20 text-amber-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'game' && (
+            <>
+              <div>
+                <label className={labelCls}>Game date</label>
+                <input
+                  type="date"
+                  className={`${inputCls} [color-scheme:dark]`}
+                  value={gameDate}
+                  onChange={e => { setGameDate(e.target.value); loadGamesForDate(e.target.value) }}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Matchup</label>
+                <select
+                  className={inputCls}
+                  value={selectedGamePk}
+                  onChange={e => setSelectedGamePk(e.target.value)}
+                  disabled={gamesLoading || games.length === 0}
+                >
+                  <option value="">
+                    {gamesLoading ? 'Loading…' : games.length ? 'Select a game…' : gameDate ? 'No games found' : 'Pick a date first'}
+                  </option>
+                  {games.map(g => (
+                    <option key={g.game_pk} value={g.game_pk}>
+                      {g.away_team} @ {g.home_team} ({g.pitch_count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className={`${btnCls} w-full bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50`}
+                onClick={loadGame}
+                disabled={!selectedGamePk || searching}
+              >
+                {searching ? 'Loading…' : 'Load game'}
+              </button>
+              {searchError && <div className="text-sm text-red-400">{searchError}</div>}
+              <p className="text-[11px] text-zinc-600 leading-snug">
+                Loads every pitch in the game in order. Pitches without video are greyed out.
+              </p>
+            </>
+          )}
+
+          {mode === 'pitches' && (<>
           <div>
             <PlayerSearchInput
               type="pitcher"
@@ -1022,6 +1213,7 @@ export default function VideosPage() {
             </button>
           </div>
           {searchError && <div className="text-sm text-red-400">{searchError}</div>}
+          </>)}
         </div>
 
         {/* ── Center: results ── */}
@@ -1067,20 +1259,27 @@ export default function VideosPage() {
                       <th className="px-2 py-2 text-left w-8">
                         <input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all" />
                       </th>
-                      {['Date', 'Pitcher', 'Batter', 'Pitch', 'Velo', 'Count', 'Inn', 'Result', ''].map((h, i) => (
-                        <th key={i} className="px-2 py-2 text-left whitespace-nowrap">{h}</th>
+                      {SORT_COLUMNS.map(col => (
+                        <th
+                          key={col.key ?? '_actions'}
+                          className={`px-2 py-2 text-left whitespace-nowrap ${col.key ? 'cursor-pointer select-none hover:text-zinc-200' : ''}`}
+                          onClick={col.key ? () => clickSort(col.key!) : undefined}
+                        >
+                          {col.label}
+                          {col.key && sortCol === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(row => {
+                    {(displayRows || []).map(row => {
                       const key = rowKey(row)
                       const checked = selectedKeys.has(key)
                       return (
                         <tr
                           key={key}
                           onClick={() => openSingle(row)}
-                          className={`cursor-pointer border-b border-zinc-800/60 hover:bg-zinc-900/60 ${checked ? 'bg-amber-600/10' : ''}`}
+                          className={`cursor-pointer border-b border-zinc-800/60 hover:bg-zinc-900/60 ${checked ? 'bg-amber-600/10' : ''} ${!row.video_url ? 'opacity-40 hover:opacity-100' : ''}`}
                         >
                           <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                             <input type="checkbox" checked={checked} onChange={() => toggleKey(key)} />
@@ -1092,6 +1291,7 @@ export default function VideosPage() {
                           <td className="px-2 py-1.5 text-zinc-300">{row.release_speed ? row.release_speed.toFixed(1) : '—'}</td>
                           <td className="px-2 py-1.5 text-zinc-300">{row.balls ?? '–'}-{row.strikes ?? '–'}</td>
                           <td className="px-2 py-1.5 text-zinc-300">{row.inning ?? '—'}</td>
+                          <td className="px-2 py-1.5 text-zinc-300">{halfLabel(row.inning_topbot)}</td>
                           <td className="px-2 py-1.5 whitespace-nowrap capitalize text-zinc-300">{outcome(row)}</td>
                           <td className="px-2 py-1.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             {!row.video_url && (
@@ -1111,7 +1311,7 @@ export default function VideosPage() {
                       )
                     })}
                     {rows.length === 0 && (
-                      <tr><td colSpan={10} className="px-2 py-8 text-center text-zinc-600">No pitches matched these filters.</td></tr>
+                      <tr><td colSpan={11} className="px-2 py-8 text-center text-zinc-600">No pitches matched these filters.</td></tr>
                     )}
                   </tbody>
                 </table>
