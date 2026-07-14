@@ -69,12 +69,19 @@ export async function POST(request: Request) {
 
   const invitedUserId = linkData.user.id
 
-  // Pre-create profile with chosen role
-  await supabaseAdmin.from('profiles').upsert({
+  // Pre-create profile with chosen role. A DB `on_auth_user_created` trigger
+  // already inserted a default-role ('user') profile row when generateLink
+  // created the auth user, so this upsert must UPDATE the role. Surface any
+  // error (e.g. a role that fails the profiles_role_check constraint) instead
+  // of leaving the user silently stuck on the wrong role.
+  const { error: profileErr } = await supabaseAdmin.from('profiles').upsert({
     id: invitedUserId,
     email,
     role,
   }, { onConflict: 'id' })
+  if (profileErr) {
+    return NextResponse.json({ error: `Failed to set role: ${profileErr.message}` }, { status: 500 })
+  }
 
   // Insert tool permissions only for roles without implicit access
   // (owner/admin = all tools, athlete = Compete-only — both are role-derived).
