@@ -28,6 +28,24 @@ interface Notification {
   created_at: string
 }
 
+interface ScheduleEvent {
+  id: string
+  title: string
+  description: string | null
+  event_type: string
+  start_time: string
+  end_time: string | null
+  location: string | null
+}
+
+const EVENT_TYPE_COLORS: Record<string, { bg: string; text: string }> = {
+  training: { bg: 'bg-blue-500/15', text: 'text-blue-400' },
+  game: { bg: 'bg-green-500/15', text: 'text-green-400' },
+  recovery: { bg: 'bg-amber-500/15', text: 'text-amber-400' },
+  meeting: { bg: 'bg-purple-500/15', text: 'text-purple-400' },
+  other: { bg: 'bg-zinc-500/15', text: 'text-zinc-400' },
+}
+
 interface Profile {
   id: string
   full_name: string
@@ -59,6 +77,8 @@ export default function CompeteDashboard() {
   const [whoopSleep, setWhoopSleep] = useState<WhoopSleepRow | null>(null)
   const [allCycles, setAllCycles] = useState<WhoopCycleRow[]>([])
   const [allSleep, setAllSleep] = useState<WhoopSleepRow[]>([])
+  const [todayEvents, setTodayEvents] = useState<ScheduleEvent[]>([])
+  const [scheduleLoading, setScheduleLoading] = useState(true)
   const [loading, setLoading] = useState(true)
 
   // Onboarding form
@@ -69,6 +89,11 @@ export default function CompeteDashboard() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
+    fetch('/api/compete/schedule?date=today')
+      .then(r => r.json())
+      .then(data => { setTodayEvents(data.events || []); setScheduleLoading(false) })
+      .catch(() => setScheduleLoading(false))
+
     Promise.all([
       fetch('/api/compete/profile').then(r => r.json()),
       fetch('/api/compete/notifications').then(r => r.json()),
@@ -368,6 +393,49 @@ export default function CompeteDashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Today's Schedule */}
+        <div className="lg:col-span-3 bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-white">Today&apos;s Schedule</h3>
+            <span className="text-[11px] text-zinc-600">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </span>
+          </div>
+          {scheduleLoading ? (
+            <div className="flex justify-center py-6">
+              <div className="w-5 h-5 border-2 border-zinc-700 border-t-amber-500 rounded-full animate-spin" />
+            </div>
+          ) : todayEvents.length === 0 ? (
+            <p className="text-xs text-zinc-600 text-center py-4">Nothing scheduled for today</p>
+          ) : (
+            <div className="space-y-2">
+              {todayEvents.map(event => {
+                const colors = EVENT_TYPE_COLORS[event.event_type] || EVENT_TYPE_COLORS.other
+                const time = new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                const endTime = event.end_time ? new Date(event.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null
+                return (
+                  <div key={event.id} className="flex items-start gap-4 px-3 py-2.5 rounded-lg bg-zinc-800/40">
+                    <div className="text-xs text-zinc-400 w-16 shrink-0 pt-0.5 tabular-nums">
+                      {time}
+                      {endTime && <div className="text-[10px] text-zinc-600">to {endTime}</div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h4 className="text-sm font-semibold text-white truncate">{event.title}</h4>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${colors.bg} ${colors.text}`}>
+                          {event.event_type}
+                        </span>
+                      </div>
+                      {event.description && <p className="text-xs text-zinc-500 truncate">{event.description}</p>}
+                      {event.location && <p className="text-[10px] text-zinc-600 mt-0.5">{event.location}</p>}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

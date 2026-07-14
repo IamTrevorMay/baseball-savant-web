@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
+import { isAthleteRole } from '@/lib/roles'
 
 const TABS = [
   {
@@ -105,6 +106,9 @@ export default function MobileTabBar() {
   const { user, profile, loading } = useAuth()
 
   if (loading || !user) return null
+
+  // Athletes are locked to Compete — never show the cross-app switch bar.
+  if (isAthleteRole(profile?.role)) return null
 
   // Suppress on research routes on mobile — MobileShell handles navigation there
   if (isResearchRoute(pathname)) return null

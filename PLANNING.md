@@ -2,6 +2,9 @@
 
 ## Recently Completed
 
+### Compete — Left Nav + Dashboard Consolidation (July 2026)
+Replaced the Compete top nav bar with a left sidebar (`components/compete/CompeteSidebar.tsx`): fixed sidebar on desktop, hamburger drawer on mobile, text-label nav items, brand at top, profile + sign-out at bottom (Compete previously had no sign-out). Removed the old `CompeteNav`. The standalone Today page was rolled into the Dashboard as a "Today's Schedule" section below Notifications (reuses `/api/compete/schedule?date=today`); `/compete/today` now redirects to `/compete`. `MobileTabBar` (cross-app switch bar) is now suppressed for athletes — closes the mobile app-menu leak in the athlete hard lock.
+
 ### Roles Auth — Athlete Role (July 2026)
 First step of the roles-auth build-out. New `athlete` role in `profiles.role`: Compete-only, launcher-less. Central `lib/roles.ts` now encodes the access model (`isAdminRole`, `isAthleteRole`, `resolvePermissions`, `hasImplicitTools`, `roleLandingPath`, `ALL_TOOLS`, `ATHLETE_TOOLS`) so `/api/me`, the Compete layout, the launcher, and the Admin page stay in sync. Athletes get implicit `['compete']` access (no `tool_permissions` rows), are bounced from the launcher straight to `/compete` (client redirect in `app/(launcher)/page.tsx`), and are hard-locked out of every other app — each app layout already redirects the unpermitted to `/?denied=…`, which bounces athletes back to Compete. Inside Compete the "TRITON APEX" wordmark is not a link for athletes (no app-menu escape). Admin page: `Athlete` option in invite + edit role dropdowns, implicit "Compete only" access (tool toggles hidden), amber role badge. **Fix (07-14):** `profiles_role_check` only allowed user/admin/owner, so athlete invites silently reset to `user` (invite route swallowed the constraint error). Migration `add_athlete_role` widened the constraint (`scripts/add-athlete-role.sql`); invite route now surfaces the role-write error.
 
