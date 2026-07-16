@@ -57,6 +57,8 @@ const BULLPEN_COLS = [
   { key: 'whiff_pct', label: 'Whiff%', fmt: (v: number) => v?.toFixed(1) + '%' },
   { key: 'k_pct', label: 'K%', fmt: (v: number) => v?.toFixed(1) + '%' },
   { key: 'avg_xwoba', label: 'xwOBA', fmt: (v: number) => v?.toFixed(3) },
+  { key: 'ir', label: 'IR', fmt: (v: number) => String(v) },
+  { key: 'irs_pct', label: 'IRS%', fmt: (v: number) => Number(v).toFixed(1) + '%' },
 ]
 
 const PLATOON_COLS = [

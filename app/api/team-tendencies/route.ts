@@ -3,6 +3,53 @@ import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
+// Team-level IR/IRS. The MLB team-stats endpoint omits inherited runners, so
+// aggregate the league-wide per-player season splits by team (a traded
+// pitcher's full-season IR counts toward his listed/current team). Season
+// splits are regular-season only, so callers skip this for spring/postseason
+// or date-filtered requests.
+async function fetchTeamInheritedRunners(
+  season: number
+): Promise<Record<string, { ir: number; irs: number; irs_pct: number | null }>> {
+  try {
+    const [statsResp, teamsResp] = await Promise.all([
+      fetch(
+        `https://statsapi.mlb.com/api/v1/stats?stats=season&group=pitching&season=${season}&sportIds=1&playerPool=all&limit=5000`,
+        { signal: AbortSignal.timeout(15000) }
+      ),
+      // No season param: the pitches table / team MVs use *current* abbreviations
+      // for historical seasons too (e.g. 2015 A's are ATH, not OAK)
+      fetch(`https://statsapi.mlb.com/api/v1/teams?sportId=1`, {
+        signal: AbortSignal.timeout(15000),
+      }),
+    ])
+    if (!statsResp.ok || !teamsResp.ok) return {}
+    const statsData = await statsResp.json()
+    const teamsData = await teamsResp.json()
+
+    const abbrevById = new Map<number, string>()
+    for (const t of teamsData.teams || []) abbrevById.set(t.id, t.abbreviation)
+
+    const totals: Record<string, { ir: number; irs: number }> = {}
+    for (const split of statsData.stats?.[0]?.splits || []) {
+      const abbrev = abbrevById.get(split.team?.id)
+      const ir = split.stat?.inheritedRunners
+      if (!abbrev || typeof ir !== 'number') continue
+      const t = (totals[abbrev] ??= { ir: 0, irs: 0 })
+      t.ir += ir
+      t.irs += split.stat?.inheritedRunnersScored ?? 0
+    }
+    return Object.fromEntries(
+      Object.entries(totals).map(([team, { ir, irs }]) => [
+        team,
+        { ir, irs, irs_pct: ir > 0 ? Math.round((1000 * irs) / ir) / 10 : null },
+      ])
+    )
+  } catch {
+    return {}
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { season = 2025, tab = 'pitching', gameType = 'all', startDate, endDate } = await req.json()
@@ -45,12 +92,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (canUseMV && tab === 'bullpen') {
-      const { data, error } = await q(`
-        SELECT team, games, unique_pitchers, pitchers_per_game, pitches, avg_velo, whiff_pct, k_pct, avg_xwoba
-        FROM mv_team_bullpen_stats WHERE game_year = ${safeSeason} ORDER BY whiff_pct DESC
-      `)
+      const [{ data, error }, irMap] = await Promise.all([
+        q(`
+          SELECT team, games, unique_pitchers, pitchers_per_game, pitches, avg_velo, whiff_pct, k_pct, avg_xwoba
+          FROM mv_team_bullpen_stats WHERE game_year = ${safeSeason} ORDER BY whiff_pct DESC
+        `),
+        fetchTeamInheritedRunners(safeSeason),
+      ])
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ rows: data || [] })
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        ...(irMap[r.team] ?? { ir: null, irs: null, irs_pct: null }),
+      }))
+      return NextResponse.json({ rows })
     }
 
     if (canUseMV && tab === 'platoon') {

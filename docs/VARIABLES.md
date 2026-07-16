@@ -353,6 +353,8 @@ For value rendering: `raw` · `1f` · `2f` · `3f` · `integer` · `percent`
 
 POST `{ season, tab, gameType }` → 30-team rows. `tab` ∈ `pitching | hitting | bullpen | platoon | momentum | leverage`. `momentum` and `leverage` share the same response payload (different column subsets shown per tab).
 
+**Bullpen** rows additionally carry `ir` / `irs` / `irs_pct` (inherited runners, inherited runners scored, IRS%). Sourced live from the MLB Stats API league-wide per-player season splits, summed by team (a traded pitcher's full-season IR counts toward his current team; team ids mapped via *current* abbreviations since `pitches`/team MVs use today's codes for historical seasons). Regular-season only — `null` (rendered `—`) for spring/postseason/date-filtered requests.
+
 **Momentum** keys (one row per team, paired half-innings derived from `pitches`):
 
 | Key | Meaning |
