@@ -3,6 +3,10 @@
  * Run: npx tsx scripts/backfill-player-stats.ts [startYear] [endYear]
  *
  * Defaults to current year only if no args given.
+ * Uses the league-wide season-stats endpoint (one call per season per group),
+ * so it works for any season the API covers — inherited runners are complete
+ * from 1974 onward. Also inserts players missing from the players table
+ * (insert-if-missing; never overwrites existing rows).
  * Rate-limited: 500ms between MLB API requests.
  */
 import { createClient } from '@supabase/supabase-js'
@@ -36,136 +40,127 @@ const supabase = createClient(
   }
 )
 
-// DISTINCT scans over a season of pitches outgrew run_query's timeout
-// (game_year is unindexed; even the game_date index needs the 120s RPC)
-const qLong = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+// id → players-table row, collected across every season processed
+const seenPlayers = new Map<number, { id: number; name: string; position: string | null }>()
+
+async function fetchSeasonSplits(year: number, group: 'pitching' | 'hitting') {
+  const splits: any[] = []
+  let offset = 0
+  for (;;) {
+    const resp = await fetch(
+      `https://statsapi.mlb.com/api/v1/stats?stats=season&group=${group}&season=${year}&sportIds=1&playerPool=all&limit=2000&offset=${offset}`,
+      { signal: AbortSignal.timeout(30000) }
+    )
+    if (!resp.ok) throw new Error(`${group} ${year} fetch failed: ${resp.status}`)
+    const data = await resp.json()
+    const stats = data.stats?.[0]
+    const page: any[] = stats?.splits || []
+    splits.push(...page)
+    const total = stats?.totalSplits ?? splits.length
+    if (page.length === 0 || splits.length >= total) return splits
+    offset = splits.length
+    await sleep(500)
+  }
+}
+
+function rememberPlayer(split: any) {
+  const p = split.player
+  if (!p?.id || seenPlayers.has(p.id)) return
+  const name = p.lastName && p.firstName ? `${p.lastName}, ${p.firstName}` : p.fullName
+  if (!name) return
+  seenPlayers.set(p.id, { id: p.id, name, position: split.position?.abbreviation ?? null })
+}
+
+async function upsertRows(rows: any[], label: string) {
+  let upserted = 0
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500)
+    const { error } = await supabase
+      .from('player_season_stats')
+      .upsert(chunk, { onConflict: 'player_id,season,stat_group' })
+    if (error) console.log(`  ${label} upsert error at ${i}:`, error.message)
+    else upserted += chunk.length
+  }
+  return upserted
+}
 
 async function backfillYear(year: number) {
   console.log(`\n=== Backfilling ${year} ===`)
 
-  const seasonRange = `game_date >= '${year}-01-01' AND game_date < '${year + 1}-01-01'`
-
-  // Get all unique pitcher IDs for the season
-  const { data: pitcherRows, error: pitcherErr } = await qLong(
-    `SELECT DISTINCT pitcher FROM pitches WHERE ${seasonRange} AND game_type = 'R'`
-  )
-  if (pitcherErr) throw new Error(`pitcher id query failed (${year}): ${pitcherErr.message}`)
-  const pitcherIds = (pitcherRows || []).map((r: any) => r.pitcher).filter(Boolean) as number[]
-  console.log(`  ${pitcherIds.length} pitchers`)
-
-  // Get all unique batter IDs for the season
-  const { data: batterRows, error: batterErr } = await qLong(
-    `SELECT DISTINCT batter FROM pitches WHERE ${seasonRange} AND game_type = 'R'`
-  )
-  if (batterErr) throw new Error(`batter id query failed (${year}): ${batterErr.message}`)
-  const batterIds = (batterRows || []).map((r: any) => r.batter).filter(Boolean) as number[]
-  console.log(`  ${batterIds.length} batters`)
-
-  let pitchingUpserted = 0
-  let hittingUpserted = 0
-
-  // Fetch pitching stats in batches of 50
-  for (let i = 0; i < pitcherIds.length; i += 50) {
-    const batch = pitcherIds.slice(i, i + 50)
-    const ids = batch.join(',')
-    try {
-      const resp = await fetch(
-        `https://statsapi.mlb.com/api/v1/people?personIds=${ids}&hydrate=stats(group=[pitching],type=[season],season=${year})`,
-        { signal: AbortSignal.timeout(15000) }
-      )
-      if (!resp.ok) { console.log(`  Pitching batch ${i} failed: ${resp.status}`); continue }
-
-      const data = await resp.json()
-      const rows: any[] = []
-
-      for (const person of data.people || []) {
-        const stat = person.stats?.[0]?.splits?.[0]?.stat
-        if (!stat) continue
-        rows.push({
-          player_id: person.id,
-          season: year,
-          stat_group: 'pitching',
-          era: stat.era != null ? parseFloat(stat.era) : null,
-          wins: stat.wins ?? null,
-          losses: stat.losses ?? null,
-          saves: stat.saves ?? null,
-          holds: stat.holds ?? null,
-          innings_pitched: stat.inningsPitched != null ? parseFloat(stat.inningsPitched) : null,
-          earned_runs: stat.earnedRuns ?? null,
-          runs: stat.runs ?? null,
-          rbi: null,
-          stolen_bases: null,
-          inherited_runners: stat.inheritedRunners ?? null,
-          inherited_runners_scored: stat.inheritedRunnersScored ?? null,
-          updated_at: new Date().toISOString(),
-        })
-      }
-
-      if (rows.length > 0) {
-        const { error } = await supabase
-          .from('player_season_stats')
-          .upsert(rows, { onConflict: 'player_id,season,stat_group' })
-        if (error) console.log(`  Pitching upsert error batch ${i}:`, error.message)
-        else pitchingUpserted += rows.length
-      }
-    } catch (e: any) {
-      console.log(`  Pitching batch ${i} error:`, e.message)
+  const pitching = await fetchSeasonSplits(year, 'pitching')
+  const pitchingRows = pitching.map(s => {
+    rememberPlayer(s)
+    const stat = s.stat || {}
+    return {
+      player_id: s.player.id,
+      season: year,
+      stat_group: 'pitching',
+      era: stat.era != null ? parseFloat(stat.era) : null,
+      wins: stat.wins ?? null,
+      losses: stat.losses ?? null,
+      saves: stat.saves ?? null,
+      holds: stat.holds ?? null,
+      innings_pitched: stat.inningsPitched != null ? parseFloat(stat.inningsPitched) : null,
+      earned_runs: stat.earnedRuns ?? null,
+      runs: stat.runs ?? null,
+      rbi: null,
+      stolen_bases: null,
+      inherited_runners: stat.inheritedRunners ?? null,
+      inherited_runners_scored: stat.inheritedRunnersScored ?? null,
+      updated_at: new Date().toISOString(),
     }
-    await sleep(500)
-  }
+  })
+  const pitchingUpserted = await upsertRows(pitchingRows, 'pitching')
+  await sleep(500)
 
-  // Fetch hitting stats in batches of 50
-  for (let i = 0; i < batterIds.length; i += 50) {
-    const batch = batterIds.slice(i, i + 50)
-    const ids = batch.join(',')
-    try {
-      const resp = await fetch(
-        `https://statsapi.mlb.com/api/v1/people?personIds=${ids}&hydrate=stats(group=[hitting],type=[season],season=${year})`,
-        { signal: AbortSignal.timeout(15000) }
-      )
-      if (!resp.ok) { console.log(`  Hitting batch ${i} failed: ${resp.status}`); continue }
-
-      const data = await resp.json()
-      const rows: any[] = []
-
-      for (const person of data.people || []) {
-        const stat = person.stats?.[0]?.splits?.[0]?.stat
-        if (!stat) continue
-        rows.push({
-          player_id: person.id,
-          season: year,
-          stat_group: 'hitting',
-          era: null,
-          wins: null,
-          losses: null,
-          saves: null,
-          holds: null,
-          innings_pitched: null,
-          earned_runs: null,
-          runs: stat.runs ?? null,
-          rbi: stat.rbi ?? null,
-          stolen_bases: stat.stolenBases ?? null,
-          inherited_runners: null,
-          inherited_runners_scored: null,
-          updated_at: new Date().toISOString(),
-        })
-      }
-
-      if (rows.length > 0) {
-        const { error } = await supabase
-          .from('player_season_stats')
-          .upsert(rows, { onConflict: 'player_id,season,stat_group' })
-        if (error) console.log(`  Hitting upsert error batch ${i}:`, error.message)
-        else hittingUpserted += rows.length
-      }
-    } catch (e: any) {
-      console.log(`  Hitting batch ${i} error:`, e.message)
+  const hitting = await fetchSeasonSplits(year, 'hitting')
+  const hittingRows = hitting.map(s => {
+    rememberPlayer(s)
+    const stat = s.stat || {}
+    return {
+      player_id: s.player.id,
+      season: year,
+      stat_group: 'hitting',
+      era: null,
+      wins: null,
+      losses: null,
+      saves: null,
+      holds: null,
+      innings_pitched: null,
+      earned_runs: null,
+      runs: stat.runs ?? null,
+      rbi: stat.rbi ?? null,
+      stolen_bases: stat.stolenBases ?? null,
+      inherited_runners: null,
+      inherited_runners_scored: null,
+      updated_at: new Date().toISOString(),
     }
-    await sleep(500)
-  }
+  })
+  const hittingUpserted = await upsertRows(hittingRows, 'hitting')
+  await sleep(500)
 
   console.log(`  Done: ${pitchingUpserted} pitching, ${hittingUpserted} hitting rows upserted`)
+}
+
+async function insertMissingPlayers() {
+  const { data, error } = await supabase.rpc('run_query', { query_text: 'SELECT id FROM players' })
+  if (error) { console.log('players id fetch failed, skipping name inserts:', error.message); return }
+  const existing = new Set((data || []).map((r: any) => r.id))
+  const missing = [...seenPlayers.values()].filter(p => !existing.has(p.id))
+  console.log(`\nPlayers: ${seenPlayers.size} seen, ${missing.length} missing from players table`)
+
+  let inserted = 0
+  for (let i = 0; i < missing.length; i += 500) {
+    const chunk = missing.slice(i, i + 500)
+    const { error: insErr } = await supabase
+      .from('players')
+      .upsert(chunk, { onConflict: 'id', ignoreDuplicates: true })
+    if (insErr) console.log(`  players insert error at ${i}:`, insErr.message)
+    else inserted += chunk.length
+  }
+  console.log(`Inserted ${inserted} historical players`)
 }
 
 async function main() {
@@ -177,8 +172,14 @@ async function main() {
   console.log(`Backfilling player_season_stats: ${startYear}–${endYear}`)
 
   for (let year = startYear; year <= endYear; year++) {
-    await backfillYear(year)
+    try {
+      await backfillYear(year)
+    } catch (e: any) {
+      console.log(`  ${year} FAILED: ${e.message}`)
+    }
   }
+
+  await insertMissingPlayers()
 
   console.log('\nBackfill complete.')
 }

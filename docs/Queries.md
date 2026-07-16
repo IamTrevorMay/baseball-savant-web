@@ -550,3 +550,69 @@ SELECT count(DISTINCT batter) AS b, count(DISTINCT pitcher) AS p FROM pitches
 WHERE game_date >= '2026-01-01' AND game_date < '2027-01-01' AND game_type = 'R';  -- timeout on run_query, OK on run_query_long
 ```
 **Result:** Diagnosis — the `SELECT DISTINCT pitcher/batter … WHERE game_year = N` scans outgrew `run_query`'s timeout (same class as the backfill-pitch-videos 57014). Even the indexed `game_date` range needs `run_query_long` (597 batters / 744 pitchers in ~15s). Fix: cron + backfill script now use `run_query_long` + `game_date` range and **throw** on id-query errors so `cron_runs` records real failures. Re-ran 2026 backfill to repair the month-stale hitting rows.
+
+### Worst pitchers by inherited runners, 2015–2026
+Top-25 worst strand rates (IRS%, min 50 career IR) plus the most-total-IRS leaders, from the freshly backfilled IR/IRS columns.
+```sql
+SELECT COALESCE(p.name, s.player_id::text) AS pitcher,
+  SUM(s.inherited_runners) AS ir, SUM(s.inherited_runners_scored) AS irs,
+  ROUND(100.0 * SUM(s.inherited_runners_scored) / NULLIF(SUM(s.inherited_runners),0), 1) AS irs_pct,
+  COUNT(*) FILTER (WHERE s.inherited_runners > 0) AS seasons
+FROM player_season_stats s LEFT JOIN players p ON p.id = s.player_id
+WHERE s.stat_group = 'pitching' AND s.inherited_runners IS NOT NULL
+GROUP BY s.player_id, p.name
+HAVING SUM(s.inherited_runners) >= 50
+ORDER BY irs_pct DESC LIMIT 25;
+-- same aggregate ORDER BY irs DESC LIMIT 5 for raw totals
+```
+**Result:** Worst strand rate: Joey Wentz 51.9% (27/52), Albert Abreu 51.0%, Jake Woodford 50.7% — vs ~31% league norm. Most total IRS: Steve Cishek & Andrew Chafin 94 each (Chafin on a huge 364 IR workload at a *good* 25.8%).
+
+### Historical backfill to 1974 — API boundary probe + first-year verification
+Probed the MLB Stats API league-wide season endpoint decade-by-decade: IR/IRS complete **1974+** (344/344 pitchers non-null), fragmentary 1971–73 (34/9/4 pitchers), null ≤1970. Rewrote `backfill-player-stats.ts` to use the league-wide endpoint (one call per season per group, no pitches-table ID dependency) + insert-if-missing historical players. Verified 1974 after the test run:
+```sql
+SELECT p.name, s.inherited_runners AS ir, s.inherited_runners_scored AS irs, s.saves, s.era
+FROM player_season_stats s JOIN players p ON p.id = s.player_id
+WHERE s.season = 1974 AND s.stat_group='pitching' AND s.inherited_runners > 0
+ORDER BY s.inherited_runners DESC LIMIT 5;
+```
+**Result:** 344 pitching + 741 hitting rows for 1974; 861 historical players inserted. Leaders look right for the era: Tom Murphy 95 IR (1.90 ERA, 20 SV), Steve Foucault 93, Rollie Fingers 78, Terry Forster 77, Sparky Lyle 76. Full 1975–2014 run kicked off.
+
+### 1974–2014 backfill complete — coverage verification
+Full run + re-runs for 13 transient `fetch failed` chunk drops (12 years, then 2002 hitting once more). Final coverage check:
+```sql
+WITH per_season AS (
+  SELECT season,
+    count(*) FILTER (WHERE stat_group='pitching') AS pitchers,
+    count(*) FILTER (WHERE stat_group='hitting') AS hitters,
+    sum(inherited_runners) AS ir, sum(inherited_runners_scored) AS irs
+  FROM player_season_stats WHERE season BETWEEN 1974 AND 2026 GROUP BY season)
+SELECT count(*) AS seasons, min(season), max(season), min(pitchers), min(hitters),
+  count(*) FILTER (WHERE ir IS NULL OR ir = 0) AS seasons_without_ir,
+  sum(ir), sum(irs), round(100.0*sum(irs)/sum(ir),1) AS irs_pct FROM per_season;
+SELECT season, count(*) FROM player_season_stats WHERE stat_group='hitting'
+  AND season BETWEEN 1974 AND 2026 GROUP BY season HAVING count(*) < 750 ORDER BY season;
+-- + all-time worst-IRS% leaderboard (min 150 IR) on the expanded data
+```
+**Result:** All 53 seasons 1974–2026 populated, zero seasons without IR. 339,570 IR / 110,630 IRS (32.6% all-time). Low-count seasons all explainable (1970s roster sizes, 2020 COVID, universal-DH era). 6,619 historical players inserted into `players` total. All-time worst strand rate (min 150 IR): Dale Murray 44.6% on a huge 392 IR (1974–85), Joe Beckwith 43.4%, Reggie Cleveland 43.2%.
+
+### Top-25 worst IRS% re-run on full 1974–2026 data
+Same leaderboard as the 2015+ version (min 50 IR), now over all 53 seasons, with career span added.
+```sql
+SELECT COALESCE(p.name, s.player_id::text) AS pitcher, MIN(s.season) AS from_yr, MAX(s.season) AS to_yr,
+  SUM(s.inherited_runners) AS ir, SUM(s.inherited_runners_scored) AS irs,
+  ROUND(100.0 * SUM(s.inherited_runners_scored) / NULLIF(SUM(s.inherited_runners),0), 1) AS irs_pct
+FROM player_season_stats s LEFT JOIN players p ON p.id = s.player_id
+WHERE s.stat_group = 'pitching' AND s.inherited_runners IS NOT NULL
+GROUP BY s.player_id, p.name
+HAVING SUM(s.inherited_runners) >= 50
+ORDER BY irs_pct DESC LIMIT 25;
+```
+**Result:** Blaine Neal is the runaway all-time worst: 65.5% (38 of 58, 2001–05) — 8 pts clear of Brad Thomas 57.7%. Only three 2015+ names survive on the all-time list (Wentz, Abreu, Woodford). Highest-volume offenders in the 25: Nelson Cruz (the pitcher) 67/135 (49.6%), Carlos Almánzar 58/117, Rich Folkers 54/104.
+
+### Top-25 worst IRS%, min 150 IR + "are those hitters?" check
+Same leaderboard at min 150 IR (tiebreak `irs_pct DESC, ir DESC`), plus a position/career-IP audit after names like Reggie Cleveland / Nelson Cruz read as hitters.
+```sql
+-- leaderboard: same aggregate as above, HAVING SUM(inherited_runners) >= 150, ORDER BY irs_pct DESC, ir DESC
+-- audit: same grouping, selecting p.position, SUM(innings_pitched), SUM(wins), SUM(saves)
+```
+**Result:** All 25 are position `P` with 297–1,952 career IP — no hitters, just name doppelgängers (Reggie Cleveland '70s SP, Doug Bird, Miguel Batista, the '80s reliever Bob Gibson, reliever Nelson Cruz). Hitters can't qualify structurally: IR only exists on `stat_group='pitching'` rows, and position players who pitch never approach 50+ IR. Min-150 leaders: Dale Murray 44.6% (175/392, 1974–85), Joe Beckwith 43.4%, Reggie Cleveland 43.2%; active-era names: Derek Law 40.4%, Alex Wilson 40.1%.
