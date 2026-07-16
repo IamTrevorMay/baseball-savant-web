@@ -435,3 +435,103 @@ SELECT left(coalesce(error,'(none)'),60) AS err, count(*) AS n
 FROM pitch_videos WHERE status = 'failed' GROUP BY 1 ORDER BY n DESC LIMIT 8;
 ```
 **Result:** 287,602 downloaded (1.54 TB), 229,507 pending, 24,208 failed, 35 missing. Worker live (last download 2 min ago), ~3,959/hr, 98,894 last 24h → ~2.3 days to drain. Failures 99.9% `mp4 fetch 404` (MLB CDN gaps), 34 transient (500/502/timeout/abort) for `--include-failed` retry pass.
+
+## 2026-07-13
+
+### Backfill complete — final accounting
+Queue drained (0 pending). Split final statuses by season phase and checked what the remaining failures are.
+```sql
+SELECT status, count(*) AS n FROM pitch_videos GROUP BY status ORDER BY n DESC;
+SELECT CASE WHEN p.game_date < '2026-03-25' THEN 'spring' ELSE 'regular' END AS phase, v.status, count(*) AS n
+FROM pitch_videos v JOIN pitches p USING (game_pk, at_bat_number, pitch_number) GROUP BY 1,2 ORDER BY 1,2;
+SELECT left(coalesce(error,'(none)'),60) AS err, count(*) AS n, min(attempts), max(attempts)
+FROM pitch_videos WHERE status='failed' GROUP BY 1 ORDER BY n DESC;
+SELECT round(sum(size_bytes)/1e12::numeric,2) AS tb, count(*) FROM pitch_videos WHERE status='downloaded';
+```
+**Result:** 389,330 downloaded (2.09 TB) / 142,052 missing / 22,209 failed / 0 pending. Missing is 93% spring training (132,412 rows Feb–Mar — Savant pages load but MLB never published clips; correct terminal state). **Regular season coverage: 388,051/419,891 = 92.4% downloaded**, 9,639 missing, 22,201 failed — every failure is `mp4 fetch 404` at attempts 2–5, retried by the nightly 4am pm2 run until attempt 6 settles them as missing.
+
+### Auth model recon (for Athlete role build)
+Checked existing role/tool distribution and the `profiles` schema before adding the `athlete` role.
+```sql
+SELECT 'role' AS kind, role AS val, count(*) AS n FROM profiles GROUP BY role
+UNION ALL SELECT 'tool', tool, count(*) FROM tool_permissions GROUP BY tool
+ORDER BY kind, n DESC;
+SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns
+WHERE table_name='profiles' AND table_schema='public' ORDER BY ordinal_position;
+```
+**Result:** Roles: `user`×5, `owner`×1 (only two roles in use; `profiles.role` is plain text, default `'user'`). Tool grants: visualize×5, research×5, broadcast×2, compete/models/design/mechanics×1 each. **Missed a CHECK constraint here (see next entry) — `athlete` DID need DDL.**
+
+### Athlete invite bug — role silently reset to `user`
+Test athlete invite landed on the launcher with everything locked. Traced it: `invitations` recorded `role='athlete'` but `profiles.role='user'`, `updated_at==created_at` (the invite route's `upsert({role:'athlete'})` never took).
+```sql
+SELECT email, role, created_at, updated_at, (updated_at>created_at) AS was_updated
+FROM profiles WHERE email='trevor.may.khs@gmail.com';
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conname='profiles_role_check';
+```
+**Result:** `profiles_role_check` = `CHECK (role IN ('user','admin','owner'))` — no `athlete`. The upsert violated the constraint; the invite route swallowed the error, so the trigger's default `'user'` stuck. Fix: migration `add_athlete_role` widened the constraint to include `athlete` + repaired the test account (see `scripts/add-athlete-role.sql`); invite route now checks the upsert error.
+
+### 2025 backfill kicked off
+Verified index scope before/after running `backfill-pitch-videos.ts 2025` (script fixed: game-list query moved from unindexed `game_year` to a `game_date` range on `run_query_long` after a 57014 statement timeout).
+```sql
+SELECT count(*) FROM pitches WHERE game_date >= '2026-01-01';  -- with indexed/games companions
+SELECT status, count(*) AS n FROM pitch_videos GROUP BY status ORDER BY n DESC;
+```
+**Result:** 2026 index complete except the 15 Jul-12 games (nightly refresh handles them). 2025 indexing: 2,809/2,809 games, 823,420 rows queued (6 transient feed failures re-run clean). Post-index totals: 823,422 pending / 389,330 downloaded / 142,052 missing / 22,209 failed. Worker restarted via pm2 — run banner: 2,890 games / 845,631 pitches to process (2025 queue + 2026 retries + Jul-12 games), 45.4TB free on the NAS.
+
+## 2026-07-14
+
+### Compete Video page — schema + RLS recon
+Building the Compete copy of the Research Videos page with an extended in-player pitch-data panel; verified the `pitches` columns feeding derived fields and the RLS on the shared playlist/search tables (Compete is athlete-facing, so cross-user exposure matters).
+```sql
+SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='pitches'
+  AND column_name IN ('release_spin_rate','spin_axis','release_extension','pfx_x','pfx_z','plate_x','plate_z',
+    'zone','vx0','vy0','vz0','ax','ay','az','sz_top','sz_bot');
+SELECT polname, polcmd, pg_get_expr(polqual, polrelid) FROM pg_policy
+WHERE polrelid IN ('pitch_video_searches','pitch_playlists','pitch_playlist_items')::regclass;
+```
+**Result:** All 16 pitch columns exist (exact names `ax/ay/az`, `vx0/vy0/vz0`) → added to `/api/pitch-video` META_COLS. `pitch_playlists`/`pitch_playlist_items` are owner-only (`created_by = auth.uid()`), so athletes get private playlists automatically. But `pitch_video_searches` SELECT is `USING (true)` (world-readable to authenticated) — the Compete copy scopes the History drawer to `user_id = own` to avoid leaking staff/other-athlete search activity.
+
+### Video — Game finder query shape
+Validated the `games_on` matchup-list query backing the new "Game" mode (both Video pages) before wiring `/api/pitch-video?games_on=DATE`.
+```sql
+SELECT p.game_pk, MAX(p.game_date) AS game_date, MAX(p.home_team) AS home_team,
+  MAX(p.away_team) AS away_team, COUNT(*) AS pitch_count
+FROM pitches p WHERE p.game_date = '2026-07-11' GROUP BY p.game_pk ORDER BY MAX(p.away_team);
+```
+**Result:** Clean matchup rows (e.g. `ATH @ CWS (239)`, `BOS @ NYM (305)`); per-game pitch counts 239–305 — all under the route's new 1000-row LIMIT, so a full game loads without truncation. `game_date` is indexed → fast (~15 games × ~300 pitches scanned).
+
+## 2026-07-15
+
+### 2025 archive backfill — progress check (~day 1)
+Status counts, hourly download rate, and per-season split ~24h after kicking off the 2025 queue.
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e12::numeric,2) AS tb FROM pitch_videos GROUP BY status ORDER BY n DESC;
+SELECT date_trunc('hour', downloaded_at) AS hr, count(*) AS downloaded FROM pitch_videos
+WHERE status='downloaded' AND downloaded_at > now() - interval '8 hours' GROUP BY 1 ORDER BY 1;
+SELECT left(coalesce(error,'(none)'),60) AS err, count(*) AS n FROM pitch_videos WHERE status='failed' GROUP BY 1 ORDER BY n DESC;
+SELECT CASE WHEN p.game_date >= '2026-01-01' THEN '2026' ELSE '2025' END AS season, v.status, count(*) AS n
+FROM pitch_videos v JOIN pitches p USING (game_pk, at_bat_number, pitch_number)
+WHERE v.status IN ('failed','pending','downloaded') GROUP BY 1,2 ORDER BY 1,2;
+```
+**Result:** 581,189 downloaded (3.11 TB, +1.02 TB since kickoff) / 621,689 pending / 36,236 failed / 142,082 missing. Worker online (pm2, 9h uptime, 1 restart). 2025 season: 191,882 of ~823k downloaded (~23%), 617,031 pending, 14,027 failed — failures are all `mp4 fetch 404` (same pattern as 2026; retried nightly until attempt 6 settles them as missing). Steady rate ~4,200/hr → pending queue drains in ~6 days (~Jul 21).
+
+## 2026-07-16
+
+### Inherited runners — do we ingest it anywhere?
+Schema sweep for inherited-runner / runner-on-base columns across all tables.
+```sql
+SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public'
+  AND (column_name ILIKE '%inherit%' OR column_name ILIKE '%on_1b%' OR column_name ILIKE '%on_2b%'
+       OR column_name ILIKE '%on_3b%' OR column_name ILIKE '%runner%') ORDER BY table_name, column_name;
+```
+**Result:** No `inherited*` column anywhere. Base-state columns exist: `on_1b/on_2b/on_3b` (pitches, milb_pitches, wbc_pitches) and `runner_*_id/dest` (retro_events) — enough to *derive* IR/IRS. Confirmed MLB Stats API season-pitching hydrate (already called by `/api/cron/player-stats`) returns `inheritedRunners` + `inheritedRunnersScored`, but the cron doesn't persist them.
+
+### IR/IRS added — backfill verification
+Migration `add_inherited_runners` added `inherited_runners`/`inherited_runners_scored` to `player_season_stats`; cron + `backfill-player-stats.ts` now persist them. Verified first backfill year while the 2015–2026 run progressed.
+```sql
+SELECT column_name, data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='player_season_stats' ORDER BY ordinal_position;
+SELECT count(*) AS with_ir, sum(inherited_runners) AS total_ir, sum(inherited_runners_scored) AS total_irs
+FROM player_season_stats WHERE season=2015 AND stat_group='pitching' AND inherited_runners IS NOT NULL;
+```
+**Result:** 2015 fully populated minutes into the run: 735 pitchers, 7,118 IR / 2,100 IRS (29.5% scored — matches league norms ~30%).

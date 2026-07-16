@@ -438,7 +438,7 @@ GET, Bearer-key auth (`PITCH_VIDEO_API_KEYS`). Two modes: single resolve (`?play
 | `pitcher_season_command` | pitcher × pitch_type × year | — | Raw + plus command metrics; pitch-weighted aggregate for season |
 | `pitcher_season_deception` | pitcher × pitch_type × year | 2017+ | `deception_score`, `unique_score` |
 | `league_averages` | (season, level, role, metric) | — | 50th-percentile benchmarks for qualified players |
-| `player_season_stats` | player × season × stat_group | 2015+ | ERA, W, L, SV, HLD, IP, ER, R, RBI, SB from MLB Stats API. Populated by `/api/cron/player-stats` nightly. |
+| `player_season_stats` | player × season × stat_group | 2015+ | ERA, W, L, SV, HLD, IP, ER, R, RBI, SB, IR, IRS (`inherited_runners`, `inherited_runners_scored`) from MLB Stats API. Populated by `/api/cron/player-stats` nightly. |
 | `glossary` | metric definitions | — | UI tooltips |
 | `filter_templates` | saved filter configs | — | |
 | `bat_tracking_swing_miss` | snapshot × player_type × player × season × pitch_type | 2023+ | Daily snapshots of Savant swing-timing/miss-distance board. `_latest` view = most-recent per player. See §8.7. |

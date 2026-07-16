@@ -6,7 +6,7 @@ import { trackCronRun } from '@/lib/cronTracker'
  * GET /api/cron/player-stats
  * Nightly cron (09:30 UTC) — fetches pitching/hitting season stats from MLB
  * Stats API and upserts to player_season_stats. Only stores fields that can't
- * be derived from the pitches table (ERA, W, L, SV, HLD, IP, ER, R, RBI, SB).
+ * be derived from the pitches table (ERA, W, L, SV, HLD, IP, ER, R, RBI, SB, IR, IRS).
  */
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
@@ -85,6 +85,8 @@ export async function syncPlayerStats(year: number) {
           runs: stat.runs ?? null,
           rbi: null,
           stolen_bases: null,
+          inherited_runners: stat.inheritedRunners ?? null,
+          inherited_runners_scored: stat.inheritedRunnersScored ?? null,
           updated_at: new Date().toISOString(),
         })
       }
@@ -130,6 +132,8 @@ export async function syncPlayerStats(year: number) {
           runs: stat.runs ?? null,
           rbi: stat.rbi ?? null,
           stolen_bases: stat.stolenBases ?? null,
+          inherited_runners: null,
+          inherited_runners_scored: null,
           updated_at: new Date().toISOString(),
         })
       }

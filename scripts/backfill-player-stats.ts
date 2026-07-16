@@ -90,6 +90,8 @@ async function backfillYear(year: number) {
           runs: stat.runs ?? null,
           rbi: null,
           stolen_bases: null,
+          inherited_runners: stat.inheritedRunners ?? null,
+          inherited_runners_scored: stat.inheritedRunnersScored ?? null,
           updated_at: new Date().toISOString(),
         })
       }
@@ -138,6 +140,8 @@ async function backfillYear(year: number) {
           runs: stat.runs ?? null,
           rbi: stat.rbi ?? null,
           stolen_bases: stat.stolenBases ?? null,
+          inherited_runners: null,
+          inherited_runners_scored: null,
           updated_at: new Date().toISOString(),
         })
       }
