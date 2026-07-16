@@ -36,23 +36,29 @@ const supabase = createClient(
   }
 )
 
-const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+// DISTINCT scans over a season of pitches outgrew run_query's timeout
+// (game_year is unindexed; even the game_date index needs the 120s RPC)
+const qLong = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function backfillYear(year: number) {
   console.log(`\n=== Backfilling ${year} ===`)
 
+  const seasonRange = `game_date >= '${year}-01-01' AND game_date < '${year + 1}-01-01'`
+
   // Get all unique pitcher IDs for the season
-  const { data: pitcherRows } = await q(
-    `SELECT DISTINCT pitcher FROM pitches WHERE game_year = ${year} AND game_type = 'R'`
+  const { data: pitcherRows, error: pitcherErr } = await qLong(
+    `SELECT DISTINCT pitcher FROM pitches WHERE ${seasonRange} AND game_type = 'R'`
   )
+  if (pitcherErr) throw new Error(`pitcher id query failed (${year}): ${pitcherErr.message}`)
   const pitcherIds = (pitcherRows || []).map((r: any) => r.pitcher).filter(Boolean) as number[]
   console.log(`  ${pitcherIds.length} pitchers`)
 
   // Get all unique batter IDs for the season
-  const { data: batterRows } = await q(
-    `SELECT DISTINCT batter FROM pitches WHERE game_year = ${year} AND game_type = 'R'`
+  const { data: batterRows, error: batterErr } = await qLong(
+    `SELECT DISTINCT batter FROM pitches WHERE ${seasonRange} AND game_type = 'R'`
   )
+  if (batterErr) throw new Error(`batter id query failed (${year}): ${batterErr.message}`)
   const batterIds = (batterRows || []).map((r: any) => r.batter).filter(Boolean) as number[]
   console.log(`  ${batterIds.length} batters`)
 

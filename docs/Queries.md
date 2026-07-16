@@ -535,3 +535,18 @@ SELECT count(*) AS with_ir, sum(inherited_runners) AS total_ir, sum(inherited_ru
 FROM player_season_stats WHERE season=2015 AND stat_group='pitching' AND inherited_runners IS NOT NULL;
 ```
 **Result:** 2015 fully populated minutes into the run: 735 pitchers, 7,118 IR / 2,100 IRS (29.5% scored — matches league norms ~30%).
+
+### Backfill complete + found nightly player-stats cron silently broken
+All 12 seasons verified 100% populated (with_ir == pitchers every year; IRS% 29.5–34.5, sane). But the log's `2026: 0 batters` line led to a stale-data discovery: 2026 hitting rows last touched **June 10**, and `cron_runs` shows the nightly job reporting "success" with `batters: 0` every day (pitchers also 0 on Jul 13–16) — the script swallows query errors.
+```sql
+SELECT season, count(*) AS pitchers, count(inherited_runners) AS with_ir, sum(inherited_runners) AS ir,
+  sum(inherited_runners_scored) AS irs,
+  round(100.0*sum(inherited_runners_scored)/nullif(sum(inherited_runners),0),1) AS irs_pct
+FROM player_season_stats WHERE stat_group='pitching' GROUP BY season ORDER BY season;
+SELECT count(*) AS hitting_rows, max(updated_at) FROM player_season_stats WHERE season=2026 AND stat_group='hitting';
+SELECT job, started_at, status, counts FROM cron_runs WHERE job='player-stats' ORDER BY started_at DESC LIMIT 8;
+SELECT count(DISTINCT batter) FROM pitches WHERE game_year = 2026 AND game_type = 'R';  -- timeout
+SELECT count(DISTINCT batter) AS b, count(DISTINCT pitcher) AS p FROM pitches
+WHERE game_date >= '2026-01-01' AND game_date < '2027-01-01' AND game_type = 'R';  -- timeout on run_query, OK on run_query_long
+```
+**Result:** Diagnosis — the `SELECT DISTINCT pitcher/batter … WHERE game_year = N` scans outgrew `run_query`'s timeout (same class as the backfill-pitch-videos 57014). Even the indexed `game_date` range needs `run_query_long` (597 batters / 744 pitchers in ~15s). Fix: cron + backfill script now use `run_query_long` + `game_date` range and **throw** on id-query errors so `cron_runs` records real failures. Re-ran 2026 backfill to repair the month-stale hitting rows.
