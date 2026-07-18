@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ClipRow } from '@/lib/video/types'
 import { clipFilename, flipName, loadClipObjectURL, outcome } from '@/lib/video/clip'
 import { seekTo } from '@/lib/video/seek'
+import { alignClips } from '@/lib/video/align'
 import { createMp4Recorder, downloadBlob, webCodecsSupported } from '@/lib/video/mp4Recorder'
 
 const SRC_FPS = 30
@@ -98,6 +99,9 @@ export default function PitchOverlay({
   const exportCancel = useRef(false)
   const canExport = webCodecsSupported()
 
+  const [aligning, setAligning] = useState(false)
+  const [alignInfo, setAlignInfo] = useState<{ confidence: number; peakA: number } | null>(null)
+
   useEffect(() => {
     let live = true
     const made: string[] = []
@@ -150,7 +154,7 @@ export default function PitchOverlay({
     let raf = 0
     const tick = () => {
       const vA = vARef.current, vB = vBRef.current
-      if (vA && vB) {
+      if (vA && vB && !aligningRef.current) {
         const targetB = bTimeFor(vA.currentTime)
         if (Math.abs(vB.currentTime - targetB) > 1.5 / SRC_FPS && vB.readyState >= 2) {
           vB.currentTime = targetB
@@ -196,6 +200,32 @@ export default function PitchOverlay({
     if (vARef.current) vARef.current.playbackRate = r
     if (vBRef.current) vBRef.current.playbackRate = r
   }, [])
+
+  // ── Auto-align (phase 4) ──
+  const aligningRef = useRef(false)
+  const runAutoAlign = async () => {
+    const vA = vARef.current, vB = vBRef.current
+    if (!vA || !vB || aligning) return
+    vA.pause(); vB.pause()
+    aligningRef.current = true
+    setAligning(true)
+    try {
+      const res = await alignClips(vA, vB, SRC_FPS)
+      const clamped = Math.max(-90, Math.min(90, res.deltaFrames))
+      setC({ deltaFrames: clamped })
+      setAlignInfo({ confidence: res.confidence, peakA: res.peakA })
+      // Park A on its motion peak (≈ release); B follows the freshly-set Δ.
+      vA.currentTime = res.peakA
+      vB.currentTime = Math.min(Math.max(0, res.peakA - clamped / SRC_FPS), durB)
+      setTime(res.peakA)
+    } catch {
+      alert('Auto-align could not read one of the clips.')
+    } finally {
+      aligningRef.current = false
+      setAligning(false)
+    }
+  }
+  const jumpToRelease = () => { if (alignInfo) scrub(alignInfo.peakA) }
 
   // Loop clip A (and re-park B) when it ends.
   const onEndedA = useCallback(() => {
@@ -273,7 +303,7 @@ export default function PitchOverlay({
             </div>
           ))}
           <div className="flex gap-1.5">
-            <button className={`${btn} flex-1 bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200`} onClick={() => setSwap(s => !s)}>Swap A/B</button>
+            <button className={`${btn} flex-1 bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200`} onClick={() => { setSwap(s => !s); setAlignInfo(null); setC({ deltaFrames: 0 }) }}>Swap A/B</button>
             <button className={`${btn} flex-1 ${cfg.solo === 'A' ? 'bg-sky-600/20 border-sky-600 text-sky-400' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'}`} onClick={() => setC({ solo: cfg.solo === 'A' ? 'none' : 'A' })}>Solo A</button>
             <button className={`${btn} flex-1 ${cfg.solo === 'B' ? 'bg-sky-600/20 border-sky-600 text-sky-400' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'}`} onClick={() => setC({ solo: cfg.solo === 'B' ? 'none' : 'B' })}>Solo B</button>
           </div>
@@ -296,7 +326,21 @@ export default function PitchOverlay({
         <div>
           <label className={lbl}>B offset · {cfg.deltaFrames > 0 ? '+' : ''}{cfg.deltaFrames} frames</label>
           {range(cfg.deltaFrames, -90, 90, 1, n => setC({ deltaFrames: Math.round(n) }))}
-          <div className="text-[10px] text-zinc-600 mt-0.5">Slide to line up the two releases (auto-align coming next).</div>
+          <button
+            className={`${btn} w-full mt-1.5 ${aligning ? 'bg-zinc-800 border-zinc-700 text-zinc-500' : 'bg-sky-600/20 border-sky-600 text-sky-400 hover:bg-sky-600/30'}`}
+            onClick={runAutoAlign}
+            disabled={!bothReady || aligning}
+            title="Detect and line up the two deliveries automatically"
+          >
+            {aligning ? 'Aligning…' : 'Auto-align releases'}
+          </button>
+          {alignInfo && !aligning && (
+            <div className={`text-[10px] mt-1 leading-snug ${alignInfo.confidence < 0.3 ? 'text-amber-500/80' : 'text-zinc-600'}`}>
+              {alignInfo.confidence < 0.3
+                ? 'Low match confidence — fine-tune the offset by hand.'
+                : `Aligned (match ${Math.round(alignInfo.confidence * 100)}%). Nudge the slider if needed.`}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3 pt-1 border-t border-zinc-800">
@@ -345,6 +389,7 @@ export default function PitchOverlay({
               <button className={ctrlBtn} onClick={() => stepFrame(-1)} title="Frame back">‹｜</button>
               <button className="bg-sky-600/20 border border-sky-600 rounded-md text-sky-400 px-3.5 py-1 text-[13px] leading-none hover:bg-sky-600/30" onClick={play}>{playing ? '❚❚' : '▶'}</button>
               <button className={ctrlBtn} onClick={() => stepFrame(1)} title="Frame forward">｜›</button>
+              {alignInfo && <button className={ctrlBtn} onClick={jumpToRelease} title="Jump both clips to the detected release">⤓ Release</button>}
               <span className="text-xs text-zinc-400 tabular-nums ml-1.5">{fmt(time)} / {fmt(durA)}</span>
               <div className="flex-1" />
               {[0.25, 0.5, 1].map(r => (
