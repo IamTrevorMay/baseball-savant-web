@@ -13,6 +13,7 @@ import { clipFilename, flipName, loadClipObjectURL, outcome } from '@/lib/video/
 import {
   createMp4Recorder, downloadBlob, webCodecsSupported,
 } from '@/lib/video/mp4Recorder'
+import { seekTo } from '@/lib/video/seek'
 import {
   drawStrokes, STROKE_COLORS, STROKE_WIDTHS,
   type Point, type Stroke,
@@ -33,17 +34,6 @@ const SRC_FPS = 30
 
 const btn = 'px-2.5 py-1.5 rounded text-sm font-medium transition border'
 const ctrlBtn = 'bg-zinc-800 border border-zinc-700 rounded-md text-zinc-200 px-2 py-1 text-[13px] leading-none hover:bg-zinc-700 disabled:opacity-40'
-
-function seekTo(v: HTMLVideoElement, t: number): Promise<void> {
-  return new Promise(resolve => {
-    if (Math.abs(v.currentTime - t) < 1e-3 && v.readyState >= 2) { resolve(); return }
-    let done = false
-    const finish = () => { if (done) return; done = true; v.removeEventListener('seeked', finish); resolve() }
-    v.addEventListener('seeked', finish)
-    v.currentTime = t
-    setTimeout(finish, 800) // safety: some browsers skip 'seeked' on tiny deltas
-  })
-}
 
 const mid = (a: Point, b: Point): Point => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
 

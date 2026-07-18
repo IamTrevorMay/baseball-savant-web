@@ -25,6 +25,7 @@ import type { PlayerResult } from '@/lib/types'
 import type { ClipRow as VideoRow } from '@/lib/video/types'
 import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl } from '@/lib/video/clip'
 import Telestrator from '@/components/videos/Telestrator'
+import PitchOverlay from '@/components/videos/PitchOverlay'
 
 const PITCH_TYPES: [string, string][] = [
   ['FF', 'Four-Seam'], ['SI', 'Sinker'], ['FC', 'Cutter'],
@@ -166,7 +167,8 @@ export default function VideosPage() {
   // Playlist view — DB-backed personal playlists (pitch_playlists +
   // pitch_playlist_items, RLS owner-only). Items snapshot the pitch row as
   // jsonb so playback works without re-running the search.
-  const [view, setView] = useState<'search' | 'playlist'>('search')
+  const [view, setView] = useState<'search' | 'playlist' | 'overlay'>('search')
+  const [overlayClips, setOverlayClips] = useState<[VideoRow, VideoRow] | null>(null)
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([])
@@ -743,7 +745,7 @@ export default function VideosPage() {
           <p className="text-xs text-zinc-600">Pitch video archive — search, review, download</p>
         </div>
         <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 ml-3">
-          {(['search', 'playlist'] as const).map(v => (
+          {(['search', 'playlist', 'overlay'] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -766,6 +768,11 @@ export default function VideosPage() {
 
       <div className="flex gap-5 items-start">
         {view === 'playlist' && renderPlaylistView()}
+        {view === 'overlay' && (
+          overlayClips
+            ? <PitchOverlay clips={overlayClips} onExit={() => { setOverlayClips(null); setView('search') }} />
+            : <div className="flex-1 py-24 text-center text-sm text-zinc-600">Select exactly 2 pitches in the Search view and hit <span className="text-sky-400">Overlay</span>.</div>
+        )}
         {view === 'search' && (<>
         {/* ── Left: filters ── */}
         <div className="w-[260px] shrink-0 space-y-3">
@@ -929,6 +936,9 @@ export default function VideosPage() {
                 ) : selectedRows.length > 0 ? (
                   <>
                     <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={openPlaylist}>View selected</button>
+                    {selectedRows.length === 2 && (
+                      <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setOverlayClips([selectedRows[0], selectedRows[1]]); setView('overlay') }}>Overlay</button>
+                    )}
                     <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => setAddPicker({ rows: selectedRows })}>Add to playlist</button>
                     <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => runBatchDownload(selectedRows)}>Download</button>
                     <button className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400`} onClick={() => setSelectedKeys(new Set())}>Clear</button>
