@@ -12,7 +12,7 @@ import type { ClipRow } from '@/lib/video/types'
 import { clipFilename, flipName, loadClipObjectURL, outcome } from '@/lib/video/clip'
 import { seekTo } from '@/lib/video/seek'
 import { alignClips } from '@/lib/video/align'
-import { createMp4Recorder, downloadBlob, webCodecsSupported } from '@/lib/video/mp4Recorder'
+import { canExportVideo, createRecorder, downloadBlob, exportFormat } from '@/lib/video/recorder'
 
 const SRC_FPS = 30
 const BLENDS: { id: GlobalCompositeOperation; label: string }[] = [
@@ -97,7 +97,8 @@ export default function PitchOverlay({
   const [exportSpeed, setExportSpeed] = useState(0.5)
   const [exporting, setExporting] = useState<number | null>(null)
   const exportCancel = useRef(false)
-  const canExport = webCodecsSupported()
+  const canExport = canExportVideo()
+  const expFmt = exportFormat()
 
   const [aligning, setAligning] = useState(false)
   const [alignInfo, setAlignInfo] = useState<{ confidence: number; peakA: number } | null>(null)
@@ -247,7 +248,7 @@ export default function PitchOverlay({
     off.width = W; off.height = H
     const ctx = off.getContext('2d')!
     try {
-      const rec = await createMp4Recorder({ width: W, height: H, fps: SRC_FPS })
+      const rec = await createRecorder(off, { fps: SRC_FPS })
       const total = Math.max(1, Math.round((durA || vA.duration) * SRC_FPS))
       const repeat = Math.max(1, Math.round(1 / exportSpeed))
       let outIdx = 0
@@ -262,11 +263,11 @@ export default function PitchOverlay({
         if (solo !== 'B') { ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; drawClip(ctx, vA, W, H, adjA, { scale: 1, dx: 0, dy: 0 }) }
         if (solo !== 'A') { ctx.globalAlpha = solo === 'B' ? 1 : opacityB; ctx.globalCompositeOperation = solo === 'B' ? 'source-over' : blend; drawClip(ctx, vB, W, H, adjB, transformB) }
         ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'
-        for (let r = 0; r < repeat; r++) await rec.addFrame(off, outIdx++)
+        for (let r = 0; r < repeat; r++) await rec.addFrame(outIdx++)
         setExporting((i + 1) / total)
       }
       const blob = await rec.finish()
-      downloadBlob(blob, clipFilename(rowA, { suffix: ` overlay ${flipName(rowB.player_name)}` }))
+      downloadBlob(blob, clipFilename(rowA, { suffix: ` overlay ${flipName(rowB.player_name)}`, ext: rec.ext }))
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Export failed.')
     } finally {
@@ -368,8 +369,9 @@ export default function PitchOverlay({
               <button key={v} onClick={() => setExportSpeed(v)} className={`${btn} flex-1 ${exportSpeed === v ? 'bg-sky-600/20 border-sky-600 text-sky-400' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'}`}>{l}</button>
             ))}
           </div>
-          <button className={`${btn} w-full bg-sky-600 hover:bg-sky-500 border-sky-600 text-white disabled:opacity-40`} onClick={runExport} disabled={!bothReady || !canExport || exporting != null} title={canExport ? 'Burn the overlay into an mp4' : 'mp4 export needs Chrome or Edge'}>Export overlay (mp4)</button>
-          {!canExport && <div className="text-[11px] text-amber-500/80 leading-snug">mp4 export needs a Chromium browser (Chrome / Edge).</div>}
+          <button className={`${btn} w-full bg-sky-600 hover:bg-sky-500 border-sky-600 text-white disabled:opacity-40`} onClick={runExport} disabled={!bothReady || !canExport || exporting != null} title={canExport ? 'Burn the overlay into a video' : 'This browser cannot export video'}>Export overlay ({expFmt === 'webm' ? 'webm' : 'mp4'})</button>
+          {expFmt === 'webm' && <div className="text-[11px] text-amber-500/80 leading-snug">This browser exports WebM (not mp4). Use Chrome or Edge for mp4.</div>}
+          {expFmt === 'none' && <div className="text-[11px] text-amber-500/80 leading-snug">This browser cannot export video.</div>}
         </div>
       </div>
 

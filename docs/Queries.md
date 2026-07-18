@@ -435,3 +435,45 @@ SELECT left(coalesce(error,'(none)'),60) AS err, count(*) AS n
 FROM pitch_videos WHERE status = 'failed' GROUP BY 1 ORDER BY n DESC LIMIT 8;
 ```
 **Result:** 287,602 downloaded (1.54 TB), 229,507 pending, 24,208 failed, 35 missing. Worker live (last download 2 min ago), ~3,959/hr, 98,894 last 24h → ~2.3 days to drain. Failures 99.9% `mp4 fetch 404` (MLB CDN gaps), 34 transient (500/502/timeout/abort) for `--include-failed` retry pass.
+
+## 2026-07-11
+
+### Pitch video archive — ingest progress check
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e9::numeric, 1) AS gb FROM pitch_videos GROUP BY status;
+-- + rate: downloads in last hour / 24h, minutes since last download
+```
+**Result:** 343,706 downloaded (1.84 TB), 173,036 pending, 28,271 failed, 35 missing (63% by count). Worker live (last download 1 min ago), 4,598/hr last hour, 96,683 last 24h → pending drains in ~1.8 days.
+
+## 2026-07-12
+
+### Pitch video archive — pending drained; missing spike triage
+Status check showed 0 pending but `missing` jumped 35 → 133,340. Traced the spike.
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e9::numeric, 1) AS gb FROM pitch_videos GROUP BY status;
+SELECT left(coalesce(error,'(none)'),70) AS err, count(*) AS n, min(attempts), max(attempts)
+FROM pitch_videos WHERE status = 'missing' GROUP BY 1 ORDER BY n DESC;
+-- whole-game pattern: 455 games, 208 fully missing, 98.2% avg within affected games
+-- game dates: all Feb–Mar 2026
+SELECT p.game_type, v.status, count(*) FROM pitch_videos v
+JOIN pitches p USING (game_pk, at_bat_number, pitch_number)
+WHERE p.game_year = 2026 GROUP BY 1,2;
+```
+**Result:** 384,780 downloaded (2.06 TB), 30,930 failed, 133,340 missing, 0 pending. Missing spike = **spring training** (game_type S: 132,412 missing — Savant publishes no clips for most ST games; benign). Regular season: 383,504 downloaded / 30,919 failed / 927 missing = **92.3% of R pitches archived**. Worker still live at 816/hr — retry pass draining failed rows.
+
+## 2026-07-18
+
+### Create pitch_telestrations table (migration)
+Additive table for saved telestrator markups (Videos page). RLS owner-only, mirrors `pitch_playlists`. DDL in `scripts/create-pitch-telestrations.sql`.
+```sql
+create table if not exists public.pitch_telestrations (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 120),
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  row_key text not null, clip jsonb not null, strokes jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+-- + owner/row_key index, RLS enable, owner-only policy
+```
+**Result:** applied (migration `pitch_telestrations`). Verified: 0 rows, rls_enabled=true, policy_count=1.

@@ -2,8 +2,15 @@
 
 ## Recently Completed
 
-### Videos — Telestrator & Overlay (planned, July 2026)
-Two tools on the Videos page: (1) telestrator (draw on a pitch clip, burn to mp4) and (2) two-clip pitch overlay (blend/adjust + auto release-frame alignment via in-browser motion-energy cross-correlation). Browser-only, shared canvas compositor + WebCodecs→mp4 encoder (`mp4-muxer`; `ffmpeg.wasm` fallback). Design: `docs/videos-telestrator-overlay.md`. Not started.
+### Videos — Telestrator & Overlay (July 2026)
+Two tools on the Videos page, both browser-only over a shared `lib/video/` foundation (clip→blob loader, frame-fed recorder, seek helper). Design: `docs/videos-telestrator-overlay.md`.
+
+**Shipped:**
+- **Foundation** — `lib/video/mp4Recorder.ts` (WebCodecs `VideoEncoder` → `mp4-muxer`, real mp4), `recorder.ts` chooser + `webmRecorder.ts` WebM fallback (MediaRecorder, non-Chromium), `clip.ts`/`types.ts`/`seek.ts`. Even-dim clamp, encode-queue backpressure.
+- **Telestrator** (`components/videos/Telestrator.tsx`) — pen/line/arrow/ellipse/spotlight/text, color/width, undo/redo/clear, frame-step transport, **timed strokes** (appear from a frame onward), PNG + video export burned frame-by-frame, and **saved markups** persisted to `pitch_telestrations` (RLS owner-only).
+- **Overlay** (`components/videos/PitchOverlay.tsx`) — two-clip compositor: opacity, blend modes, per-clip brightness/contrast + transform, manual Δ, **auto release-align** via `align.ts` (motion-energy cross-correlation) with confidence + jump-to-release, solo/swap/loop, video export.
+
+**Not done (deferred):** true mp4 on non-Chromium (would need `ffmpeg.wasm` + COOP/COEP — falls back to WebM instead); server-side CV subject isolation for wide broadcast angles.
 
 ### Pitch Video Archive (July 2026)
 Searchable local archive of Savant pitch clips on the Mayday Cloud NAS (`/PitchVideos/{year}/{game_pk}/{play_id}.mp4`), indexed in the new `pitch_videos` table (composite key `game_pk + at_bat_number + pitch_number`, play_id, status lifecycle `pending → downloaded/failed/missing`).

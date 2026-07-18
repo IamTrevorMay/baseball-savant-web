@@ -8,11 +8,10 @@
 // strokes onto a native-resolution offscreen canvas, frame by frame.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 import type { ClipRow } from '@/lib/video/types'
-import { clipFilename, flipName, loadClipObjectURL, outcome } from '@/lib/video/clip'
-import {
-  createMp4Recorder, downloadBlob, webCodecsSupported,
-} from '@/lib/video/mp4Recorder'
+import { clipFilename, flipName, loadClipObjectURL, outcome, rowKey } from '@/lib/video/clip'
+import { canExportVideo, createRecorder, downloadBlob, exportFormat } from '@/lib/video/recorder'
 import { seekTo } from '@/lib/video/seek'
 import {
   drawStrokes, STROKE_COLORS, STROKE_WIDTHS,
@@ -60,10 +59,17 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
   const [duration, setDuration] = useState(0)
   const [rate, setRate] = useState(1)
 
+  const [timed, setTimed] = useState(false)
+
   const [exportSpeed, setExportSpeed] = useState(0.5)
   const [exporting, setExporting] = useState<number | null>(null) // 0..1 or null
   const exportCancel = useRef(false)
-  const canExport = webCodecsSupported()
+  const canExport = canExportVideo()
+  const expFmt = exportFormat()
+
+  // Saved markups for this pitch (pitch_telestrations, RLS owner-only).
+  const [saved, setSaved] = useState<{ id: string; name: string; strokes: Stroke[] }[]>([])
+  const [saveBusy, setSaveBusy] = useState(false)
 
   // ── Load clip as a same-origin blob URL ──
   useEffect(() => {
@@ -82,15 +88,18 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
     return () => { cancelled = true; if (url) URL.revokeObjectURL(url) }
   }, [row])
 
-  // ── Redraw the author overlay whenever strokes / draft / size change ──
+  // ── Redraw the author overlay whenever strokes / draft / size / time change.
+  // Pass the playhead so timed strokes appear/disappear as the clip plays; the
+  // in-progress draft is always shown while you're drawing it. ──
   useEffect(() => {
     const c = canvasRef.current
     if (!c || !dims) return
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, c.width, c.height)
-    drawStrokes(ctx, draft ? [...strokes, draft] : strokes, c.width, c.height)
-  }, [strokes, draft, dims])
+    drawStrokes(ctx, strokes, c.width, c.height, time)
+    if (draft) drawStrokes(ctx, [draft], c.width, c.height)
+  }, [strokes, draft, dims, time])
 
   // ── Pointer → normalized coords ──
   const toNorm = useCallback((e: React.PointerEvent): Point => {
@@ -102,10 +111,13 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
     ]
   }, [])
 
-  const commit = useCallback((s: Stroke) => {
-    setStrokes(prev => [...prev, s])
+  // Timed strokes: stamp tStart at the current playhead so the stroke appears
+  // from that frame onward. Plain function so it closes over the latest time.
+  const commit = (s: Stroke) => {
+    const withT = timed ? ({ ...s, tStart: time } as Stroke) : s
+    setStrokes(prev => [...prev, withT])
     setRedo([])
-  }, [])
+  }
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (exporting != null) return
@@ -212,22 +224,23 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
     off.width = W; off.height = H
     const ctx = off.getContext('2d')!
     try {
-      const rec = await createMp4Recorder({ width: W, height: H, fps: SRC_FPS })
+      const rec = await createRecorder(off, { fps: SRC_FPS })
       const dur = v.duration || duration
       const total = Math.max(1, Math.round(dur * SRC_FPS))
       const repeat = Math.max(1, Math.round(1 / exportSpeed))
       let outIdx = 0
       for (let i = 0; i < total; i++) {
         if (exportCancel.current) { rec.abort(); setExporting(null); v.currentTime = wasTime; return }
-        await seekTo(v, Math.min(dur, i / SRC_FPS))
+        const tSrc = Math.min(dur, i / SRC_FPS)
+        await seekTo(v, tSrc)
         ctx.clearRect(0, 0, W, H)
         ctx.drawImage(v, 0, 0, W, H)
-        drawStrokes(ctx, strokes, W, H)
-        for (let r = 0; r < repeat; r++) await rec.addFrame(off, outIdx++)
+        drawStrokes(ctx, strokes, W, H, tSrc)
+        for (let r = 0; r < repeat; r++) await rec.addFrame(outIdx++)
         setExporting((i + 1) / total)
       }
       const blob = await rec.finish()
-      downloadBlob(blob, clipFilename(row, { suffix: ' (telestrated)' }))
+      downloadBlob(blob, clipFilename(row, { suffix: ' (telestrated)', ext: rec.ext }))
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Export failed.')
     } finally {
@@ -243,8 +256,39 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
     off.width = dims.w; off.height = dims.h
     const ctx = off.getContext('2d')!
     ctx.drawImage(v, 0, 0, dims.w, dims.h)
-    drawStrokes(ctx, strokes, dims.w, dims.h)
+    drawStrokes(ctx, strokes, dims.w, dims.h, time)
     off.toBlob(b => { if (b) downloadBlob(b, clipFilename(row, { suffix: ' (telestrated)', ext: 'png' })) }, 'image/png')
+  }
+
+  // ── Saved markups (pitch_telestrations) ──
+  const loadSaved = useCallback(async () => {
+    const { data } = await supabase
+      .from('pitch_telestrations')
+      .select('id, name, strokes')
+      .eq('row_key', rowKey(row))
+      .order('created_at', { ascending: false })
+    if (data) setSaved(data as { id: string; name: string; strokes: Stroke[] }[])
+  }, [row])
+  useEffect(() => { loadSaved() }, [loadSaved])
+
+  const saveMarkup = async () => {
+    if (!strokes.length) return
+    const name = window.prompt('Name this markup', `${flipName(row.player_name)} markup`)?.trim()
+    if (!name) return
+    setSaveBusy(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { alert('Sign in to save markups.'); return }
+      const { error } = await supabase.from('pitch_telestrations').insert({
+        created_by: user.id, row_key: rowKey(row), clip: row, strokes, name,
+      })
+      if (error) throw error
+      await loadSaved()
+    } catch {
+      alert('Could not save the markup.')
+    } finally {
+      setSaveBusy(false)
+    }
   }
 
   const fmt = (s: number) => {
@@ -316,11 +360,40 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
             </div>
           </div>
 
+          <label className={`flex items-center gap-2 text-xs cursor-pointer select-none rounded-lg border px-2.5 py-1.5 ${timed ? 'border-sky-600 bg-sky-600/10 text-sky-300' : 'border-zinc-700 bg-zinc-900 text-zinc-400'}`} title="New strokes appear from the current frame onward">
+            <input type="checkbox" checked={timed} onChange={e => setTimed(e.target.checked)} />
+            Timed strokes {timed && <span className="text-[10px] text-sky-500/80 ml-auto">@ {fmt(time)}</span>}
+          </label>
+
           <div className="flex gap-1.5">
             <button className={`${btn} flex-1 bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200 disabled:opacity-40`} onClick={undo} disabled={!strokes.length} title="Undo (⌘Z)">Undo</button>
             <button className={`${btn} flex-1 bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200 disabled:opacity-40`} onClick={redoLast} disabled={!redo.length} title="Redo (⇧⌘Z)">Redo</button>
           </div>
           <button className={`${btn} w-full bg-zinc-900 border-zinc-700 text-red-400/80 hover:text-red-400 disabled:opacity-40`} onClick={() => { setStrokes([]); setRedo([]) }} disabled={!strokes.length}>Clear all</button>
+
+          <div className="pt-2 border-t border-zinc-800 space-y-2">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Saved markups</div>
+            <button
+              className={`${btn} w-full bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white disabled:opacity-40`}
+              onClick={saveMarkup}
+              disabled={!strokes.length || saveBusy}
+            >
+              {saveBusy ? 'Saving…' : 'Save markup'}
+            </button>
+            {saved.length > 0 && (
+              <select
+                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200"
+                value=""
+                onChange={e => {
+                  const s = saved.find(x => x.id === e.target.value)
+                  if (s) { setStrokes(s.strokes || []); setRedo([]) }
+                }}
+              >
+                <option value="">Load saved… ({saved.length})</option>
+                {saved.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+          </div>
 
           <div className="pt-2 border-t border-zinc-800 space-y-2">
             <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Export</div>
@@ -340,9 +413,9 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
               className={`${btn} w-full bg-emerald-600 hover:bg-emerald-500 border-emerald-600 text-white disabled:opacity-40`}
               onClick={runExport}
               disabled={!src || !canExport || exporting != null}
-              title={canExport ? 'Burn markup into an mp4' : 'mp4 export needs Chrome or Edge'}
+              title={canExport ? 'Burn the markup into a video' : 'This browser cannot export video'}
             >
-              Export clip (mp4)
+              Export clip ({expFmt === 'webm' ? 'webm' : 'mp4'})
             </button>
             <button
               className={`${btn} w-full bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white disabled:opacity-40`}
@@ -351,7 +424,8 @@ export default function Telestrator({ row, onClose }: { row: ClipRow; onClose: (
             >
               Export frame (png)
             </button>
-            {!canExport && <div className="text-[11px] text-amber-500/80 leading-snug">mp4 export needs a Chromium browser (Chrome / Edge).</div>}
+            {expFmt === 'webm' && <div className="text-[11px] text-amber-500/80 leading-snug">This browser exports WebM (not mp4). Use Chrome or Edge for mp4.</div>}
+            {expFmt === 'none' && <div className="text-[11px] text-amber-500/80 leading-snug">This browser cannot export video.</div>}
           </div>
         </div>
 
