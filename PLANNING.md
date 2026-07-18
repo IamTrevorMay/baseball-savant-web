@@ -2,6 +2,9 @@
 
 ## Recently Completed
 
+### Videos — Telestrator & Overlay (planned, July 2026)
+Two tools on the Videos page: (1) telestrator (draw on a pitch clip, burn to mp4) and (2) two-clip pitch overlay (blend/adjust + auto release-frame alignment via in-browser motion-energy cross-correlation). Browser-only, shared canvas compositor + WebCodecs→mp4 encoder (`mp4-muxer`; `ffmpeg.wasm` fallback). Design: `docs/videos-telestrator-overlay.md`. Not started.
+
 ### Pitch Video Archive (July 2026)
 Searchable local archive of Savant pitch clips on the Mayday Cloud NAS (`/PitchVideos/{year}/{game_pk}/{play_id}.mp4`), indexed in the new `pitch_videos` table (composite key `game_pk + at_bat_number + pitch_number`, play_id, status lifecycle `pending → downloaded/failed/missing`).
 

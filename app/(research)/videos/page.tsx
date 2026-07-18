@@ -22,6 +22,8 @@ import { zipSync } from 'fflate'
 import { supabase } from '@/lib/supabase'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
 import type { PlayerResult } from '@/lib/types'
+import type { ClipRow as VideoRow } from '@/lib/video/types'
+import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl } from '@/lib/video/clip'
 
 const PITCH_TYPES: [string, string][] = [
   ['FF', 'Four-Seam'], ['SI', 'Sinker'], ['FC', 'Cutter'],
@@ -81,32 +83,6 @@ const EMPTY_FILTERS: Filters = {
   onlyArchived: true,
 }
 
-interface VideoRow {
-  game_pk: number
-  game_date: string
-  at_bat_number: number
-  pitch_number: number
-  player_name: string
-  batter_name: string
-  pitch_type: string | null
-  pitch_name: string | null
-  release_speed: number | null
-  balls: number | null
-  strikes: number | null
-  outs_when_up: number | null
-  inning: number | null
-  inning_topbot: string | null
-  home_team: string
-  away_team: string
-  events: string | null
-  description: string | null
-  launch_speed: number | null
-  launch_angle: number | null
-  status: string | null
-  video_url: string | null
-  savant_url: string | null
-}
-
 interface Playlist {
   id: string
   name: string
@@ -133,26 +109,6 @@ interface HistoryEntry {
   result_count: number | null
   created_at: string
 }
-
-const label = (s: string | null) => String(s || '').replace(/_/g, ' ')
-const titleCase = (s: string | null) => label(s).replace(/\b\w/g, c => c.toUpperCase())
-
-// "Palmquist, Carson" → "Carson Palmquist"
-function flipName(name: string | null): string {
-  const parts = String(name || '').split(',')
-  if (parts.length === 2) return `${parts[1].trim()} ${parts[0].trim()}`
-  return String(name || '').trim()
-}
-
-const outcome = (row: VideoRow) => titleCase(row.events || row.description || 'Unknown')
-
-// [Pitcher] to [Hitter] [Pitch Type] [Count] [Outcome].mp4
-function clipFilename(row: VideoRow): string {
-  const raw = `${flipName(row.player_name)} to ${flipName(row.batter_name)} ${row.pitch_type || 'NA'} ${row.balls ?? '-'}-${row.strikes ?? '-'} ${outcome(row)}`
-  return `${raw.replace(/[^\w\-. ]+/g, '').replace(/\s+/g, ' ').trim()}.mp4`
-}
-
-const rowKey = (row: VideoRow) => `${row.game_pk}-${row.at_bat_number}-${row.pitch_number}`
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -477,17 +433,9 @@ export default function VideosPage() {
     if (row.video_url) return row.video_url
     const key = rowKey(row)
     if (savantMp4[key] !== undefined) return savantMp4[key]
-    try {
-      const res = await fetch(
-        `/api/pitch-video?game_pk=${row.game_pk}&ab=${row.at_bat_number}&pitch=${row.pitch_number}&resolve_mp4=true`,
-      )
-      const json = await res.json().catch(() => ({}))
-      const url: string | null = json?.row?.savant_mp4_url || null
-      setSavantMp4(m => ({ ...m, [key]: url }))
-      return url
-    } catch {
-      return null
-    }
+    const url = await resolveClipUrl(row)
+    setSavantMp4(m => ({ ...m, [key]: url }))
+    return url
   }
 
   const downloadClip = async (row: VideoRow): Promise<boolean> => {
