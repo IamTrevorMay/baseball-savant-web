@@ -24,6 +24,7 @@ import PlayerSearchInput from '@/components/PlayerSearchInput'
 import type { PlayerResult } from '@/lib/types'
 import type { ClipRow as VideoRow } from '@/lib/video/types'
 import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl } from '@/lib/video/clip'
+import Telestrator from '@/components/videos/Telestrator'
 
 const PITCH_TYPES: [string, string][] = [
   ['FF', 'Four-Seam'], ['SI', 'Sinker'], ['FC', 'Cutter'],
@@ -152,6 +153,7 @@ export default function VideosPage() {
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<{ clips: VideoRow[]; index: number } | null>(null)
+  const [telestrateRow, setTelestrateRow] = useState<VideoRow | null>(null)
   const [savantMp4, setSavantMp4] = useState<Record<string, string | null>>({})
   const [resolvingKey, setResolvingKey] = useState<string | null>(null)
 
@@ -976,6 +978,15 @@ export default function VideosPage() {
                               <span className="text-[11px] italic text-zinc-600 mr-1.5" title={`Status: ${row.status || 'not archived'} — downloads via Savant CDN`}>{row.status || 'not archived'}</span>
                             )}
                             <button
+                              className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-sky-400 hover:bg-zinc-800 mr-1"
+                              title="Telestrate this pitch"
+                              onClick={() => setTelestrateRow(row)}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" />
+                              </svg>
+                            </button>
+                            <button
                               className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-emerald-400 hover:bg-zinc-800"
                               title={row.video_url ? 'Download clip' : 'Download via Savant'}
                               onClick={() => downloadClip(row)}
@@ -1072,6 +1083,7 @@ export default function VideosPage() {
                   <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalNext} disabled={modal.index === modal.clips.length - 1}>Next ›</button>
                 </>
               )}
+              <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setModal(null); setTelestrateRow(modalClip) }}>Telestrate</button>
               <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => downloadClip(modalClip)}>Download</button>
               <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-emerald-400">Savant ↗</a>
             </div>
@@ -1130,6 +1142,11 @@ export default function VideosPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Telestrator ── */}
+      {telestrateRow && (
+        <Telestrator row={telestrateRow} onClose={() => setTelestrateRow(null)} />
       )}
     </div>
   )
