@@ -4,6 +4,35 @@ Auto-populated log of ad-hoc database queries run during exploration sessions.
 
 ---
 
+## 2026-07-19
+
+**MEchanics build — schema inspection + demo seed verification.**
+
+Inspected report/athlete schema before building:
+```sql
+select table_name, column_name, data_type, is_nullable from information_schema.columns
+where table_schema='public' and table_name in ('athlete_profiles','compete_reports','athlete_notifications','profiles')
+order by table_name, ordinal_position;
+```
+Result: `compete_reports(athlete_id,title,subject_type,report_date,pdf_url,metadata,…)`, `athlete_profiles(id,profile_id,player_id,height_in,throws,…)`.
+
+Found the CHECK blocking biomech reports:
+```sql
+select conname, pg_get_constraintdef(oid) from pg_constraint
+where conrelid='public.compete_reports'::regclass and contype='c';
+```
+Result: `compete_reports_subject_type_check CHECK (subject_type = ANY (ARRAY['pitching','hitting']))` → widened to include `'biomech'` (migration `compete_reports_allow_biomech_subject`).
+
+Verified demo seed:
+```sql
+select report_date, player_name, metadata->>'movementGrade' grade,
+       jsonb_array_length(metadata->'flags') flags, (pdf_url is not null) has_pdf
+from compete_reports where subject_type='biomech' order by player_name, report_date;
+```
+Result: 6 biomech reports (Trevor May + EJ), grade 43→58/59, flags 3→0, all with PDFs. 6 captures / 48 throws / 68 assessment_norms rows.
+
+---
+
 ## 2026-06-04
 
 ### Cristopher Sanchez — Deception & Unique Scores (2026)
@@ -477,3 +506,11 @@ create table if not exists public.pitch_telestrations (
 -- + owner/row_key index, RLS enable, owner-only policy
 ```
 **Result:** applied (migration `pitch_telestrations`). Verified: 0 rows, rls_enabled=true, policy_count=1.
+
+### Pitch-video backfill status check
+```sql
+select status, count(*), pg_size_pretty(sum(size_bytes)), max(downloaded_at) from pitch_videos group by status;
+select count(*) filter (where downloaded_at > now()-interval '1 hour') as dl_1h,
+       count(*) filter (where downloaded_at > now()-interval '24 hours') as dl_24h from pitch_videos;
+```
+**Result:** downloaded 850,364 (4.23 TB) · pending 333,931 · missing 153,584 · failed 43,596. Rate 4,298/hr (88k/24h). Last download 2026-07-18 17:16 UTC — worker live. failed@6attempts=0 (still retrying).

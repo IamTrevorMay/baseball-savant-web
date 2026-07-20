@@ -109,3 +109,13 @@ create policy assessment_norms_select on public.assessment_norms
 insert into storage.buckets (id, name, public)
 values ('biomech-captures', 'biomech-captures', false)
 on conflict (id) do nothing;
+
+-- Public bucket for rendered report PDFs (unguessable UUID paths).
+insert into storage.buckets (id, name, public)
+values ('biomech-reports', 'biomech-reports', true)
+on conflict (id) do nothing;
+
+-- Allow biomech reports to publish through the shared compete_reports pipeline.
+alter table public.compete_reports drop constraint if exists compete_reports_subject_type_check;
+alter table public.compete_reports add constraint compete_reports_subject_type_check
+  check (subject_type = any (array['pitching'::text, 'hitting'::text, 'biomech'::text]));
