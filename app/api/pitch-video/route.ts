@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase/server'
 
+// Live Savant resolves can retry (see fetchSavant); give the function headroom
+// so a couple of slow MLB responses can't be cut off by the default limit.
+export const maxDuration = 30
+
 /**
  * Pitch video archive API — search and resolve archived Savant pitch clips.
  *
@@ -81,6 +85,32 @@ function toVideoRow(r: any) {
 const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
 
 /**
+ * Fetch an external Savant URL with a per-attempt timeout and small backoff
+ * retry. MLB's endpoints (especially the ~3MB /gf game feed) intermittently
+ * hang or return a transient 5xx/429; the same request typically succeeds a
+ * few seconds later, so we retry rather than let one blip surface as a 500.
+ * The thrown error names the URL so the caller's catch can log which upstream
+ * failed.
+ */
+async function fetchSavant(url: string, init: RequestInit = {}, attempts = 3): Promise<Response> {
+  let lastErr: any
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(8_000) })
+      if (res.status >= 500 || res.status === 429) {
+        lastErr = new Error(`upstream ${res.status}`)
+      } else {
+        return res
+      }
+    } catch (e: any) {
+      lastErr = e
+    }
+    if (i < attempts - 1) await new Promise(r => setTimeout(r, 300 * (i + 1)))
+  }
+  throw new Error(`Savant fetch failed after ${attempts} attempts (${url}): ${lastErr?.message || lastErr}`)
+}
+
+/**
  * Live-resolve the direct CDN mp4 for a play by scraping its sporty-videos
  * page (same extraction as the download worker). Used by single resolve with
  * resolve_mp4=true so clients can embed not-yet-archived clips in a player —
@@ -89,23 +119,26 @@ const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
  */
 async function resolveSavantMp4(playId: string): Promise<string | null> {
   try {
-    const res = await fetch(`https://baseballsavant.mlb.com/sporty-videos?playId=${playId}`, {
+    const res = await fetchSavant(`https://baseballsavant.mlb.com/sporty-videos?playId=${playId}`, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(10_000),
     })
     if (!res.ok) return null
     const html = await res.text()
     const m = html.match(MP4_RE)
     return m ? m[0] : null
-  } catch {
+  } catch (e: any) {
+    console.error(`[pitch-video] resolveSavantMp4 failed for playId=${playId}: ${e?.message}`)
     return null
   }
 }
 
 /** Resolve a play_id live from the Savant game feed (on-demand cache path). */
 async function resolvePlayIdLive(gamePk: number, ab: number, pitch: number): Promise<string | null> {
-  const res = await fetch(`https://baseballsavant.mlb.com/gf?game_pk=${gamePk}`, {
-    next: { revalidate: 3600 },
+  // no-store: the ~3MB feed exceeds Next's 2MB data-cache ceiling (it was
+  // never actually cached — just warned on every call), and no-store keeps the
+  // retry/timeout semantics deterministic.
+  const res = await fetchSavant(`https://baseballsavant.mlb.com/gf?game_pk=${gamePk}`, {
+    cache: 'no-store',
   })
   if (!res.ok) return null
   const feed = await res.json()
@@ -312,6 +345,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ rows: (data || []).map(toVideoRow), count: (data || []).length, limit, offset })
   } catch (e: any) {
+    // Log the real cause (incl. which Savant upstream failed — fetchSavant puts
+    // the URL in its message) so the throw is visible in Vercel logs instead of
+    // returning an opaque 500 with no trace.
+    console.error(`[pitch-video] 500 for ${req.nextUrl.search}: ${e?.message}`, e?.stack)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
