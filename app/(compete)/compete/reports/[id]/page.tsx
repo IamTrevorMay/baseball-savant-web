@@ -6,6 +6,9 @@ import { TileHeatmap, TileScatter, TileBar, TileStrikeZone, TileTable } from '@/
 import type { TileConfig } from '@/components/reports/ReportTile'
 import { applyFiltersToData, type ActiveFilter } from '@/components/FilterEngine'
 import { enrichData } from '@/lib/enrichData'
+import BiomechReport from '@/components/mechanics/report/BiomechReport'
+import BiomechTrend from '@/components/mechanics/report/BiomechTrend'
+import type { BiomechReportPayload } from '@/lib/mechanics/reportPayload'
 
 interface Report {
   id: string
@@ -14,12 +17,13 @@ interface Report {
   player_name: string | null
   subject_type: string
   report_date: string
+  pdf_url: string | null
   metadata: {
     tiles?: TileConfig[]
     filters?: ActiveFilter[]
     player_id?: number
     columns?: number
-  }
+  } & Partial<BiomechReportPayload>
 }
 
 export default function CompeteReportViewer() {
@@ -143,7 +147,9 @@ export default function CompeteReportViewer() {
           <div className="flex items-center gap-2 mt-1">
             {report.player_name && <span className="text-sm text-zinc-400">{report.player_name}</span>}
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              report.subject_type === 'pitching' ? 'bg-blue-500/15 text-blue-400' : 'bg-green-500/15 text-green-400'
+              report.subject_type === 'pitching' ? 'bg-blue-500/15 text-blue-400'
+              : report.subject_type === 'biomech' ? 'bg-blue-500/15 text-blue-300'
+              : 'bg-green-500/15 text-green-400'
             }`}>
               {report.subject_type}
             </span>
@@ -182,8 +188,19 @@ export default function CompeteReportViewer() {
         </div>
       )}
 
-      {/* Tile Grid */}
-      {hasTiles ? (
+      {/* Biomech report (Mechanics Lab) */}
+      {report.subject_type === 'biomech' && report.metadata?.kind === 'biomech' ? (
+        <div className="space-y-6">
+          {report.pdf_url && (
+            <a href={report.pdf_url} target="_blank" rel="noopener noreferrer"
+              className="inline-block text-xs px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-700 transition">
+              Download PDF
+            </a>
+          )}
+          <BiomechReport payload={report.metadata as BiomechReportPayload} />
+          <BiomechTrend currentId={report.id} />
+        </div>
+      ) : hasTiles ? (
         dataLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-6 h-6 border-2 border-zinc-700 border-t-amber-500 rounded-full animate-spin mr-3" />
