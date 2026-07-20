@@ -596,6 +596,42 @@ WHERE p.pitcher = 434378;  -- Verlander
 
 ---
 
+## §12 Mechanics (biomechanics capture)
+
+Metric keys are dotted `bucket.metric` strings; the canonical registry is
+`lib/mechanics/norms.ts` `METRIC_DEFS` (label, unit, direction, velo-correlation,
+directional flag, p10–p90 band). Stored in `biomech_throws.metrics` jsonb and
+`assessment_norms` (per level). Full guide: `docs/mechanics.md`.
+
+| Key | Label | Unit | Notes |
+|---|---|---|---|
+| `armAction.shoulderAbduction` | Shoulder Abduction @ FC | ° | >135 = elbow-climb flag |
+| `armAction.horizontalAbduction` | Scap Load (Horiz Abd) | ° | directional (markerless proxy) |
+| `armAction.elbowFlexion` | Elbow Flexion @ FC | ° | |
+| `lowerBody.strideLengthPct` | Stride Length | % ht | scales by level |
+| `lowerBody.trunkForwardTilt` | Trunk Forward Tilt @ Rel | ° | |
+| `lowerBody.trunkLateralTilt` | Contralateral Trunk Tilt @ Rel | ° | lower is better (arm-stress) |
+| `lowerBody.leadKneeFlexionFC` | Lead Knee Flexion @ FC | ° | |
+| `lowerBody.leadKneeFlexionRelease` | Lead Knee Flexion @ Rel | ° | lower is better (extension) |
+| `lowerBody.leadKneeExtVelocity` | Lead Knee Ext Velocity | °/s | scales by level |
+| `lowerBody.pelvisRotation` | Pelvis Rotation @ FC | ° | |
+| `velocities.pelvisAngVel` | Peak Pelvis Rotation Vel | °/s | scales by level |
+| `velocities.trunkAngVel` | Peak Trunk Rotation Vel | °/s | scales by level |
+| `velocities.elbowExtVelocity` | Peak Elbow Ext Vel | °/s | scales by level |
+| `velocities.shoulderIrVelocity` | Peak Shoulder IR Vel | °/s | directional; scales by level |
+| `sequencing.pelvisToTrunkGap` | Pelvis→Trunk Timing Gap | s | ~0.03–0.05 healthy |
+| `hipShoulderSep.maxSeparation` | Hip–Shoulder Separation | ° | |
+| `outcome.maxExternalRotation` | Max External Rotation (Layback) | ° | directional |
+| `outcome.relSpeedMph` | Release Speed | mph | joined from TrackMan if paired |
+
+`biomech_captures.level` ∈ `youth`|`hs`|`college`|`pro` (norm bucket).
+`capture_system` provenance tag (`captury_optitrack`). Report `subject_type='biomech'`.
+
+**Maintenance:** when you add/change a metric in `lib/mechanics/norms.ts`, update this
+table and re-run `scripts/seed-assessment-norms.ts`.
+
+---
+
 ## Quick Lookup
 
 - **"What's the variable for ___?"** → §1–§4 (alphabetical within group)

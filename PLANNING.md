@@ -13,6 +13,26 @@ Replaced the Compete top nav bar with a left sidebar (`components/compete/Compet
 
 ### Roles Auth — Athlete Role (July 2026)
 First step of the roles-auth build-out. New `athlete` role in `profiles.role`: Compete-only, launcher-less. Central `lib/roles.ts` now encodes the access model (`isAdminRole`, `isAthleteRole`, `resolvePermissions`, `hasImplicitTools`, `roleLandingPath`, `ALL_TOOLS`, `ATHLETE_TOOLS`) so `/api/me`, the Compete layout, the launcher, and the Admin page stay in sync. Athletes get implicit `['compete']` access (no `tool_permissions` rows), are bounced from the launcher straight to `/compete` (client redirect in `app/(launcher)/page.tsx`), and are hard-locked out of every other app — each app layout already redirects the unpermitted to `/?denied=…`, which bounces athletes back to Compete. Inside Compete the "TRITON APEX" wordmark is not a link for athletes (no app-menu escape). Admin page: `Athlete` option in invite + edit role dropdowns, implicit "Compete only" access (tool toggles hidden), amber role badge. **Fix (07-14):** `profiles_role_check` only allowed user/admin/owner, so athlete invites silently reset to `user` (invite route swallowed the constraint error). Migration `add_athlete_role` widened the constraint (`scripts/add-athlete-role.sql`); invite route now surfaces the role-write error.
+### MEchanics — Biomechanics Lab v1 (July 2026)
+Captury / OptiTrack pitching capture → kinematic assessment → athlete Compete profile. Kinematics-only v1; kinetics/torque deferred to force plates. Design + full guide: `docs/mechanics.md`.
+
+**Shipped:**
+- **Pipeline** (`lib/mechanics/`) — C3D binary parser (`c3d.ts`, Intel float/int + CSV-curves fallback), Captury→canonical joint mapper (`captureSchema.ts`), throw segmentation + foot-contact/MER/release event detection (`events.ts`), six-bucket metric extraction with session-median aggregation (`metrics.ts`), metric registry + norm bands (`norms.ts`), percentile ranking (`percentile.ts`), flag engine ranked by divergence × velo-correlation (`flags.ts`) → named interventions (`interventions.ts`), report payload + movement grade (`reportPayload.ts`), jsPDF render (`pdf.ts`), and the `process.ts` orchestrator.
+- **Schema** (`scripts/create-biomech-captures.sql`) — `biomech_captures` / `biomech_throws` (session/child, mirrors compete_pitches) + `assessment_norms` (17 metrics × 4 levels, OpenBiomechanics stand-in). RLS via `owns_athlete_profile()`. Private `biomech-captures` + public `biomech-reports` buckets. Widened `compete_reports.subject_type` CHECK to allow `biomech`.
+- **Routes** — `POST /api/mechanics/upload` (store raw C3D + run pipeline), `GET /api/mechanics/captures[/id]`, `POST /api/mechanics/report` (publish to `compete_reports` + notification).
+- **UI** — Mechanics Lab admin page (upload, session browser, capture detail with live report preview + publish); Compete report viewer extended for `subject_type='biomech'` with interactive tiles + longitudinal `BiomechTrend`.
+
+**Not done (deferred v2):** force-plate ingest + inverse-dynamics kinetics, regression torque estimate, PULSE workload / A:C ratio, mph-per-torque efficiency index, 3D skeleton playback.
+
+### Videos — Telestrator & Overlay (July 2026)
+Two tools on the Videos page, both browser-only over a shared `lib/video/` foundation (clip→blob loader, frame-fed recorder, seek helper). Design: `docs/videos-telestrator-overlay.md`.
+
+**Shipped:**
+- **Foundation** — `lib/video/mp4Recorder.ts` (WebCodecs `VideoEncoder` → `mp4-muxer`, real mp4), `recorder.ts` chooser + `webmRecorder.ts` WebM fallback (MediaRecorder, non-Chromium), `clip.ts`/`types.ts`/`seek.ts`. Even-dim clamp, encode-queue backpressure.
+- **Telestrator** (`components/videos/Telestrator.tsx`) — pen/line/arrow/ellipse/spotlight/text, color/width, undo/redo/clear, frame-step transport, **timed strokes** (appear from a frame onward), PNG + video export burned frame-by-frame, and **saved markups** persisted to `pitch_telestrations` (RLS owner-only).
+- **Overlay** (`components/videos/PitchOverlay.tsx`) — two-clip compositor: opacity, blend modes, per-clip brightness/contrast + transform, manual Δ, **auto release-align** via `align.ts` (motion-energy cross-correlation) with confidence + jump-to-release, solo/swap/loop, video export.
+
+**Not done (deferred):** true mp4 on non-Chromium (would need `ffmpeg.wasm` + COOP/COEP — falls back to WebM instead); server-side CV subject isolation for wide broadcast angles.
 
 ### Pitch Video Archive (July 2026)
 Searchable local archive of Savant pitch clips on the Mayday Cloud NAS (`/PitchVideos/{year}/{game_pk}/{play_id}.mp4`), indexed in the new `pitch_videos` table (composite key `game_pk + at_bat_number + pitch_number`, play_id, status lifecycle `pending → downloaded/failed/missing`).

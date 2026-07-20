@@ -4,6 +4,35 @@ Auto-populated log of ad-hoc database queries run during exploration sessions.
 
 ---
 
+## 2026-07-19
+
+**MEchanics build — schema inspection + demo seed verification.**
+
+Inspected report/athlete schema before building:
+```sql
+select table_name, column_name, data_type, is_nullable from information_schema.columns
+where table_schema='public' and table_name in ('athlete_profiles','compete_reports','athlete_notifications','profiles')
+order by table_name, ordinal_position;
+```
+Result: `compete_reports(athlete_id,title,subject_type,report_date,pdf_url,metadata,…)`, `athlete_profiles(id,profile_id,player_id,height_in,throws,…)`.
+
+Found the CHECK blocking biomech reports:
+```sql
+select conname, pg_get_constraintdef(oid) from pg_constraint
+where conrelid='public.compete_reports'::regclass and contype='c';
+```
+Result: `compete_reports_subject_type_check CHECK (subject_type = ANY (ARRAY['pitching','hitting']))` → widened to include `'biomech'` (migration `compete_reports_allow_biomech_subject`).
+
+Verified demo seed:
+```sql
+select report_date, player_name, metadata->>'movementGrade' grade,
+       jsonb_array_length(metadata->'flags') flags, (pdf_url is not null) has_pdf
+from compete_reports where subject_type='biomech' order by player_name, report_date;
+```
+Result: 6 biomech reports (Trevor May + EJ), grade 43→58/59, flags 3→0, all with PDFs. 6 captures / 48 throws / 68 assessment_norms rows.
+
+---
+
 ## 2026-06-04
 
 ### Cristopher Sanchez — Deception & Unique Scores (2026)
@@ -436,6 +465,31 @@ FROM pitch_videos WHERE status = 'failed' GROUP BY 1 ORDER BY n DESC LIMIT 8;
 ```
 **Result:** 287,602 downloaded (1.54 TB), 229,507 pending, 24,208 failed, 35 missing. Worker live (last download 2 min ago), ~3,959/hr, 98,894 last 24h → ~2.3 days to drain. Failures 99.9% `mp4 fetch 404` (MLB CDN gaps), 34 transient (500/502/timeout/abort) for `--include-failed` retry pass.
 
+## 2026-07-11
+
+### Pitch video archive — ingest progress check
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e9::numeric, 1) AS gb FROM pitch_videos GROUP BY status;
+-- + rate: downloads in last hour / 24h, minutes since last download
+```
+**Result:** 343,706 downloaded (1.84 TB), 173,036 pending, 28,271 failed, 35 missing (63% by count). Worker live (last download 1 min ago), 4,598/hr last hour, 96,683 last 24h → pending drains in ~1.8 days.
+
+## 2026-07-12
+
+### Pitch video archive — pending drained; missing spike triage
+Status check showed 0 pending but `missing` jumped 35 → 133,340. Traced the spike.
+```sql
+SELECT status, count(*) AS n, round(sum(size_bytes)/1e9::numeric, 1) AS gb FROM pitch_videos GROUP BY status;
+SELECT left(coalesce(error,'(none)'),70) AS err, count(*) AS n, min(attempts), max(attempts)
+FROM pitch_videos WHERE status = 'missing' GROUP BY 1 ORDER BY n DESC;
+-- whole-game pattern: 455 games, 208 fully missing, 98.2% avg within affected games
+-- game dates: all Feb–Mar 2026
+SELECT p.game_type, v.status, count(*) FROM pitch_videos v
+JOIN pitches p USING (game_pk, at_bat_number, pitch_number)
+WHERE p.game_year = 2026 GROUP BY 1,2;
+```
+**Result:** 384,780 downloaded (2.06 TB), 30,930 failed, 133,340 missing, 0 pending. Missing spike = **spring training** (game_type S: 132,412 missing — Savant publishes no clips for most ST games; benign). Regular season: 383,504 downloaded / 30,919 failed / 927 missing = **92.3% of R pitches archived**. Worker still live at 816/hr — retry pass draining failed rows.
+
 ## 2026-07-13
 
 ### Backfill complete — final accounting
@@ -616,3 +670,27 @@ Same leaderboard at min 150 IR (tiebreak `irs_pct DESC, ir DESC`), plus a positi
 -- audit: same grouping, selecting p.position, SUM(innings_pitched), SUM(wins), SUM(saves)
 ```
 **Result:** All 25 are position `P` with 297–1,952 career IP — no hitters, just name doppelgängers (Reggie Cleveland '70s SP, Doug Bird, Miguel Batista, the '80s reliever Bob Gibson, reliever Nelson Cruz). Hitters can't qualify structurally: IR only exists on `stat_group='pitching'` rows, and position players who pitch never approach 50+ IR. Min-150 leaders: Dale Murray 44.6% (175/392, 1974–85), Joe Beckwith 43.4%, Reggie Cleveland 43.2%; active-era names: Derek Law 40.4%, Alex Wilson 40.1%.
+## 2026-07-18
+
+### Create pitch_telestrations table (migration)
+Additive table for saved telestrator markups (Videos page). RLS owner-only, mirrors `pitch_playlists`. DDL in `scripts/create-pitch-telestrations.sql`.
+```sql
+create table if not exists public.pitch_telestrations (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 120),
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  row_key text not null, clip jsonb not null, strokes jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+-- + owner/row_key index, RLS enable, owner-only policy
+```
+**Result:** applied (migration `pitch_telestrations`). Verified: 0 rows, rls_enabled=true, policy_count=1.
+
+### Pitch-video backfill status check
+```sql
+select status, count(*), pg_size_pretty(sum(size_bytes)), max(downloaded_at) from pitch_videos group by status;
+select count(*) filter (where downloaded_at > now()-interval '1 hour') as dl_1h,
+       count(*) filter (where downloaded_at > now()-interval '24 hours') as dl_24h from pitch_videos;
+```
+**Result:** downloaded 850,364 (4.23 TB) · pending 333,931 · missing 153,584 · failed 43,596. Rate 4,298/hr (88k/24h). Last download 2026-07-18 17:16 UTC — worker live. failed@6attempts=0 (still retrying).

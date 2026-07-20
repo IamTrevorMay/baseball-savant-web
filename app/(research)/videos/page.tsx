@@ -22,6 +22,10 @@ import { zipSync } from 'fflate'
 import { supabase } from '@/lib/supabase'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
 import type { PlayerResult } from '@/lib/types'
+import type { ClipRow as VideoRow } from '@/lib/video/types'
+import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl } from '@/lib/video/clip'
+import Telestrator from '@/components/videos/Telestrator'
+import PitchOverlay from '@/components/videos/PitchOverlay'
 
 const PITCH_TYPES: [string, string][] = [
   ['FF', 'Four-Seam'], ['SI', 'Sinker'], ['FC', 'Cutter'],
@@ -81,32 +85,6 @@ const EMPTY_FILTERS: Filters = {
   onlyArchived: true,
 }
 
-interface VideoRow {
-  game_pk: number
-  game_date: string
-  at_bat_number: number
-  pitch_number: number
-  player_name: string
-  batter_name: string
-  pitch_type: string | null
-  pitch_name: string | null
-  release_speed: number | null
-  balls: number | null
-  strikes: number | null
-  outs_when_up: number | null
-  inning: number | null
-  inning_topbot: string | null
-  home_team: string
-  away_team: string
-  events: string | null
-  description: string | null
-  launch_speed: number | null
-  launch_angle: number | null
-  status: string | null
-  video_url: string | null
-  savant_url: string | null
-}
-
 interface Playlist {
   id: string
   name: string
@@ -133,26 +111,6 @@ interface HistoryEntry {
   result_count: number | null
   created_at: string
 }
-
-const label = (s: string | null) => String(s || '').replace(/_/g, ' ')
-const titleCase = (s: string | null) => label(s).replace(/\b\w/g, c => c.toUpperCase())
-
-// "Palmquist, Carson" → "Carson Palmquist"
-function flipName(name: string | null): string {
-  const parts = String(name || '').split(',')
-  if (parts.length === 2) return `${parts[1].trim()} ${parts[0].trim()}`
-  return String(name || '').trim()
-}
-
-const outcome = (row: VideoRow) => titleCase(row.events || row.description || 'Unknown')
-
-// [Pitcher] to [Hitter] [Pitch Type] [Count] [Outcome].mp4
-function clipFilename(row: VideoRow): string {
-  const raw = `${flipName(row.player_name)} to ${flipName(row.batter_name)} ${row.pitch_type || 'NA'} ${row.balls ?? '-'}-${row.strikes ?? '-'} ${outcome(row)}`
-  return `${raw.replace(/[^\w\-. ]+/g, '').replace(/\s+/g, ' ').trim()}.mp4`
-}
-
-const rowKey = (row: VideoRow) => `${row.game_pk}-${row.at_bat_number}-${row.pitch_number}`
 
 interface GameOption {
   game_pk: number
@@ -246,6 +204,7 @@ export default function VideosPage() {
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [modal, setModal] = useState<{ clips: VideoRow[]; index: number } | null>(null)
+  const [telestrateRow, setTelestrateRow] = useState<VideoRow | null>(null)
   const [savantMp4, setSavantMp4] = useState<Record<string, string | null>>({})
   const [resolvingKey, setResolvingKey] = useState<string | null>(null)
 
@@ -258,7 +217,8 @@ export default function VideosPage() {
   // Playlist view — DB-backed personal playlists (pitch_playlists +
   // pitch_playlist_items, RLS owner-only). Items snapshot the pitch row as
   // jsonb so playback works without re-running the search.
-  const [view, setView] = useState<'search' | 'playlist'>('search')
+  const [view, setView] = useState<'search' | 'playlist' | 'overlay'>('search')
+  const [overlayClips, setOverlayClips] = useState<[VideoRow, VideoRow] | null>(null)
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([])
@@ -585,17 +545,9 @@ export default function VideosPage() {
     if (row.video_url) return row.video_url
     const key = rowKey(row)
     if (savantMp4[key] !== undefined) return savantMp4[key]
-    try {
-      const res = await fetch(
-        `/api/pitch-video?game_pk=${row.game_pk}&ab=${row.at_bat_number}&pitch=${row.pitch_number}&resolve_mp4=true`,
-      )
-      const json = await res.json().catch(() => ({}))
-      const url: string | null = json?.row?.savant_mp4_url || null
-      setSavantMp4(m => ({ ...m, [key]: url }))
-      return url
-    } catch {
-      return null
-    }
+    const url = await resolveClipUrl(row)
+    setSavantMp4(m => ({ ...m, [key]: url }))
+    return url
   }
 
   const downloadClip = async (row: VideoRow): Promise<boolean> => {
@@ -901,7 +853,7 @@ export default function VideosPage() {
           <p className="text-xs text-zinc-600">Pitch video archive — search, review, download</p>
         </div>
         <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 ml-3">
-          {(['search', 'playlist'] as const).map(v => (
+          {(['search', 'playlist', 'overlay'] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -924,6 +876,11 @@ export default function VideosPage() {
 
       <div className="flex gap-5 items-start">
         {view === 'playlist' && renderPlaylistView()}
+        {view === 'overlay' && (
+          overlayClips
+            ? <PitchOverlay clips={overlayClips} onExit={() => { setOverlayClips(null); setView('search') }} />
+            : <div className="flex-1 py-24 text-center text-sm text-zinc-600">Select exactly 2 pitches in the Search view and hit <span className="text-sky-400">Overlay</span>.</div>
+        )}
         {view === 'search' && (<>
         {/* ── Left: filters ── */}
         <div className="w-[260px] shrink-0 space-y-3">
@@ -1145,6 +1102,9 @@ export default function VideosPage() {
                 ) : selectedRows.length > 0 ? (
                   <>
                     <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={openPlaylist}>View selected</button>
+                    {selectedRows.length === 2 && (
+                      <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setOverlayClips([selectedRows[0], selectedRows[1]]); setView('overlay') }}>Overlay</button>
+                    )}
                     <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => setAddPicker({ rows: selectedRows })}>Add to playlist</button>
                     <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => runBatchDownload(selectedRows)}>Download</button>
                     <button className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400`} onClick={() => setSelectedKeys(new Set())}>Clear</button>
@@ -1201,6 +1161,15 @@ export default function VideosPage() {
                             {!row.video_url && (
                               <span className="text-[11px] italic text-zinc-600 mr-1.5" title={`Status: ${row.status || 'not archived'} — downloads via Savant CDN`}>{row.status || 'not archived'}</span>
                             )}
+                            <button
+                              className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-sky-400 hover:bg-zinc-800 mr-1"
+                              title="Telestrate this pitch"
+                              onClick={() => setTelestrateRow(row)}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" />
+                              </svg>
+                            </button>
                             <button
                               className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-emerald-400 hover:bg-zinc-800"
                               title={row.video_url ? 'Download clip' : 'Download via Savant'}
@@ -1298,6 +1267,7 @@ export default function VideosPage() {
                   <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalNext} disabled={modal.index === modal.clips.length - 1}>Next ›</button>
                 </>
               )}
+              <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setModal(null); setTelestrateRow(modalClip) }}>Telestrate</button>
               <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => downloadClip(modalClip)}>Download</button>
               <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-emerald-400">Savant ↗</a>
             </div>
@@ -1356,6 +1326,11 @@ export default function VideosPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Telestrator ── */}
+      {telestrateRow && (
+        <Telestrator row={telestrateRow} onClose={() => setTelestrateRow(null)} />
       )}
     </div>
   )
