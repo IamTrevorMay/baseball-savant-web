@@ -2,6 +2,17 @@
 
 ## Recently Completed
 
+### MEchanics — Biomechanics Lab v1 (July 2026)
+Captury / OptiTrack pitching capture → kinematic assessment → athlete Compete profile. Kinematics-only v1; kinetics/torque deferred to force plates. Design + full guide: `docs/mechanics.md`.
+
+**Shipped:**
+- **Pipeline** (`lib/mechanics/`) — C3D binary parser (`c3d.ts`, Intel float/int + CSV-curves fallback), Captury→canonical joint mapper (`captureSchema.ts`), throw segmentation + foot-contact/MER/release event detection (`events.ts`), six-bucket metric extraction with session-median aggregation (`metrics.ts`), metric registry + norm bands (`norms.ts`), percentile ranking (`percentile.ts`), flag engine ranked by divergence × velo-correlation (`flags.ts`) → named interventions (`interventions.ts`), report payload + movement grade (`reportPayload.ts`), jsPDF render (`pdf.ts`), and the `process.ts` orchestrator.
+- **Schema** (`scripts/create-biomech-captures.sql`) — `biomech_captures` / `biomech_throws` (session/child, mirrors compete_pitches) + `assessment_norms` (17 metrics × 4 levels, OpenBiomechanics stand-in). RLS via `owns_athlete_profile()`. Private `biomech-captures` + public `biomech-reports` buckets. Widened `compete_reports.subject_type` CHECK to allow `biomech`.
+- **Routes** — `POST /api/mechanics/upload` (store raw C3D + run pipeline), `GET /api/mechanics/captures[/id]`, `POST /api/mechanics/report` (publish to `compete_reports` + notification).
+- **UI** — Mechanics Lab admin page (upload, session browser, capture detail with live report preview + publish); Compete report viewer extended for `subject_type='biomech'` with interactive tiles + longitudinal `BiomechTrend`.
+
+**Not done (deferred v2):** force-plate ingest + inverse-dynamics kinetics, regression torque estimate, PULSE workload / A:C ratio, mph-per-torque efficiency index, 3D skeleton playback.
+
 ### Videos — Telestrator & Overlay (July 2026)
 Two tools on the Videos page, both browser-only over a shared `lib/video/` foundation (clip→blob loader, frame-fed recorder, seek helper). Design: `docs/videos-telestrator-overlay.md`.
 
