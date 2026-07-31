@@ -1,7 +1,7 @@
 # Soto's Brain — Index
 
 > Read `SOTO.md` for the persona and `context/triton-context.md` for the platform/facility/operator
-> this brain serves. This index is the map: 76 reference docs across 7 domains, plus 7 applied
+> this brain serves. This index is the map: 78 reference docs across 7 domains, plus 7 applied
 > playbooks that translate each domain into specific Triton / Neptune / Trevor recommendations.
 > Each doc has a TL;DR up top, inline evidence grades (proven/promising/plausible/debunked), and
 > cited sources at the bottom. All docs built 2026-07-19 from deep web research (12–25 sources each).
@@ -25,12 +25,14 @@
 - [04-arm-action-shoulder.md](biomechanics/04-arm-action-shoulder.md) — Layback/MER (~170°, ~30° true GH), IR velocity 7000–9500°/s, arm slot as trunk tilt, scapular loading, foot-plant timing, arm-path velocity/torque dial, inverted-W debunked, slot-lowering VAA trend.
 - [05-elbow-forearm-kinetics.md](biomechanics/05-elbow-forearm-kinetics.md) — Valgus torque by level (youth 18–35 → pro 90–120 N·m), UCL failure ~22–35 N·m and the stress-shielding paradox, per-pitch-type load, pronation myth-busting, measurement error bars (Motus −38.7%), cumulative valgus/ACWR.
 - [06-release-mechanics-extension.md](biomechanics/06-release-mechanics-extension.md) — Release-point consistency benchmarks, extension & perceived velocity (~1.7 mph/ft), release height × VAA, hand/finger spin contribution, spin trainability vs velocity-yoking, release scorecard.
-- [07-motion-capture-technology.md](biomechanics/07-motion-capture-technology.md) — Marker vs markerless vs IMU accuracy tradeoffs, KinaTrax/Hawk-Eye/Theia3D specs+costs, Driveline PULSE workload, pitchAI/Uplift phone mocap validation, facility buy-tiers.
+- [07-motion-capture-technology.md](biomechanics/07-motion-capture-technology.md) — Marker vs markerless vs IMU accuracy tradeoffs, KinaTrax/Hawk-Eye/Theia3D specs+costs, Driveline PULSE workload, pitchAI/Uplift phone mocap validation, facility buy-tiers. (See 13/14 for the OptiTrack+Motive/Captury build path.)
 - [08-biomechanical-assessment.md](biomechanics/08-biomechanical-assessment.md) — Assessment battery (mocap/force-plate/ROM/ball-tracking), ASMI & Driveline protocols, varus torque ~100 N·m velocity trade-off, phase norms by level, six-page report, flag-to-drill, 6-week re-assess.
 - [09-mechanics-velocity-relationships.md](biomechanics/09-mechanics-velocity-relationships.md) — Which mechanics actually correlate with velo: separation limits, stride effect sizes, lead-leg block, lean mass/CMJ power, ML velocity prediction ceiling (R²~0.74), trainable-lever hierarchy.
 - [10-mechanics-injury-relationships.md](biomechanics/10-mechanics-injury-relationships.md) — Evidence-quality problem, UCL torque/failure paradox (60–120 vs 32 N·m), velocity as top UCL risk (OR 1.20/mph), inverted-W debunked, weighted-ball 24% injury rate, screening approaches.
 - [11-delivery-variability-motor-learning.md](biomechanics/11-delivery-variability-motor-learning.md) — Variability signal-vs-noise, release ellipse benchmarks, external vs internal cueing (d≈0.48), constraints-led, differential learning (retention d=0.61), 7-step protocol to make a mechanic stick.
 - [12-youth-development-biomechanics.md](biomechanics/12-youth-development-biomechanics.md) — Peak height velocity timing, biological vs chronological age (Mirwald), youth vs adult torque (absolute vs BW-normalized), stage-appropriate work, early-specialization risk, LTAD critique.
+- [13-optitrack-camera-systems.md](biomechanics/13-optitrack-camera-systems.md) — OptiTrack hardware for a pitching/hitting volume: PrimeX 22 full spec sheet (360 Hz, 2.2 MP, 2.8 ms, ±0.2 mm), the 13/13W/41/41W/120/SlimX/Prime Color/Flex lineup, when 22 beats 13/41 (frame rate > resolution), camera-count-for-a-volume math (8–12 cam, ~4×4×2.5 m, occlusion not range), pricing reality.
+- [14-motive-captury-mocap-fork.md](biomechanics/14-motive-captury-mocap-fork.md) — The architectural fork: same PrimeX cameras feed Motive (marker-based) OR Captury Live (markerless). Motive workflow/exports (CSV/C3D/FBX/BVH/TRC, Y-up meters, NatNet streaming) and the kinematics-only limit (kinetics need Motive→Visual3D + force plates). Captury on OptiTrack (Duplex/MJPEG), graded validation, SDK/streaming, licensing. Hybrid recommendation + Triton `capture_system`/C3D-ingest schema implications. **§8: the exact Captury export config (C3D, Z-up, mm, MB/HIK naming) the Triton MEchanics pipeline requires — see `docs/mechanics-capture-sop.md` for the operator SOP.**
 
 ## Domain 2: Pitch Design (`pitch-design/`)
 - [01-pitch-flight-physics.md](pitch-design/01-pitch-flight-physics.md) — Magnus/drag budget, spin rate vs efficiency vs gyro degree, seam-shifted wake, observed vs inferred axis, altitude/temp/ball drag, TrackMan-Rapsodo-Statcast vocab, level benchmarks.

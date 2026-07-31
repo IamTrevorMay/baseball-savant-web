@@ -3,6 +3,10 @@
 Captury / OptiTrack pitching capture → kinematic assessment → athlete Compete profile.
 Kinematics-only v1 (kinetics/torque deferred to force plates + inverse dynamics).
 
+> **Capturing a session at the lab?** Follow `docs/mechanics-capture-sop.md` — the operator manual
+> for shooting a Captury bullpen that drops cleanly into this pipeline (export config: **C3D, Z-up,
+> mm, MotionBuilder/HIK naming**; 3-phase protocol; TrackMan sync; upload + QC loop).
+
 ## Pipeline
 
 ```

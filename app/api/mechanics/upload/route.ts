@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { processC3D } from '@/lib/mechanics/process'
 import type { AthleteLevel } from '@/lib/mechanics/types'
-import type { Hand } from '@/lib/mechanics/events'
+import type { Hand, UpAxis } from '@/lib/mechanics/events'
 
 // Ingest a Captury C3D capture: store raw file, run the biomech pipeline, persist
 // the session + per-throw metrics. Admin only. Server-side parse (binary + heavy).
@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
   const level = ((form.get('level') as string | null) || 'pro') as AthleteLevel
   const veloContext = (form.get('velo_context') as string | null) || null
   const notes = (form.get('notes') as string | null) || null
+  // Up-axis override. The pipeline hard-defaults to Z-up (biomech-standard C3D); this
+  // lets a Y-up export (e.g. a Captury preset that can't emit Z-up + mm + HIK together)
+  // be corrected at ingest instead of silently producing wrong tilt / foot-contact / HSS.
+  const upAxisRaw = (form.get('up_axis') as string | null)?.toLowerCase()
+  const upAxis: UpAxis = upAxisRaw === 'x' || upAxisRaw === 'y' ? upAxisRaw : 'z'
 
   if (!(file instanceof File) || !athleteId) {
     return NextResponse.json({ error: 'file and athlete_id are required' }, { status: 400 })
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
       notes,
       raw_file_path: rawPath,
       status: 'processing',
-      raw_meta: { file_name: file.name, size: buf.byteLength },
+      raw_meta: { file_name: file.name, size: buf.byteLength, up_axis: upAxis },
     })
     .select('id')
     .single()
@@ -71,7 +76,7 @@ export async function POST(req: NextRequest) {
   // Run the pipeline.
   let processed
   try {
-    processed = processC3D(buf, { hand, level, heightMm })
+    processed = processC3D(buf, { hand, level, heightMm, upAxis })
   } catch (e) {
     await supabaseAdmin.from('biomech_captures')
       .update({ status: 'failed', raw_meta: { error: String(e), file_name: file.name } })
@@ -107,7 +112,7 @@ export async function POST(req: NextRequest) {
       frame_rate: processed.frameRate,
       throw_count: processed.throws.length,
       raw_meta: {
-        file_name: file.name, size: buf.byteLength,
+        file_name: file.name, size: buf.byteLength, up_axis: upAxis,
         qc: processed.qc,
       },
     })
@@ -115,6 +120,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     captureId: capture.id,
+    upAxis,
     throwsDetected: processed.qc.throwsDetected,
     throwsUsed: processed.qc.throwsUsed,
     unmappedJoints: processed.qc.unmappedJoints,
