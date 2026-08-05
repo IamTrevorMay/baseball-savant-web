@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: capture } = await supabaseAdmin
     .from('biomech_captures')
-    .select('*, athlete_profiles(player_id, profiles(full_name, display_name))')
+    .select('*, athlete_profiles(player_id, throws, height_in, profiles(full_name, display_name))')
     .eq('id', id).single()
   if (!capture) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -47,6 +47,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       system: capture.capture_system,
       notes: capture.notes,
       rawMeta: capture.raw_meta,
+      hasRaw: !!capture.raw_file_path,
+      // drives limb colouring and which arm the reviewer's overlays follow
+      hand: (a?.throws || 'R').toUpperCase().startsWith('L') ? 'L' : 'R',
+      heightIn: a?.height_in ?? null,
     },
     throws: throws ?? [],
     latestReport: report && report.metadata?.captureId === id ? report : null,

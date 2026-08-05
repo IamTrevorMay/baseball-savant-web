@@ -694,3 +694,38 @@ select count(*) filter (where downloaded_at > now()-interval '1 hour') as dl_1h,
        count(*) filter (where downloaded_at > now()-interval '24 hours') as dl_24h from pitch_videos;
 ```
 **Result:** downloaded 850,364 (4.23 TB) · pending 333,931 · missing 153,584 · failed 43,596. Rate 4,298/hr (88k/24h). Last download 2026-07-18 17:16 UTC — worker live. failed@6attempts=0 (still retrying).
+
+## 2026-07-31
+
+### MEchanics pipeline readiness audit
+```sql
+-- table existence
+select ... information_schema.tables for biomech_captures/biomech_throws/assessment_norms/athlete_profiles/compete_reports;
+-- data readiness
+select (select count(*) from assessment_norms) as norms_rows,
+       (select count(distinct level) from assessment_norms) as norms_levels,
+       (select count(*) from athlete_profiles) as athletes_total,
+       (select count(*) from athlete_profiles where height_in is not null and throws is not null) as athletes_ready,
+       (select count(*) from biomech_captures) as captures_so_far,
+       (select count(*) from storage.buckets where id in ('biomech-captures','biomech-reports')) as biomech_buckets;
+-- capture provenance (synthetic vs real)
+select c.status, c.capture_system, c.frame_rate, c.throw_count, (c.raw_file_path is not null) as has_raw_file,
+       count(t.id) as throw_rows,
+       (select count(*) from compete_reports r where r.subject_type='biomech' and r.metadata->>'captureId'=c.id::text) as reports
+from biomech_captures c left join biomech_throws t on t.capture_id=c.id group by c.id,... ;
+```
+**Result:** All 5 tables deployed; both storage buckets present. Norms seeded (68 rows, 4 levels). 3 athlete_profiles, all with height_in+throws. 6 captures exist but **all `has_raw_file=false`** → synthetic seed (processCanonical), 8 throws + 1 report each, frame_rate 240, capture_system `captury_optitrack`. Conclusion: downstream pipeline proven end-to-end on synthetic data; real-C3D ingest path (parseC3D + label mapping) never exercised with an actual Captury file.
+
+## 2026-08-05
+
+### athlete_profiles lookup for demo C3D generation
+```sql
+select column_name, data_type from information_schema.columns
+where table_name = 'athlete_profiles' order by ordinal_position;
+
+select ap.id, p.full_name, ap.throws, ap.height_in, ap.weight_lbs, ap.position, ap.current_team
+from athlete_profiles ap
+left join profiles p on p.id = ap.profile_id
+order by ap.created_at;
+```
+**Result:** 3 profiles. Trevor May `da83a6a6…` R, 77", 265 lb, RHP; EJ `d52e66fe…` R, 74", 190 lb, RHP; unnamed `e409d7f0…` R, 77". Needed because `/api/mechanics/upload` derives hand + `heightMm` from this row, and `heightMm` directly scales `strideLengthPct` — the generated capture geometry must match the athlete it will be uploaded against. (Schema note: columns are `weight_lbs`/`height_in`; names live on `profiles.full_name`, not `athlete_profiles`.)

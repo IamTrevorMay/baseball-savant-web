@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const athleteId = req.nextUrl.searchParams.get('athlete_id')
   let q = supabaseAdmin
     .from('biomech_captures')
-    .select('id, athlete_profile_id, capture_date, level, velo_context, status, throw_count, capture_system, created_at, athlete_profiles(profiles(full_name, display_name))')
+    .select('id, athlete_profile_id, capture_date, level, velo_context, status, throw_count, capture_system, created_at, raw_file_path, athlete_profiles(profiles(full_name, display_name))')
     .order('capture_date', { ascending: false })
     .order('created_at', { ascending: false })
   if (athleteId) q = q.eq('athlete_profile_id', athleteId)
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
     throwCount: c.throw_count,
     system: c.capture_system,
     createdAt: c.created_at,
+    // whether a raw C3D exists to render — seeded captures have none
+    hasRaw: !!c.raw_file_path,
   }))
   return NextResponse.json({ captures })
 }

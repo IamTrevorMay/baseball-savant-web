@@ -1,7 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import BiomechReport from '@/components/mechanics/report/BiomechReport'
+
+// three.js has no business running during SSR, and the viewer is only reachable after
+// a capture is selected — so keep it out of the initial bundle entirely.
+const SkeletonViewer = dynamic(() => import('@/components/mechanics/SkeletonViewer'), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 text-sm text-zinc-500">
+      Loading reviewer…
+    </div>
+  ),
+})
 import { aggregateSession } from '@/lib/mechanics/metrics'
 import { rankSession } from '@/lib/mechanics/percentile'
 import { computeFlags } from '@/lib/mechanics/flags'
@@ -12,6 +24,7 @@ interface Athlete { id: string; name: string; team: string | null }
 interface CaptureRow {
   id: string; athleteProfileId: string; athleteName: string; captureDate: string | null
   level: string; veloContext: string | null; status: string; throwCount: number; system: string
+  hasRaw?: boolean; hand?: 'R' | 'L'
 }
 interface ThrowRow {
   id: string; throw_no: number; frame_foot_contact: number | null; frame_mer: number | null
@@ -246,6 +259,20 @@ function CaptureDetail({ captureId, onBack }: { captureId: string; onBack: () =>
           </button>
         </div>
       </div>
+
+      {capture && (
+        <div className="mb-6">
+          <SkeletonViewer
+            key={captureId}
+            captureId={captureId}
+            athleteProfileId={capture.athleteProfileId}
+            captureDate={capture.captureDate}
+            hand={capture.hand ?? 'R'}
+            throws={throws}
+            hasRaw={capture.hasRaw ?? false}
+          />
+        </div>
+      )}
 
       {payload && <BiomechReport payload={payload} />}
 
