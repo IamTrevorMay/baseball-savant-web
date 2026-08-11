@@ -818,3 +818,522 @@ where rolname in ('authenticator','service_role','anon','authenticated','postgre
 This is the actual cause of the coverage decay, superseding the earlier "baseline scan starves the UPDATE" reading: the nightly UPDATE covered the ingest's full 3-day window (~12k rows × 29 indexes) in one statement, and crossed 8s as the 2026 table grew. Empirical threshold on 2026 data (via `/api/admin/backfill-stuff-plus?mode=rescore`): `chunkDays=1` (~4k rows) **ok**, `chunkDays=2` (~8k) **ok**, `chunkDays=3` (~11k) **timeout**. Post-fix, `applyStuffPlusForDateRange('2026-08-04','2026-08-06')` runs 3 per-day statements in **4.2s** total.
 
 Verified idempotent: rescoring 2026-08-04..08-06 reproduced identical monthly averages (Aug 100.19 before and after), so the Povich figures above are unaffected.
+
+### Expectation-suite research — `integrity_checks` history, has any check ever failed?
+```sql
+SELECT check_name, status, count(*) AS n, min(created_at)::date AS first_seen,
+       max(created_at)::date AS last_seen, max(found) AS max_found
+FROM integrity_checks GROUP BY 1,2 ORDER BY 1,2;
+
+SELECT (SELECT max(game_date) FROM pitches)                              AS max_pitch_date,
+       (SELECT count(*) FROM players)                                    AS players_rows,
+       (SELECT count(*) FROM integrity_checks)                           AS integrity_rows,
+       (SELECT count(*) FROM integrity_checks WHERE status='fail')       AS fails,
+       (SELECT count(DISTINCT created_at::date) FROM integrity_checks)   AS run_days;
+```
+**Result:** 776 check rows over **95 distinct run days** (2026-05-08 → 2026-08-11) across 8 checks, and **zero rows with `status='fail'` — ever.** Chronic un-actioned warns: `materialized_views` warn ×56 since 2026-06-14, `new_pitch_names` warn ×54 (max 8 unknown pitch names), `pitch_baselines` warn ×47 since 2026-06-26. Also: `players` = **16,924 rows** (CLAUDE.md says 4,017 — stale) and `max(pitches.game_date)` = 2026-08-09 vs today 2026-08-11, i.e. a **2-day** normal lag, so a naive `max(game_date) >= today - 1` freshness assertion would false-alarm.
+
+### Assertion cost benchmarking on `pitches` — do candidate expectations fit under the 8s cap?
+```sql
+-- coverage (trailing 7 days)
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) AS total, count(stuff_plus) AS scored
+FROM pitches WHERE game_date >= CURRENT_DATE - INTERVAL '7 days';
+
+-- uniqueness (trailing 7 days vs trailing 2 days)
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM (
+  SELECT game_pk, at_bat_number, pitch_number FROM pitches
+  WHERE game_date >= CURRENT_DATE - INTERVAL '7 days'
+  GROUP BY 1,2,3 HAVING count(*) > 1) d;
+
+-- referential (trailing 7 days)
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(DISTINCT p.pitcher)
+FROM pitches p LEFT JOIN players pl ON pl.id = p.pitcher
+WHERE p.game_date >= CURRENT_DATE - INTERVAL '7 days' AND pl.id IS NULL;
+
+-- combined coverage + range, scoped to the 3-day ingest window
+EXPLAIN (ANALYZE, BUFFERS) SELECT game_date, count(*) AS n, count(stuff_plus) AS scored,
+       min(stuff_plus) AS lo, max(stuff_plus) AS hi
+FROM pitches WHERE game_date >= CURRENT_DATE - INTERVAL '3 days' GROUP BY 1;
+```
+**Result:** All plans use `idx_pitches_game_date` — no seq scans on `pitches`. Timings: **coverage 7d = 9,923 ms cold / 529 ms warm** (5,536 vs 67 shared reads) — the cold run *exceeds the 8s cap*; **uniqueness 7d = 18,302 ms cold / 4,509 ms warm** (25,506 rows, 0 duplicates) — over the cap even warm-ish; **uniqueness 2d = 16.4 ms** (4,535 rows, 467 buffers); **referential 7d = 1,346 ms** warm (Hash Anti Join, but seq-scans `players` at 16,924 rows, 135 reads), 0 orphans; **coverage+range 3d = 15.3 ms** (9,078 rows, 1,166 buffers). Current trailing-7d Stuff+ coverage: **25,400/25,506 = 99.6%** (post-fix, healthy). Conclusion: assertion cost is dominated by cold buffer reads, not row count, and the 7-day window is *not* safely runnable through `run_query`. Scope assertions to the 2–3 day ingest window and roll trailing-week checks off a persisted daily metrics table.
+
+### Live Postgres monitoring survey (Jo — `Jo/postgres-performance/10-monitoring-postgres.md`)
+
+Server/extension inventory, statistics-view survey, and a timeout-censoring experiment, run to ground the monitoring reference doc in measured values rather than assumptions. Read-only except the `pg_sleep` probes.
+
+```sql
+-- 1. Server + monitoring config inventory
+SELECT version(), current_setting('server_version_num'),
+  (SELECT setting FROM pg_settings WHERE name='shared_preload_libraries'),
+  (SELECT setting FROM pg_settings WHERE name='pg_stat_statements.max'),
+  (SELECT setting FROM pg_settings WHERE name='track_io_timing'),
+  (SELECT to_regclass('pg_stat_io')::text);
+
+-- 2. auto_explain + autovacuum + memory settings
+SELECT name, setting, unit FROM pg_settings
+WHERE name LIKE 'auto_explain%' OR name IN ('statement_timeout','lock_timeout',
+  'idle_in_transaction_session_timeout','shared_buffers','effective_cache_size','work_mem',
+  'max_connections','autovacuum_vacuum_scale_factor','autovacuum_vacuum_threshold') ORDER BY name;
+
+-- 3. Role config (the 8s ceiling, from the catalog)
+SELECT rolname, coalesce(array_to_string(rolconfig,', '),'(none)')
+FROM pg_roles WHERE rolname IN ('authenticator','service_role');
+
+-- 4. Dead tuples / HOT ratio / autovacuum staleness per table
+SELECT relname, n_live_tup, n_dead_tup,
+  round(100.0*n_dead_tup/nullif(n_live_tup+n_dead_tup,0),2) AS dead_pct,
+  seq_scan, idx_scan, n_tup_upd, n_tup_hot_upd, last_autovacuum, autovacuum_count
+FROM pg_stat_user_tables WHERE n_live_tup > 10000 ORDER BY n_dead_tup DESC LIMIT 15;
+
+-- 5. All 29 indexes on pitches, by usage
+SELECT i.indexrelname, s.idx_scan, pg_relation_size(i.indexrelid) AS bytes,
+  ix.indisunique, ix.indisprimary
+FROM pg_stat_user_indexes i JOIN pg_stat_user_indexes s USING (indexrelid)
+JOIN pg_index ix ON ix.indexrelid = i.indexrelid
+WHERE i.relname = 'pitches' ORDER BY s.idx_scan ASC, bytes DESC;
+
+-- 6. pg_stat_statements: window, top by total time, and saturation vs the 8s cap
+SELECT stats_reset, dealloc FROM extensions.pg_stat_statements_info;
+SELECT calls, total_exec_time, mean_exec_time, max_exec_time, stddev_exec_time, query
+FROM extensions.pg_stat_statements ORDER BY total_exec_time DESC LIMIT 12;
+SELECT round((max_exec_time/8000.0*100)::numeric,1) AS pct_of_8s, calls, mean_exec_time, max_exec_time
+FROM extensions.pg_stat_statements WHERE max_exec_time BETWEEN 7000 AND 8100 AND calls > 5
+ORDER BY max_exec_time DESC;
+
+-- 7. Cache hit ratio, connections, wait events
+SELECT round((sum(heap_blks_hit)*100.0/nullif(sum(heap_blks_hit)+sum(heap_blks_read),0))::numeric,3)
+FROM pg_statio_user_tables;
+SELECT wait_event_type, wait_event, state, count(*) FROM pg_stat_activity GROUP BY 1,2,3 ORDER BY 4 DESC;
+
+-- 8. Does run_query reach pg_stat_statements? (search_path = public, extensions)
+SELECT public.run_query('select count(*) as n from pg_stat_statements');
+
+-- 9. EXPERIMENT: are timed-out statements recorded in pg_stat_statements?
+SET LOCAL statement_timeout = '300ms';
+SELECT pg_sleep(5)   /* jo_timeout_probe_A */;          -- expect ERROR 57014
+SELECT pg_sleep(0.2) /* jo_timeout_probe_B_control */;  -- expect success
+SELECT calls, mean_exec_time, query FROM extensions.pg_stat_statements
+WHERE query ILIKE '%jo_timeout_probe%';
+```
+**Result:** PostgreSQL **17.6**; `pg_stat_statements` **1.11 installed** (schema `extensions`, `max=5000`, `track=top`), window `2026-04-07 23:39` → `2026-08-11 20:04 UTC` with **`dealloc = 0`** (2,470/5,000 entries — no eviction, complete window). `auto_explain` **is** in `shared_preload_libraries` but `log_min_duration = 10000 ms`, i.e. **above the 8s `authenticator` cap — it can never fire on the `run_query` path**; `log_nested_statements = off` also hides RPC bodies. `track_io_timing = off` (all I/O timing columns are zero). `authenticator` rolconfig confirmed as `statement_timeout=8s, lock_timeout=8s`; `service_role` = `(none)`. **Saturation:** `run_query` 50,548 calls / mean 381.0 ms / **max 7,997.0 ms (99.96% of 8,000)**; second `run_query` shape max 7,881.5 ms (98.5%); **`pitches` ingest upsert max 7,587.6 ms (94.8%)**; `refresh_player_summary()` mean 103,311 ms / **max 119,926.5 ms (99.94% of the 120s ceiling)**. **`pitches`:** 8,891,054 live / **1,437,923 dead (13.92%)**, autovacuum trigger `50+0.2×8.89M = 1,778,261` so it sits at **80.9% of threshold**, `autovacuum_count=1`, `last_autovacuum` **2026-05-17** (86 days); HOT ratio **4.0%** (85,867/2,142,692) vs `sos_scores` **96.1%** and `player_season_stats` 77.1%; seq_scan 781 vs idx_scan 14,032,565. **Indexes:** 9 of 29 have `idx_scan = 0` totalling **~1.48 GB**, of which **~1.02 GB droppable** (the 9th is `pitches_pkey` — constraint-backing, keep); largest dead ones `idx_pitches_seq` 367 MB and `idx_pitches_stuff_plus` 261 MB; busiest is `pitches_game_pk_at_bat_number_pitch_number_key` at 13,943,600 scans. Table cache hit ratio **38.51%** (`shared_buffers` 256 MB vs ~35 GB of data); 22/60 connections, 0 idle-in-transaction; wait sample = 5× `IO/DataFileRead` active, 6× `Client/ClientRead` idle. `run_query` reads `pg_stat_statements` unqualified (search_path includes `extensions`). **Experiment (key finding):** `probe_A` raised `ERROR: 57014: canceling statement due to statement timeout` and left **zero rows** in `pg_stat_statements`, while `probe_B_control` was recorded (`calls=1, mean_exec_time=201.3`) — **timed-out statements are never recorded**, so `max_exec_time` is a *censored* distribution and the Stuff+ UPDATE's three months of nightly timeouts left no trace. Note: the database became unreachable (Cloudflare 522) at ~20:13 UTC mid-survey, so `pg_stat_database` rollback/deadlock counters were not captured.
+
+### Materialized-view / rollup refresh audit (Jo brain doc `postgres-performance/08`)
+
+Function-level timeout config for every refresh + `run_*` RPC:
+```sql
+SELECT p.proname, p.prosecdef AS security_definer, p.proconfig AS function_settings,
+       pg_get_userbyid(p.proowner) AS owner
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public'
+  AND p.proname IN ('refresh_materialized_views','refresh_league_averages','refresh_league_percentiles',
+                    'refresh_player_summary','refresh_batter_summary','run_query','run_query_long','run_mutation')
+ORDER BY p.proname;
+```
+**Result:** `refresh_materialized_views`, `refresh_league_averages`, `refresh_league_percentiles` all have `proconfig = NULL` (no `statement_timeout` override) → capped at `authenticator`'s 8s. `refresh_player_summary`/`refresh_batter_summary`/`run_query_long` carry `{statement_timeout=120s, search_path=...}`. `run_query`/`run_mutation` are SECURITY DEFINER but have **no** timeout override — confirming SECURITY DEFINER alone does not raise the cap.
+
+Role-level timeout config:
+```sql
+SELECT rolname, rolconfig FROM pg_roles
+WHERE rolname IN ('authenticator','service_role','anon','authenticated','postgres');
+```
+**Result:** `authenticator` = `{session_preload_libraries=safeupdate, statement_timeout=8s, lock_timeout=8s}`; `service_role` = NULL; `authenticated` = 8s; `anon` = 3s. Confirms `SET ROLE service_role` does not escape the 8s cap.
+
+Nightly refresh cron outcomes:
+```sql
+SELECT date_trunc('day', started_at)::date AS d, count(*) AS runs,
+       count(*) FILTER (WHERE counts->'materializedViews'->>'error' IS NOT NULL) AS mv_timeout,
+       count(*) FILTER (WHERE counts->'materializedViews'->>'ok' IS NOT NULL) AS mv_ok,
+       count(*) FILTER (WHERE counts->'materializedViews'->>'skipped' IS NOT NULL) AS mv_skipped,
+       min(status) AS status
+FROM cron_runs WHERE job = 'refresh' GROUP BY 1 ORDER BY 1;
+```
+**Result:** **52 runs 2026-06-21 → 2026-08-11: 50 timed out (`canceling statement due to statement timeout`), 2 skipped, 0 succeeded — `status='success'` on all 52.** `leagueAverages` and `leaguePercentiles` carry the identical error on the same 50 nights. Cron `duration_ms` 41,670–60,150 ms, so Vercel budget was never the constraint.
+
+Marker + staleness corroboration:
+```sql
+SELECT key, value::text, updated_at FROM system_metadata
+WHERE key IN ('mv_last_refreshed','pitches_last_run');
+
+SELECT season, count(*) n, max(updated_at) AS last_updated
+FROM league_averages GROUP BY season ORDER BY season DESC LIMIT 5;
+
+SELECT c.relname, c.relkind, pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+       s.n_live_tup, s.last_analyze, s.last_autoanalyze, s.last_vacuum, s.last_autovacuum
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
+WHERE n.nspname = 'public' AND (c.relkind = 'm' OR c.relname LIKE 'mv\_%'
+  OR c.relname IN ('player_summary','batter_summary','league_averages','league_percentiles',
+                   'pitcher_season_command','pitcher_season_deception'))
+ORDER BY c.relkind, c.relname;
+```
+**Result:** `mv_last_refreshed` **does not exist** in `system_metadata` (only `pitches_last_run`, 2026-08-11, totalInserted 9,078) — the marker is written only on success and has never succeeded. `league_averages` season 2026 last updated **2026-06-26 19:48** (46 days stale). All six CONCURRENTLY-refreshed matviews last autoanalyzed 2026-06-26 19:43–19:57; `league_percentiles` 2026-06-03. Control group: `player_summary` autovacuumed 2026-08-05 and `batter_summary` 2026-08-11 — both refreshed by the two functions that carry `statement_timeout=120s`.
+
+Matview dependency graph (ordering-hazard check):
+```sql
+SELECT dependent.relname AS dependent_view, source.relname AS depends_on, source.relkind AS src_kind
+FROM pg_depend d
+JOIN pg_rewrite r ON r.oid = d.objid
+JOIN pg_class dependent ON dependent.oid = r.ev_class
+JOIN pg_class source ON source.oid = d.refobjid
+JOIN pg_namespace n ON n.oid = dependent.relnamespace
+WHERE d.classid = 'pg_rewrite'::regclass AND d.refclassid = 'pg_class'::regclass
+  AND dependent.relkind = 'm' AND n.nspname = 'public' AND dependent.oid <> source.oid
+  AND source.relkind IN ('r','m','v')
+GROUP BY 1,2,3 ORDER BY 1,2;
+```
+**Result:** Flat graph, depth 1 — all six `mv_*` plus `batter_summary` read `pitches` directly; `retro_id_map` reads `retro_people`. No matview-on-matview, so no catalog ordering hazard. (Data-level ordering hazard remains: `mv_pitcher_pitch_stats` aggregates `stuff_plus`, so it must refresh after the nightly scoring UPDATE.)
+
+**Note:** an `EXPLAIN (ANALYZE, BUFFERS)` of the `mv_pitcher_pitch_stats` defining aggregate (full scan + GROUP BY over `pitches`) did **not** return within ~2 minutes and briefly saturated the connection pool (Cloudflare 522s on subsequent calls). Do not run that shape ad hoc; it self-cancelled at the session's 120s `statement_timeout`.
+
+### Partitioning feasibility study for `pitches` / `retro_events` (Jo brain doc `06-partitioning-large-tables.md`)
+```sql
+-- 1. Full index inventory + usage for pitches (and same for retro_events)
+SELECT i.relname AS indexname, pg_size_pretty(pg_relation_size(i.oid)) AS sz,
+       s.idx_scan, pg_get_indexdef(i.oid) AS def
+FROM pg_class t
+JOIN pg_index x ON x.indrelid = t.oid
+JOIN pg_class i ON i.oid = x.indexrelid
+LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.oid
+WHERE t.relname = 'pitches'          -- then 'retro_events'
+ORDER BY pg_relation_size(i.oid) DESC;
+
+-- 2. Candidate partition-key distribution
+SELECT game_year, count(*) AS pitches FROM pitches GROUP BY game_year ORDER BY game_year;  -- run_query_long
+
+-- 3. Partitioning-relevant GUCs, extension availability, existing partitioned tables
+SELECT version(), current_setting('enable_partition_pruning'), current_setting('enable_partitionwise_join'),
+       current_setting('enable_partitionwise_aggregate'), current_setting('work_mem'),
+       current_setting('max_locks_per_transaction'),
+       (SELECT count(*) FROM pg_available_extensions WHERE name='pg_partman') AS partman_available,
+       (SELECT count(*) FROM pg_extension WHERE extname='pg_partman')        AS partman_installed,
+       (SELECT count(*) FROM pg_class WHERE relkind='p')                     AS partitioned_tables;
+SELECT n.nspname, c.relname, pg_get_partkeydef(c.oid) AS partkey,
+       (SELECT count(*) FROM pg_inherits WHERE inhparent=c.oid) AS nparts
+FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='p';
+
+-- 4. Size + bloat + autovacuum history
+SELECT relname, n_live_tup, n_dead_tup, round(100.0*n_dead_tup/NULLIF(n_live_tup,0),1) AS dead_pct,
+       last_autovacuum, autovacuum_count, vacuum_count
+FROM pg_stat_user_tables WHERE relname IN ('pitches','retro_events','milb_pitches');
+
+-- 5. Does retro_events even have a time column?
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name='retro_events'
+  AND (column_name ILIKE '%year%' OR column_name ILIKE '%season%'
+       OR column_name ILIKE '%date%' OR column_name='game_id');
+
+-- 6. Would pruning add anything? (plans quoted verbatim in the brain doc)
+EXPLAIN SELECT count(*), avg(release_speed) FROM pitches WHERE game_year=2026 AND pitch_type='FF';
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM pitches WHERE pitcher=605483 AND game_year=2025;
+```
+**Result:** PG **17.6**; `enable_partition_pruning=on`, both partition-wise GUCs `off`, `work_mem=3500kB`, `max_locks_per_transaction=64`. `pg_partman` **available but not installed**; the only partitioned table in the cluster is Supabase's own `realtime.messages` (RANGE `inserted_at`, 7 partitions). `pitches` = 8,891,054 live / **1,437,923 dead (16.2%)**, 9,707 MB total with **4,833 MB of index across 29 indexes**, and **`autovacuum_count = 1`** (last 2026-05-17) — versus 28 for `milb_pitches` and 25 for `retro_events`. **Nine `pitches` indexes have `idx_scan = 0`, totalling 1,417 MB (29% of index footprint)**, including `pitches_pkey` on `id` (370 MB, never scanned); the upsert key `(game_pk, at_bat_number, pitch_number)` has **13,943,600** scans. `retro_events` has **no date/year/season column** — only `game_id` (text). Plans: `game_year=2026 AND pitch_type='FF'` → `Index Only Scan using idx_pitches_movement`, no seq scan (so partition pruning would add ~nothing); `pitcher=605483 AND game_year=2025` → 1,063 rows but **`Heap Fetches: 914`**, 6,573.974 ms cold / 1,765.924 ms warm — stale visibility map from the missing autovacuum. Conclusion: **do not partition**; drop the 1,417 MB of unused indexes and vacuum instead.
+
+### PostgREST/Supabase architecture research (Jo brain doc 07) — 2026-08-11
+
+Role config, RPC metadata, `SET ROLE` semantics, RLS policy census, and the `jsonb_agg` wrapper cost.
+
+```sql
+-- 1. Role config: the source of the 8s ceiling
+SELECT rolname, rolconfig, rolcanlogin, rolbypassrls FROM pg_roles
+WHERE rolname IN ('authenticator','anon','authenticated','service_role','postgres',
+                  'supabase_admin','supabase_auth_admin','supabase_storage_admin','dashboard_user','pgbouncer');
+
+-- 2. The three RPCs: proconfig, security, owner, grants, source
+SELECT p.proname, p.proconfig, p.prosecdef, p.provolatile, p.proparallel,
+       pg_get_userbyid(p.proowner) AS owner, p.prosrc
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public' AND p.proname IN ('run_query','run_mutation','run_query_long');
+
+-- 3. Proof that SET ROLE does not re-apply rolconfig (both directions)
+BEGIN; SET LOCAL statement_timeout='8s'; SET LOCAL ROLE service_role;
+       SELECT current_user, current_setting('statement_timeout'); COMMIT;
+SET LOCAL ROLE authenticated; SELECT current_setting('statement_timeout');
+
+-- 4. RLS policy census + auth.uid() wrapping
+SELECT count(*) total,
+       count(*) FILTER (WHERE q ~* 'auth\.(uid|jwt|role)\(\)') uses_auth_fn,
+       count(*) FILTER (WHERE q ~* '\(\s*select\s+auth\.(uid|jwt|role)\(\)') wrapped
+FROM (SELECT coalesce(pg_get_expr(p.polqual,p.polrelid),'')||coalesce(pg_get_expr(p.polwithcheck,p.polrelid),'') q
+      FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid
+      JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public') s;
+
+-- 5. RLS cost: authenticated vs service_role on pitches
+BEGIN; SET LOCAL ROLE authenticated;
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM pitches WHERE game_date >= '2026-08-01'; ROLLBACK;
+-- (repeated with SET LOCAL ROLE service_role)
+
+-- 6. initPlan A/B on auth.uid()
+EXPLAIN ANALYZE SELECT count(*) FROM generate_series(1,200000) g WHERE g::text = auth.uid()::text;
+EXPLAIN ANALYZE SELECT count(*) FROM generate_series(1,200000) g WHERE g::text = (SELECT auth.uid())::text;
+
+-- 7. The run_query jsonb_agg wrapper cost (warm)
+EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM (SELECT * FROM pitches WHERE game_date>='2026-08-01' LIMIT 5000) t;
+EXPLAIN (ANALYZE, BUFFERS) SELECT jsonb_agg(row_to_json(t)) FROM (SELECT * FROM pitches WHERE game_date>='2026-08-01' LIMIT 5000) t;
+EXPLAIN (ANALYZE, BUFFERS) SELECT jsonb_agg(row_to_json(t)) FROM (SELECT pitcher, game_date, pitch_type, release_speed FROM pitches WHERE game_date>='2026-08-01' LIMIT 5000) t;
+-- same at LIMIT 10000 and 20000 (both aborted >120s)
+
+-- 8. Cluster settings
+SELECT name, setting, unit, source FROM pg_settings
+WHERE name IN ('max_connections','statement_timeout','lock_timeout','idle_in_transaction_session_timeout',
+               'shared_buffers','work_mem','session_preload_libraries','max_parallel_workers_per_gather');
+```
+**Result:** `authenticator` = `statement_timeout=8s, lock_timeout=8s, session_preload_libraries=safeupdate` and is the **only** login role; `anon`=3s, `authenticated`=8s, **`service_role`=NULL** (BYPASSRLS). `SET ROLE` confirmed **not** to re-apply `rolconfig` in either direction (8s survived a switch to `service_role`; 2min survived a switch to `authenticated`) — so every `run_query`/`run_mutation` call is capped at 8s. All three RPCs are `SECURITY DEFINER`, owner `postgres`, `PARALLEL UNSAFE`, EXECUTE granted to `service_role` only; only `run_query_long` carries `proconfig statement_timeout=120s`. RLS: **258 policies in `public`, 170 call `auth.uid()`/`auth.jwt()`/`auth.role()`, 0 wrapped in `(SELECT …)`**; `pitches` has a `USING (true)` policy that folds the auth check away — identical plans and 43.6/43.5 ms as `authenticated` vs `service_role`. initPlan A/B: 84.343 ms unwrapped → 50.633 ms wrapped over 200k rows. **`jsonb_agg` wrapper cost (warm, 5,000 rows): 11.9 ms unwrapped → 849 ms at 90 columns → 33.4 ms at 4 columns; 10k and 20k wide rows both exceeded 120 s and briefly took the REST API offline (Cloudflare 522, 15 statement-timeout cancellations in the Postgres log).** Cluster: `max_connections=60`, `statement_timeout=120s`, `shared_buffers=256MB`, `work_mem=3500kB`, `max_parallel_workers_per_gather=1`, PG 17.6.1 — Micro-class compute. Also found: **`pitch_videos` has RLS enabled with zero policies** (deny-all for anon/authenticated), and `auto_explain` is enabled on this project.
+
+### Capacity & storage survey (Jo — brain doc `Jo/postgres-performance/11-capacity-storage-planning.md`)
+```sql
+-- 1. Database size + version
+SELECT pg_size_pretty(pg_database_size(current_database())), pg_database_size(current_database()), version();
+
+-- 2. Per-table total/heap/index/TOAST size and bytes-per-row (public schema, top 30)
+SELECT c.relname, c.reltuples, pg_total_relation_size(c.oid), pg_indexes_size(c.oid),
+       pg_total_relation_size(c.reltoastrelid),
+       round((pg_relation_size(c.oid)/c.reltuples)::numeric,1)       AS heap_bytes_per_row,
+       round((pg_total_relation_size(c.oid)/c.reltuples)::numeric,1) AS total_bytes_per_row
+FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND c.relkind IN ('r','m','p')
+ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 30;
+
+-- 3. Scan counts, dead tuples, autovacuum recency on the large tables
+SELECT relname, seq_scan, idx_scan, n_live_tup, n_dead_tup, last_autovacuum, last_autoanalyze
+FROM pg_stat_user_tables
+WHERE relname IN ('retro_events','pitches','milb_pitches','retro_games','pitch_videos',
+                  'retro_rosters','retro_starter_outings','bat_tracking_swing_miss');
+
+-- 4. pitches rows per season, and 2026 daily rate
+SELECT date_part('year', game_date)::int AS season, count(*) FROM pitches WHERE game_date IS NOT NULL GROUP BY 1 ORDER BY 1;
+SELECT count(DISTINCT game_pk), count(*), count(DISTINCT game_date),
+       round(count(*)::numeric/NULLIF(count(DISTINCT game_date),0),0), min(game_date), max(game_date)
+FROM pitches WHERE game_date >= '2026-01-01';
+
+-- 5. Per-index size and scan counts on retro_events / retro_games
+SELECT relname, indexrelname, idx_scan, pg_relation_size(indexrelid)
+FROM pg_stat_user_indexes WHERE relname IN ('retro_events','retro_games')
+ORDER BY relname, pg_relation_size(indexrelid) DESC;
+
+-- 6. Column count, fixed-width byte total, EXTENDED (varlena) column count
+SELECT c.relname, count(*), count(*) FILTER (WHERE a.attstorage='x'),
+       sum(CASE WHEN a.attlen>0 THEN a.attlen ELSE 0 END)
+FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND a.attnum>0 AND NOT a.attisdropped
+  AND c.relname IN ('retro_events','pitches','milb_pitches','retro_games','pitch_videos') GROUP BY 1;
+
+-- 7. Storage-relevant server settings
+SELECT name, setting, unit FROM pg_settings WHERE name IN
+ ('default_toast_compression','wal_compression','shared_buffers','max_wal_size',
+  'autovacuum_vacuum_scale_factor','work_mem','maintenance_work_mem','effective_cache_size','block_size');
+
+-- 8. Installed extensions
+SELECT string_agg(extname||' '||extversion, ', ') FROM pg_extension;
+```
+**Result:** DB = **34,703,805,587 B (32.3 GiB)**, PG **17.6**, `us-east-2`. Top five tables are **99.2% of the database**: `retro_events` 20.84 GB (14,915,507 rows; heap ~17 GB, idx 2,480 MB; **1,222.5 B/row heap**), `pitches` 10.18 GB (8,877,621 rows; heap 4,874 MB, **idx 4,833 MB**; **575.5 B/row heap + 570.8 B/row index = 1,146.5 total**), `milb_pitches` 2.48 GB, `retro_games` 467 MB, `pitch_videos` 451 MB — total 34.42 GB. **This contradicts the "8GB plan / disk pressure" guidance in `CLAUDE.md`, `Soto/context/triton-context.md:47` and `planning.md:115` by ~4×.** **TOAST size is 8,192 bytes (one empty page) on all five** — zero rows have ever been TOASTed, so compression settings are inert. `pitches` seasons: ~794k/yr mean over ten non-COVID seasons, 817.8k over the last three; **2026 YTD 657,570 pitches / 168 game days = 3,914/day** over 2,224 `game_pk`. Dead tuples: `pitches` **1,437,923 (16.2%)**, `retro_events` 194,912, `retro_games` 26,723, `milb_pitches` 112,916, `pitch_videos` 51,024 ≈ **1.17 GB recoverable**; `pitches` last autovacuumed **2026-05-17 (86 days)** at **80.9% of its 1,778,261 trigger**. **`retro_events` read evidence: 12 lifetime seq scans**; `retro_events_natural_key` 15,109,674 scans is the *ingest upsert probe*, while `event_type_idx` (96 MB) has **0 scans**, `batter_game_idx` (378 MB) **2**, `game_inning_idx` (431 MB) **112** → **~905 MB of dead index**. Settings: `shared_buffers` 256 MB, `effective_cache_size` 768 MB, `work_mem` 3,500 kB, `maintenance_work_mem` 64 MB, `max_wal_size` 4 GB, `default_toast_compression` **pglz**, `wal_compression` **zstd**, `autovacuum_vacuum_scale_factor` 0.2. Extensions: `plpgsql`, `pg_stat_statements` 1.11, `uuid-ossp`, `pgcrypto`, `supabase_vault`, `pg_trgm` — **no `pg_repack`, `pgstattuple`, `pg_cron`, or `pg_partman`**. **Not captured:** `pg_ls_waldir()` and `pg_available_extensions` — the database became unreachable (connection timeout) partway through, same symptom as the earlier survey.
+
+### Distribution-drift research — pitch-type mix drift and categorical taxonomy history
+```sql
+-- 1. pitch-mix share by season (reference vs current windows for PSI/chi-square)
+SELECT game_year,
+       COUNT(*) FILTER (WHERE pitch_type='ST') AS st,
+       COUNT(*) FILTER (WHERE pitch_type='SL') AS sl,
+       COUNT(*) FILTER (WHERE pitch_type='SV') AS sv,
+       COUNT(*) FILTER (WHERE pitch_type='CU') AS cu,
+       COUNT(*) FILTER (WHERE pitch_type='KC') AS kc,
+       COUNT(*) AS total,
+       ROUND(100.0*COUNT(*) FILTER (WHERE pitch_type='ST')/COUNT(*),2) AS st_pct,
+       ROUND(100.0*COUNT(*) FILTER (WHERE pitch_type='SL')/COUNT(*),2) AS sl_pct
+FROM pitches WHERE game_year BETWEEN 2020 AND 2026 GROUP BY 1 ORDER BY 1;
+
+-- 2. new-category / disappeared-category detection: lifetime span of every pitch_type
+SELECT pitch_type, MIN(game_year) AS first_year, MAX(game_year) AS last_year, COUNT(*) AS n
+FROM pitches WHERE pitch_type IS NOT NULL GROUP BY 1 ORDER BY first_year, n DESC;
+```
+**Result:** Sweeper (`ST`) share of all pitches: **1.06% (2020) → 1.81 → 3.89 (2022) → 5.50 (2023) → 6.33 → 6.66 → 7.79% (2026)**; `SL` fell 16.36% → 14.07%. PSI computed from these six buckets (`SL`,`ST`,`SV`,`CU`,`KC`,other): **2022→2023 = 0.0082**, **2025→2026 = 0.0020** (both "no substantial change" on conventional bands), **2020→2026 = 0.144** ("moderate"). Two-sample χ² on the same 2025-vs-2026 buckets = **720.4 on 5 df, p < 10⁻¹⁰⁰** — the p-value measures sample size (n₁=826,259, n₂=657,570), not drift. **21 distinct `pitch_type` values.** `ST` (266,453) and `SV` (26,876) both have `MIN(game_year)=2015`, which is impossible under the taxonomy in force then — evidence that Savant retro-applied a newer classifier to history and Triton re-ingested it *(inferred; confirm against Savant changelog)*. `FT` (legacy two-seam code) has `MIN=MAX=2026` with **13 rows** — a retired code reappearing. `UN` first appears 2025 (5 rows); `IN`/`AB` last seen 2016. **Not captured:** league four-seam velocity by season and a recomputed `stuff_plus` histogram — the Supabase origin began returning Cloudflare **522** at 20:19 UTC after two concurrent full-column aggregates on `pitches` and did not recover during the session. Lesson: do not run heavy analytical scans against the production origin in parallel.
+
+### Schema-design research — row width, alignment padding, TOAST, and column types (Jo brain doc `postgres-performance/09`)
+```sql
+-- 1. Full column inventory for pitches: type, alignment, width, null fraction
+SELECT a.attnum, a.attname, format_type(a.atttypid, a.atttypmod) AS type,
+       t.typalign, t.typlen, a.attnotnull, s.avg_width, s.null_frac
+FROM pg_attribute a
+JOIN pg_type t ON t.oid = a.atttypid
+LEFT JOIN pg_stats s ON s.schemaname='public' AND s.tablename='pitches' AND s.attname=a.attname
+WHERE a.attrelid='public.pitches'::regclass AND a.attnum>0 AND NOT a.attisdropped
+ORDER BY a.attnum;
+
+-- 2. Table geometry: pages, bytes/row, heap vs index vs toast
+SELECT c.relname, c.reltuples::bigint AS est_rows, c.relpages,
+       pg_size_pretty(pg_relation_size(c.oid)) AS heap,
+       pg_size_pretty(pg_indexes_size(c.oid)) AS idx,
+       pg_size_pretty(COALESCE(pg_total_relation_size(c.reltoastrelid),0)) AS toast,
+       round((pg_relation_size(c.oid)::numeric / NULLIF(c.reltuples::numeric,0)),1) AS heap_bytes_per_row,
+       (SELECT count(*) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS ncols
+FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND c.relkind='r'
+  AND c.relname IN ('pitches','retro_events','milb_pitches','compete_pitches','pitch_videos',
+                    'whoop_cycles','whoop_sleep','whoop_workouts','player_season_stats','players')
+ORDER BY pg_total_relation_size(c.oid) DESC;
+
+-- 3. Null-weighted payload vs naive sum(avg_width)
+SELECT tablename,
+  round(sum(avg_width * (1-null_frac))::numeric,1) AS est_payload_bytes,
+  round(sum(avg_width)::numeric,1) AS naive_sum_width,
+  count(*) AS ncols, ceil(count(*)/8.0) AS null_bitmap_bytes,
+  count(*) FILTER (WHERE null_frac = 1) AS all_null_cols,
+  count(*) FILTER (WHERE null_frac > 0.7) AS mostly_null_cols
+FROM pg_stats WHERE schemaname='public'
+  AND tablename IN ('pitches','retro_events','milb_pitches','compete_pitches','pitch_videos')
+GROUP BY tablename ORDER BY 2 DESC;
+
+-- 4. Encrypted Whoop raw_data: stored size vs text length (TOAST compression check)
+SELECT 'whoop_sleep' AS t, count(*) n, round(avg(pg_column_size(raw_data)),0) AS avg_bytes,
+       max(pg_column_size(raw_data)) AS max_bytes FROM whoop_sleep
+UNION ALL SELECT 'whoop_cycles', count(*), round(avg(pg_column_size(raw_data)),0), max(pg_column_size(raw_data)) FROM whoop_cycles
+UNION ALL SELECT 'whoop_workouts', count(*), round(avg(pg_column_size(raw_data)),0), max(pg_column_size(raw_data)) FROM whoop_workouts;
+
+SELECT octet_length(raw_data::text) AS raw_json_chars, pg_column_size(raw_data) AS stored_bytes
+FROM whoop_sleep LIMIT 5;
+
+-- 5. Per-type on-disk size (subtract the 24-byte composite header)
+SELECT pg_column_size(row(1::int2)) AS r_int2, pg_column_size(row(1::int4)) AS r_int4,
+       pg_column_size(row(1::int8)) AS r_int8, pg_column_size(row(1::float4)) AS r_float4,
+       pg_column_size(row(1::float8)) AS r_float8, pg_column_size(row(100.4::numeric)) AS r_numeric,
+       pg_column_size(row(true)) AS r_bool, pg_column_size(row(now())) AS r_timestamptz,
+       pg_column_size(row(gen_random_uuid())) AS r_uuid, pg_column_size(row('FF'::text)) AS r_text2,
+       pg_column_size(row('FF'::varchar(2))) AS r_varchar2, pg_column_size(row('FF'::char(2))) AS r_char2;
+
+-- 6. EXPERIMENT A — alignment padding (SCRATCH TABLES, must be dropped)
+CREATE TABLE _jo_align_bad (a int8,b int4,c int8,d int4,e int8,f int4,g int8,h int4,
+                            i int8,j int4,k int8,l int4,m int8,n int4,o int8,p int4);
+CREATE TABLE _jo_align_good (a int8,c int8,e int8,g int8,i int8,k int8,m int8,o int8,
+                             b int4,d int4,f int4,h int4,j int4,l int4,n int4,p int4);
+INSERT INTO _jo_align_bad  SELECT s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s FROM generate_series(1,300000) s;
+INSERT INTO _jo_align_good SELECT s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s FROM generate_series(1,300000) s;
+ANALYZE _jo_align_bad; ANALYZE _jo_align_good;
+EXPLAIN (ANALYZE, BUFFERS, TIMING OFF) SELECT sum(b) FROM _jo_align_bad;
+EXPLAIN (ANALYZE, BUFFERS, TIMING OFF) SELECT sum(b) FROM _jo_align_good;
+
+-- 7. EXPERIMENT B — float8 vs real, 20 measurement columns (SCRATCH)
+CREATE TABLE _jo_f8 AS SELECT s AS id, (s%100)::float8 c1, ... , (s%100)::float8 c20 FROM generate_series(1,200000) s;
+CREATE TABLE _jo_f4 AS SELECT s AS id, (s%100)::real   c1, ... , (s%100)::real   c20 FROM generate_series(1,200000) s;
+
+-- 8. EXPERIMENT C — numeric vs real vs float8 aggregate cost (SCRATCH)
+CREATE TABLE _jo_num AS SELECT s AS id, (90+(s%2000)/100.0)::numeric(6,2) AS v_num,
+       (90+(s%2000)/100.0)::real AS v_f4, (90+(s%2000)/100.0)::float8 AS v_f8
+FROM generate_series(1,2000000) s;
+EXPLAIN (ANALYZE, BUFFERS, TIMING OFF) SELECT sum(v_num), avg(v_num) FROM _jo_num;
+EXPLAIN (ANALYZE, BUFFERS, TIMING OFF) SELECT sum(v_f4),  avg(v_f4)  FROM _jo_num;
+EXPLAIN (ANALYZE, BUFFERS, TIMING OFF) SELECT sum(v_f8),  avg(v_f8)  FROM _jo_num;
+```
+**Result:** `pitches` = **121 columns** (1 `bigint`, 99 fixed 4-byte, 21 varlena), 623,662 pages / 8,877,621 rows = **575.5 heap bytes per live row, 14.23 rows/page**; `sum(avg_width)`=540 but null-weighted payload = **397.6 B**, so the perfectly-packed ideal is ~440 B/row (18.4 rows/page). Gap is dominated by **1,437,923 dead tuples (13.9%, `last_autovacuum` 2026-05-17)**, not by alignment (~10 varlena→fixed transitions ≈ 15–20 B/row, ~3%). `retro_events` 14.9M rows / 1,222.5 B/row / 6.70 rows/page, only 1.3% dead. **`compete_pitches` has 47 `double precision` columns, 27 columns 100% NULL, and `pitch_time` typed `text`.** `pitches.stuff_plus` is `numeric`. Experiments: alignment **5,770 → 4,616 pages (−20.0%)**, seq-scan buffers 5,770 vs 4,616 (execution 128.5 vs 137.6 ms — not comparable, one run got a parallel worker); float8→real **4,928 → 2,880 pages (−41.6%)**; `sum()+avg()` over 2M rows at equal buffers **numeric 4,889 ms / real 2,485 ms / float8 2,001 ms**. Whoop `raw_data` avg 1,207 B (sleep) with an **empty (8 kB) TOAST relation**, and `pg_column_size` **exceeds** `octet_length(raw_data::text)` (1,088 vs 932) — pglz compression is being rejected on AES-256-GCM base64 ciphertext. Instance: PG **17.6**, `shared_buffers` 256MB, `default_toast_compression` **pglz**.
+**⚠️ OUTSTANDING CLEANUP:** the scratch tables `_jo_align_bad`, `_jo_align_good`, `_jo_f8`, `_jo_f4`, `_jo_num`, `_jo_p_actual`, `_jo_p_packed` (~500 MB total) were **not dropped** — the Supabase origin started returning Cloudflare **522** at ~20:19 UTC (same outage logged in the distribution-drift entry above; at least two agent sessions were running heavy scans against production concurrently) and never recovered during the session. Run `DROP TABLE IF EXISTS _jo_align_bad, _jo_align_good, _jo_f8, _jo_f4, _jo_num, _jo_p_actual, _jo_p_packed;` as soon as the origin is back.
+
+### Jo — data-quality dimensions doc: constraint inventory, validity spot-check, MiLB event-vocabulary audit
+
+Ran while writing `Jo/data-quality/01-data-quality-dimensions.md`. All read-only; `run_query_long` required (the first two timed out at the 8s `authenticator` cap).
+
+```sql
+-- 1. Constraint inventory on pitches (what validity is actually enforced?)
+SELECT conname, pg_get_constraintdef(oid) AS def
+FROM pg_constraint WHERE conrelid = 'pitches'::regclass ORDER BY contype, conname;
+
+-- 2. Validity + completeness spot-check on 2026 pitches
+SELECT count(*) AS rows_2026,
+       count(stuff_plus) AS with_sp,
+       round(100.0*count(stuff_plus)/count(*),2) AS sp_cov_pct,
+       count(*) FILTER (WHERE stuff_plus < 0 OR stuff_plus > 200) AS sp_out_of_range,
+       count(*) FILTER (WHERE release_speed IS NOT NULL
+                          AND (release_speed < 40 OR release_speed > 110)) AS velo_absurd,
+       count(*) FILTER (WHERE pitch_type IS NULL) AS null_pitch_type
+FROM pitches WHERE game_date >= '2026-01-01';
+
+-- 3. Cross-level event vocabulary (top values, MLB vs MiLB, 2026)
+SELECT 'MLB_pitches' AS src, events, count(*) AS n FROM pitches
+  WHERE game_date >= '2026-01-01' AND events IS NOT NULL GROUP BY 2
+UNION ALL
+SELECT 'MiLB_pitches', events, count(*) FROM milb_pitches
+  WHERE game_date >= '2026-01-01' AND events IS NOT NULL GROUP BY 2
+ORDER BY 1, 3 DESC LIMIT 20;
+
+-- 4. MiLB events casing by season — the finding
+SELECT extract(year from game_date)::int AS yr,
+       count(*) FILTER (WHERE events IS NOT NULL) AS ev_rows,
+       count(*) FILTER (WHERE events ~ '^[A-Z]') AS title_case,
+       count(*) FILTER (WHERE events ~ '^[a-z]') AS lower_case,
+       round(100.0*count(*) FILTER (WHERE events ~ '^[A-Z]')
+             /nullif(count(*) FILTER (WHERE events IS NOT NULL),0),1) AS pct_title
+FROM milb_pitches GROUP BY 1 ORDER BY 1;
+```
+
+**Result:** (1) `pitches` has **exactly two constraints** — `pitches_pkey` PRIMARY KEY (id) and `pitches_game_pk_at_bat_number_pitch_number_key` UNIQUE (game_pk, at_bat_number, pitch_number) — and **zero CHECK constraints**, despite `stuff_plus` being clamped to [0,200] in three separate SQL strings (`app/api/update/route.ts:322`, `app/api/update/milb/route.ts:499`, `app/api/admin/backfill-stuff-plus/route.ts:124`). (2) 2026 `pitches`: 657,570 rows, 654,833 with `stuff_plus` = **99.58% coverage** (the per-day chunking fix is holding), **0** values outside [0,200], 198 `release_speed` outside 40–110 mph, 2,733 NULL `pitch_type`. (3)+(4) **`milb_pitches.events` now contains two vocabularies at once.** 2023/2024/2025 are **100.0% Title Case** (172,713 / 172,435 / 171,545 rows, zero lowercase); 2026 is **70,266 Title Case / 61,044 lowercase = 53.5% Title**. Both encodings coexist: `field_out` (23,457) alongside `Groundout` (11,209)/`Flyout` (7,684), `Strikeout` (15,824) alongside `strikeout` (13,128), `Single` (10,067) alongside `single` (8,976). Cause: commit `410212b` (2026-06-08) added `EVENT_NORMALIZE_MAP` at `app/api/update/milb/route.ts:244`, normalizing MiLB → MLB vocabulary at ingest, **with no backfill of history** — so the column split along an *ingest-date* seam. **`CLAUDE.md` ("MiLB uses Title Case… normalize in queries") and `Jo/data-quality/06-reconciliation-source-of-truth.md` both now document the wrong rule**: a query matching Title Case or calling `initcap()` silently drops ~46.5% of 2026 MiLB events. Detector proposed in the new doc §5 (`count(DISTINCT events) > count(DISTINCT lower(replace(events,' ','_')))`) would have fired 2026-06-09. Several follow-up queries (monthly seam breakdown) never completed — the Supabase origin returned Cloudflare 520/522 from ~20:13 UTC (same outage logged above), so the exact seam date is unverified.
+
+### CORRECTION — Povich Stuff+ analysis (issued 2026-08-11, corrected same day)
+
+The earlier conclusion "MLB Stuff+ May 100.0 → Aug 97.7 is the defensible MLB-to-MLB comparison"
+**is contaminated by the repair run performed that same day**, and was reported with more confidence
+than the data supports.
+
+1. **The comparison crosses a rescore seam.** The Jun–Aug repair rescored those rows against
+   *then-current* `pitch_baselines`, while Feb–May retained their original within-season vintages.
+   Estimated vintage bias ±0.3–0.6 points — roughly **26% of the observed 2.3-point move**. Only a
+   Jun→Aug comparison is vintage-clean.
+2. **The residual effect is weak.** After a design-effect correction for intra-outing correlation,
+   2.3 points is ≈**1.3–2.1 SE** on a 149-pitch, 2-start sample. Suggestive, not conclusive.
+3. **What does survive is the mechanical finding.** `stuff_plus` has **no release-position term**,
+   so the measured arm-slot change (FF release height 6.05→5.87 ft, release side 1.08→1.29) is
+   *independent* evidence rather than a restatement of the same number — as is the pitch-type
+   pattern (FF 98.4→95.8 at rising usage; CU and CH improving), which is what a lower slot predicts.
+
+**Revised answer:** the arm-slot drop and its four-seam consequences are well supported. The
+headline "Stuff+ fell 2.3 points" is not — it is partly an artifact of the same-day repair and is
+within ~2 SE regardless. Report the mechanics, not the composite.
+
+### Baseline vintage drift — MEASURED (settles the open Li hazard)
+
+Compares each row's **stored** `stuff_plus` against what it would be if rescored today against the
+**current** `pitch_baselines`. Non-zero drift = the row was scored against an older vintage.
+
+```sql
+SELECT p.game_date, count(*) AS n,
+       round(avg(p.stuff_plus)::numeric,2) AS stored_avg,
+       round(avg(GREATEST(0, LEAST(200, ROUND(
+         100 + COALESCE((p.release_speed - b.avg_velo)/NULLIF(b.std_velo,0),0)*4.5
+             + COALESCE((SQRT(POWER(p.pfx_x*12,2)+POWER(p.pfx_z*12,2)) - b.avg_movement)
+                        /NULLIF(b.std_movement,0),0)*3.5
+             + COALESCE((p.release_extension - b.avg_ext)/NULLIF(b.std_ext,0),0)*2.0
+       )::numeric)))::numeric,2) AS current_vintage_avg
+FROM pitches p JOIN pitch_baselines b
+  ON b.pitch_name = p.pitch_name AND b.game_year = p.game_year
+WHERE p.game_date IN ('2026-04-15','2026-05-15','2026-06-15','2026-07-15','2026-08-05')
+  AND p.stuff_plus IS NOT NULL AND p.release_speed IS NOT NULL
+GROUP BY 1 ORDER BY 1;
+```
+
+**Result:**
+
+| Date | n | stored | current-vintage | drift |
+|---|---|---|---|---|
+| 2026-04-15 | 4,330 | 100.50 | 99.91 | **+0.594** |
+| 2026-05-15 | 4,337 | 101.18 | 100.89 | **+0.291** |
+| 2026-06-15 | 2,788 | 100.87 | 100.87 | **0.000** |
+| 2026-08-05 | 4,372 | 100.03 | 100.03 | **0.000** |
+
+(2026-07-15 returned zero rows — no games that date.)
+
+**Conclusions.**
+1. **Vintage drift is real, measured, and small.** Feb–May rows carry **+0.29 to +0.59** points of
+   upward bias relative to a current-baseline recompute. The magnitude is below the earlier
+   *(estimated)* range of 0.6–1.2 and near the ≤0.5-point "forward-only versioning" decision
+   threshold — **a full historical rescore is not warranted.**
+2. **The rescore seam is confirmed exactly where predicted.** June and August drift is **0.000** to
+   three decimals, because those rows were rescored against current baselines on 2026-08-11.
+   April and May retain their original vintages.
+3. **Refines the Povich correction (logged above).** The May→August comparison is inflated by
+   **~0.29 points**, not the ±0.3–0.6 previously estimated as a range — so vintage accounts for
+   ~13% of the observed 2.3-point drop, not ~26%. The vintage-adjusted move is ≈**2.0 points**,
+   still only ~1.2–1.8 SE on 149 pitches. The earlier correction was directionally right and
+   overstated the contamination.
+4. **Jo's Apr→Jul league-average decline (100.97 → 100.13) is NOT evidence of vintage drift** — that
+   window is confounded by the coverage collapse. This probe is unconfounded because it recomputes
+   the same rows both ways.
+
+**Recommendation:** forward-only versioning (stamp `baseline_version`/`scored_at` going forward);
+do **not** rescore history — it would erase the only remaining evidence of what the vintages were,
+for a ≤0.6-point correction.

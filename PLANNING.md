@@ -266,8 +266,12 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 
 | Issue | Area | Notes |
 |-------|------|-------|
+| **Nightly refresh chain failing since 2026-06-26** | Analytics | **P0.** `refresh_materialized_views`/`refresh_league_averages`/`refresh_league_percentiles` have `proconfig = NULL` → capped at `authenticator`'s 8s and cannot complete. 52 runs, 50 timeouts, 0 successes, all logged `status='success'`. `league_averages` 46 days stale, `league_percentiles` 69 days, all six matviews frozen — affects every plus-stat, all leaderboards, `/api/scene-stats`, and live broadcast overlays. Fix is three `ALTER FUNCTION ... SET statement_timeout`. See `docs/reliability-findings-2026-08-11.md` #1. |
+| Integrity suite cannot fail | Analytics | No check in `lib/dataIntegrity.ts` ever returns `fail` (10× pass, 8× warn, 1× remediated); two checks return `pass` on query error (`:108`, `:167`). 776 rows / 95 run days / zero failures ever, while warning correctly for 2 months. Findings doc #2–#3. |
+| `reportError` has no sink | Platform | 14 call sites terminate at a TODO in `lib/observability.ts:35`; zero observability deps. Vercel Pro keeps runtime logs 1 day, so failures are unforensicable. Findings doc #4. |
+| 8s statement timeout on all RPC calls | Analytics | `authenticator` has `statement_timeout=8s` and `service_role` doesn't override it, so every `run_query`/`run_mutation` is capped at 8s. `supabaseAdminLong` (120s) is client-side only and does **not** raise this. `SECURITY DEFINER` does **not** raise it either. Anything touching >~8k rows must be day-chunked or needs a function-level `statement_timeout`. Ingest upsert currently at **94.8%** of the cap. |
+| `pitches` bloat + unused indexes | Analytics | 1.44M dead tuples (13.9%), `autovacuum_count=1`, last vacuum 86 days ago, sitting at 80.9% of the default trigger. 9 of 29 indexes have `idx_scan = 0` (~1.4 GB, ~1.02 GB droppable). HOT ratio 4.0%. Findings doc #9–#11. |
 | Work app placeholder pages | Work | Resources, Jobs, Assessments are placeholder pages |
-| 8s statement timeout on all RPC calls | Analytics | `authenticator` has `statement_timeout=8s` and `service_role` doesn't override it, so every `run_query`/`run_mutation` is capped at 8s. `supabaseAdminLong` (120s) is client-side only and does **not** raise this. Any statement touching >~8k rows must be day-chunked, or needs its own RPC with a function-level `statement_timeout`. |
 
 ## Architecture Notes
 
