@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { invalidateBySource, purgeExpired } from '@/lib/queryCache'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { supabaseAdmin, supabaseAdminLong } from '@/lib/supabase-admin'
 import { trackCronRun } from '@/lib/cronTracker'
 import { syncBatTrackingSwingMiss } from '@/lib/syncBatTracking'
 import { indexRecentPitchVideos } from '@/lib/pitchVideos'
 import { ymdInTimeZone } from '@/lib/dateTz'
 import { reportError } from '@/lib/observability'
+import { refreshPitchBaselines } from '@/app/api/update/route'
 
 export const maxDuration = 300
 
@@ -44,6 +45,23 @@ export async function GET(req: NextRequest) {
       const freshToday = info.date === today
       const totalInserted = freshToday ? (info.totalInserted ?? 0) : 0
       const skipDownstream = totalInserted === 0
+
+      // Rebuild Stuff+ baselines for the season. Moved off /api/cron/pitches: the
+      // full-season aggregate grows all year and was starving the scoped stuff_plus
+      // UPDATE there. Runs before the compute steps so they see current baselines.
+      let pitchBaselinesResult: Awaited<ReturnType<typeof refreshPitchBaselines>> | { skipped: string }
+      if (skipDownstream) {
+        pitchBaselinesResult = { skipped: 'no new pitches' }
+      } else {
+        // supabaseAdminLong only raises the client-side fetch timeout; the DB caps this
+        // at authenticator's statement_timeout=8s either way. The aggregate does fit in
+        // 8s today (baselines have stayed current all season) — if that ever changes it
+        // will need its own RPC with a function-level statement_timeout, not a longer client.
+        pitchBaselinesResult = await refreshPitchBaselines(supabaseAdminLong, [year])
+        if (!pitchBaselinesResult.ok) {
+          reportError(new Error(pitchBaselinesResult.error), { route: 'cron/refresh/pitch-baselines', year })
+        }
+      }
 
       // Bat-tracking snapshot — daily regardless of new pitches (season-cumulative).
       let batTrackingResult: Awaited<ReturnType<typeof syncBatTrackingSwingMiss>> | { error: string }
@@ -153,6 +171,7 @@ export async function GET(req: NextRequest) {
         skippedDownstream: skipDownstream,
         gameTypes,
         computeResults,
+        pitchBaselines: pitchBaselinesResult,
         leagueAverages: leagueAveragesResult,
         leaguePercentiles: leaguePercentilesResult,
         materializedViews: materializedViewsResult,
@@ -163,6 +182,7 @@ export async function GET(req: NextRequest) {
         result: payload,
         counts: {
           gameTypes, totalInserted,
+          pitchBaselines: pitchBaselinesResult,
           leagueAverages: leagueAveragesResult,
           leaguePercentiles: leaguePercentilesResult,
           materializedViews: materializedViewsResult,

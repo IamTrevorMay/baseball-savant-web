@@ -729,3 +729,92 @@ left join profiles p on p.id = ap.profile_id
 order by ap.created_at;
 ```
 **Result:** 3 profiles. Trevor May `da83a6a6…` R, 77", 265 lb, RHP; EJ `d52e66fe…` R, 74", 190 lb, RHP; unnamed `e409d7f0…` R, 77". Needed because `/api/mechanics/upload` derives hand + `heightMm` from this row, and `heightMm` directly scales `strideLengthPct` — the generated capture geometry must match the athlete it will be uploaded against. (Schema note: columns are `weight_lbs`/`height_in`; names live on `profiles.full_name`, not `athlete_profiles`.)
+
+## 2026-08-11
+
+### Cade Povich (700249) Stuff+ trend investigation
+```sql
+-- monthly Stuff+ / coverage for Povich, MLB
+select date_trunc('month', game_date)::date as month, count(*) as pitches,
+       round(avg(stuff_plus)::numeric,1) as stuff_plus, count(stuff_plus) as stuff_n, max(game_date)
+from pitches where pitcher = 700249 and game_date >= '2026-01-01' group by 1 order by 1;
+
+-- league-wide stuff_plus coverage by month (is this Povich-specific?)
+select date_trunc('month', game_date)::date as month, count(*) as total_pitches,
+       count(stuff_plus) as with_stuff, count(distinct game_pk) as games
+from pitches where game_date >= '2026-04-01' group by 1 order by 1;
+
+-- Povich MLB game log + MiLB game log
+select game_date, count(*), count(stuff_plus), round(avg(stuff_plus)::numeric,1), round(avg(release_speed)::numeric,1)
+from pitches where pitcher = 700249 and game_date >= '2026-04-01' group by 1 order by 1;
+select game_date, count(*), round(avg(release_speed)::numeric,1)
+from milb_pitches where pitcher = 700249 and game_date >= '2026-04-01' group by 1 order by 1;
+
+-- MiLB Stuff+ by month (is it populated where MLB is not?)
+select date_trunc('month', game_date)::date as month, count(*), count(stuff_plus), round(avg(stuff_plus)::numeric,1)
+from milb_pitches where pitcher = 700249 and game_date >= '2026-04-01' group by 1 order by 1;
+
+-- pitch-type stuff inputs, Apr-May vs Aug (MLB)
+select case when game_date < '2026-06-01' then 'Apr-May' else 'Aug' end as period, pitch_type, count(*),
+       avg(release_speed), avg(release_spin_rate), avg(pfx_x*12), avg(pfx_z*12),
+       avg(release_extension), avg(release_pos_x), avg(release_pos_z)
+from pitches where pitcher = 700249 and game_date >= '2026-04-01' and pitch_type not in ('PO','IN')
+group by 1,2 order by 2,1 desc;
+
+-- rule out null inputs as cause of missing stuff_plus
+select date_trunc('month', game_date)::date as month, count(*), count(pitch_name), count(release_extension), count(stuff_plus)
+from pitches where game_date >= '2026-05-01' group by 1 order by 1;
+```
+**Result:** Premise not supported — Povich has **zero** MLB Stuff+ values after 2026-05-01. League-wide `pitches.stuff_plus` coverage decays Apr 99.5% → May 90% → Jun 18% → Jul 4% → **Aug 0%**, so this is a pipeline failure in `computeStuffPlusForDateRange` (`app/api/update/route.ts:205`), not a player trend. `pitch_name`/`release_extension` are ~100% populated, so inputs are fine — likely the per-year `pitch_baselines` refresh scanning all of `game_year=2026` and timing out under `run_mutation` (error is caught and swallowed at line 277). MiLB path (`app/api/update/milb/route.ts:499`) is unaffected: Povich's July Triple-A Stuff+ = **100.0** vs April 99.5 (flat). Underlying stuff did change in August: arm slot dropped (FF rel_z 6.05→5.87, rel_x 1.08→1.29) with FF IVB 19.5"→18.0", SI IVB 15.0"→12.2", SL IVB 7.6"→4.6", CU depth -16.3"→-15.0"; cutter (12 pitches in Apr–May) not thrown at all in August. Small sample: 2 MLB starts, 149 pitches.
+
+### stuff_plus backfill — repairing Jun–Aug 2026 gap
+```sql
+-- confirm game_year is indexed (it is: idx_pitches_game_year, idx_pitches_year_date)
+select indexname, indexdef from pg_indexes where tablename = 'pitches';
+
+-- repair, run in date-scoped chunks (2026-05-01..2026-06-01, then 10-day windows
+-- through 2026-07-31, then 2026-08-01..2026-08-03 and 2026-08-04+)
+update pitches p
+set stuff_plus = greatest(0, least(200, round(
+  100
+  + coalesce((p.release_speed - b.avg_velo) / nullif(b.std_velo,0), 0) * 4.5
+  + coalesce((sqrt(power(p.pfx_x*12,2) + power(p.pfx_z*12,2)) - b.avg_movement) / nullif(b.std_movement,0), 0) * 3.5
+  + coalesce((p.release_extension - b.avg_ext) / nullif(b.std_ext,0), 0) * 2.0
+)::numeric))
+from pitch_baselines b
+where p.pitch_name = b.pitch_name and p.game_year = b.game_year
+  and p.game_date >= '<chunk_start>' and p.game_date < '<chunk_end>'
+  and p.release_speed is not null
+  and p.stuff_plus is null;   -- only unscored rows: narrower, resumable, leaves Apr/May untouched
+```
+**Result:** `/api/admin/backfill-stuff-plus?year=2026` **failed** — even batch 0 hit `statement timeout`. Not a missing index (`game_year` is indexed); it rewrites all 657k 2026 rows against 29 indexes. Date-scoped chunks with `stuff_plus IS NULL` succeeded in 8 calls. Coverage restored: May 90.2%→**99.7%**, Jun 17.8%→**99.6%**, Jul 4.1%→**99.6%**, Aug 0%→**99.6%** (residual gaps are rows with null `release_speed`, matching April's healthy 99.5%). Monthly league avg Stuff+ stayed ~100.2–101.0 throughout, confirming the backfill didn't skew the scale. Note the admin route is still broken for whole-year use — it needs date chunking + a `stuff_plus IS NULL` guard.
+
+### Cade Povich Stuff+ — post-backfill (answers the original question)
+```sql
+select 'MLB' as lvl, date_trunc('month', game_date)::date as month, count(*), round(avg(stuff_plus)::numeric,1)
+from pitches where pitcher = 700249 and game_year = 2026 group by 1,2
+union all
+select 'MiLB', date_trunc('month', game_date)::date, count(*), round(avg(stuff_plus)::numeric,1)
+from milb_pitches where pitcher = 700249 and game_date >= '2026-01-01' group by 1,2 order by 2,1;
+
+select pitch_type,
+  count(*) filter (where game_date < '2026-06-01') as n_apr_may,
+  round(avg(stuff_plus) filter (where game_date < '2026-06-01')::numeric,1) as stuff_apr_may,
+  count(*) filter (where game_date >= '2026-08-01') as n_aug,
+  round(avg(stuff_plus) filter (where game_date >= '2026-08-01')::numeric,1) as stuff_aug
+from pitches where pitcher = 700249 and game_date >= '2026-04-01' and pitch_type not in ('PO','IN')
+group by 1 order by 4 desc nulls last;
+```
+**Result:** Premise confirmed once data was repaired. MLB Stuff+ by month: Feb 98.2, Mar 98.8, Apr 98.2, May 100.0, **Aug 97.7** — August is his season low. July Triple-A was 100.0, so the drop appeared on his return, not as a gradual slide. Driver is the four-seam: **FF 98.4 → 95.8** at rising usage (43% → 49% of pitches), plus SI 100.5 → 98.3 and SL 102.7 → 101.3. CU (97.6 → 98.8) and CH (98.5 → 99.9) both improved. Consistent with the lower arm slot found earlier (FF rel_z 6.05→5.87, rel_x 1.08→1.29): less IVB hurts the ride-dependent FF/SI while the CU gains depth/sweep. Sample: 2 starts, 149 pitches.
+
+### Root cause of the stuff_plus decay — 8s RPC statement timeout
+```sql
+-- why identical SQL succeeded over the direct connection but timed out from the app
+select rolname, rolconfig from pg_roles
+where rolname in ('authenticator','service_role','anon','authenticated','postgres');
+```
+**Result:** `authenticator` = `statement_timeout=8s`, `lock_timeout=8s`; `service_role` = **null** (no override). PostgREST logs in as `authenticator` then `SET ROLE service_role`, and `SET ROLE` does not re-apply rolconfig, so the session keeps **8s** — every `run_query`/`run_mutation` call is capped there. `supabaseAdminLong`'s 120s is a client-side *fetch* timeout and does not extend it; that's why the same UPDATE ran instantly over the MCP direct connection and timed out through the app.
+
+This is the actual cause of the coverage decay, superseding the earlier "baseline scan starves the UPDATE" reading: the nightly UPDATE covered the ingest's full 3-day window (~12k rows × 29 indexes) in one statement, and crossed 8s as the 2026 table grew. Empirical threshold on 2026 data (via `/api/admin/backfill-stuff-plus?mode=rescore`): `chunkDays=1` (~4k rows) **ok**, `chunkDays=2` (~8k) **ok**, `chunkDays=3` (~11k) **timeout**. Post-fix, `applyStuffPlusForDateRange('2026-08-04','2026-08-06')` runs 3 per-day statements in **4.2s** total.
+
+Verified idempotent: rescoring 2026-08-04..08-06 reproduced identical monthly averages (Aug 100.19 before and after), so the Povich figures above are unaffected.

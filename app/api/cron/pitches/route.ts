@@ -69,7 +69,19 @@ export async function GET(req: NextRequest) {
         purgeExpired(),
       ]).catch(() => {})
 
+      // Stuff+ scoring runs after the upsert, so a failure here leaves the pitches
+      // committed but unscored. Surface it as a failed cron run — this decayed
+      // silently through the 2026 season because it was only console.error'd.
+      type StuffOutcome = { ok?: boolean; error?: string }
+      const stuffFailures = Object.entries(results)
+        .map(([gt, r]) => [gt, (r as { stuff_plus?: StuffOutcome })?.stuff_plus] as const)
+        .filter(([, s]) => s && s.ok === false)
+        .map(([gt, s]) => `${gt}: ${s?.error}`)
+
       const payload = { ok: true as const, gameTypes, start, end, totalInserted, results }
+      if (stuffFailures.length > 0) {
+        throw new Error(`Stuff+ scoring failed for ${stuffFailures.length} game type(s) — ${stuffFailures.join('; ')}`)
+      }
       return { result: payload, counts: { gameTypes, totalInserted } }
     })
 

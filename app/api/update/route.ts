@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkMachineAuth } from '@/lib/apiAuth'
+import { reportError } from '@/lib/observability'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -189,8 +190,15 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
     const computeStart = ingestedDates[0] || start_date
     const computeEnd = ingestedDates[ingestedDates.length - 1] || end_date
 
-    stuffResult = await computeStuffPlusForDateRange(supabase as any, computeStart, computeEnd)
-    if (!stuffResult.ok) console.error('Stuff+ computation failed:', stuffResult.error)
+    stuffResult = await applyStuffPlusForDateRange(supabase as any, computeStart, computeEnd)
+    if (!stuffResult.ok) {
+      reportError(new Error(stuffResult.error), {
+        route: 'update/stuff-plus',
+        startDate: computeStart,
+        endDate: computeEnd,
+        game_type,
+      })
+    }
   }
 
   return {
@@ -202,29 +210,42 @@ export async function syncPitches(start_date: string, end_date: string, game_typ
   }
 }
 
-async function computeStuffPlusForDateRange(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const runMutation = async (sb: any, sql: string) => {
+  const res = await sb.rpc('run_mutation', { query_text: sql.trim() })
+  if (res.error) {
+    console.error('run_mutation error:', res.error.message)
+    throw new Error(`run_mutation failed: ${res.error.message}`)
+  }
+  return res
+}
+
+/** Years spanned by a date range, inclusive. */
+function yearsInRange(startDate: string, endDate: string): number[] {
+  const startYear = new Date(startDate).getFullYear()
+  const endYear = new Date(endDate).getFullYear()
+  const years: number[] = []
+  for (let y = startYear; y <= endYear; y++) years.push(y)
+  return years
+}
+
+/**
+ * Rebuild the per-(pitch_name, game_year) Stuff+ baselines.
+ *
+ * Full-season aggregate: cost grows with the season and by August it was taking
+ * long enough inside /api/cron/pitches to starve the scoped stuff_plus UPDATE that
+ * used to follow it — baselines stayed current while stuff_plus coverage decayed to
+ * zero, silently. Lives in /api/cron/refresh now so ingest stays lean; see
+ * applyStuffPlusForDateRange for the cheap per-ingest half.
+ */
+export async function refreshPitchBaselines(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any,
-  startDate: string,
-  endDate: string
+  years: number[]
 ) {
   try {
-    const m = async (sql: string) => {
-      const res = await sb.rpc('run_mutation', { query_text: sql.trim() })
-      if (res.error) {
-        console.error('run_mutation error:', res.error.message)
-        throw new Error(`run_mutation failed: ${res.error.message}`)
-      }
-      return res
-    }
+    const m = (sql: string) => runMutation(sb, sql)
 
-    // Determine affected years from date range
-    const startYear = new Date(startDate).getFullYear()
-    const endYear = new Date(endDate).getFullYear()
-    const years: number[] = []
-    for (let y = startYear; y <= endYear; y++) years.push(y)
-
-    // Refresh baselines for affected years
     for (const year of years) {
       await m(`
         INSERT INTO pitch_baselines (pitch_name, game_year, avg_velo, std_velo, avg_movement, std_movement, avg_ext, std_ext, pitch_count)
@@ -256,27 +277,78 @@ async function computeStuffPlusForDateRange(
       `)
     }
 
-    // Update stuff_plus for pitches in the date range (scoped — no batching needed)
-    await m(`
-      UPDATE pitches p
-      SET stuff_plus = GREATEST(0, LEAST(200, ROUND(
-        100
-        + COALESCE((p.release_speed - b.avg_velo) / NULLIF(b.std_velo, 0), 0) * 4.5
-        + COALESCE((SQRT(POWER(p.pfx_x * 12, 2) + POWER(p.pfx_z * 12, 2)) - b.avg_movement) / NULLIF(b.std_movement, 0), 0) * 3.5
-        + COALESCE((p.release_extension - b.avg_ext) / NULLIF(b.std_ext, 0), 0) * 2.0
-      )::numeric))
-      FROM pitch_baselines b
-      WHERE p.pitch_name = b.pitch_name
-        AND p.game_year = b.game_year
-        AND p.game_date BETWEEN '${startDate}' AND '${endDate}'
-        AND p.release_speed IS NOT NULL
-    `)
-
-    return { ok: true, years }
-  } catch (err: any) {
-    console.error('computeStuffPlusForDateRange error:', err)
-    return { ok: false, error: err.message }
+    return { ok: true as const, years }
+  } catch (err: unknown) {
+    console.error('refreshPitchBaselines error:', err)
+    return { ok: false as const, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/** YYYY-MM-DD + n days, in UTC so DST can't shift a boundary. */
+function addDaysUtc(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Score stuff_plus for pitches in a date range against the existing baselines.
+ *
+ * Runs ONE STATEMENT PER DAY. The PostgREST role (`authenticator`) carries
+ * statement_timeout=8s and service_role doesn't override it, so every run_mutation call
+ * is capped at 8s regardless of the client-side timeout. A whole-window UPDATE (~12k rows
+ * over the ingest's 3-day span, against 29 indexes) crossed that ceiling as the 2026 table
+ * grew — which is what silently drove stuff_plus coverage to zero. A single day is ~4k rows
+ * and leaves plenty of headroom.
+ *
+ * Deliberately does NOT refresh baselines first — that is refreshPitchBaselines' job.
+ */
+export async function applyStuffPlusForDateRange(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  startDate: string,
+  endDate: string
+) {
+  const days: string[] = []
+  for (let d = startDate; d <= endDate; d = addDaysUtc(d, 1)) days.push(d)
+
+  const failures: { day: string; error: string }[] = []
+  let scoredDays = 0
+
+  for (const day of days) {
+    try {
+      await runMutation(sb, `
+        UPDATE pitches p
+        SET stuff_plus = GREATEST(0, LEAST(200, ROUND(
+          100
+          + COALESCE((p.release_speed - b.avg_velo) / NULLIF(b.std_velo, 0), 0) * 4.5
+          + COALESCE((SQRT(POWER(p.pfx_x * 12, 2) + POWER(p.pfx_z * 12, 2)) - b.avg_movement) / NULLIF(b.std_movement, 0), 0) * 3.5
+          + COALESCE((p.release_extension - b.avg_ext) / NULLIF(b.std_ext, 0), 0) * 2.0
+        )::numeric))
+        FROM pitch_baselines b
+        WHERE p.pitch_name = b.pitch_name
+          AND p.game_year = b.game_year
+          AND p.game_date = '${day}'
+          AND p.release_speed IS NOT NULL
+      `)
+      scoredDays++
+    } catch (err: unknown) {
+      // One bad day shouldn't strand the rest of the window — collect and continue.
+      failures.push({ day, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error('applyStuffPlusForDateRange failures:', failures)
+    return {
+      ok: false as const,
+      error: `${failures.length}/${days.length} day(s) failed — ${failures.map(f => `${f.day}: ${f.error}`).join('; ')}`,
+      scoredDays,
+      years: yearsInRange(startDate, endDate),
+    }
+  }
+
+  return { ok: true as const, scoredDays, years: yearsInRange(startDate, endDate) }
 }
 
 const SOS_REGRESSION_K = 60

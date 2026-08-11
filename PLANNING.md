@@ -2,6 +2,17 @@
 
 ## Recently Completed
 
+### Stuff+ Pipeline — 8s Statement Timeout Fix (August 2026)
+`pitches.stuff_plus` had silently decayed to **zero coverage**: Apr 99.5% → May 90% → Jun 18% → Jul 4% → Aug 0%.
+
+**Root cause — the 8s RPC statement timeout.** The `authenticator` role that PostgREST connects as carries `statement_timeout=8s` (and `lock_timeout=8s`); `service_role` sets no override, so **every `run_query` / `run_mutation` call is capped at 8 seconds**. `supabaseAdminLong`'s 120s is a *client-side fetch* timeout and does not extend the DB limit. The nightly `stuff_plus` UPDATE covered the ingest's full 3-day window (~12k rows against 29 indexes) in a single statement; as the 2026 table grew, that statement crossed 8s and started failing — gradually, which is exactly the observed decay curve. It failed silently because the error was only `console.error`'d while the cron still reported success. Measured threshold on 2026 data: ~8k rows/statement passes, ~11k times out.
+
+**Fixes.** `applyStuffPlusForDateRange` now issues **one statement per day** (~4k rows, ~1.4s each; a 3-day window completes in ~4.2s total) and collects per-day failures instead of stranding the window. Failures route through `reportError` and throw so `trackCronRun` records a failed run — ingested pitches still commit. Separately, `computeStuffPlusForDateRange` was split into `refreshPitchBaselines(sb, years)` and `applyStuffPlusForDateRange(sb, start, end)`, with baselines moved to `/api/cron/refresh` so ingest stays lean (hygiene — the baseline aggregate does still fit in 8s, which is why baselines stayed current all season while scoring died).
+
+`/api/admin/backfill-stuff-plus` rewritten: date-chunked (default 1 day) instead of the old unordered `ctid`/OFFSET paging, `?mode=repair` (default, `stuff_plus IS NULL`, idempotent) vs `?mode=rescore`, plus `start`/`end`/`chunkDays` params and per-chunk coverage accounting. Its old `hasMore` probe was `SELECT COUNT(*) … LIMIT 1 OFFSET n`, which returns zero rows for any n > 0, so it had always stopped after one batch — and that batch tried to rewrite the whole year at once. Backfilled 2026 (~250k rows); all months now 99.2–99.7% (residual gaps are rows with null `release_speed`).
+
+**Watch out:** any new `run_query`/`run_mutation` call that touches more than ~8k rows needs day-chunking or its own RPC with a function-level `statement_timeout`. Raising the client timeout will not help. Note `run_query_long` already exists with `statement_timeout=120s` set on the function — that's the read-side escape hatch. There is **no `run_mutation_long`**, which is exactly why the write path is pinned at 8s; day-chunking avoids needing one (adding it would loosen the cap on all mutations).
+
 ### Video — Game Search + Sortable Table (July 2026, both Research & Compete)
 Added to both `/videos` and `/compete/video`: a **Pitches / Game mode toggle** in the filter panel. Game mode = date picker → matchup dropdown (that day's games from our pitch DB) → **Load game**, which pulls every pitch in the game in chronological order. New **Half** column (Top/Bot). **All column headers are sortable** (click cycles none→asc→desc, back to chronological); sorting works in both modes and is client-side over loaded rows. Pitches without video still show but are **greyed** (opacity-40) and remain clickable (live Savant resolve). API: `/api/pitch-video` gains `games_on=DATE` (distinct games for a date) and a `game_pk` search filter; row LIMIT cap raised 500→1000 so a full game never truncates.
 
@@ -256,6 +267,7 @@ Full backend audit of API routes + `lib/` + cron. **CRITICAL auth gaps fixed** (
 | Issue | Area | Notes |
 |-------|------|-------|
 | Work app placeholder pages | Work | Resources, Jobs, Assessments are placeholder pages |
+| 8s statement timeout on all RPC calls | Analytics | `authenticator` has `statement_timeout=8s` and `service_role` doesn't override it, so every `run_query`/`run_mutation` is capped at 8s. `supabaseAdminLong` (120s) is client-side only and does **not** raise this. Any statement touching >~8k rows must be day-chunked, or needs its own RPC with a function-level `statement_timeout`. |
 
 ## Architecture Notes
 
