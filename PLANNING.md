@@ -2,6 +2,38 @@
 
 ## Recently Completed
 
+### Biomech Report PDFs — Public Bucket Closed (2026-08-13)
+`scripts/create-biomech-captures.sql` created the `biomech-reports` storage bucket with
+`public = true`, relying on unguessable UUID paths. These PDFs name a real athlete — at Neptune,
+often a minor — so an unguessable URL was obscurity, not access control: it leaks via referrers,
+history and shared links, and cannot be revoked. The adjacent raw-capture bucket was already private
+and `app/api/mechanics/captures/[id]/raw/route.ts:37` already served it with a 300 s signed URL, so
+reports now follow the pattern the same feature already used.
+
+**Changes.** New `app/api/compete/reports/[id]/pdf/route.ts` mints a 300 s signed URL after an
+access check mirroring `compete_reports_select_own_or_admin` (owning athlete, or admin/owner), and
+returns 404 rather than 403 so an unauthorised caller learns nothing. `compete_reports.pdf_url` now
+stores a **storage path**; the route still accepts legacy absolute URLs so old reports keep working.
+`app/api/mechanics/report/route.ts` and `scripts/seed-mechanics-demo.ts` write paths;
+`app/(compete)/compete/reports/[id]/page.tsx` links to the new route.
+
+**Not yet run:** `scripts/fix-biomech-reports-private.sql` flips the bucket and normalises existing
+rows. It is idempotent and ends with verification queries, but **must run *after* the code deploys** —
+in the gap, existing public URLs stop resolving and only the new route can serve them.
+
+**Also:** `lib/encryption.ts` `getKey()` now accepts a 64-hex-char key as a true 256-bit key and warns
+once per key when the legacy path (first 32 chars as UTF-8) is used. Derivation was deliberately *not*
+changed — that would orphan every existing Whoop token and newsletter address. `WHOOP_ENCRYPTION_KEY`
+is currently 32 hex chars = **128 bits of entropy** in a nominally AES-256 key; not urgent, but not
+what the name implies. Rotation is a flag-day migration because `iv:tag:ciphertext` carries no key id.
+
+### Specialist Agent Brains — Li Complete, Cas Started (2026-08-13)
+`Jo/` 33/33 ✅, `Li/` **44/44 ✅**, `Cas/` 11/44 (Domain 1 `testing-data-systems/` complete).
+Contract in `.claude/agents/BUILD.md`; new `./.claude/agents/check-doc.sh <Agent> [--links] <files>`
+validates structure, size, grade vocabulary and probes every source URL. It immediately caught three
+dead citations in already-"finished" docs — including a real paper with a non-resolving DOI, the
+failure mode the contract calls unrecoverable. **Jo's 33 docs have never been link-checked.**
+
 ### Stuff+ Pipeline — 8s Statement Timeout Fix (August 2026)
 `pitches.stuff_plus` had silently decayed to **zero coverage**: Apr 99.5% → May 90% → Jun 18% → Jul 4% → Aug 0%.
 

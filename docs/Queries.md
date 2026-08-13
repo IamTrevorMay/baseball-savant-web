@@ -1337,3 +1337,127 @@ GROUP BY 1 ORDER BY 1;
 **Recommendation:** forward-only versioning (stamp `baseline_version`/`scored_at` going forward);
 do **not** rescore history — it would erase the only remaining evidence of what the vintages were,
 for a ≤0.6-point correction.
+
+## 2026-08-12
+
+Central measurement pass for the Jo/Li/Cas agent-brain build (`.claude/agents/BUILD.md` requires
+production numbers be gathered **once**, centrally, and pasted into subagent prompts — subagents
+must never query production). All read-only. Two queries timed out and were rewritten.
+
+### Identity / master-data shape of `players`
+
+```sql
+SELECT
+  count(*) AS players_total,
+  count(lahman_id) AS with_lahman_id,
+  round(100.0*count(lahman_id)/count(*),2) AS pct_lahman,
+  count(team) AS with_team,
+  count(position) AS with_position,
+  min(id) AS min_id, max(id) AS max_id,
+  count(*) FILTER (WHERE name ~ '[^ -~]') AS names_with_non_ascii,
+  count(*) FILTER (WHERE name LIKE '%,%') AS names_with_comma,
+  count(DISTINCT name) AS distinct_names
+FROM players;
+```
+
+Result: **16,931 rows** (CLAUDE.md documents 4,017 — stale by ~4×); `lahman_id` on 3,228 (19.07%);
+`team` on **0 rows (0%)**; `position` on 10,899 (64.4%); id range 110001–842249; 553 names with
+non-ASCII characters; 16,474 names in `"Last, First"` form (so 457 in `"First Last"` form);
+16,418 distinct names → **513 duplicate-name collisions**.
+
+### Duplicate-name collisions
+
+```sql
+SELECT name, count(*) AS n, array_agg(id ORDER BY id) AS ids
+FROM players GROUP BY name HAVING count(*) > 1
+ORDER BY count(*) DESC, name LIMIT 25;
+```
+
+Result: six four-way collisions — `Gonzalez, Jose` (114931, 467102, 681275, 683681), `Jackson, Alex`,
+`Perez, Fernando`, `Vázquez, Christian`, `Williams, Matt`, `Wilson, Jacob`. Confirms `name` is not a
+viable natural key.
+
+### Non-comma name format sample
+
+```sql
+SELECT name FROM players WHERE name NOT LIKE '%,%' ORDER BY id LIMIT 20;
+```
+
+Result: MiLB-style `"First Last"` entries (`Mel Rojas Jr.`, `C.J. Hinojosa`, `Santiago Chávez`, …) —
+two name formats coexist in one column.
+
+### Table sizes and planner-statistics freshness
+
+```sql
+SELECT c.relname, c.reltuples::bigint AS est_rows, c.relpages,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+       s.last_analyze, s.last_autoanalyze
+FROM pg_class c
+JOIN pg_namespace n ON n.oid=c.relnamespace
+LEFT JOIN pg_stat_user_tables s ON s.relid=c.oid
+WHERE n.nspname='public' AND c.relkind='r'
+  AND c.relname IN ('pitches','milb_pitches','players','compete_pitches','player_season_stats',
+                    'pitch_baselines','league_averages','pitcher_season_command','pitcher_season_deception')
+ORDER BY c.reltuples DESC;
+```
+
+Result: `pitches` 8,877,621 rows / 9,711 MB / 623,662 pages; `milb_pitches` 2,508,422 / 2,366 MB;
+`player_season_stats` 79,061; `pitcher_season_command` 27,119; `pitcher_season_deception` 17,386;
+`players` 16,887; `league_averages` 1,806; `compete_pitches` 443; `pitch_baselines` 206.
+**`last_analyze` and `last_autoanalyze` are NULL on every one of these tables** — planner statistics
+have apparently never been refreshed. (`pg_stat_user_tables.n_live_tup` was correspondingly garbage:
+it reported 3,001 rows for `pitches`. Use `reltuples`, not `n_live_tup`, on this database.)
+
+### Date ranges (index-friendly form)
+
+```sql
+SELECT
+  (SELECT game_date FROM pitches ORDER BY game_date ASC LIMIT 1) AS min_date,
+  (SELECT game_date FROM pitches ORDER BY game_date DESC LIMIT 1) AS max_date,
+  (SELECT game_date FROM milb_pitches ORDER BY game_date ASC LIMIT 1) AS milb_min,
+  (SELECT game_date FROM milb_pitches ORDER BY game_date DESC LIMIT 1) AS milb_max;
+```
+
+Result: `pitches` 2015-03-03 → 2026-08-10; `milb_pitches` 2023-03-31 → 2026-08-11. MLB trailing edge
+was 2 days behind MiLB on the observation date. Note the 2015-03-03 start is spring training, so
+`game_type` filtering is load-bearing from the first row.
+
+**Timed out (8s):** the aggregate form `SELECT min(game_date), max(game_date), count(DISTINCT game_year),
+count(DISTINCT game_type) FROM pitches` — `count(DISTINCT …)` forces a full scan of 623,662 pages.
+The four-subquery form above returns instantly off the index.
+
+### Orphan / referential-integrity rate
+
+```sql
+WITH ids AS (
+  SELECT DISTINCT pitcher AS pid FROM pitches WHERE game_date >= '2026-08-01'
+)
+SELECT count(*) AS distinct_pitchers_aug2026,
+       count(*) FILTER (WHERE pl.id IS NULL) AS orphans
+FROM ids LEFT JOIN players pl ON pl.id = ids.pid;
+```
+
+(and the same shape against `milb_pitches.batter`)
+
+Result: **0 orphans** — 453 distinct MLB pitchers and 444 distinct MiLB batters in Aug 2026 all
+resolve to `players.id`. The ingest does backfill `players`.
+
+**Timed out (8s):** the same check written with `NOT IN (SELECT id FROM players)` over a full-2026
+window. `LEFT JOIN … WHERE IS NULL` over a one-month window returns fine; `NOT IN` against a
+16.9k-row subquery does not.
+
+### Facility-athlete linkage (`compete_pitches`)
+
+```sql
+SELECT count(*) AS rows_compete,
+  count(athlete_profile_id) AS with_athlete_profile,
+  count(tm_pitcher_id) AS with_tm_pitcher_id,
+  count(DISTINCT pitcher_name) AS distinct_pitcher_names,
+  count(DISTINCT tm_pitcher_id) AS distinct_tm_ids,
+  count(DISTINCT athlete_profile_id) AS distinct_athletes,
+  min(pitch_date) AS min_date, max(pitch_date) AS max_date
+FROM compete_pitches;
+```
+
+Result: 443 rows, 6 distinct pitchers, **all 443 carry `tm_pitcher_id`, 0 carry `athlete_profile_id`**
+— TrackMan data is 100% unlinked to canonical players. Single session date 2026-04-13.

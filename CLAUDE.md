@@ -4,18 +4,56 @@
 TruMedia-style baseball analytics platform for scouting reports, media content creation, live broadcast production, and internal team operations.
 
 ## Tech Stack
-- React / Next.js 16 with Tailwind CSS
-- Supabase (PostgreSQL + Realtime) — project ID: xgzxfsqwtemlcosglhzr
-- Plotly.js for visualizations
-- Vercel deployment
+Versions verified 2026-08-12 against `package.json` — check there before trusting any version here.
+- Next.js **16.1.6** (App Router) / React **19.2.3** / TypeScript **5.9.3**
+- Tailwind CSS **v4**
+- Supabase (PostgreSQL + Realtime) — project ID: xgzxfsqwtemlcosglhzr, `@supabase/supabase-js` **2.97**
+- Plotly.js **3.4** (`react-plotly.js` 2.6) for visualizations
+- Vitest **4.1.3** for tests
+- Vercel deployment (cron schedules are UTC)
 - MLB Stats API for roster/standings data
-- `@hello-pangea/dnd` for drag-and-drop (Work app Kanban board)
+- `@hello-pangea/dnd` **18** for drag-and-drop (Work app Kanban board)
+- React Compiler is **disabled** (it caused state-reset bugs)
+
+## App Structure
+
+**15 route groups** under `app/`, **195 API route handlers**, **17 cron jobs**. This file documents
+the main ones — it is a map, not an inventory. Derive the current list from disk:
+
+```bash
+ls app | grep '^('                      # route groups
+find app/api -name route.ts | wc -l     # API route count
+ls app/api/cron                         # cron jobs
+```
+
+| Group | What lives there |
+|---|---|
+| `(research)` | **Main analytics app** — player pages, reports, standings, analyst, explore, glossary (28 pages) |
+| `(compete)` | Athlete-facing Compete: performance, reports, review, messages (12 pages) |
+| `(work)` | Internal ops: board, sprints, channels, messages, calendar, goals (10 pages) |
+| `(design)` | Asset designer, Imagine, email product builder (11 pages) |
+| `(milb)` | MiLB mirror of the analytics app — players, hitters, reports, explore (7 pages) |
+| `(broadcast)` | Projects, project editor, producer control panel |
+| `(models)` | gamecall, matchup, risk models |
+| `(visualize)` | Templates, pitch-lab, search |
+| `(data)` | Data console, TrackMan browser |
+| `(game)`, `(mechanics)`, `(newsletter)`, `(admin)`, `(auth)`, `(launcher)` | Smaller single-purpose areas |
+
+Non-grouped: `app/overlay/` (OBS browser sources), `app/player/`, `app/hitter/`, `app/landing/`, `app/offline/`.
+
+### Cron jobs (`app/api/cron/`)
+`abs`, `briefs`, `challenges`, `cleanup`, `daily-cards`, `daily-graphics`, `emails`, `integrity`,
+`janitor`, `milb-pitches`, `newsletter`, `pitches`, `player-stats`, `refresh`, `roster`,
+`sos-weekly`, `wbc`
 
 ## Key Files — Analytics
-- `app/player/[id]/page.tsx` — Pitching dashboard (main player page)
-- `app/reports/page.tsx` — Reports Builder (tile-based scouting reports)
-- `app/standings/page.tsx` — MLB standings
-- `app/analyst/page.tsx` — AI analyst chat
+The analytics pages live in the `(research)` route group — the group name is not part of the URL,
+so `/player/123` is served by `app/(research)/player/[id]/page.tsx`.
+- `app/(research)/player/[id]/page.tsx` — Pitching dashboard (main player page)
+- `app/(research)/reports/page.tsx` — Reports Builder (tile-based scouting reports)
+- `app/(research)/standings/page.tsx` — MLB standings
+- `app/(research)/analyst/page.tsx` — AI analyst chat
+- `app/(milb)/milb/player/[id]/page.tsx` — MiLB equivalent of the player dashboard
 - `components/FilterEngine.tsx` — Reusable 50+ field filter system
 - `components/reports/TileViz.tsx` — Tile visualization components (heatmap, scatter, bar, strike zone, table)
 - `components/reports/ReportTile.tsx` — Configurable report tile wrapper
@@ -104,16 +142,19 @@ TruMedia-style baseball analytics platform for scouting reports, media content c
 ## Database
 
 ### Analytics Tables
-- `pitches` table: 7.4M+ Statcast rows (2015–2026), 90+ columns
+Row counts measured 2026-08-12 via `pg_class.reltuples`; they drift, so re-measure before relying on them.
+- `pitches` table: **~8.88M** Statcast rows (2015-03-03 → 2026-08-10), 90+ columns, **9.7 GB**. Has **no `created_at`/`updated_at`**, so ingest time and late arrivals are unrecoverable after the fact.
 - `milb_pitches` table: parallel MiLB data (2023+). Events column uses Title Case values (`Strikeout`, `Groundout`, `Home Run`, …) vs MLB's lowercase (`strikeout`, `field_out`, …); normalize in queries.
-- `players` table: 4,017 players with id, name, position
+- `players` table: **16,931** rows. Columns: `id` (the MLBAM ID used directly as the primary key), `name`, `position`, `team`, `updated_at`, `lahman_id`. Caveats that bite: `team` is populated on **0 rows**, `lahman_id` on only **19%**, `name` mixes `"Last, First"` and `"First Last"` forms, and 513 names are shared by 2+ players — `name` is not a usable join key.
 - `glossary` table: stat definitions
 - `filter_templates` table: saved filter configs
 - `pitcher_season_command` table: per pitcher × pitch_type × year. Raw Triton command metrics + plus stats. Pitch-weighted aggregate for season-level values.
 - `pitcher_season_deception` table: per pitcher × pitch_type × year. `deception_score`, `unique_score` (2017+).
-- `league_averages` table: 50th-percentile benchmarks per (season, level, role, metric) for qualified players. Populated by `refresh_league_averages(p_season int)` — idempotent, called nightly by `/api/cron/pitches` for the current season.
+- `league_averages` table: benchmarks per (season, level, role, metric) for qualified players. Populated by `refresh_league_averages(p_season int)` — idempotent, called nightly by `/api/cron/pitches` for the current season. **Documented as a 50th percentile but implemented with `AVG()`** — it is a mean, not a median. Also note `refresh_league_averages` is DELETE + re-INSERT, so `updated_at` is a stamp with no history.
 - `compete_pitch_sessions` / `compete_pitches` tables: TrackMan pitch data. See `docs/compete-performance.md`.
-- Indexes on: pitcher, batter, game_date
+- `pitch_baselines` table: 206 rows keyed `(pitch_name, game_year)` — the Stuff+ baselines. **No timestamp column and destructively upserted**, so a past Stuff+ value cannot be recomputed from retained inputs.
+- `player_season_stats` (~79k rows), `daily_cards`, `newsletter_subscribers`, `athlete_profiles`, `compete_reports`, `biomech_captures`, `trackman_pitches`, `whoop_*` — see `scripts/*.sql` for DDL.
+- Indexes on: pitcher, batter, game_date. **No index on `game_pk`.** `last_analyze`/`last_autoanalyze` were NULL on every table checked on 2026-08-12 — planner statistics have apparently never been refreshed.
 
 ### Broadcast Tables
 - `broadcast_projects` — project metadata + settings (fps, transitions, OBS config)
@@ -175,5 +216,17 @@ TruMedia-style baseball analytics platform for scouting reports, media content c
 - Broadcast overlays use transparent backgrounds for OBS browser sources (1920x1080)
 - Work app uses violet accents for messaging, sky accents for navigation
 - Mobile-responsive: `useDevice()` hook for mobile/desktop detection, separate mobile components in `components/mobile/`
+
+## Specialist Agent Brains
+
+Four specialist agents live in `.claude/agents/` with their reference libraries at the repo root:
+
+- **`soto`** (`Soto/`) — baseball training, biomechanics, pitch design, metric/algorithm design
+- **`jo`** (`Jo/`) — data reliability: "is the data there, fresh, and complete" (33/33 ✅)
+- **`li`** (`Li/`) — measurement science: "is this number defensible" (44/44 ✅)
+- **`cas`** (`Cas/`) — verification + presentation: "is it tested and honestly shown" (11/44)
+
+`.claude/agents/BUILD.md` is the build contract for these libraries. `./.claude/agents/check-doc.sh
+<Agent> [--links] <files>` validates a doc against it, including probing every source URL.
 
 ## Deploy
