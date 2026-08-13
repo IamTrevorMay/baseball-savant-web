@@ -77,14 +77,14 @@ export async function POST(req: NextRequest) {
     },
   )
 
-  // Render + upload PDF (public bucket).
+  // Render + upload PDF. The bucket is private — these name a real athlete, often a minor — so
+  // we store the storage path and mint a short-lived signed URL on demand via
+  // /api/compete/reports/[id]/pdf rather than handing out a permanent public link.
   const pdf = buildReportPdf(payload)
   const pdfPath = `${capture.athlete_profile_id}/${captureId}-${crypto.randomUUID()}.pdf`
   await supabaseAdmin.storage.from('biomech-reports').upload(pdfPath, pdf, {
     contentType: 'application/pdf', upsert: true,
   })
-  const { data: pub } = supabaseAdmin.storage.from('biomech-reports').getPublicUrl(pdfPath)
-  const pdfUrl = pub?.publicUrl ?? null
 
   const title = `Biomechanics Report — ${capture.capture_date ?? ''}`.trim()
   const { data: report, error } = await supabaseAdmin
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       player_name: athleteName,
       subject_type: 'biomech',
       created_by: user.id,
-      pdf_url: pdfUrl,
+      pdf_url: pdfPath,
       metadata: payload,
     })
     .select('id')
@@ -110,5 +110,9 @@ export async function POST(req: NextRequest) {
     type: 'report',
   })
 
-  return NextResponse.json({ reportId: report.id, pdfUrl, movementGrade: payload.movementGrade })
+  return NextResponse.json({
+    reportId: report.id,
+    pdfUrl: `/api/compete/reports/${report.id}/pdf`,
+    movementGrade: payload.movementGrade,
+  })
 }

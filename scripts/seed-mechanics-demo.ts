@@ -141,12 +141,14 @@ async function run() {
         rel_speed_mph: tm.metrics.outcome.relSpeedMph, excluded: false,
       })))
       // PDF
+      // Store the storage path, not a public URL — the bucket is private and PDFs are served
+      // through /api/compete/reports/[id]/pdf as short-lived signed URLs.
       let pdfUrl: string | null = null
       try {
         const pdf = buildReportPdf(payload)
         const path = `${ath.id}/${captureId}.pdf`
         await admin.storage.from('biomech-reports').upload(path, Buffer.from(pdf), { contentType: 'application/pdf', upsert: true })
-        pdfUrl = admin.storage.from('biomech-reports').getPublicUrl(path).data.publicUrl
+        pdfUrl = path
       } catch (e) { console.warn('pdf failed', e) }
       // report + notification
       const desc = `Movement grade ${payload.movementGrade}. ${flags.length} priority flag${flags.length === 1 ? '' : 's'}.`

@@ -110,9 +110,11 @@ insert into storage.buckets (id, name, public)
 values ('biomech-captures', 'biomech-captures', false)
 on conflict (id) do nothing;
 
--- Public bucket for rendered report PDFs (unguessable UUID paths).
+-- Private bucket for rendered report PDFs. These name a real athlete (often a minor), so
+-- they are served as short-lived signed URLs via /api/compete/reports/[id]/pdf — an
+-- unguessable path is obscurity, not access control. See scripts/fix-biomech-reports-private.sql.
 insert into storage.buckets (id, name, public)
-values ('biomech-reports', 'biomech-reports', true)
+values ('biomech-reports', 'biomech-reports', false)
 on conflict (id) do nothing;
 
 -- Allow biomech reports to publish through the shared compete_reports pipeline.

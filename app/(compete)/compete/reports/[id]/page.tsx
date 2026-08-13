@@ -192,7 +192,7 @@ export default function CompeteReportViewer() {
       {report.subject_type === 'biomech' && report.metadata?.kind === 'biomech' ? (
         <div className="space-y-6">
           {report.pdf_url && (
-            <a href={report.pdf_url} target="_blank" rel="noopener noreferrer"
+            <a href={`/api/compete/reports/${report.id}/pdf`} target="_blank" rel="noopener noreferrer"
               className="inline-block text-xs px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-700 transition">
               Download PDF
             </a>
