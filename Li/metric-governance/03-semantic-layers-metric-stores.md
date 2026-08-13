@@ -21,12 +21,14 @@ last_updated: 2026-08-11
 
 ## TL;DR
 
-- **A semantic layer makes one claim: the metric's computation lives in one artifact and every consumer asks for it by name.** Caching, APIs and access control are packaging sold alongside, and the claim's value is proportional to consumer count — serving one app it is a file, serving five an architecture. **(established)**
-- **The standalone metrics layer failed commercially and its chief advocate said so** — Benn Stancil named it "the missing piece" in 2021, and by 2025 blamed economics: nobody buys a metric store without a viz layer. Also **"metric store" ≠ "semantic layer"**: one models entities and joins, the other metrics and aggregation. Triton's joins are shallow and stable and its *definitions* drift, so it needs the metric-store half only. **(established)**
-- **Triton meets none of the adoption preconditions** — no dbt, no warehouse, no BI tool, no second consuming app, one engineer — yet **already has a semantic layer, for presentation only**: `lib/metricRegistry.ts` holds **69** `MetricDef` entries, seven of whose eight fields describe rendering. **(computed — no `dbt_project.yml`; `CLAUDE.md` says ~50 entries, so the docs are stale)**
-- **Registry and computation map don't share a key space: 9 of 69 keys overlap.** Registry is camelCase (`whiffPct`, `avgVelo`, `commandPlus`), `reportMetrics.METRICS` snake_case (`whiff_pct`, `avg_velo`, `cmd_plus`); only `ba, games, h, ip, obp, ops, pa, pitches, slg` are in both. **87% of the registry has no programmatic link to how its number is produced.** Nor does *which table serves a metric* — that lives in four ad-hoc `Set`s (19+3+3+2 keys) tested at call sites, i.e. MetricFlow's "which semantic model owns this measure." **(computed)**
-- **The registry's one non-presentational field is already wrong in the way semantic layers exist to prevent.** `totals: 'avg'` is an unweighted mean across rows (`calcTotalsFromRegistry` 663–669) — mean of ratios, not ratio of sums — unfixable because **no field names the weight.** Nor would adopting a vendor help: **no off-the-shelf metric schema carries the fields Triton most needs** — sample size, stabilization threshold, baseline vintage, cross-level comparability, null-vs-zero. MetricFlow will serve a whiff% computed on 11 swings. **(computed / established)**
+- **A semantic layer makes one claim: the metric's computation lives in one artifact and every consumer asks for it by name.** Caching, APIs and access control are packaging sold alongside; the claim's value scales with consumer count — for one app it is a file, for five an architecture. **(established)**
+- **The standalone metrics layer failed commercially and its chief advocate said so** — Benn Stancil called it "the missing piece" in 2021 and by 2025 blamed economics: nobody buys a metric store without a viz layer. Also **"metric store" ≠ "semantic layer"**: one models entities and joins, the other metrics and aggregation. Triton's joins are shallow and stable while its *definitions* drift, so it needs the metric-store half only. **(established)**
+- **Triton meets none of the adoption preconditions** — no dbt, no warehouse, no BI tool, no second consuming app, one engineer — yet **already has a semantic layer, for presentation only**: `lib/metricRegistry.ts` holds **69** `MetricDef` entries, seven of whose eight fields describe rendering. **(computed — no `dbt_project.yml`; `CLAUDE.md` said ~50, stale)**
+- **Registry and computation map don't share a key space: 9 of 69 keys overlap.** The registry is camelCase (`whiffPct`), `reportMetrics.METRICS` snake_case (`whiff_pct`); only `ba, games, h, ip, obp, ops, pa, pitches, slg` are in both. **87% of the registry has no programmatic link to how its number is produced.** Nor does *which table serves a metric* — that lives in four ad-hoc `Set`s (19+3+3+2 keys) tested at call sites, i.e. MetricFlow's "which semantic model owns this measure." **(computed)**
+- **The registry's one non-presentational field is already wrong in the way semantic layers exist to prevent.** `totals: 'avg'` is an unweighted mean across rows (`calcTotalsFromRegistry` 663–669) — mean of ratios, not ratio of sums — unfixable because **no field names the weight.** Nor would a vendor help: **no off-the-shelf metric schema carries the fields Triton most needs** — sample size, stabilization, baseline vintage, cross-level comparability, null-vs-zero. MetricFlow will serve a whiff% computed on 11 swings. **(computed / established)**
+- **A semantic layer prevents inconsistency, not error — and uniform error is worse.** Disagreement between surfaces is a detection signal; one wrong definition propagated faithfully is silent. `league_averages` is documented as a 50th percentile and implemented as `AVG()` — a semantic layer would have distributed that to every consumer. **(established)**
 - **The move: extend `MetricDef` from a format spec into a definition record** — computation, population, filter, weighted aggregation, coverage, stabilization, baseline dependency, glossary anchor. **(estimated)**
+- **Verdict: adopt none of dbt/MetricFlow, Cube, LookML, Malloy, or an in-house service.** Each is priced for a problem Triton lacks — a warehouse DAG, read concurrency, a BI vendor, a second team. Revisit only when **all three** hold: dbt arrives for unrelated reasons, a second app consumes the metrics, a second engineer writes queries. **(estimated)**
 
 ---
 
@@ -34,7 +36,7 @@ last_updated: 2026-08-11
 
 > A metric is defined once, in an artifact that is not the SQL of any particular query, and every consumer — dashboard, API, notebook, overlay, LLM — resolves it by name at request time.
 
-Whiff rate then cannot be 34.1% on the dashboard and 33.6% in the newsletter. dbt calls this *write once, query anywhere*; Cube calls it *headless BI*; Looker called it LookML fifteen years earlier. Everything beyond the claim is packaging, and pricing it separately *is* the adoption decision:
+Whiff rate then cannot be 34.1% on the dashboard and 33.6% in the newsletter. dbt calls this *write once, query anywhere*; Cube, *headless BI*; Looker called it LookML fifteen years earlier. Everything beyond the claim is packaging, and pricing it separately *is* the adoption decision:
 
 | Layer | What it does | Needed when |
 |---|---|---|
@@ -45,7 +47,7 @@ Whiff rate then cannot be 34.1% on the dashboard and 33.6% in the newsletter. db
 
 Cube's own definition of headless BI is these layers *minus the first*. **(established)**
 
-**Fan-out is the real technical content:** a metric on one fact table must stay correct when sliced by a dimension on another — join a pitch-grain fact to a season-grain dimension and a naive `SUM` double-counts. Triton's metric SQL hits one wide table (`pitches`, 90+ columns, pre-joined) or three narrow pre-aggregated ones. No join graph to compile removes the hardest thing a semantic layer does, and most of the reason to adopt one. **(estimated)**
+**Fan-out is the real technical content:** a metric on one fact table must stay correct when sliced by a dimension on another — join a pitch-grain fact to a season-grain dimension and a naive `SUM` double-counts. Triton's metric SQL hits one wide pre-joined table (`pitches`, 90+ columns) or three narrow pre-aggregated ones. No join graph to compile removes the hardest thing a semantic layer does, and most of the reason to adopt one. **(estimated)**
 
 ---
 
@@ -60,7 +62,7 @@ Cube's own definition of headless BI is these layers *minus the first*. **(estab
 | **Metriql** | dbt YAML extension | yes | yes | demonstrating the idea; effectively dormant |
 | **In-code registry** *(Triton)* | TypeScript object | no | **no** | zero infrastructure; typed, refactorable, testable |
 
-**Every option but the last adds a runtime** — a deployment surface, a cache to invalidate, a new place for numbers to go quietly stale, on a platform whose defining incident was a silent three-month data failure. **Every dbt-based option presupposes dbt**, whose `ref()`-addressed models Triton lacks: its transformation layer is API routes and Postgres RPCs.
+**Every option but the last adds a runtime** — a deployment surface, a cache to invalidate, another place for numbers to go quietly stale, on a platform whose defining incident was a silent three-month data failure. **Every dbt-based option presupposes dbt**, whose `ref()`-addressed models Triton lacks: its transformation layer is API routes and Postgres RPCs.
 
 ### 2.1 The same metric, and Triton's
 
@@ -70,7 +72,7 @@ Whiff% = swinging strikes / swings. **MetricFlow** (`ratio` is first-class, with
 semantic_models:
   - name: pitches
     model: ref('fct_pitches')
-    entities:   [{ name: pitcher, type: foreign, expr: pitcher }]
+    entities: [{ name: pitcher, type: foreign, expr: pitcher }]
     measures:
       - { name: swinging_strikes, agg: sum, expr: "case when description like '%swinging_strike%' then 1 else 0 end" }
       - { name: swings, agg: sum, expr: "…" }
@@ -79,8 +81,7 @@ metrics:
       type_params: { numerator: swinging_strikes, denominator: swings } }
 ```
 
-**LookML** says it in a fifth of the space because the join model lives in the `explore` —
-`measure: whiff_pct { type: number  sql: 100.0 * ${swinging_strikes} / NULLIF(${swings}, 0) ;;  value_format_name: decimal_1 }`. All four put computation, label, unit and format in **one artifact**.
+The *definition* is the last four lines; everything above tells the compiler how the table joins — work Triton does not have. **LookML** needs a fifth of the space because that join model lives in the `explore`: `measure: whiff_pct { type: number  sql: 100.0 * ${swinging_strikes} / NULLIF(${swings}, 0) ;; }`. All four put computation, label, unit and format in **one artifact**.
 
 **Triton, today** — one metric, two files that cannot see each other:
 
@@ -91,7 +92,7 @@ whiff_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_str
 
 // lib/metricRegistry.ts — the presentation, keyed 'whiffPct'
 whiffPct: { key: 'whiffPct', label: 'Whiff%', unit: '%', format: { type: 'pct', digits: 1 },
-            color: { mode: 'static', class: '…' }, totals: 'avg', tip: '…' }
+            color: {…}, totals: 'avg', tip: '…' }
 ```
 
 That split is the entire gap, and it is closable without adopting any of the four. **(computed)**
@@ -102,19 +103,17 @@ That split is the entire gap, and it is closable without adopting any of the fou
 
 A **semantic layer** models entities, joins and dimensions — *how do these tables relate, what can I slice by?* — and fails by producing wrong numbers from wrong joins (LookML, Cube, AtScale). A **metric store** models numerator, denominator, grain and time basis — *what is the one true definition?* — and fails by letting definitions drift into two right answers (MetricFlow, Metriql, Minerva, uMetric). Triton needs the second only.
 
-The in-house prior art is the honest guide. Airbnb's **Minerva** serves aggregates downstream at 12,000+ metrics; Uber's **uMetric** adds a six-stage lifecycle, canonical-form query dedup to catch two teams defining one metric twice, and a Verification Committee — **a committee and a lifecycle, which no vendor sells.** At scale the hard part of governance is human process; technology is only enforcement. Triton's committee is one person and his enforcement is `docs/VARIABLES.md` plus a commit-time convention: correctly sized, not deficient. A definition is a contract (`01-metric-definition-semantics.md`), and one enforced by convention decays proportionally to the people and surfaces bound by it. **(established / estimated)**
+The in-house prior art is the honest guide. Airbnb's **Minerva** serves aggregates downstream at 12,000+ metrics; Uber's **uMetric** adds a six-stage lifecycle, canonical-form query dedup catching two teams defining one metric twice, and a Verification Committee — **a committee and a lifecycle, which no vendor sells.** At scale the hard part of governance is human process; technology only enforces. Triton's committee is one person, enforcing via `docs/VARIABLES.md` and a commit-time convention: correctly sized, not deficient. A definition is a contract (`01-metric-definition-semantics.md`), and one enforced by convention decays proportionally to the people and surfaces bound by it. **(established / estimated)**
 
-**Where it holds.** *Change propagation* — edit once, every surface updates atomically; the largest benefit and the one Triton can capture cheaply. *Generated documentation* — the glossary cannot lie. *Multiple consumers* — weakly true today: `/api/report`, `/api/scene-stats`, the dashboard, overlays and the newsletter share `lib/reportMetrics.ts` (so *values* mostly agree) and don't share the registry (so *formatting and aggregation* diverge). **(computed)**
+**Where it holds.** *Change propagation* — edit once, every surface updates atomically; the largest benefit and the one Triton can capture cheaply. *Generated documentation* — the glossary cannot lie. *Multiple consumers* — weakly true today: `/api/report`, `/api/scene-stats`, the dashboard, overlays and the newsletter share `lib/reportMetrics.ts` (so *values* mostly agree) but not the registry (so *formatting and aggregation* diverge). **(computed)**
 
-**Where it overreaches.** It prevents inconsistency, not *error* — one wrong definition applied uniformly is worse than two that disagree loudly, because disagreement is a detection signal, and Triton's `league_averages` is documented as 50th-percentile while implemented as `AVG()`; a semantic layer would have propagated that with perfect fidelity. It also **cannot express uncertainty**: no system in §2 has a field for sample size, stabilization threshold, or baseline vintage — decisive here, since Triton's standing hazards are exactly vintage drift, null-vs-zero, cross-level incomparability and short-window interpretation. And the economics never worked; standards work has moved to Apache Ossie (formerly Open Semantic Interchange), an interchange *format*. **(established)**
+**Where it overreaches.** It prevents inconsistency, not *error* — disagreement between surfaces is a detection signal, and a semantic layer would have propagated `league_averages`' documented-median/implemented-`AVG()` defect with perfect fidelity. It also **cannot express uncertainty**: no system in §2 has a field for sample size, stabilization threshold, or baseline vintage — decisive here, since Triton's standing hazards are exactly vintage drift, null-vs-zero, cross-level incomparability and short-window interpretation. And the economics never worked; standards work has moved to Apache Ossie, an interchange *format*. **(established)**
 
 ---
 
 ## 4. What Triton has: a half-built semantic layer, measured
 
-`lib/metricRegistry.ts` calls itself the *"single source of truth for column definitions, formatting, coloring, and totals aggregation."* Three of those four are presentation.
-
-The current `MetricDef` is eight fields — `key`, `label`, `unit`, `format` (`int|dec|pct|ip`), `color` (`static|plus|inverted_value`), `totals` (`sum|avg|max|ip|totalRE|none`), `higherBetter?`, `tip?`. Seven describe rendering. The eighth, `totals`, carries a known defect.
+`lib/metricRegistry.ts` calls itself the *"single source of truth for column definitions, formatting, coloring, and totals aggregation"* — three of those four are presentation. Its `MetricDef` is eight fields (`key`, `label`, `unit`, `format`, `color`, `totals`, `higherBetter?`, `tip?`); seven describe rendering, and the eighth, `totals`, carries a known defect.
 
 | Fact (computed from source, 2026-08-11) | Value |
 |---|---|
@@ -126,15 +125,15 @@ The current `MetricDef` is eight fields — `key`, `label`, `unit`, `format` (`i
 | Metrics computed in JS (`COMPUTED_METRIC_KEYS`) | **2** — `wrc_plus`, `runs` |
 | Source-routing `Set`s in `reportMetrics.ts` | **4** (19 + 3 + 3 + 2 keys) |
 
-**No join between definition and display, and the routing `Set`s are a semantic model in disguise.** `whiffPct` and `whiff_pct` are one metric under two names in two files and nothing in the type system knows it — renaming one doesn't break the other, adding to one doesn't surface it in the other.
+**No join between definition and display, and the routing `Set`s are a semantic model in disguise.** `whiffPct` and `whiff_pct` are one metric under two names in two files, and nothing in the type system knows it — renaming one doesn't break the other.
 
-**`totals: 'avg'` is mean-of-ratios, encoded once and applied everywhere.** `calcTotalsFromRegistry` returns `sum / vals.length` over parsed row values; across seasons a 12-pitch season weighs the same as a 3,000-pitch one. The registry is the right place to fix it (hazard #5, `context/triton-context.md`) and the fix is impossible here — **there is no field to name the weight.** That missing field is the argument for §5.
+**`totals: 'avg'` is mean-of-ratios, encoded once and applied everywhere.** `calcTotalsFromRegistry` returns `sum / vals.length` over parsed row values, so a 12-pitch season weighs the same as a 3,000-pitch one. The registry is the right place to fix it (hazard #5, `context/triton-context.md`) and the fix is impossible here — **there is no field to name the weight.** That missing field is the argument for §5.
 
 ---
 
 ## 5. The richer `MetricDef` — one entry that fully specifies a metric
 
-Additive, not a rewrite: existing fields stay, the new block is optional, the 69 entries compile untouched.
+Additive, not a rewrite: existing fields stay, the new block is optional, all 69 entries compile untouched.
 
 ```ts
 // Population = { source: 'pitches' | 'milb_pitches' | 'pitcher_season_command'
@@ -173,7 +172,7 @@ export interface MetricDef {
 }
 ```
 
-Stuff+ exercises every field: `sqlKey: 'stuff_plus'`, `population: { source: 'pitches', grain: 'pitch' }`, `filter: 'stuff_plus IS NOT NULL'`, `computation: { kind: 'column', column: 'stuff_plus' }`, `aggregation: { acrossRows: 'weighted_mean', weightBy: 'pitches' }` (was `'avg'`), `coverage: { nullMeans: 'not_measured' }` — the 2026 outage, in the type system — and `baseline: { table: 'pitch_baselines', keyedBy: ['pitch_name','game_year'], versioned: false, crossLevelComparable: false }`.
+Stuff+ exercises every field: `sqlKey: 'stuff_plus'`, `population: { source: 'pitches', grain: 'pitch' }`, `computation: { kind: 'column', column: 'stuff_plus' }`, `aggregation: { acrossRows: 'weighted_mean', weightBy: 'pitches' }` (was `'avg'`), `coverage: { nullMeans: 'not_measured' }` — the 2026 outage, in the type system — and `baseline: { …, versioned: false, crossLevelComparable: false }`.
 
 | New field | Hazard it makes structural |
 |---|---|
@@ -189,28 +188,28 @@ The last row has **no equivalent in MetricFlow, Cube, LookML or Malloy.** An off
 ## 6. What Triton should do, in order
 
 1. **Add `sqlKey` to all 69 entries plus the test that asserts it resolves.** One afternoon, zero behavior change, largest structural gap under CI.
-2. **Add `aggregation`; migrate `totals`.** Keep `totals` as a deprecated alias, make `weighted_mean` require `weightBy`, and move `whiffPct`, `csPct`, `kPct`, `bbPct` and the rate family off `'avg'`. This **changes displayed numbers** (career totals rows) — `docs/VARIABLES.md` entry same commit, with before/after.
-3. **Add `population` + `computation`; delete the four routing `Set`s**, re-exporting them as derived (`keysWhere(d => d.population?.source === 'pitcher_season_command')`) so no call site changes.
-4. **Add `coverage.nullMeans`.** Cheapest high-value field: the display layer separates 0 from not-measured without every component re-deriving the rule (hazard #3, `context/triton-context.md`).
-5. **Add `baseline` to the ~6 metrics that have one** — Stuff+, Triton+, deception; `versioned: false` is true today and makes the drift hazard machine-readable. Then `stabilization`, grade-tagged, and `glossaryAnchor` with a test that every anchor exists in `docs/VARIABLES.md`.
+2. **Add `aggregation`; migrate `totals`.** Keep `totals` as a deprecated alias, make `weighted_mean` require `weightBy`, and move the rate family (`whiffPct`, `csPct`, `kPct`, `bbPct`) off `'avg'`. This **changes displayed numbers** (career totals rows) — update `docs/VARIABLES.md` the same commit, with before/after.
+3. **Add `population` + `computation`; delete the four routing `Set`s**, re-exporting them as derived so no call site changes.
+4. **Add `coverage.nullMeans`.** Cheapest high-value field: the display layer separates 0 from not-measured without each component re-deriving the rule (hazard #3, `context/triton-context.md`).
+5. **Add `baseline` to the ~6 metrics that have one** — Stuff+, Triton+, deception; `versioned: false` is true today and makes the drift hazard machine-readable. Then `stabilization` and `glossaryAnchor`, with a test that every anchor exists in `docs/VARIABLES.md`.
 6. **Only then widen the consumer set** — `/api/report` and `/api/scene-stats` read the registry, not `METRICS`.
 
-The migration is safe because the pattern is proven: `OverviewTab.tsx` consumes `getColumns`/`formatMetric`/`getCellColor`/`calcTotalsFromRegistry` in production and `lib/glossary.ts` falls back to the registry for tooltips. Adding optional fields breaks neither.
+The migration is safe because the pattern is proven: `OverviewTab.tsx` already consumes `getColumns`/`formatMetric`/`getCellColor`/`calcTotalsFromRegistry` in production, and `lib/glossary.ts` falls back to the registry for tooltips. Optional fields break neither.
 
 **Anti-recommendation — adopt none of these, specifically:**
 
 - **Not the dbt Semantic Layer / MetricFlow.** It requires adopting dbt first — a framework Triton has no other use for, its transformations being API routes and Postgres functions, not a warehouse DAG. Cost: a build system, a deployment, a modeling language. Benefit: YAML instead of TypeScript, with *fewer* fields than §5.
-- **Not Cube.** Its differentiators are pre-aggregation caching and multi-consumer APIs. Triton's read concurrency is one operator plus overlay clients, and its binding constraint is an 8s Postgres statement timeout Cube doesn't remove — it only adds another place a number can go silently stale.
+- **Not Cube.** Its differentiators are pre-aggregation caching and multi-consumer APIs. Triton's read concurrency is one operator plus overlay clients, and its binding constraint is an 8s Postgres statement timeout Cube doesn't remove; it only adds another place a number can go stale.
 - **Not LookML or Malloy.** LookML requires Looker, and Triton *is* the BI tool. Malloy is a query language with no versioning, ownership or provenance; adopting it means rewriting working SQL in a language with one user.
 - **Not an in-house metrics service.** The failure Minerva and uMetric solve — two teams defining one metric differently — requires two teams. Triton has 69 metrics and one engineer.
 
-Nor should the work stall pending a "proper" solution: step 1 costs an afternoon and is strictly better than what exists.
+Nor should the work stall pending a "proper" solution: step 1 costs an afternoon and beats what exists.
 
-**When to revisit — all three, not any one:** **dbt enters the stack** for an unrelated reason (warehouse, transform DAG, model tests), making MetricFlow nearly free; **a second application consumes the metrics** — a partner API or client-facing Compete portal that cannot `import` a TypeScript module; **a second engineer writes queries**, since governance technology substitutes for shared memory and with two authors the registry must be enforced, not merely honest.
+**When to revisit — all three, not any one:** **dbt enters the stack** for an unrelated reason, making MetricFlow nearly free; **a second application consumes the metrics** — a partner API or Compete portal that cannot `import` a TypeScript module; **a second engineer writes queries**, since governance technology substitutes for shared memory, and with two authors the registry must be enforced rather than merely honest.
 
 Until then: **Triton's semantic layer is a TypeScript file, and that is the correct architecture for its size.** The work is not replacing it — it is finishing it.
 
-**Cross-references.** `01-metric-definition-semantics.md` — the seven clauses §5's schema encodes. `02-metric-versioning-reproducibility.md` — why `baseline.versioned` matters. `04-materialize-vs-compute-time.md` — `computation.kind` *is* the stored-vs-computed axis. `09-metric-documentation-glossary.md` *(planned)* owns the `glossaryAnchor` lockstep test. `Cas/analytics-ux/09-comparative-display-benchmarks.md` *(planned)* — `coverage.nullMeans`, `stabilization` and `baseline.crossLevelComparable` are produced here and *consumed* there; agree field names first.
+**Cross-references.** `01-metric-definition-semantics.md` — the seven clauses §5's schema encodes. `02-metric-versioning-reproducibility.md` — why `baseline.versioned` matters. `04-materialize-vs-compute-time.md` — `computation.kind` *is* the stored-vs-computed axis. `09-metric-documentation-glossary.md` owns the `glossaryAnchor` lockstep test. `Cas/analytics-ux/09-comparative-display-benchmarks.md` *(planned)* consumes `coverage.nullMeans`, `stabilization` and `baseline.crossLevelComparable`; agree field names first.
 
 ---
 

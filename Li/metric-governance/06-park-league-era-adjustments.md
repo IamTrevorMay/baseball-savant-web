@@ -263,7 +263,7 @@ More generally: **Triton's park adjustment does not fail because it is too coars
 18. [Gould — *Full House*](https://en.wikipedia.org/wiki/Full_House_(book)) — compression of variance (§3.2).
 19. [BR Bullpen — Adjusted ERA+](https://www.baseball-reference.com/bullpen/Adjusted_ERA%2B) — worked indexed stat, and its limits.
 20. [Retrosheet](https://www.retrosheet.org/)
-21. [SABR — Baseball Research Journal](https://sabr.org/journal/) — standing venue for park/era research.
+21. [SABR — Baseball Research Journal](https://sabr.org/journals/) — standing venue for park/era research.
 
 **Triton-internal evidence (read 2026-08-11; no database queried):** `lib/constants-data.ts:4–65` (`SEASON_CONSTANTS` season-keyed; `PARK_FACTORS` un-keyed, 31 keys incl. both `OAK` and `ATH`, `pf_h`/`pf_r` in the type but populated for no team); `lib/sql.ts:29–61`; `app/api/park-adjusted/route.ts:44–54`; `app/api/populate-park-factors/route.ts:15–40`; `app/api/scene-stats/route.ts:136, 398, 1098, 1671`; `app/api/update/route.ts:295–322`; `scripts/create-refresh-league-averages.sql:24`; `docs/reliability-findings-2026-08-11.md:27, 44`.
 

@@ -9,8 +9,23 @@
 > **Cas owns: "is it verified and honestly presented."** Not "is the data there" (→ `Jo`) or "is
 > the number defensible" (→ `Li`) or "should this metric exist" (→ `Soto`).
 
-**Build status:** foundation complete (persona, context, index). Reference docs in progress —
-`[ ]` = planned, `[x]` = built and researched.
+**Build status: 22/44 reference docs** (2026-08-13) — `[ ]` = planned, `[x]` = built, researched, and
+verified against `.claude/agents/BUILD.md`. Domains 1–2 complete; `frontend-data-scale/` and
+`caching-state/` are next, then the 4 applied playbooks.
+
+**Two tiers, by domain** (see `BUILD.md` § Doc tiers). `testing-data-systems/` is **standard** tier
+(22 KiB, 17–24 sources); `analytics-ux/` onward is **light** tier (15.5 KiB, 10–14 sources) — same
+structure, less depth. Verify with the matching flag:
+
+```bash
+./.claude/agents/check-doc.sh Cas --links          testing-data-systems/*.md
+./.claude/agents/check-doc.sh Cas --light --links  analytics-ux/*.md
+```
+
+**Correction from the Domain 1 build:** `context/triton-context.md` says all 5 suite failures are the
+`.maybeSingle()` mock chain — only **4** are. The 5th (`__tests__/lib/leagueStats.test.ts:40`) asserts
+`computePlus(91,90,0) === Infinity` while `lib/leagueStats.ts:1322` now guards zero stddev and returns
+100: an approval test pinned to a fixed bug. See `testing-data-systems/11-vitest-nextjs-patterns.md`.
 
 ## Context
 - [triton-context.md](context/triton-context.md) — Ground truth on Triton's surfaces: the stack
@@ -34,30 +49,30 @@
   rollback rules.
 
 ## Domain 1: Testing for Data Systems (`testing-data-systems/`)
-- [ ] [01-testing-strategy-data-apps.md](testing-data-systems/01-testing-strategy-data-apps.md) — What to test in a data app vs a normal app, the test pyramid's poor fit, risk-based prioritization, what "coverage" means when the risk is numeric.
-- [ ] [02-sql-query-testing.md](testing-data-systems/02-sql-query-testing.md) — Testing SQL: fixture databases, transactional rollback, seeded snapshots, testing against real Postgres vs mocks, pgTAP, testcontainers.
-- [ ] [03-contract-testing-external-apis.md](testing-data-systems/03-contract-testing-external-apis.md) — Contract tests against MLB Stats API and Savant, recorded fixtures vs live smoke tests, detecting upstream drift before it corrupts data, Pact-style approaches.
-- [ ] [04-idempotency-backfill-testing.md](testing-data-systems/04-idempotency-backfill-testing.md) — Proving a backfill is idempotent and resumable, double-run tests, partial-failure injection, verifying a repair actually repaired.
-- [ ] [05-golden-file-metric-testing.md](testing-data-systems/05-golden-file-metric-testing.md) — Snapshot/golden-file tests for metric outputs, choosing fixtures, updating goldens safely, catching silent formula drift.
-- [ ] [06-property-based-testing.md](testing-data-systems/06-property-based-testing.md) — Property/invariant testing for numeric code (fast-check), metamorphic testing, invariants worth asserting on baseball metrics.
-- [ ] [07-integration-e2e-testing.md](testing-data-systems/07-integration-e2e-testing.md) — API-route testing in Next.js, Playwright for critical flows, testing Realtime/overlay behavior, flake management.
-- [ ] [08-test-data-management.md](testing-data-systems/08-test-data-management.md) — Fixtures at scale, deriving small representative slices from 8.9M rows, anonymization for athlete data, fixture drift.
-- [ ] [09-numeric-regression-detection.md](testing-data-systems/09-numeric-regression-detection.md) — Float comparison and tolerances, detecting drift in aggregate outputs, distribution-level assertions in CI, approval-testing patterns.
-- [ ] [10-ci-cd-for-data-apps.md](testing-data-systems/10-ci-cd-for-data-apps.md) — CI shape for a Vercel/Supabase app, migration testing, preview environments and seeded data, gating deploys on data checks.
-- [ ] [11-vitest-nextjs-patterns.md](testing-data-systems/11-vitest-nextjs-patterns.md) — Vitest configuration for Next.js App Router, mocking Supabase clients correctly (the `.maybeSingle()` chain failure), RSC/route-handler testing, coverage tooling.
+- [x] [01-testing-strategy-data-apps.md](testing-data-systems/01-testing-strategy-data-apps.md) — What to test in a data app vs a normal app, the test pyramid's poor fit, risk-based prioritization, what "coverage" means when the risk is numeric.
+- [x] [02-sql-query-testing.md](testing-data-systems/02-sql-query-testing.md) — Testing SQL: fixture databases, transactional rollback, seeded snapshots, testing against real Postgres vs mocks, pgTAP, testcontainers.
+- [x] [03-contract-testing-external-apis.md](testing-data-systems/03-contract-testing-external-apis.md) — Contract tests against MLB Stats API and Savant, recorded fixtures vs live smoke tests, detecting upstream drift before it corrupts data, Pact-style approaches.
+- [x] [04-idempotency-backfill-testing.md](testing-data-systems/04-idempotency-backfill-testing.md) — Proving a backfill is idempotent and resumable, double-run tests, partial-failure injection, verifying a repair actually repaired.
+- [x] [05-golden-file-metric-testing.md](testing-data-systems/05-golden-file-metric-testing.md) — Snapshot/golden-file tests for metric outputs, choosing fixtures, updating goldens safely, catching silent formula drift.
+- [x] [06-property-based-testing.md](testing-data-systems/06-property-based-testing.md) — Property/invariant testing for numeric code (fast-check), metamorphic testing, invariants worth asserting on baseball metrics.
+- [x] [07-integration-e2e-testing.md](testing-data-systems/07-integration-e2e-testing.md) — API-route testing in Next.js, Playwright for critical flows, testing Realtime/overlay behavior, flake management.
+- [x] [08-test-data-management.md](testing-data-systems/08-test-data-management.md) — Fixtures at scale, deriving small representative slices from 8.9M rows, anonymization for athlete data, fixture drift.
+- [x] [09-numeric-regression-detection.md](testing-data-systems/09-numeric-regression-detection.md) — Float comparison and tolerances, detecting drift in aggregate outputs, distribution-level assertions in CI, approval-testing patterns.
+- [x] [10-ci-cd-for-data-apps.md](testing-data-systems/10-ci-cd-for-data-apps.md) — CI shape for a Vercel/Supabase app, migration testing, preview environments and seeded data, gating deploys on data checks.
+- [x] [11-vitest-nextjs-patterns.md](testing-data-systems/11-vitest-nextjs-patterns.md) — Vitest configuration for Next.js App Router, mocking Supabase clients correctly (the `.maybeSingle()` chain failure), RSC/route-handler testing, coverage tooling.
 
 ## Domain 2: Analytics UX & Honest Presentation (`analytics-ux/`)
-- [ ] [01-honest-data-presentation.md](analytics-ux/01-honest-data-presentation.md) — The ethics and mechanics of not lying with data: sample size, provenance, coverage, denominators, and the failure mode where a shrinking sample renders as a smooth trend.
-- [ ] [02-null-zero-unknown-ui.md](analytics-ux/02-null-zero-unknown-ui.md) — Distinguishing no-data, zero, not-applicable, and not-yet-covered in tables and charts; conventions, glyphs, and tooltip design.
-- [ ] [03-visualization-principles.md](analytics-ux/03-visualization-principles.md) — Chart-type selection, perceptual accuracy (position > length > angle > color), data-ink, axis truncation ethics, small multiples.
-- [ ] [04-uncertainty-visualization.md](analytics-ux/04-uncertainty-visualization.md) — Error bars, confidence bands, gradient/violin encodings, hypothetical outcome plots, communicating instability without paralyzing the reader.
-- [ ] [05-dashboard-information-architecture.md](analytics-ux/05-dashboard-information-architecture.md) — Layout hierarchy, scanning patterns, grouping, the analyst's question-first flow, avoiding the wall-of-tiles.
-- [ ] [06-color-encoding-accessibility.md](analytics-ux/06-color-encoding-accessibility.md) — Sequential/diverging/categorical palettes, colorblind safety, dark-theme contrast, spectrum heatmaps for strike-zone data, WCAG for data viz.
-- [ ] [07-dense-table-design.md](analytics-ux/07-dense-table-design.md) — TruMedia-style dense tables: alignment, numeric formatting, sticky headers, sorting affordances, conditional coloring, scannability at density.
-- [ ] [08-loading-empty-error-states.md](analytics-ux/08-loading-empty-error-states.md) — States that don't lie: skeletons vs spinners, partial data, error recovery, empty-vs-filtered-to-empty, stale-data indicators.
-- [ ] [09-comparative-display-benchmarks.md](analytics-ux/09-comparative-display-benchmarks.md) — Showing league context: plus-stats, percentile bars, rank badges, benchmark lines, and making the comparison population explicit.
-- [ ] [10-progressive-disclosure-drilldown.md](analytics-ux/10-progressive-disclosure-drilldown.md) — Overview→detail flows, drill-down affordances, tooltip vs panel vs modal, keeping context on navigation.
-- [ ] [11-broadcast-overlay-legibility.md](analytics-ux/11-broadcast-overlay-legibility.md) — Type size, contrast, stroke/shadow over live video, safe areas, motion and dwell time, compression artifacts, 1920×1080 transparent overlays for OBS.
+- [x] [01-honest-data-presentation.md](analytics-ux/01-honest-data-presentation.md) — The ethics and mechanics of not lying with data: sample size, provenance, coverage, denominators, and the failure mode where a shrinking sample renders as a smooth trend.
+- [x] [02-null-zero-unknown-ui.md](analytics-ux/02-null-zero-unknown-ui.md) — Distinguishing no-data, zero, not-applicable, and not-yet-covered in tables and charts; conventions, glyphs, and tooltip design.
+- [x] [03-visualization-principles.md](analytics-ux/03-visualization-principles.md) — Chart-type selection, perceptual accuracy (position > length > angle > color), data-ink, axis truncation ethics, small multiples.
+- [x] [04-uncertainty-visualization.md](analytics-ux/04-uncertainty-visualization.md) — Error bars, confidence bands, gradient/violin encodings, hypothetical outcome plots, communicating instability without paralyzing the reader.
+- [x] [05-dashboard-information-architecture.md](analytics-ux/05-dashboard-information-architecture.md) — Layout hierarchy, scanning patterns, grouping, the analyst's question-first flow, avoiding the wall-of-tiles.
+- [x] [06-color-encoding-accessibility.md](analytics-ux/06-color-encoding-accessibility.md) — Sequential/diverging/categorical palettes, colorblind safety, dark-theme contrast, spectrum heatmaps for strike-zone data, WCAG for data viz.
+- [x] [07-dense-table-design.md](analytics-ux/07-dense-table-design.md) — TruMedia-style dense tables: alignment, numeric formatting, sticky headers, sorting affordances, conditional coloring, scannability at density.
+- [x] [08-loading-empty-error-states.md](analytics-ux/08-loading-empty-error-states.md) — States that don't lie: skeletons vs spinners, partial data, error recovery, empty-vs-filtered-to-empty, stale-data indicators.
+- [x] [09-comparative-display-benchmarks.md](analytics-ux/09-comparative-display-benchmarks.md) — Showing league context: plus-stats, percentile bars, rank badges, benchmark lines, and making the comparison population explicit.
+- [x] [10-progressive-disclosure-drilldown.md](analytics-ux/10-progressive-disclosure-drilldown.md) — Overview→detail flows, drill-down affordances, tooltip vs panel vs modal, keeping context on navigation.
+- [x] [11-broadcast-overlay-legibility.md](analytics-ux/11-broadcast-overlay-legibility.md) — Type size, contrast, stroke/shadow over live video, safe areas, motion and dwell time, compression artifacts, 1920×1080 transparent overlays for OBS.
 
 ## Domain 3: Frontend Performance at Data Scale (`frontend-data-scale/`)
 - [ ] [01-rendering-large-datasets.md](frontend-data-scale/01-rendering-large-datasets.md) — Virtualization/windowing, incremental rendering, DOM node budgets, when to stop rendering rows and start aggregating.
