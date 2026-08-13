@@ -26,6 +26,43 @@ import { randomUUID } from "node:crypto";
 const PORT = parseInt(process.env.PORT || "3100", 10);
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",") || ["*"];
 
+/**
+ * Bearer token required on every /mcp request.
+ *
+ * This server exposes a `query_database` tool that executes caller-supplied SQL through the
+ * service_role Supabase client (see server.ts), which bypasses every RLS policy. Without a
+ * token, any client that can reach the port has unauthenticated read access to production.
+ *
+ * Fails closed: if MCP_AUTH_TOKEN is unset the server refuses to start rather than silently
+ * serving unauthenticated — an unset secret must not be the permissive case.
+ */
+const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
+if (!MCP_AUTH_TOKEN) {
+  console.error(
+    "FATAL: MCP_AUTH_TOKEN is not set. This server exposes arbitrary SQL as service_role;\n" +
+    "refusing to start without a token. Generate one with: openssl rand -hex 32"
+  );
+  process.exit(1);
+}
+
+if (ALLOWED_ORIGINS.includes("*")) {
+  console.warn(
+    "WARNING: ALLOWED_ORIGINS is '*'. Set it to your real origins in production."
+  );
+}
+
+/** Constant-time-ish bearer check. Returns true when the request carries the right token. */
+function isAuthorized(req: IncomingMessage): boolean {
+  const header = req.headers["authorization"];
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
+  const presented = header.slice("Bearer ".length);
+  const expected = MCP_AUTH_TOKEN as string;
+  if (presented.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
 // ── Session management ──────────────────────────────────────────────────────
 // Each client session gets its own transport + server instance.
 // This allows multiple concurrent clients.
@@ -36,17 +73,25 @@ function setCorsHeaders(res: ServerResponse) {
   const origin = ALLOWED_ORIGINS.includes("*") ? "*" : ALLOWED_ORIGINS.join(", ");
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, mcp-session-id, Authorization");
   res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 }
 
 async function handleMcpRequest(req: IncomingMessage, res: ServerResponse) {
   setCorsHeaders(res);
 
-  // CORS preflight
+  // CORS preflight — answered before auth so browsers can learn the allowed headers.
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // Auth gate. Must come before session creation: without it, a POST with no
+  // mcp-session-id mints a new session and receives the full toolset.
+  if (!isAuthorized(req)) {
+    res.writeHead(401, { "Content-Type": "application/json", "WWW-Authenticate": "Bearer" });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
     return;
   }
 

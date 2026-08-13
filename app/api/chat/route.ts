@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin as supabase } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSessionUser } from '@/lib/apiAuth'
+import { validateFormula } from '@/lib/sqlFormula'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -290,11 +292,11 @@ const modelBuilderTools: Anthropic.Tool[] = [
 ]
 
 async function handleTestFormula(formula: string): Promise<string> {
-  const FORBIDDEN = /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke)\b/i
-  const DANGEROUS = /(--|;)/
-  if (FORBIDDEN.test(formula) || DANGEROUS.test(formula)) {
-    return JSON.stringify({ error: 'Formula contains forbidden SQL keywords' })
-  }
+  // Allowlist, not denylist — the model emits this expression from caller-controlled
+  // messages, so it is untrusted input. See lib/sqlFormula.ts.
+  const deployed = await supabase.from('models').select('column_name').eq('status', 'deployed')
+  const check = validateFormula(formula, (deployed.data ?? []).map((m: any) => m.column_name))
+  if (!check.ok) return JSON.stringify({ error: check.error })
   try {
     const sampleSql = `SELECT player_name, pitch_name, game_date, release_speed, (${formula}) AS model_value FROM pitches WHERE release_speed IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') ORDER BY random() LIMIT 200`
     const { data: sampleRows, error: sampleErr } = await supabase.rpc('run_query', { query_text: sampleSql })
@@ -312,6 +314,12 @@ async function handleTestFormula(formula: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  // Middleware exempts every /api/* path, so this route must self-protect. Its tools execute
+  // SQL through run_query on the service_role client (RLS bypassed), and the model is driven
+  // by a caller-supplied `messages` array — so the model is not a security boundary.
+  const auth = await requireSessionUser()
+  if (auth instanceof NextResponse) return auth
+
   try {
     const { messages, mode } = await req.json()
     const isModelBuilder = mode === 'model-builder'

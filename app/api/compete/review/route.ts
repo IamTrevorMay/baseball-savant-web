@@ -37,12 +37,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ reviews: data || [] })
     }
 
-    const pitcherId = sp.get('pitcherId')
-    if (!pitcherId) return NextResponse.json({ error: 'pitcherId required' }, { status: 400 })
+    const pitcherIdRaw = sp.get('pitcherId')
+    if (!pitcherIdRaw) return NextResponse.json({ error: 'pitcherId required' }, { status: 400 })
+
+    // Numeric params are interpolated into SQL executed via run_query on the service_role
+    // client (RLS bypassed). The auth.getUser() check above guards only the `saved=true`
+    // branch, so these modes are anonymous — parse or they are an injection vector.
+    const pitcherId = parseInt(pitcherIdRaw, 10)
+    if (isNaN(pitcherId)) return NextResponse.json({ error: 'Invalid pitcherId' }, { status: 400 })
 
     // ── Mode A: Game List ────────────────────────────────────────────────
     if (sp.get('games') === 'true') {
-      const season = sp.get('season') || '2025'
+      const season = parseInt(sp.get('season') || '2025', 10)
+      if (isNaN(season)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
 
       const sql = `
         SELECT
@@ -73,8 +80,10 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Mode B: Pitch Data ───────────────────────────────────────────────
-    const gamePk = sp.get('gamePk')
-    if (!gamePk) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
+    const gamePkRaw = sp.get('gamePk')
+    if (!gamePkRaw) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
+    const gamePk = parseInt(gamePkRaw, 10)
+    if (isNaN(gamePk)) return NextResponse.json({ error: 'Invalid gamePk' }, { status: 400 })
 
     const sql = `
       SELECT

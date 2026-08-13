@@ -20,13 +20,20 @@ const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams
-    const pitcherId = sp.get('pitcherId')
+    const pitcherIdRaw = sp.get('pitcherId')
 
-    if (!pitcherId) return NextResponse.json({ error: 'pitcherId required' }, { status: 400 })
+    if (!pitcherIdRaw) return NextResponse.json({ error: 'pitcherId required' }, { status: 400 })
+
+    // Numeric params are interpolated into SQL executed via run_query on the service_role
+    // client (RLS bypassed) and this route is unauthenticated — parse them or they are an
+    // injection vector. Same pattern as app/api/player-data/route.ts:27-35.
+    const pitcherId = parseInt(pitcherIdRaw, 10)
+    if (isNaN(pitcherId)) return NextResponse.json({ error: 'Invalid pitcherId' }, { status: 400 })
 
     // ── Mode A: Game List ────────────────────────────────────────────────
     if (sp.get('games') === 'true') {
-      const season = sp.get('season') || '2026'
+      const season = parseInt(sp.get('season') || '2026', 10)
+      if (isNaN(season)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
 
       const sql = `
         SELECT
@@ -59,8 +66,10 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Mode B: Outing Data ──────────────────────────────────────────────
-    const gamePk = sp.get('gamePk')
-    if (!gamePk) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
+    const gamePkRaw = sp.get('gamePk')
+    if (!gamePkRaw) return NextResponse.json({ error: 'gamePk required' }, { status: 400 })
+    const gamePk = parseInt(gamePkRaw, 10)
+    if (isNaN(gamePk)) return NextResponse.json({ error: 'Invalid gamePk' }, { status: 400 })
 
     // Run queries in parallel (3 DB queries + 1 external fetch, down from 6)
     // Merged: arsenal, locations, metadata, and pitch-level into one query

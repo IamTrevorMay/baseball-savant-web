@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase/admin'
-
-const FORBIDDEN = /\b(insert|update|delete|drop|alter|truncate|create|grant|revoke)\b/i
-const DANGEROUS = /(--|;)/
+import { requireSessionUser } from '@/lib/apiAuth'
+import { validateFormula } from '@/lib/sqlFormula'
 
 export async function POST(req: NextRequest) {
+  // The Next.js middleware exempts every /api/* path (lib/supabase/middleware.ts), so this
+  // route must self-protect. It executes a user-supplied expression through run_query on the
+  // service_role client, which bypasses RLS.
+  const auth = await requireSessionUser()
+  if (auth instanceof NextResponse) return auth
+
   const { formula } = await req.json()
   if (!formula) return NextResponse.json({ error: 'formula is required' }, { status: 400 })
 
-  if (FORBIDDEN.test(formula) || DANGEROUS.test(formula)) {
-    return NextResponse.json({ error: 'Formula contains forbidden SQL keywords' }, { status: 400 })
-  }
+  // Allowlist, not denylist — see lib/sqlFormula.ts for why the previous keyword filter
+  // let `(SELECT … FROM <any table>)` through.
+  const deployed = await supabase.from('models').select('column_name').eq('status', 'deployed')
+  const check = validateFormula(formula, (deployed.data ?? []).map((m: any) => m.column_name))
+  if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 })
 
   try {
     // Sample 200 rows with the formula computed
