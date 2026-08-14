@@ -1461,3 +1461,279 @@ FROM compete_pitches;
 
 Result: 443 rows, 6 distinct pitchers, **all 443 carry `tm_pitcher_id`, 0 carry `athlete_profile_id`**
 — TrackMan data is 100% unlinked to canonical players. Single session date 2026-04-13.
+
+## 2026-08-14
+
+Research App integrity & accuracy audit — **central measurement pass** (scope:
+`docs/research-app-audit-scope.md` §5). Read-only, run sequentially via the Supabase MCP by the main
+session only; no subagent touched the database. Results become the briefing packet for Jo and Li.
+
+### 1. Table sizes and planner-statistics state
+
+```sql
+SELECT relname, to_char(reltuples::numeric,'FM999,999,999') AS approx_rows,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+       (SELECT last_analyze FROM pg_stat_user_tables s WHERE s.relid=c.oid) AS last_analyze,
+       (SELECT last_autoanalyze FROM pg_stat_user_tables s WHERE s.relid=c.oid) AS last_autoanalyze
+FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND relname IN ('pitches','milb_pitches','players','player_season_stats',
+  'pitch_baselines','league_averages','league_percentiles','pitcher_season_command',
+  'pitcher_season_deception','glossary','filter_templates')
+ORDER BY pg_total_relation_size(c.oid) DESC;
+```
+
+Result: `pitches` 8,877,620 rows / 9,716 MB; `milb_pitches` 2,508,420 / 2,367 MB; `player_season_stats`
+79,061; `pitcher_season_command` 27,119; `pitcher_season_deception` 17,399; `players` 16,887;
+`league_averages` 1,806; `league_percentiles` 216; `pitch_baselines` 206. **`last_analyze` is NULL on
+all 11**; the only `last_autoanalyze` anywhere is `pitcher_season_deception` (2026-08-13).
+`filter_templates.reltuples = -1` (never analyzed, count unknown).
+
+### 2. Refresh-function timeout config — is the P0 still live?
+
+```sql
+SELECT p.proname, p.proconfig, l.lanname, p.prosecdef AS security_definer
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
+WHERE n.nspname='public' AND p.proname IN ('refresh_materialized_views','refresh_league_averages',
+  'refresh_league_percentiles','run_query','run_query_long','run_mutation');
+```
+
+Result: **P0 unchanged.** All three refresh functions still have `proconfig = NULL` and
+`prosecdef = false`. `run_query_long` carries `statement_timeout=120s`; `run_query`/`run_mutation`
+carry only `search_path`.
+
+### 3. Derived-table staleness
+
+```sql
+SELECT 'league_averages' AS tbl, max(updated_at), min(updated_at),
+       round(extract(epoch from (now()-max(updated_at)))/86400.0,1) AS days_stale, count(*) FROM league_averages
+UNION ALL SELECT 'league_percentiles', max(updated_at), min(updated_at), round(...), count(*) FROM league_percentiles
+UNION ALL SELECT 'player_season_stats', ... FROM player_season_stats
+UNION ALL SELECT 'players', ... FROM players;
+```
+
+Result: `league_averages` **49.0 days stale** (newest 2026-06-26), `league_percentiles` **72.1 days**
+(2026-06-03, all 216 rows one timestamp), `player_season_stats` 1.4 days, `players` 2.5 days. Both
+stale figures are exactly +3 days on the 2026-08-11 measurement — the chain has done nothing since.
+
+Also: `pitch_baselines`, `pitcher_season_command`, `pitcher_season_deception` have **no timestamp
+column at all** (`information_schema.columns`), so their staleness is not directly measurable.
+
+### 4. Materialized views
+
+```sql
+SELECT m.matviewname, m.ispopulated, pg_size_pretty(pg_total_relation_size(c.oid)),
+       s.n_live_tup, s.last_analyze, s.last_autoanalyze, s.last_vacuum, s.last_autovacuum
+FROM pg_matviews m JOIN pg_class c ON c.relname=m.matviewname
+JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname=m.schemaname
+LEFT JOIN pg_stat_all_tables s ON s.relid=c.oid WHERE m.schemaname='public';
+```
+
+Result: **10 matviews, not the 6 previously recorded** — `batter_summary`, `milb_batter_summary`,
+`milb_player_summary`, `mv_batter_season_stats`, `mv_pitcher_pitch_stats`, `mv_team_batting_stats`,
+`mv_team_bullpen_stats`, `mv_team_pitching_stats`, `mv_team_platoon_stats`, `retro_id_map`. All
+populated. Only `batter_summary` shows recent activity (autovacuum 2026-08-14 10:04). `pg_stat_file`
+is permission-denied, so true last-refresh time is not obtainable this way.
+
+### 5. Ingest lag, last 14 days
+
+```sql
+SELECT 'pitches' AS tbl, game_date, count(*) FROM pitches WHERE game_date >= current_date-14 GROUP BY game_date
+UNION ALL SELECT 'milb_pitches', game_date, count(*) FROM milb_pitches WHERE game_date >= current_date-14 GROUP BY game_date
+ORDER BY tbl, game_date DESC;
+```
+
+Result: `pitches` max `game_date` = **2026-08-11** (3 days behind); 08-12 and 08-13 absent.
+`milb_pitches` max = **2026-08-12**. MiLB gaps on 08-03 and 08-10 are Mondays (league-wide off day),
+not defects.
+
+### 6. Stuff+ and input coverage by month, 2026
+
+```sql
+SELECT date_trunc('month', game_date)::date AS month, count(*),
+       count(stuff_plus), round(100.0*count(stuff_plus)/count(*),1) AS stuff_plus_pct,
+       round(100.0*count(release_speed)/count(*),1), round(100.0*count(pfx_x)/count(*),1),
+       round(100.0*count(pitch_name)/count(*),1), round(100.0*count(stand)/count(*),1)
+FROM pitches WHERE game_date >= '2026-01-01' GROUP BY 1 ORDER BY 1;
+```
+
+Result: Feb–Jul all **99.2–99.7%** `stuff_plus`. **August drops to 83.2%.** Inputs are unaffected
+(velo/pfx_x/pitch_name 99.6%, `stand` 100%). Note `stuff_plus_n` **does not exist** on `pitches`,
+contrary to a claim in `Li/metric-governance/04`.
+
+### 7. Locating the August drop
+
+```sql
+SELECT game_date, count(*), count(stuff_plus),
+       round(100.0*count(stuff_plus)/count(*),1) AS pct
+FROM pitches WHERE game_date >= '2026-07-25' GROUP BY game_date ORDER BY game_date;
+```
+
+Result: **not a decay — a hard stop.** Every day through 2026-08-09 is 99.2–99.9%; **2026-08-10 and
+2026-08-11 are 0.0%** (0 of 3,001 and 0 of 4,236). The two most recent ingested days are entirely
+unscored.
+
+### 8. Cron outcomes, last 30 days
+
+```sql
+SELECT job, status, count(*) AS runs, max(started_at) AS last_run
+FROM cron_runs WHERE started_at >= now()-interval '30 days' GROUP BY job, status ORDER BY job, status;
+```
+
+Result: `refresh` logged **success 29/29** while `league_averages` sat 49 days stale — the dead-man
+switch reports green on a chain doing nothing. `pitches` logged success on 2026-08-13 09:01 yet
+ingested no 08-12 data. `roster` is the only job with any errors (2 error / 57 success). **Only 9
+distinct jobs appear in `cron_runs`** against 17 crons on disk — 8 write no run record at all.
+
+### 9. `refresh_league_averages` source
+
+```sql
+SELECT substring(prosrc from 1 for 3000) FROM pg_proc p
+JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname='public' AND p.proname='refresh_league_averages';
+```
+
+Result: confirms `AVG(...)` throughout — **a mean, documented as a 50th percentile**. Also reveals
+hardcoded per-season constants (`v_cfip`, `v_lg_era`, `v_lg_woba`, `v_woba_scale`, `v_lg_hr_fb`) with
+cases only for **2015–2024**; 2025 and 2026 fall through to an `ELSE` branch (3.135 / 4.10 / 0.313 /
+1.232 / 0.110). Confirms `DELETE FROM league_averages WHERE season = p_season` then re-INSERT (no
+history). MiLB rows get `NULL` for arm_angle / attack_angle / attack_direction / swing_tilt / xSLG.
+
+### 10. MiLB `events` casing split
+
+```sql
+SELECT game_year, count(*) FILTER (WHERE events IS NOT NULL) AS events_rows,
+       count(*) FILTER (WHERE events ~ '^[A-Z]') AS title_case,
+       count(*) FILTER (WHERE events ~ '^[a-z]') AS lower_case,
+       round(100.0*count(*) FILTER (WHERE events ~ '^[A-Z]')/nullif(count(*) FILTER (WHERE events IS NOT NULL),0),1)
+FROM milb_pitches WHERE game_year >= 2025 GROUP BY game_year ORDER BY game_year;
+```
+
+Result: 2025 = **100.0% Title Case** (171,545 rows). 2026 = **52.6% Title / 47.4% lowercase**
+(70,266 / 63,275). Drifting from the 53.5/46.5 measured 2026-08-11. Matching `'Strikeout'` drops
+47.4% of 2026; matching `'strikeout'` drops all of 2025 and 52.6% of 2026.
+
+### 11. `players` key quality
+
+```sql
+SELECT count(*), count(*) FILTER (WHERE name LIKE '%,%') AS last_first,
+       count(*) FILTER (WHERE name NOT LIKE '%,%') AS first_last,
+       count(team), count(lahman_id), count(position),
+       (SELECT count(*) FROM (SELECT name FROM players GROUP BY name HAVING count(*)>1) d) AS dup_names,
+       (SELECT sum(c) FROM (SELECT count(*) c FROM players GROUP BY name HAVING count(*)>1) d2) AS rows_with_dup_name
+FROM players;
+```
+
+Result: 16,931 rows. `team` **0 filled**. `lahman_id` 3,228 (19.1%). `position` 10,899 (64.4% — 6,032
+null). Name forms: 16,474 `"Last, First"` vs 457 `"First Last"`. **459 duplicate names covering 972
+rows** (previously recorded as 513 — re-measured).
+
+### 12. Is stored `stuff_plus` centered?
+
+```sql
+SELECT game_year, pitch_name, count(*), round(avg(stuff_plus)::numeric,1),
+       round(stddev_samp(stuff_plus)::numeric,1),
+       round(percentile_cont(0.5) WITHIN GROUP (ORDER BY stuff_plus)::numeric,1)
+FROM pitches WHERE game_year IN (2024,2026) AND stuff_plus IS NOT NULL
+  AND pitch_name IN ('4-Seam Fastball','Slider','Changeup','Curveball','Sinker','Cutter','Sweeper')
+GROUP BY game_year, pitch_name ORDER BY pitch_name, game_year;
+```
+
+Result: 2024 means are **exactly 100.0** on all seven pitch types. 2026 means run **100.3–100.6** —
+the in-season baseline-vintage drift, small but systematic and in one direction. Pitch-level SD is
+5.0–7.0.
+
+### 13. Stuff+ coverage by season — the big one
+
+```sql
+SELECT game_year, count(*), min(game_date), max(game_date), count(DISTINCT game_date) AS days,
+       round(100.0*count(stuff_plus)/count(*),1) AS stuff_plus_pct
+FROM pitches GROUP BY game_year ORDER BY game_year;
+```
+
+Result: coverage is **not comparable across seasons** — 2015 44.4%, 2016 44.2%, 2017 43.9%, 2018
+45.5%, 2019 90.2%, 2020 84.7%, 2021 89.6%, 2022 94.9%, 2023 87.8%, 2024 87.6%, 2025 85.8%, 2026 98.5%.
+
+### 14. Is the low early-era coverage an input problem?
+
+```sql
+SELECT game_year, round(100.0*count(release_speed)/count(*),1) AS velo,
+       round(100.0*count(pfx_x)/count(*),1), round(100.0*count(release_spin_rate)/count(*),1),
+       round(100.0*count(release_extension)/count(*),1), round(100.0*count(spin_axis)/count(*),1),
+       round(100.0*count(pitch_name)/count(*),1), round(100.0*count(stuff_plus)/count(*),1)
+FROM pitches WHERE game_year BETWEEN 2015 AND 2020 GROUP BY game_year ORDER BY game_year;
+```
+
+Result: **no.** 2016–2018 carry velo/pfx_x/pitch_name at 90–94%, spin at 84–90%, `spin_axis` at
+90–92% — yet `stuff_plus` is ~44%. Only 2015 has a genuine input gap (`spin_axis` **0.0%**). So for
+2016–2018, roughly half the pitches are unscored **despite having complete inputs**.
+
+### Slice A verification (same day, after Jo's findings)
+
+**O1 — did the 2026-08-14 ingest run, and has 08-12 landed?**
+
+```sql
+SELECT (SELECT max(game_date) FROM pitches WHERE game_year=2026) AS max_pitch_date,
+       (SELECT count(*) FROM pitches WHERE game_date='2026-08-12') AS d0812,
+       (SELECT count(*) FROM pitches WHERE game_date='2026-08-13') AS d0813,
+       (SELECT max(started_at) FROM cron_runs WHERE job='pitches') AS last_pitches_run,
+       (SELECT counts FROM cron_runs WHERE job='pitches' ORDER BY started_at DESC LIMIT 1) AS last_counts,
+       (SELECT counts FROM cron_runs WHERE job='refresh' ORDER BY started_at DESC LIMIT 1) AS last_refresh_counts;
+```
+
+Result: **A1 confirmed live.** `max_pitch_date = 2026-08-11`, 08-12 and 08-13 both **0**. Last
+`pitches` run **2026-08-13 09:01** — the 2026-08-14 09:00 UTC invocation never happened, while
+`wbc` ran 08:31 and `integrity` 10:01 the same morning. Last run inserted 7,237 = exactly
+08-10 (3,001) + 08-11 (4,236), corroborating that Savant had no 08-12 rows at that time.
+
+**Smoking gun for the P0 refresh chain**, from the same row — `cron_runs.counts` for `refresh`:
+```json
+{"leagueAverages":     {"error":"canceling statement due to statement timeout"},
+ "leaguePercentiles":  {"error":"canceling statement due to statement timeout"},
+ "materializedViews":  {"error":"canceling statement due to statement timeout"}}
+```
+The timeout is **caught, serialized, and persisted** — and `trackCronRun` still recorded
+`status='success'`. This is stronger evidence than the `proconfig = NULL` inference.
+
+**O2 — does the natural key exist?**
+
+```sql
+SELECT tablename, indexname, indexdef FROM pg_indexes
+WHERE tablename IN ('pitches','milb_pitches') AND indexdef ILIKE '%at_bat_number%';
+```
+
+Result: both exist as **UNIQUE** — `pitches_game_pk_at_bat_number_pitch_number_key` and
+`milb_pitches_game_pk_at_bat_number_pitch_number_key`. The `_key` suffix means they were created as
+table constraints, from DDL that is **not in the repo**. Upgrades A8 from `inferred` to `measured`.
+
+**O3 — MiLB Stuff+ coverage**
+
+```sql
+SELECT game_year, count(*) AS n, count(stuff_plus) AS scored,
+       round(100.0*count(stuff_plus)/count(*),1) AS pct
+FROM milb_pitches GROUP BY game_year ORDER BY game_year;
+
+SELECT game_date, count(*) AS n, count(stuff_plus) AS scored,
+       round(100.0*count(stuff_plus)/count(*),1) AS pct
+FROM milb_pitches WHERE game_date >= '2026-08-01' GROUP BY game_date ORDER BY game_date;
+```
+
+Result: **A5 confirmed.** 2023 99.9% · 2024 100.0% · 2025 99.9% · **2026 96.2%**. Day level exposes
+the mechanism: 08-01, 08-02, 08-04, 08-05 at 100%, then **08-06, 08-07, 08-08 at 0.0%** (13,702
+pitches unscored), then 08-09, 08-11, 08-12 back at ~100%. Intermittent whole-window failure of the
+single un-chunked `UPDATE`, swallowed by `console.error` — the MLB outage's exact pattern, still live
+on the MiLB path.
+
+**Baselines are not the cause of the low 2015–2018 MLB coverage**
+
+```sql
+SELECT game_year, count(*) AS baseline_rows, sum(pitch_count) AS total_pitch_count,
+       count(*) FILTER (WHERE std_velo IS NULL OR std_velo = 0) AS bad_std_velo
+FROM pitch_baselines GROUP BY game_year ORDER BY game_year;
+```
+
+Result: every season 2015–2026 has 16–19 baseline rows. 2015 baselines were built from 687,073
+pitches against 747,843 rows in `pitches` (92%), yet only **44.4%** of 2015 carries `stuff_plus`. So
+neither missing baselines nor missing inputs explains it — the historical scoring backfill appears
+never to have completed for 2015–2018. **Hand to Slice D.** Three rows have `std_velo` NULL-or-zero
+(2016, 2021, 2026); `NULLIF(std_velo,0)` → NULL → `COALESCE(...,0)` means those pitch types score a
+flat 100 on the velocity term.
