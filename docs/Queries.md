@@ -695,6 +695,45 @@ select count(*) filter (where downloaded_at > now()-interval '1 hour') as dl_1h,
 ```
 **Result:** downloaded 850,364 (4.23 TB) · pending 333,931 · missing 153,584 · failed 43,596. Rate 4,298/hr (88k/24h). Last download 2026-07-18 17:16 UTC — worker live. failed@6attempts=0 (still retrying).
 
+## 2026-07-25
+
+### Scoping: offense-vs-pitcher-quality analysis (data availability)
+```sql
+-- column presence in pitches
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name='pitches' AND column_name IN
+ ('events','description','type','woba_value','woba_denom','estimated_woba_using_speedangle',
+  'launch_speed','launch_angle','home_team','away_team','inning_topbot','pitcher','batter',
+  'game_date','game_year','p_throws','stand','pitch_type','babip_value','iso_value');
+-- 2026 volume
+SELECT count(*) AS pitches_2026, max(game_date) AS last_game FROM pitches WHERE game_date>='2026-01-01';
+-- Triton command/stuff 2026 coverage
+SELECT count(*) rows_2026, count(DISTINCT pitcher) pitchers_2026,
+       count(*) FILTER (WHERE stuff_plus IS NOT NULL) with_stuff
+FROM pitcher_season_command WHERE game_year=2026;
+```
+**Result:** all needed cols present (woba_value, woba_denom, estimated_woba_using_speedangle=xwOBA, launch_speed, home/away_team+inning_topbot). 2026 = 587,979 pitches through 2026-07-23 (~2/3 season, ~150k PA). `pitcher_season_command` 2026 = 663 pitchers but **stuff_plus NULL for all** → Stuff+ unusable for 2026; quality metric will use xwOBA-against instead.
+
+### Offense-vs-pitcher-quality: build + final aggregation (2026)
+Staging tables (`tmp_ovpq_*`, dropped after): role classification (canonical ≥3 games 50+ pitches → SP), PA-level facts (batting team from `inning_topbot`, per-PA `xnum = COALESCE(estimated_woba_using_speedangle, woba_value)`), pitcher totals, per-(pitcher,team) totals, PA-weighted quintile cutpoints of xwOBA-against within role, and leave-one-team-out pitcher quality.
+```sql
+-- final: team × role × tier, LOO-tiered, min 100 out-of-sample PA
+WITH tiered AS (
+  SELECT pa.bat_team, l.role,
+    CASE WHEN l.q_excl<=c.c1 THEN 1 WHEN l.q_excl<=c.c2 THEN 2
+         WHEN l.q_excl<=c.c3 THEN 3 WHEN l.q_excl<=c.c4 THEN 4 ELSE 5 END AS tier,
+    pa.woba_value, pa.woba_denom, pa.is_k, pa.is_bip, pa.is_hh
+  FROM tmp_ovpq_pa pa
+  JOIN tmp_ovpq_loo l ON l.pitcher=pa.pitcher AND l.bat_team=pa.bat_team
+  JOIN tmp_ovpq_cut c ON c.role=l.role
+  WHERE l.den_excl>=100)
+SELECT bat_team, role, tier, count(*) n_pa,
+  sum(woba_value) sum_wv, sum(woba_denom) sum_wd, stddev_samp(woba_value) sd_wv,
+  sum(is_k) sum_k, sum(is_bip) sum_bip, sum(is_hh) sum_hh
+FROM tiered GROUP BY bat_team, role, tier;
+```
+**Result:** 300 rows (30 teams × 2 roles × 5 tiers). Cutpoints — SP `.289/.310/.329/.346`, RP `.277/.297/.319/.348`. League SP gradient clean: aces wOBA .290 / K% 26.6 → back-end .341 / K% 18.9. RP wOBA gradient weak/non-monotonic, K% still declines. ~13% PA dropped by ≥100 out-of-sample filter. Built into interactive artifact (gradient / who-beats-aces / expectation matrix). Staging tables dropped.
+
 ## 2026-07-31
 
 ### MEchanics pipeline readiness audit
@@ -715,6 +754,31 @@ select c.status, c.capture_system, c.frame_rate, c.throw_count, (c.raw_file_path
 from biomech_captures c left join biomech_throws t on t.capture_id=c.id group by c.id,... ;
 ```
 **Result:** All 5 tables deployed; both storage buckets present. Norms seeded (68 rows, 4 levels). 3 athlete_profiles, all with height_in+throws. 6 captures exist but **all `has_raw_file=false`** → synthetic seed (processCanonical), 8 throws + 1 report each, frame_rate 240, capture_system `captury_optitrack`. Conclusion: downstream pipeline proven end-to-end on synthetic data; real-C3D ingest path (parseC3D + label mapping) never exercised with an actual Captury file.
+
+## 2026-08-04
+
+### 1st-inning pitch count for 2026-08-03 (pitch-clip download prep)
+```sql
+SELECT count(*) AS pitches, count(DISTINCT game_pk) AS games
+FROM pitches
+WHERE game_date = '2026-08-03' AND inning = 1;
+```
+**Result:** 0 pitches / 0 games — Aug 3 not yet ingested.
+
+### Ingest freshness check
+```sql
+SELECT max(game_date) AS max_pitch_date,
+       count(*) FILTER (WHERE game_date >= '2026-07-28') AS last_week_rows
+FROM pitches;
+```
+**Result:** max_pitch_date `2026-08-02`, 25,344 rows in the trailing week. Nightly cron is one day behind, so the 8/3 clip pull sourced play_ids directly from the Savant `/gf` feed instead of `pitches`.
+
+### `pitch_videos` column list
+```sql
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name = 'pitch_videos' ORDER BY ordinal_position;
+```
+**Result:** 11 columns — `game_pk, at_bat_number, pitch_number, play_id, status, file_path, size_bytes, attempts, error, requested_at, downloaded_at`. No `game_date`/`inning`, so date-scoped filtering requires joining `pitches`.
 
 ## 2026-08-05
 
