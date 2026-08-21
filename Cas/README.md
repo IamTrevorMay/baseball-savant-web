@@ -88,14 +88,14 @@ structure, less depth. Verify with the matching flag:
 - [x] [11-profiling-measurement.md](frontend-data-scale/11-profiling-measurement.md) — React DevTools Profiler, Chrome performance traces, Core Web Vitals/INP, Lighthouse, RUM, establishing a before/after protocol.
 
 ## Domain 4: Caching & State Consistency (`caching-state/`)
-- [ ] [01-cache-invalidation-strategies.md](caching-state/01-cache-invalidation-strategies.md) — TTL vs event-driven vs versioned keys, tag-based invalidation, the correctness/staleness tradeoff, why invalidation is genuinely hard.
-- [ ] [02-http-caching-cdn.md](caching-state/02-http-caching-cdn.md) — Cache-Control semantics, ETags, Vercel edge caching and ISR, stale-while-revalidate at the CDN, purging.
-- [ ] [03-application-cache-design.md](caching-state/03-application-cache-design.md) — Designing an app-level query cache (Triton's `lib/queryCache.ts`): key design, source tagging, eviction, expiry, and its failure modes.
-- [ ] [04-realtime-sync-consistency.md](caching-state/04-realtime-sync-consistency.md) — Supabase Realtime semantics, channel design, ordering and delivery guarantees, reconnection/resync, missed-message recovery for live overlays.
-- [ ] [05-optimistic-updates-rollback.md](caching-state/05-optimistic-updates-rollback.md) — Optimistic UI, conflict handling, rollback UX, idempotent mutations, drag-and-drop reordering correctness.
-- [ ] [06-state-management-patterns.md](caching-state/06-state-management-patterns.md) — Context vs store vs server state, avoiding context-render storms, colocating state, the BroadcastContext pattern.
-- [ ] [07-stale-while-revalidate.md](caching-state/07-stale-while-revalidate.md) — SWR/React Query/TanStack patterns, background refetch, focus revalidation, dedup, and how they interact with a server-side cache.
-- [ ] [08-multiuser-cache-coherence.md](caching-state/08-multiuser-cache-coherence.md) — Multiple viewers of one live session, producer/overlay divergence, last-writer-wins vs authoritative state, clock and ordering issues.
-- [ ] [09-offline-resilience.md](caching-state/09-offline-resilience.md) — Network loss during a live broadcast, reconnect strategy, queued mutations, degraded-mode UX.
-- [ ] [10-cache-observability.md](caching-state/10-cache-observability.md) — Hit/miss instrumentation, age tracking, debugging "why am I seeing old data," surfacing staleness to users.
-- [ ] [11-pipeline-cache-invalidation.md](caching-state/11-pipeline-cache-invalidation.md) — Tying ingest completion to cache busting (`invalidateBySource`), matview refresh coordination, avoiding serving pre-refresh data, cross-layer coherence.
+- [x] [01-cache-invalidation-strategies.md](caching-state/01-cache-invalidation-strategies.md) — TTL vs event-driven vs versioned keys, tag-based invalidation, the correctness/staleness tradeoff, why invalidation is genuinely hard.
+- [x] [02-http-caching-cdn.md](caching-state/02-http-caching-cdn.md) — Cache-Control semantics, ETags, Vercel edge caching and ISR, stale-while-revalidate at the CDN, purging.
+- [x] [03-application-cache-design.md](caching-state/03-application-cache-design.md) — Designing an app-level query cache (Triton's `lib/queryCache.ts`): key design, source tagging, eviction, expiry, and its failure modes.
+- [x] [04-realtime-sync-consistency.md](caching-state/04-realtime-sync-consistency.md) — Supabase Realtime semantics, channel design, ordering and delivery guarantees, reconnection/resync, missed-message recovery for live overlays.
+- [x] [05-optimistic-updates-rollback.md](caching-state/05-optimistic-updates-rollback.md) — Optimistic UI, conflict handling, rollback UX, idempotent mutations, drag-and-drop reordering correctness.
+- [x] [06-state-management-patterns.md](caching-state/06-state-management-patterns.md) — Context vs store vs server state, avoiding context-render storms, colocating state, the BroadcastContext pattern.
+- [x] [07-stale-while-revalidate.md](caching-state/07-stale-while-revalidate.md) — SWR/React Query/TanStack patterns, background refetch, focus revalidation, dedup, and how they interact with a server-side cache.
+- [x] [08-multiuser-cache-coherence.md](caching-state/08-multiuser-cache-coherence.md) — Multiple viewers of one live session, producer/overlay divergence, last-writer-wins vs authoritative state, clock and ordering issues.
+- [x] [09-offline-resilience.md](caching-state/09-offline-resilience.md) — Network loss during a live broadcast, reconnect strategy, queued mutations, degraded-mode UX.
+- [x] [10-cache-observability.md](caching-state/10-cache-observability.md) — Hit/miss instrumentation, age tracking, debugging "why am I seeing old data," surfacing staleness to users.
+- [x] [11-pipeline-cache-invalidation.md](caching-state/11-pipeline-cache-invalidation.md) — Tying ingest completion to cache busting (`invalidateBySource`), matview refresh coordination, avoiding serving pre-refresh data, cross-layer coherence.

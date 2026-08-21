@@ -17,7 +17,7 @@ by filename, not absorb the topic.
 |---|---|---|---|
 | Jo | 33/33 ✅ | 0/3 | `Jo/` |
 | Li | 44/44 ✅ | 0/4 | `Li/` |
-| Cas | 33/44 | 0/4 | `Cas/` |
+| Cas | 44/44 ✅ | 0/4 | `Cas/` |
 
 **Directories live at the repo root** (`Jo/`, `Li/`, `Cas/`), not under `.claude/agents/` — only the
 persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
@@ -26,11 +26,10 @@ persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
 **Verify against `ls`, not against the manifest**: on 2026-08-12 two Li docs were fully built on
 disk but still marked `[ ]`. Reconcile both directions before dispatching.
 
-Remaining: **22 docs** (Cas 11, applied 11). Applied playbooks synthesize the reference docs, so
-they go last, per agent, once that agent's four domains are complete.
+Remaining: **11 docs**, all applied playbooks — Jo 3, Li 4, Cas 4. All four reference libraries are
+complete, so every playbook is now unblocked. Playbooks synthesize an agent's own reference docs.
 
-Resume order: Cas `caching-state/` 01–11 → the 11 applied playbooks. The remaining Cas domain uses
-the **light** tier.
+Resume order: the 11 applied playbooks, per agent.
 
 ### Batch log
 
@@ -77,6 +76,44 @@ the **light** tier.
   ~6 passes (21,993 B → 15,682 B for 01). What worked was *deleting* content — TL;DR bullets,
   sources, table rows — not compressing sentences, which recovered only 200–500 B per full rewrite.
   Tell trimmers to cut whole items.
+
+- **2026-08-21** — Cas `caching-state` 01–11 (**Cas 44/44 ✅ — all four reference libraries done**).
+  11/11 PASS on `--light --links`, 15,584–15,868 B, 10–13 sources, zero dead links.
+
+  **Three agents were killed by the 600 s stall watchdog *during the trim loop*, not while drafting**
+  (01, 04, 07). All three had already written a full draft; 04 had actually finished and passed
+  untouched. 01 and 07 were trimmed by hand. **Budget trimming as its own stage and expect the
+  watchdog to fire during it** — a trim loop makes many small edits with no visible progress.
+
+  **The trim lesson is now confirmed by seven independent agents plus my own hand-trimming, and the
+  earlier "light tier needs no trim pass" note (2026-08-13) is wrong.** First drafts landed at
+  21,242–25,290 B — 1.35× to 1.6× the cap — with the cap stated in every prompt. Doc 08 took **ten**
+  passes. Rewording recovers 30–300 B per full-file pass and sometimes *increases* size; only
+  deleting whole items moves the number (a TL;DR bullet, a source, table rows, a code block, a whole
+  paragraph). Merging two duplicate tables into one recovered ~900 B in a single edit.
+  **Change the dispatch prompt to ask for ~12,000 B**, not "aim 15,000–15,600" — agents fill to
+  whatever number they are given and only respect the cap. Two traps when trimming to the wire: the
+  checker counts source *lines*, so cutting sources for size can drop you under the 10-source floor;
+  and `wc -c` runs ~140 B above character count on these docs because of em-dashes, `×`, `→`, `≈`.
+
+  **Search budget is a solved problem.** Capping agents at ~7 searches and telling them to prefer
+  `WebFetch` on canonical URLs worked — several agents used **zero** `WebSearch` calls. Fetches do
+  not bill the search budget. Use this instead of raising the cap.
+
+  **Two more of my own briefing claims were wrong and the agents caught both**, continuing the
+  pattern from the previous batch. (1) "No UI component reads `mv_last_refreshed`" — false;
+  `app/(admin)/admin/page.tsx:67,207-209` renders it. The true claim is "no *analyst-facing* surface
+  reads it." Hazard #5 in `Cas/context/triton-context.md` carried the same half-false wording since
+  2026-08-11 and is now corrected. (2) "`Promise.all` means one rejection abandons the other
+  operation" — false; both promises start eagerly and nothing is cancelled. The defensible charges
+  are that the `await` settles on the first rejection and that two outcomes collapse into one bit.
+  A third briefing premise (two users fighting over one Kanban card) was too strong: `work_tasks` is
+  single-writer by RLS, admins get `SELECT` only.
+
+  **Found a broken cross-agent reference that the checker does not catch:** three docs cited
+  `Jo/pipeline-observability/`, which has never existed (Jo's domains are `data-reliability`,
+  `postgres-performance`, `data-quality`). One was in the already-committed `frontend-data-scale`
+  batch. **`check-doc.sh` should validate `Agent/domain/` paths the way it validates source URLs.**
 
 ## Doc contract
 

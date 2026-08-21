@@ -132,7 +132,7 @@ The failure is not truncation. It is a **truncation paired with a completeness c
 returns `count: validated.length` at `:54`, `usePlayerData` passes it through, `player/[id]/page.tsx:125`
 prints "50,000 pitches." Every step is correct; the composition asserts a fact nobody checked
 (verified). A cap plus `truncated: true` costs one comparison. Whether the *missing* rows are instead
-a pipeline gap is `Jo/pipeline-observability/`; what the metric should measure is Soto's.
+a pipeline gap is `Jo/data-reliability/`; what the metric should measure is Soto's.
 
 ---
 

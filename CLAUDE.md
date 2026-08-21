@@ -224,7 +224,7 @@ Four specialist agents live in `.claude/agents/` with their reference libraries 
 - **`soto`** (`Soto/`) — baseball training, biomechanics, pitch design, metric/algorithm design
 - **`jo`** (`Jo/`) — data reliability: "is the data there, fresh, and complete" (33/33 ✅)
 - **`li`** (`Li/`) — measurement science: "is this number defensible" (44/44 ✅)
-- **`cas`** (`Cas/`) — verification + presentation: "is it tested and honestly shown" (33/44)
+- **`cas`** (`Cas/`) — verification + presentation: "is it tested and honestly shown" (44/44 ✅)
 
 `.claude/agents/BUILD.md` is the build contract for these libraries. `./.claude/agents/check-doc.sh
 <Agent> [--links] <files>` validates a doc against it, including probing every source URL.

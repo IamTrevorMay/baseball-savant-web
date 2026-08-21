@@ -113,10 +113,12 @@ separation is a category error — see `Li/context/triton-context.md`.
 The UI makes a two-start window trivially easy to view and gives no signal that the sample is
 unstable. No stabilization thresholds are encoded anywhere in the repo.
 
-### 5. Stale cache with no staleness signal *(open)*
+### 5. Stale cache with no staleness signal on any analyst surface *(open)*
 
-`queryCache` can serve old data and the UI has no way to say so. `mv_last_refreshed` exists but is
-not surfaced.
+`queryCache` can serve old data and no analyst surface says so. `mv_last_refreshed` **is** surfaced,
+but only to admins: `app/(admin)/admin/page.tsx:67` fetches `/api/admin/cron-health` and `:207-209`
+renders `MV last refreshed`. No player dashboard, report, trend, or overlay reads it. Corrected
+2026-08-21 — the earlier wording ("exists but is not surfaced") was half-false.
 
 ### 6. Overlay legibility
 
