@@ -64,6 +64,13 @@ for f in "$@"; do
   bad=$(grep -oE "\(($ALL)\)" "$f" | sort -u | grep -vE "\(($GOOD)\)" | tr '\n' ' ')
   [ -n "$bad" ] && probs+=("foreign grades: $bad")
 
+  # Cross-agent handoffs are cited by path (e.g. `Jo/data-reliability/`). A doc that points at a
+  # domain directory which does not exist sends the reader nowhere, and no link probe catches it.
+  while read -r ref; do
+    [ -z "$ref" ] && continue
+    [ -d "$ref" ] || probs+=("dead cross-reference: $ref")
+  done < <(grep -oE '\b(Jo|Li|Cas|Soto)/[a-z0-9-]+/' "$f" | sort -u)
+
   n_src=$(awk '/^## Sources/{f=1;next} /^## /{f=0} f' "$f" | grep -cE 'https?://')
   { [ "$n_src" -lt "$MIN_SRC" ] || [ "$n_src" -gt "$MAX_SRC" ]; } && probs+=("sources=$n_src (want ${MIN_SRC}-${MAX_SRC}, ${TIER})")
 
