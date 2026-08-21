@@ -43,7 +43,12 @@ for f in "$@"; do
   grep -q '^sources_reviewed:' "$f" || probs+=("no sources_reviewed:")
   grep -q '^last_updated:'     "$f" || probs+=("no last_updated:")
 
+  # Block form:  tags:\n  - a\n  - b     Inline form:  tags: [a, b]
+  # Both are valid YAML; count whichever the doc uses.
   tags=$(awk '/^tags:/{f=1;next} /^[a-z_]+:/{f=0} f&&/^ *- /' "$f" | wc -l | tr -d ' ')
+  if [ "$tags" = "0" ]; then
+    tags=$(grep -m1 '^tags: *\[' "$f" | sed 's/^tags: *\[//; s/\] *$//' | tr ',' '\n' | grep -c '[^[:space:]]')
+  fi
   { [ "$tags" -lt 6 ] || [ "$tags" -gt 8 ]; } && probs+=("tags=$tags (want 6-8)")
 
   grep -q '^## TL;DR' "$f" || probs+=("no TL;DR")
@@ -74,10 +79,14 @@ for f in "$@"; do
       | perl -ne 'while(m{\]\((https?://(?:[^()\s]|\([^()\s]*\))*)\)}g){print "$1\n"}' | sort -u \
       | while read -r u; do
           c=$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 12 -A 'Mozilla/5.0' "$u" 2>/dev/null)
-          # 403/401/429 are anti-bot, not dead. 000 = DNS/TLS failure = treat as dead.
+          # 403/401/429 are anti-bot, not dead. 000 = DNS/TLS failure.
+          # 203 = bot-mitigation interstitial (pubmed.ncbi.nlm.nih.gov serves one): the body is a
+          # challenge page, not the article, so the URL is neither confirmed alive nor confirmed
+          # dead from here. Report it, do not silently pass it.
           case "$c" in
             200|301|302|403|401|406|429|202) ;;
             000) echo "        UNVERIFIABLE[net-blocked] $u" ;;
+            203) echo "        UNVERIFIABLE[bot-challenge] $u" ;;
             *) echo "        DEAD[$c] $u" ;;
           esac
         done
