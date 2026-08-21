@@ -2,7 +2,7 @@
 title: Triton Surface Context — Stack, Screens, Testing, Known Presentation Hazards
 domain: context
 tags: [context, triton-platform, frontend, testing, ux, caching, realtime, overlays]
-last_updated: 2026-08-11
+last_updated: 2026-08-21
 ---
 
 # The Surfaces Cas Serves
@@ -48,8 +48,8 @@ incremental and shippable.
 
 | Area | Entry point | Notes |
 |---|---|---|
-| Pitching dashboard | `app/player/[id]/page.tsx` | Main analyst surface; client-side filtering |
-| Reports Builder | `app/reports/page.tsx` | Tile-based; `components/reports/TileViz.tsx` |
+| Pitching dashboard | `app/(research)/player/[id]/page.tsx` | Main analyst surface; client-side filtering |
+| Reports Builder | `app/(research)/reports/page.tsx` | Tile-based; `components/reports/TileViz.tsx` |
 | Trends / research | `app/(research)/trends/page.tsx` | |
 | Compete (athlete-facing) | `app/(compete)/compete/**` | Amber theme, left sidebar, athlete hard-lock |
 | Broadcast editor | `app/(broadcast)/broadcast/[projectId]` | Canvas, assets, scenes, timeline |
@@ -72,7 +72,7 @@ in `fetchData` / `lib/enrichData.ts`.
   panels share the same channel as the main overlay.
 - `system_metadata` holds `mv_last_refreshed` — the closest thing to a staleness signal the UI has.
 
-## Testing Reality *(verify — measured 2026-08-11)*
+## Testing Reality *(re-measured 2026-08-21 by running `npm test` — unchanged since 2026-08-11)*
 
 - 7 test files, **122 tests: 93 passing, 5 failing, 24 skipped**.
 - The 5 failures are pre-existing in `__tests__/lib/queryCache.test.ts` — the Supabase mock lacks

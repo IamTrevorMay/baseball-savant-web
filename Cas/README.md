@@ -75,17 +75,17 @@ structure, less depth. Verify with the matching flag:
 - [x] [11-broadcast-overlay-legibility.md](analytics-ux/11-broadcast-overlay-legibility.md) — Type size, contrast, stroke/shadow over live video, safe areas, motion and dwell time, compression artifacts, 1920×1080 transparent overlays for OBS.
 
 ## Domain 3: Frontend Performance at Data Scale (`frontend-data-scale/`)
-- [ ] [01-rendering-large-datasets.md](frontend-data-scale/01-rendering-large-datasets.md) — Virtualization/windowing, incremental rendering, DOM node budgets, when to stop rendering rows and start aggregating.
-- [ ] [02-plotly-performance.md](frontend-data-scale/02-plotly-performance.md) — Plotly.js render cost, scattergl vs scatter, trace count, `Plotly.react` vs re-mount, bundle size, alternatives and when to switch.
-- [ ] [03-client-vs-server-computation.md](frontend-data-scale/03-client-vs-server-computation.md) — Where the boundary belongs; Triton filters client-side for single players and aggregates server-side for reports — the tradeoffs, payload sizes, and when to move the line.
-- [ ] [04-pagination-streaming-patterns.md](frontend-data-scale/04-pagination-streaming-patterns.md) — Offset vs keyset pagination, cursor design, streaming responses, incremental hydration, infinite scroll pitfalls.
-- [ ] [05-react-rendering-performance.md](frontend-data-scale/05-react-rendering-performance.md) — Re-render control, memoization that actually helps, context-induced renders, list keys, React Compiler implications, profiling before optimizing.
-- [ ] [06-nextjs-data-fetching.md](frontend-data-scale/06-nextjs-data-fetching.md) — App Router data fetching, RSC vs client components, streaming and Suspense, route handlers, caching semantics in Next 15/16.
-- [ ] [07-bundle-size-code-splitting.md](frontend-data-scale/07-bundle-size-code-splitting.md) — Dynamic import, route-level splitting, heavy dependency management (Plotly), tree-shaking, measuring bundle impact.
-- [ ] [08-web-workers-offthread.md](frontend-data-scale/08-web-workers-offthread.md) — Moving derived-field computation and filtering off the main thread, transferable objects, Comlink, when the transfer cost dominates.
-- [ ] [09-mobile-performance-constraints.md](frontend-data-scale/09-mobile-performance-constraints.md) — Memory and CPU limits on mobile, touch responsiveness, the separate-mobile-component tradeoff, network variability.
-- [ ] [10-perceived-performance.md](frontend-data-scale/10-perceived-performance.md) — Skeletons, optimistic rendering, progressive data reveal, response-time thresholds, making a slow query feel intentional.
-- [ ] [11-profiling-measurement.md](frontend-data-scale/11-profiling-measurement.md) — React DevTools Profiler, Chrome performance traces, Core Web Vitals/INP, Lighthouse, RUM, establishing a before/after protocol.
+- [x] [01-rendering-large-datasets.md](frontend-data-scale/01-rendering-large-datasets.md) — Virtualization/windowing, incremental rendering, DOM node budgets, when to stop rendering rows and start aggregating.
+- [x] [02-plotly-performance.md](frontend-data-scale/02-plotly-performance.md) — Plotly.js render cost, scattergl vs scatter, trace count, `Plotly.react` vs re-mount, bundle size, alternatives and when to switch.
+- [x] [03-client-vs-server-computation.md](frontend-data-scale/03-client-vs-server-computation.md) — Where the boundary belongs; Triton filters client-side for single players and aggregates server-side for reports — the tradeoffs, payload sizes, and when to move the line.
+- [x] [04-pagination-streaming-patterns.md](frontend-data-scale/04-pagination-streaming-patterns.md) — Offset vs keyset pagination, cursor design, streaming responses, incremental hydration, infinite scroll pitfalls.
+- [x] [05-react-rendering-performance.md](frontend-data-scale/05-react-rendering-performance.md) — Re-render control, memoization that actually helps, context-induced renders, list keys, React Compiler implications, profiling before optimizing.
+- [x] [06-nextjs-data-fetching.md](frontend-data-scale/06-nextjs-data-fetching.md) — App Router data fetching, RSC vs client components, streaming and Suspense, route handlers, caching semantics in Next 15/16.
+- [x] [07-bundle-size-code-splitting.md](frontend-data-scale/07-bundle-size-code-splitting.md) — Dynamic import, route-level splitting, heavy dependency management (Plotly), tree-shaking, measuring bundle impact.
+- [x] [08-web-workers-offthread.md](frontend-data-scale/08-web-workers-offthread.md) — Moving derived-field computation and filtering off the main thread, transferable objects, Comlink, when the transfer cost dominates.
+- [x] [09-mobile-performance-constraints.md](frontend-data-scale/09-mobile-performance-constraints.md) — Memory and CPU limits on mobile, touch responsiveness, the separate-mobile-component tradeoff, network variability.
+- [x] [10-perceived-performance.md](frontend-data-scale/10-perceived-performance.md) — Skeletons, optimistic rendering, progressive data reveal, response-time thresholds, making a slow query feel intentional.
+- [x] [11-profiling-measurement.md](frontend-data-scale/11-profiling-measurement.md) — React DevTools Profiler, Chrome performance traces, Core Web Vitals/INP, Lighthouse, RUM, establishing a before/after protocol.
 
 ## Domain 4: Caching & State Consistency (`caching-state/`)
 - [ ] [01-cache-invalidation-strategies.md](caching-state/01-cache-invalidation-strategies.md) — TTL vs event-driven vs versioned keys, tag-based invalidation, the correctness/staleness tradeoff, why invalidation is genuinely hard.

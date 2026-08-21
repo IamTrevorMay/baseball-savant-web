@@ -17,7 +17,7 @@ by filename, not absorb the topic.
 |---|---|---|---|
 | Jo | 33/33 ✅ | 0/3 | `Jo/` |
 | Li | 44/44 ✅ | 0/4 | `Li/` |
-| Cas | 22/44 | 0/4 | `Cas/` |
+| Cas | 33/44 | 0/4 | `Cas/` |
 
 **Directories live at the repo root** (`Jo/`, `Li/`, `Cas/`), not under `.claude/agents/` — only the
 persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
@@ -26,11 +26,11 @@ persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
 **Verify against `ls`, not against the manifest**: on 2026-08-12 two Li docs were fully built on
 disk but still marked `[ ]`. Reconcile both directions before dispatching.
 
-Remaining: **33 docs** (Cas 22, applied 11). Applied playbooks synthesize the reference docs, so
+Remaining: **22 docs** (Cas 11, applied 11). Applied playbooks synthesize the reference docs, so
 they go last, per agent, once that agent's four domains are complete.
 
-Resume order: Cas `frontend-data-scale/` 01–11 → Cas `caching-state/` 01–11 → the 11 applied
-playbooks. Both remaining Cas domains use the **light** tier.
+Resume order: Cas `caching-state/` 01–11 → the 11 applied playbooks. The remaining Cas domain uses
+the **light** tier.
 
 ### Batch log
 
@@ -52,6 +52,31 @@ playbooks. Both remaining Cas domains use the **light** tier.
   omits `scaleanchor` on inch-by-inch axes while `MovementProfile.tsx` sets it; zero
   `loading.tsx`/`error.tsx` across 96 pages. A briefing assumption of mine ("red/green is load-bearing")
   was **wrong** and the agent corrected it — 5 of 6 `plus` specs use CVD-safe teal/orange.
+
+- **2026-08-21** — Cas `frontend-data-scale` 01–11, second light-tier batch (**Cas 33/44**). 11/11
+  PASS on `--light --links` first time, 15,682–15,808 B, 11–14 sources, zero dead links. Also this
+  session: Jo's 33 docs were link-checked for the first time (6 real dead links found, listed below);
+  Jo's manifest had **15 built docs still marked `[ ]`**, since corrected; and `check-doc.sh` gained
+  two fixes — it now counts inline-flow `tags: [a, b]` (5 Jo docs used it and were reported
+  `tags=0`), and reports HTTP **203** as `UNVERIFIABLE[bot-challenge]` rather than DEAD (pubmed
+  serves a challenge page). Dead links still to repair in Jo: `dqglobal.com` DAMA-UK dimensions PDF,
+  `nannyml.com/blog/comprehensive-guide-univariate-methods`,
+  `shopify.engineering/iteration-as-a-service`, `synq.io/blog/data-observability-guide`,
+  `soda.io/resources/no-bs-guide-to-data-quality-dimensions`, `loke.dev/blog/node-fetch-timeout-connection-leak/`.
+
+  **Three of my own briefing claims were wrong and the agents caught all three** — the packet was
+  corrected on disk mid-flight and later agents picked the correction up, which worked. (1) "All 57
+  `<tbody>` surfaces render every row" — false; most are bounded upstream (`PitchLogTab.tsx:29`
+  paginates at 50). (2) "Every `run_query` is capped at 8s, which is why filtering is client-side" —
+  too strong; `run_query_long` carries a **function-level** `statement_timeout=120s` and
+  `/api/player-data` uses it. (3) I then "corrected" that to "the real limit is unverifiable from the
+  repo" — also wrong; `planning.md:40,46,304` documents the whole timeout hierarchy. **Read
+  `planning.md` before writing the next packet.**
+
+  **Light tier still needs a trim pass**, contrary to the 08-13 note: docs 01 and 06 each reported
+  ~6 passes (21,993 B → 15,682 B for 01). What worked was *deleting* content — TL;DR bullets,
+  sources, table rows — not compressing sentences, which recovered only 200–500 B per full rewrite.
+  Tell trimmers to cut whole items.
 
 ## Doc contract
 

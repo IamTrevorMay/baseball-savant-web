@@ -57,7 +57,7 @@ so `/player/123` is served by `app/(research)/player/[id]/page.tsx`.
 - `components/FilterEngine.tsx` — Reusable 50+ field filter system
 - `components/reports/TileViz.tsx` — Tile visualization components (heatmap, scatter, bar, strike zone, table)
 - `components/reports/ReportTile.tsx` — Configurable report tile wrapper
-- `app/api/player-data/route.ts` — Server-side player data fetch (uses run_query RPC)
+- `app/api/player-data/route.ts` — Server-side player data fetch (uses the `run_query_long` RPC, which carries a function-level `statement_timeout=120s`; plain `run_query` is capped at 8s by the `authenticator` role)
 - `app/api/report/route.ts` — Server-side SQL aggregation for reports
 - `app/api/roster/route.ts` — MLB roster API proxy
 - `app/api/cron/pitches/route.ts` — Daily MLB pitch ingest; also refreshes `league_averages` for current season
@@ -224,7 +224,7 @@ Four specialist agents live in `.claude/agents/` with their reference libraries 
 - **`soto`** (`Soto/`) — baseball training, biomechanics, pitch design, metric/algorithm design
 - **`jo`** (`Jo/`) — data reliability: "is the data there, fresh, and complete" (33/33 ✅)
 - **`li`** (`Li/`) — measurement science: "is this number defensible" (44/44 ✅)
-- **`cas`** (`Cas/`) — verification + presentation: "is it tested and honestly shown" (11/44)
+- **`cas`** (`Cas/`) — verification + presentation: "is it tested and honestly shown" (33/44)
 
 `.claude/agents/BUILD.md` is the build contract for these libraries. `./.claude/agents/check-doc.sh
 <Agent> [--links] <files>` validates a doc against it, including probing every source URL.
