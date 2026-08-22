@@ -15,7 +15,7 @@ by filename, not absorb the topic.
 
 | Agent | Reference docs | Applied playbooks | Directory |
 |---|---|---|---|
-| Jo | 33/33 ✅ | 0/3 | `Jo/` |
+| Jo | 33/33 ✅ | 3/3 ✅ | `Jo/` |
 | Li | 44/44 ✅ | 0/4 | `Li/` |
 | Cas | 44/44 ✅ | 0/4 | `Cas/` |
 
@@ -26,10 +26,10 @@ persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
 **Verify against `ls`, not against the manifest**: on 2026-08-12 two Li docs were fully built on
 disk but still marked `[ ]`. Reconcile both directions before dispatching.
 
-Remaining: **11 docs**, all applied playbooks — Jo 3, Li 4, Cas 4. All four reference libraries are
-complete, so every playbook is now unblocked. Playbooks synthesize an agent's own reference docs.
+Remaining: **8 docs**, all applied playbooks — Li 4, Cas 4. Jo is complete. Playbooks synthesize an
+agent's own reference docs.
 
-Resume order: the 11 applied playbooks, per agent.
+Resume order: Li's 4 applied playbooks, then Cas's 4.
 
 ### Batch log
 
@@ -131,6 +131,41 @@ Resume order: the 11 applied playbooks, per agent.
    supplies to *this* doc, not what the source is about.
 7. **Final paragraph: `**Triton-internal evidence.**`** — the code paths (with `file:line`),
    measured numbers, and dates behind every `(computed)` claim in the doc.
+
+### Applied-playbook contract (differs from the reference-doc contract above)
+
+A playbook is a **sequenced build plan**, not research. It synthesizes one agent's own reference
+domain into work someone can start on Monday. `Soto/applied/` (7 docs, 2026-07-19) established the
+spine; those predate this contract and carry no citations, which is the one thing we do not copy —
+a playbook proposes real code changes, so every item must say where it applies and how well it is
+known.
+
+1. **YAML frontmatter** — `title` (ending `— Applied Playbook`), `domain: applied`, `tags` (6–8),
+   `last_updated`. **No `sources_reviewed`**: playbooks cite the repo and their own domain, not the
+   literature.
+2. **`# Title`** matching frontmatter.
+3. **`## TL;DR`** — 8–12 bullets, each a **bolded claim** ending in a parenthesized evidence grade,
+   same per-agent vocabulary as the reference docs.
+4. **`## NOW (0–6 weeks)`** · **`## NEXT (6 weeks – 6 months)`** · **`## LATER (6+ months)`** —
+   ordered work. **Every item carries a `file:line` and a grade.** An item nobody can locate in the
+   repo is not actionable and does not belong in a playbook.
+5. **`## Standing Rules`** — the invariants that apply to every item above.
+6. **Final paragraph: `**Triton-internal evidence.**`** — the `file:line` citations, measured
+   numbers, and dates behind every `(measured)` / `(verified)` / `(computed)` claim.
+7. **No `## Sources` section.** A playbook that needs to argue from the literature should cite its
+   own reference doc by filename instead — that is what the domain corpus is for.
+
+**Size: 14.0–22.0 KiB (cap 22,528 B).** A playbook synthesizes 11 reference docs and needs more room
+than a light-tier doc. Check with `./.claude/agents/check-doc.sh <Agent> --applied <files>`.
+
+**`Soto/applied/`'s 7 playbooks predate this contract and fail `--applied`** — no `file:line`
+citations, no evidence paragraph, 6–7 TL;DR bullets, one oversized at 28 KB. Do not rewrite them;
+they are correct, just older, exactly as with Jo's oversized reference docs. The contract applies to
+the 11 playbooks built from here.
+
+**Build them per agent, not all at once.** Each playbook reads its own domain's 11 docs, so a
+per-agent batch shares one briefing and gives a checkpoint between agents. 11 concurrent long
+syntheses is also what tripped the stall watchdog on 2026-08-21.
 
 ### Evidence grades — differ per agent, do not mix
 

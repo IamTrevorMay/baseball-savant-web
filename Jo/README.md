@@ -18,13 +18,13 @@ see per-domain status markers below. `[ ]` = planned, `[x]` = built and research
   post-mortem, and the backfill route that never worked. **Read before any applied advice.**
 
 ## Applied Playbooks (start here for "what should we do?")
-- [ ] [data-reliability-applied.md](applied/data-reliability-applied.md) — Now/Next/Later for
+- [x] [data-reliability-applied.md](applied/data-reliability-applied.md) — Now/Next/Later for
   Triton: wiring `reportError` to a real sink, coverage monitors on derived columns, auditing the
   other 16 crons for the 8s cap, making `trackCronRun` prove work happened.
-- [ ] [postgres-performance-applied.md](applied/postgres-performance-applied.md) — The chunking
+- [x] [postgres-performance-applied.md](applied/postgres-performance-applied.md) — The chunking
   playbook for `pitches` (29 indexes, 4.8GB), dead-tuple/bloat management, index audit, whether
   `pitches`/`retro_events` should be partitioned, and the `run_mutation_long` question.
-- [ ] [data-quality-applied.md](applied/data-quality-applied.md) — Expectation suite for `pitches`
+- [x] [data-quality-applied.md](applied/data-quality-applied.md) — Expectation suite for `pitches`
   and derived columns, constraint hardening, MiLB casing normalization, cross-source reconciliation
   against the MLB Stats API, and safe-backfill patterns.
 
