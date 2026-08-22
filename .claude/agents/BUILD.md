@@ -16,7 +16,7 @@ by filename, not absorb the topic.
 | Agent | Reference docs | Applied playbooks | Directory |
 |---|---|---|---|
 | Jo | 33/33 ✅ | 3/3 ✅ | `Jo/` |
-| Li | 44/44 ✅ | 0/4 | `Li/` |
+| Li | 44/44 ✅ | 4/4 ✅ | `Li/` |
 | Cas | 44/44 ✅ | 0/4 | `Cas/` |
 
 **Directories live at the repo root** (`Jo/`, `Li/`, `Cas/`), not under `.claude/agents/` — only the
@@ -26,10 +26,10 @@ persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
 **Verify against `ls`, not against the manifest**: on 2026-08-12 two Li docs were fully built on
 disk but still marked `[ ]`. Reconcile both directions before dispatching.
 
-Remaining: **8 docs**, all applied playbooks — Li 4, Cas 4. Jo is complete. Playbooks synthesize an
-agent's own reference docs.
+Remaining: **4 docs** — Cas's 4 applied playbooks. Jo and Li are complete.
 
-Resume order: Li's 4 applied playbooks, then Cas's 4.
+Resume order: Cas's 4 applied playbooks (`testing`, `analytics-ux`, `frontend-data-scale`,
+`caching-state`), which closes the whole build at 132 docs.
 
 ### Batch log
 

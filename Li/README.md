@@ -22,16 +22,16 @@ Remaining: the **4 applied playbooks**, which synthesize the reference docs and 
   incomparability, null-vs-zero, aggregation weighting). **Read before any applied advice.**
 
 ## Applied Playbooks (start here for "what should we do?")
-- [ ] [metric-governance-applied.md](applied/metric-governance-applied.md) — Baseline versioning for
+- [x] [metric-governance-applied.md](applied/metric-governance-applied.md) — Baseline versioning for
   `stuff_plus`, reconciling `docs/VARIABLES.md` against `lib/metricRegistry.ts`, cross-level
   translation policy, a metric-change checklist.
-- [ ] [statistical-inference-applied.md](applied/statistical-inference-applied.md) — Stabilization
+- [x] [statistical-inference-applied.md](applied/statistical-inference-applied.md) — Stabilization
   thresholds per Triton metric, shrinkage for short windows, how to answer "did X actually decline"
   defensibly, leaderboard multiplicity.
-- [ ] [entity-resolution-applied.md](applied/entity-resolution-applied.md) — Building the Chadwick
+- [x] [entity-resolution-applied.md](applied/entity-resolution-applied.md) — Building the Chadwick
   crosswalk for MLBAM↔Retrosheet↔Lahman, linking TrackMan/Captury/Whoop athletes to `players`,
   orphan monitoring.
-- [ ] [temporal-modeling-applied.md](applied/temporal-modeling-applied.md) — As-of query patterns for
+- [x] [temporal-modeling-applied.md](applied/temporal-modeling-applied.md) — As-of query patterns for
   Triton, handling Savant restatement, ET-vs-UTC discipline, reproducing a historical leaderboard.
 
 ## Domain 1: Metric Governance & Reproducibility (`metric-governance/`)
