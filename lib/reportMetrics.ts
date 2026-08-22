@@ -35,7 +35,9 @@ export const METRICS: Record<string, string> = {
   // Expected
   avg_xba: "ROUND(SUM(estimated_ba_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   avg_xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
-  avg_xslg: 'ROUND(AVG(estimated_slg_using_speedangle)::numeric, 3)',
+  // estimated_slg_using_speedangle is NULL on every non-batted-ball event, so AVG()
+  // silently computes xSLG per batted ball. Divide by at-bats, matching avg_xba.
+  avg_xslg: "ROUND(SUM(estimated_slg_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
   avg_woba: 'ROUND(AVG(woba_value)::numeric, 3)',
   total_re24: 'ROUND(SUM(delta_run_exp)::numeric, 1)',
   // GB/FB/LD
@@ -62,7 +64,10 @@ export const METRICS: Record<string, string> = {
   z_swing_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9), 0), 1)",
   o_contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout','missed_bunt') OR description = 'swinging_pitchout')), 0), 1)",
   // Usage
-  usage_pct: 'ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY player_name), 0), 1)',
+  // {{USAGE_PARTITION}} is substituted by the query builder with the active groupBy
+  // columns minus pitch_name. A hardcoded player_name partition summed across every
+  // other grouped dimension (season, hand, ...), deflating usage to a fraction of true.
+  usage_pct: 'ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY {{USAGE_PARTITION}}), 0), 1)',
   // Swing
   avg_bat_speed: 'ROUND(AVG(bat_speed)::numeric, 1)',
   avg_swing_length: 'ROUND(AVG(swing_length)::numeric, 2)',

@@ -120,6 +120,8 @@ export async function backfillPitchesMetrics(
   try {
     const ids = result.map(r => r.player_id)
     const where = [`p.${groupCol} IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')", ...extraWhere]
+    // Spring training lives in the same table; exclude it unless already constrained.
+    if (!extraWhere.some(w => w.includes('game_type'))) where.push("p.game_type = 'R'")
     const selects = metrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
     const sql = `SELECT p.${groupCol} as player_id, ${selects.join(', ')} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.${groupCol}`
     const { data } = await q(sql)
@@ -176,6 +178,7 @@ export async function backfillEraMetrics(
     tasks.push((async () => {
       try {
         const where = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO','IN')", ...extraWhere]
+        if (!extraWhere.some(w => w.includes('game_type'))) where.push("p.game_type = 'R'")
         const sql = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.pitcher`
         const { data } = await q(sql)
         if (!data) return

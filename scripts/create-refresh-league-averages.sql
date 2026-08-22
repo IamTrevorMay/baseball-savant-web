@@ -320,10 +320,18 @@ BEGIN
       ),
       per_pitcher AS (
         SELECT s.pitcher AS pid,
-          COUNT(*) FILTER (
-            WHERE events_n IN ('strikeout','strikeout_double_play','field_out','double_play',
-                               'grounded_into_double_play','force_out','fielders_choice',
-                               'fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play')
+          -- Outs, not out-events: a double play retires two runners and a triple play three.
+          -- Counting each as one understated IP by ~2.9%, and IP sets every qualification floor.
+          (
+            COUNT(*) FILTER (
+              WHERE events_n IN ('strikeout','field_out','force_out','fielders_choice',
+                                 'fielders_choice_out','sac_fly','sac_bunt')
+            )
+            + 2 * COUNT(*) FILTER (
+              WHERE events_n IN ('strikeout_double_play','double_play',
+                                 'grounded_into_double_play','sac_fly_double_play')
+            )
+            + 3 * COUNT(*) FILTER (WHERE events_n = 'triple_play')
           )::numeric / 3.0 AS _ip,
           r.role,
           AVG(release_speed)       AS avg_velo,
@@ -502,10 +510,17 @@ BEGIN
         ),
         per_pitcher AS (
           SELECT s.pitcher AS pid,
-            COUNT(*) FILTER (
-              WHERE events IN ('strikeout','strikeout_double_play','field_out','double_play',
-                               'grounded_into_double_play','force_out','fielders_choice',
-                               'fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play')
+            -- Outs, not out-events: DP retires two, TP three.
+            (
+              COUNT(*) FILTER (
+                WHERE events IN ('strikeout','field_out','force_out','fielders_choice',
+                                 'fielders_choice_out','sac_fly','sac_bunt')
+              )
+              + 2 * COUNT(*) FILTER (
+                WHERE events IN ('strikeout_double_play','double_play',
+                                 'grounded_into_double_play','sac_fly_double_play')
+              )
+              + 3 * COUNT(*) FILTER (WHERE events = 'triple_play')
             )::numeric / 3.0 AS _ip,
             r.role
           FROM season_pitches s
@@ -653,10 +668,18 @@ BEGIN
       ),
       per_pitcher AS (
         SELECT s.pitcher AS pid,
-          COUNT(*) FILTER (
-            WHERE events_n IN ('strikeout','strikeout_double_play','field_out','double_play',
-                               'grounded_into_double_play','force_out','fielders_choice',
-                               'fielders_choice_out','sac_fly','sac_bunt','sac_fly_double_play','triple_play')
+          -- Outs, not out-events: a double play retires two runners and a triple play three.
+          -- Counting each as one understated IP by ~2.9%, and IP sets every qualification floor.
+          (
+            COUNT(*) FILTER (
+              WHERE events_n IN ('strikeout','field_out','force_out','fielders_choice',
+                                 'fielders_choice_out','sac_fly','sac_bunt')
+            )
+            + 2 * COUNT(*) FILTER (
+              WHERE events_n IN ('strikeout_double_play','double_play',
+                                 'grounded_into_double_play','sac_fly_double_play')
+            )
+            + 3 * COUNT(*) FILTER (WHERE events_n = 'triple_play')
           )::numeric / 3.0 AS _ip,
           r.role,
           COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) AS _k,

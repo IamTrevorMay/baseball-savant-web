@@ -104,13 +104,20 @@ export function buildReportQuery(
     if (!GROUP_COLS[g]) return { error: `Unknown group: ${g}` }
   }
 
+  // usage_pct's window must partition on every grouped dimension except pitch_name,
+  // so a season/hand/etc. split doesn't sum its denominator across the other groups.
+  const usagePartition = groupBy
+    .filter((g: string) => g !== 'pitch_name' && g !== 'pitch_type')
+    .map((g: string) => GROUP_COLS[g])
+  const usagePartitionSql = usagePartition.length ? usagePartition.join(', ') : 'player_name'
+
   // Build SELECT
   const selectParts = [
     ...groupBy.map((g: string) => {
       const expr = GROUP_COLS[g]
       return expr.includes(' ') ? `${expr} AS ${g}` : expr
     }),
-    ...metrics.map((m: string) => `${METRICS[m]} AS ${m}`),
+    ...metrics.map((m: string) => `${METRICS[m].replace(/\{\{USAGE_PARTITION\}\}/g, usagePartitionSql)} AS ${m}`),
   ]
 
   // Build GROUP BY
@@ -137,6 +144,11 @@ export function buildReportQuery(
   }
 
   whereParts.push("pitch_type NOT IN ('PO', 'IN')")
+  // Regular season only unless the caller filtered game_type themselves. Spring training
+  // sits in the same table and was previously pooled into every season total.
+  if (!filters.some((f: any) => f?.column === 'game_type')) {
+    whereParts.push("game_type = 'R'")
+  }
   const whereClause = `WHERE ${whereParts.join(' AND ')}`
   const groupClause = `GROUP BY ${groupByExprs.join(', ')}`
 

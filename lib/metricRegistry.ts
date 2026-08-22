@@ -1,6 +1,8 @@
 // Centralized metric registry — single source of truth for column definitions,
 // formatting, coloring, and totals aggregation.
 
+import { ipToOuts, outsToDisplayIP } from '@/lib/ip'
+
 export type TotalsStrategy = 'sum' | 'avg' | 'max' | 'ip' | 'totalRE' | 'none'
 
 export type FormatSpec =
@@ -15,6 +17,13 @@ export type ColorSpec =
   | { mode: 'inverted_value'; good: 'negative' | 'positive'; goodClass: string; badClass: string }
 
 export interface MetricDef {
+  /**
+   * Column to weight by when totalling a rate. A rate averaged unweighted across rows is
+   * wrong whenever the rows have different denominators — a 20-PA season counted equally
+   * with a 600-PA one. Required for every `totals: 'avg'` metric; without it the totals
+   * cell renders an em dash rather than a plausible wrong number.
+   */
+  weightBy?: string
   key: string
   label: string
   unit: '' | '%' | 'mph' | 'rpm' | 'in' | 'ft' | 'deg' | 'z' | 'runs'
@@ -161,6 +170,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
 
   // ── Batting-against rates ────────────────────────────────────────────
   ba: {
+    weightBy: 'pa',
     key: 'ba', label: 'BA', unit: '',
     format: { type: 'dec', digits: 3 },
     color: { mode: 'static', class: 'text-rose-400' },
@@ -168,6 +178,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Batting average (hits / at-bats)',
   },
   obp: {
+    weightBy: 'pa',
     key: 'obp', label: 'OBP', unit: '',
     format: { type: 'dec', digits: 3 },
     color: { mode: 'static', class: 'text-rose-400' },
@@ -175,6 +186,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'On-base percentage',
   },
   slg: {
+    weightBy: 'pa',
     key: 'slg', label: 'SLG', unit: '',
     format: { type: 'dec', digits: 3 },
     color: { mode: 'static', class: 'text-rose-400' },
@@ -182,6 +194,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Slugging percentage',
   },
   ops: {
+    weightBy: 'pa',
     key: 'ops', label: 'OPS', unit: '',
     format: { type: 'dec', digits: 3 },
     color: { mode: 'static', class: 'text-zinc-300' },
@@ -189,6 +202,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'On-base plus slugging',
   },
   whip: {
+    weightBy: 'ip',
     key: 'whip', label: 'WHIP', unit: '',
     format: { type: 'dec', digits: 2 },
     color: { mode: 'static', class: 'text-zinc-300' },
@@ -197,6 +211,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Walks + hits per inning pitched',
   },
   era: {
+    weightBy: 'ip',
     key: 'era', label: 'ERA', unit: '',
     format: { type: 'dec', digits: 2 },
     color: { mode: 'static', class: 'text-zinc-300' },
@@ -360,6 +375,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
 
   // ── Models ───────────────────────────────────────────────────────────
   fip: {
+    weightBy: 'ip',
     key: 'fip', label: 'FIP', unit: '',
     format: { type: 'dec', digits: 2 },
     color: { mode: 'static', class: 'text-cyan-400' },
@@ -368,6 +384,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Fielding independent pitching',
   },
   xfip: {
+    weightBy: 'ip',
     key: 'xfip', label: 'xFIP', unit: '',
     format: { type: 'dec', digits: 2 },
     color: { mode: 'static', class: 'text-cyan-400' },
@@ -376,6 +393,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Expected FIP (normalizes HR/FB rate)',
   },
   xera: {
+    weightBy: 'ip',
     key: 'xera', label: 'xERA', unit: '',
     format: { type: 'dec', digits: 2 },
     color: { mode: 'static', class: 'text-cyan-400' },
@@ -384,6 +402,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Expected ERA from xwOBA',
   },
   siera: {
+    weightBy: 'ip',
     key: 'siera', label: 'SIERA', unit: '',
     format: { type: 'dec', digits: 2 },
     color: { mode: 'static', class: 'text-cyan-400' },
@@ -394,6 +413,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
 
   // ── Per-9 ────────────────────────────────────────────────────────────
   k9: {
+    weightBy: 'ip',
     key: 'k9', label: 'K/9', unit: '',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'static', class: 'text-zinc-300' },
@@ -402,6 +422,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Strikeouts per 9 innings',
   },
   bb9: {
+    weightBy: 'ip',
     key: 'bb9', label: 'BB/9', unit: '',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'static', class: 'text-zinc-300' },
@@ -410,6 +431,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Walks per 9 innings',
   },
   hr9: {
+    weightBy: 'ip',
     key: 'hr9', label: 'HR/9', unit: '',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'static', class: 'text-zinc-300' },
@@ -443,6 +465,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Run Prevention Command+: all 5 metrics weighted by xwOBA correlation',
   },
   sos: {
+    weightBy: 'pa',
     key: 'sos', label: 'SOS', unit: '',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'plus', above: 'text-emerald-400', below: 'text-orange-400', high: 105, low: 95 },
@@ -505,6 +528,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Induced vertical break, gravity removed (in)',
   },
   ext: {
+    weightBy: 'pitches',
     key: 'ext', label: 'Ext', unit: 'ft',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'static', class: 'text-purple-400' },
@@ -519,6 +543,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Pitcher arm angle at release',
   },
   brink: {
+    weightBy: 'pitches',
     key: 'brink', label: 'Brink', unit: 'in',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'static', class: 'text-teal-400' },
@@ -526,6 +551,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     tip: 'Avg distance to nearest zone edge (in). Higher = more edge pitching',
   },
   cluster: {
+    weightBy: 'pitches',
     key: 'cluster', label: 'Cluster', unit: 'in',
     format: { type: 'dec', digits: 1 },
     color: { mode: 'static', class: 'text-teal-400' },
@@ -661,11 +687,25 @@ export function calcTotalsFromRegistry(rows: any[], keys: string[]): any {
         totals[key] = sum
         break
       case 'avg': {
-        const avg = sum / vals.length
         const precision = def.format.type === 'dec' ? def.format.digits
           : def.format.type === 'pct' ? def.format.digits
           : 1 // int + avg → 1 decimal (matches plus stats, avgSpin, etc.)
-        totals[key] = avg.toFixed(precision)
+
+        // A rate must be weighted by its own denominator. Weighting by IP/PA/pitches
+        // reproduces the pooled value: sum(rate_i * w_i) / sum(w_i) === sum(num) / sum(den).
+        if (!def.weightBy) { totals[key] = '\u2014'; break }
+
+        let wSum = 0
+        let wxSum = 0
+        for (const r of rows) {
+          const x = parseFloat(r[key])
+          const w = def.weightBy === 'ip' ? ipToOuts(r.ip) : parseFloat(r[def.weightBy])
+          if (isNaN(x) || isNaN(w) || w <= 0) continue
+          wSum += w
+          wxSum += x * w
+        }
+        // No usable weights — say so rather than falling back to an unweighted mean.
+        totals[key] = wSum > 0 ? (wxSum / wSum).toFixed(precision) : '\u2014'
         break
       }
       case 'max':
@@ -674,11 +714,10 @@ export function calcTotalsFromRegistry(rows: any[], keys: string[]): any {
         )
         break
       case 'ip': {
-        const outs = rows.reduce((s, r) => {
-          const parts = String(r[key]).split('.')
-          return s + parseInt(parts[0]) * 3 + parseInt(parts[1] || '0')
-        }, 0)
-        totals[key] = Math.floor(outs / 3) + '.' + (outs % 3)
+        // ipToOuts distinguishes base-3 (203.2) from decimal (203.67); splitting on '.'
+        // unconditionally read a decimal 203.7 as 203 innings plus 7 outs.
+        const outs = rows.reduce((s, r) => s + ipToOuts(r[key]), 0)
+        totals[key] = outsToDisplayIP(outs)
         break
       }
       case 'totalRE':

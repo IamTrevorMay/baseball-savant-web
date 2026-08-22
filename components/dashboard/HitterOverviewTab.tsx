@@ -159,21 +159,46 @@ function calcVsPitchType(data: any[]) {
 
 function calcTotals(rows: any[], cols: {k:string,l:string}[]): any {
   if (rows.length === 0) return null
-  const pctFields = ["ba","obp","slg","ops","kPct","bbPct","whiffPct","contactPct","zonePct","chasePct","gbPct","fbPct","ldPct","xBA","xwOBA","xSLG","wOBA","facedPct","avgEV","maxEV","avgLA","avgVelo","hardHitPct","barrelPct"]
+
+  // Every rate is weighted by its own denominator. An unweighted mean across seasons lets a
+  // 20-PA September count the same as a 600-PA year; the pooled value is
+  // sum(rate_i * w_i) / sum(w_i). Fields absent from this map are counting stats and summed.
+  const WEIGHT_BY: Record<string, 'pa' | 'pitches'> = {
+    ba: 'pa', obp: 'pa', slg: 'pa', ops: 'pa', kPct: 'pa', bbPct: 'pa',
+    xBA: 'pa', xwOBA: 'pa', xSLG: 'pa', wOBA: 'pa',
+    gbPct: 'pa', fbPct: 'pa', ldPct: 'pa', hardHitPct: 'pa', barrelPct: 'pa',
+    avgEV: 'pa', avgLA: 'pa',
+    whiffPct: 'pitches', contactPct: 'pitches', zonePct: 'pitches',
+    chasePct: 'pitches', facedPct: 'pitches', avgVelo: 'pitches',
+  }
+  const THREE_DP = new Set(["ba","obp","slg","ops","xBA","xwOBA","xSLG","wOBA"])
+
   const totals: any = {}
   cols.forEach(c => {
     if (c.k === "year" || c.k === "name") { totals[c.k] = "Career"; return }
+
     const vals = rows.map(r => parseFloat(r[c.k])).filter(v => !isNaN(v))
-    if (vals.length === 0) { totals[c.k] = "—"; return }
-    if (pctFields.includes(c.k)) {
-      totals[c.k] = (vals.reduce((a,b) => a+b, 0) / vals.length).toFixed(c.k === "ba" || c.k === "obp" || c.k === "slg" || c.k === "ops" || c.k === "xBA" || c.k === "xwOBA" || c.k === "xSLG" || c.k === "wOBA" ? 3 : 1)
-    } else if (c.k === "totalRE") {
-      totals[c.k] = vals.reduce((a,b) => a+b, 0).toFixed(1)
-    } else if (c.k === "maxEV") {
-      totals[c.k] = Math.max(...vals).toFixed(1)
-    } else {
-      totals[c.k] = vals.reduce((a,b) => a+b, 0)
+    if (vals.length === 0) { totals[c.k] = "\u2014"; return }
+
+    // Max EV is a maximum, not an average. This branch used to sit below the rate check
+    // with maxEV also listed as a rate, so it was unreachable and Max EV rendered a mean.
+    if (c.k === "maxEV") { totals[c.k] = Math.max(...vals).toFixed(1); return }
+    if (c.k === "totalRE") { totals[c.k] = vals.reduce((a,b) => a+b, 0).toFixed(1); return }
+
+    const weightKey = WEIGHT_BY[c.k]
+    if (weightKey) {
+      let wSum = 0, wxSum = 0
+      for (const r of rows) {
+        const x = parseFloat(r[c.k])
+        const w = parseFloat(r[weightKey])
+        if (isNaN(x) || isNaN(w) || w <= 0) continue
+        wSum += w; wxSum += x * w
+      }
+      totals[c.k] = wSum > 0 ? (wxSum / wSum).toFixed(THREE_DP.has(c.k) ? 3 : 1) : "\u2014"
+      return
     }
+
+    totals[c.k] = vals.reduce((a,b) => a+b, 0)
   })
   return totals
 }

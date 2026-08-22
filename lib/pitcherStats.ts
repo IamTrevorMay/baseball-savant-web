@@ -2,6 +2,7 @@
  * Pitcher stat computation functions extracted from OverviewTab.
  * Pure functions — no React dependencies.
  */
+import { outsToDisplayIP } from '@/lib/ip'
 import { calcFIP, calcXFIP, calcXERA, calcSIERA } from '@/lib/expected-stats'
 import {
   getLeagueBaseline, computePlus, computeCommandPlus, computeRPComPlus,
@@ -78,9 +79,7 @@ export function calcTraditionalByYear(data: any[]): TraditionalRow[] {
       else if (e === 'triple_play') outsFromEvents += 3
       else outsFromEvents += 1 // strikeout, field_out, force_out, fielders_choice, fielders_choice_out, sac_fly, sac_bunt, etc.
     }
-    const fullInnings = Math.floor(outsFromEvents / 3)
-    const partialOuts = outsFromEvents % 3
-    const ipDisplay = `${fullInnings}.${partialOuts}`
+    const ipDisplay = outsToDisplayIP(outsFromEvents)
 
     const whiffs = pitches.filter(p => {
       const d = (p.description || '').toLowerCase()
@@ -210,7 +209,7 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
       else outsCount += 1
     }
     const ipDecimal = outsCount / 3
-    const ipDisplay = `${Math.floor(outsCount / 3)}.${outsCount % 3}`
+    const ipDisplay = outsToDisplayIP(outsCount)
 
     // Expected stats models
     const seasonStats = {
