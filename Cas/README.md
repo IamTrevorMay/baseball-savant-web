@@ -35,16 +35,16 @@ structure, less depth. Verify with the matching flag:
   **Read before any applied advice.**
 
 ## Applied Playbooks (start here for "what should we do?")
-- [ ] [testing-applied.md](applied/testing-applied.md) — Fixing the 5 masking `queryCache` failures,
+- [x] [testing-applied.md](applied/testing-applied.md) — Fixing the 5 masking `queryCache` failures,
   golden-file tests for metric output, contract tests for MLB/Savant, idempotency tests for the
   backfill paths, a realistic CI shape for this repo.
-- [ ] [analytics-ux-applied.md](applied/analytics-ux-applied.md) — A coverage/sample-size affordance
+- [x] [analytics-ux-applied.md](applied/analytics-ux-applied.md) — A coverage/sample-size affordance
   in `lib/metricRegistry.ts`, null-vs-zero rules per metric, uncertainty display for short windows,
   cross-level axis policy, overlay legibility spec.
-- [ ] [frontend-data-scale-applied.md](applied/frontend-data-scale-applied.md) — Where Triton's
+- [x] [frontend-data-scale-applied.md](applied/frontend-data-scale-applied.md) — Where Triton's
   client-filter boundary should sit, Plotly render budgets, virtualizing the dense tables, mobile
   constraints, a profiling protocol.
-- [ ] [caching-state-applied.md](applied/caching-state-applied.md) — `queryCache` invalidation audit,
+- [x] [caching-state-applied.md](applied/caching-state-applied.md) — `queryCache` invalidation audit,
   surfacing `mv_last_refreshed`, Realtime coherence between producer and overlay, optimistic-update
   rollback rules.
 

@@ -17,7 +17,7 @@ by filename, not absorb the topic.
 |---|---|---|---|
 | Jo | 33/33 ✅ | 3/3 ✅ | `Jo/` |
 | Li | 44/44 ✅ | 4/4 ✅ | `Li/` |
-| Cas | 44/44 ✅ | 0/4 | `Cas/` |
+| Cas | 44/44 ✅ | 4/4 ✅ | `Cas/` |
 
 **Directories live at the repo root** (`Jo/`, `Li/`, `Cas/`), not under `.claude/agents/` — only the
 persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
@@ -26,10 +26,12 @@ persona files (`jo.md`, `li.md`, `cas.md`) and this contract live here.
 **Verify against `ls`, not against the manifest**: on 2026-08-12 two Li docs were fully built on
 disk but still marked `[ ]`. Reconcile both directions before dispatching.
 
-Remaining: **4 docs** — Cas's 4 applied playbooks. Jo and Li are complete.
+**Remaining: none. The build is complete** — Jo 36/36, Li 48/48, Cas 48/48, plus Soto's 88.
 
-Resume order: Cas's 4 applied playbooks (`testing`, `analytics-ux`, `frontend-data-scale`,
-`caching-state`), which closes the whole build at 132 docs.
+The libraries are now maintenance surfaces, not build targets. When you learn something durable,
+update the relevant doc and its manifest line rather than adding docs. Two known debts are open:
+six dead links in Jo's reference docs (listed in the 2026-08-21 batch log), and `Soto/applied/`'s
+seven playbooks predate the applied contract and fail `--applied` by design.
 
 ### Batch log
 

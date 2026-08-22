@@ -75,9 +75,13 @@ in `fetchData` / `lib/enrichData.ts`.
 ## Testing Reality *(re-measured 2026-08-21 by running `npm test` — unchanged since 2026-08-11)*
 
 - 7 test files, **122 tests: 93 passing, 5 failing, 24 skipped**.
-- The 5 failures are pre-existing in `__tests__/lib/queryCache.test.ts` — the Supabase mock lacks
-  `.maybeSingle()`, so `getCached` throws. **They are unrelated to app behavior, but they mask new
-  failures and should be fixed.**
+- **4** of the 5 failures are in `__tests__/lib/queryCache.test.ts` — the Supabase mock lacks
+  `.maybeSingle()`, so `getCached` throws. The **5th is different in kind and was misattributed here
+  until 2026-08-22**: `__tests__/lib/leagueStats.test.ts:37-41` asserts `computePlus` returns
+  `Infinity` when stddev is zero, and gets `100` — an approval test pinned to a divide-by-zero bug
+  that `lib/leagueStats.ts:1322` has since fixed. It is red because the code got better, so it needs
+  a judgement call about the intended contract, not a mock fix. **All 5 mask new failures and should
+  be resolved.**
 - Coverage is thin: `__tests__/api/playerData.test.ts` is the only API-route test. There are no
   tests for the metric registry, no golden-file tests for metric output, no contract tests against
   the MLB/Savant APIs, and no idempotency tests for backfills.
