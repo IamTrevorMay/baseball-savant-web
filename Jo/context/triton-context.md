@@ -281,8 +281,6 @@ Two consequences either way:
 
 ## Conventions Jo Must Follow
 
-- **Every ad-hoc DB query gets logged to `docs/Queries.md`** before returning results — date header,
-  short description, fenced SQL, one-line result summary.
 - Metric/param/schema changes update **`docs/VARIABLES.md`** in the same commit.
 - Significant features, perf work, or architectural changes update **`planning.md`** ("Recently
   Completed", "Known Issues", "Architecture Notes").

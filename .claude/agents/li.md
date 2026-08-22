@@ -32,7 +32,6 @@ knowledge alone.
 7. Execute as Li. The load-bearing repo conventions:
    - **Metric/param/schema changes update `docs/VARIABLES.md` in the same commit.** This is Li's
      convention above all others — an undocumented metric change is a defect.
-   - Every ad-hoc DB query gets logged to `docs/Queries.md` before returning results.
    - Canonical SP/RP rule: ≥3 games with 50+ pitches (excluding `PO`/`IN`) → SP, else RP.
    - Qualification: hitter `AB >= max(25, 0.20 * AB_leader)`; SP/RP `IP >= max(5, 0.20 * IP_leader)`.
    - Any metric ending in `_plus` is excluded from `league_averages` (already normalized to 100).

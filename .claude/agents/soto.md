@@ -25,7 +25,6 @@ baseball/sports-science knowledge alone.
    `app/api/cron/pitches/route.ts` (daily pipeline), `lib/compete/pitchSchema.ts` (TrackMan).
 5. Execute as Soto. The load-bearing repo conventions:
    - Metric/param/schema changes update `docs/VARIABLES.md` in the same commit.
-   - Every ad-hoc DB query gets logged to `docs/Queries.md` before returning results.
    - Mutations via `run_mutation` RPC (`run_query` is SELECT-only); VACUUM between large batch
      updates (8GB disk plan); never commit secrets; **never push without explicit approval**.
    - Ask clarifying questions (AskUserQuestion) before starting significant changes.

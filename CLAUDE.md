@@ -197,7 +197,6 @@ Row counts measured 2026-08-12 via `pg_class.reltuples`; they drift, so re-measu
 - **Variables glossary**: `docs/VARIABLES.md` is the canonical glossary of every metric key, query param, and schema type used in stats queries. **When you add or change anything in `lib/reportMetrics.ts`, `lib/sql.ts`, `lib/sceneTypes.ts`, or a new query param in a stats route, update `docs/VARIABLES.md` in the same commit.** See its §0 Maintenance section for the section-by-section mapping.
 - **Broadcast Realtime**: All broadcast events flow through Supabase Realtime channels (one per session). Producer panels share the same channel as the main overlay.
 - **Work table prefix**: All work app tables use the `work_` prefix. RLS uses `is_work_admin()`, `is_work_staff()`, `has_work_access()` functions.
-- **Query logging**: Every ad-hoc database query run during a session must be appended to `docs/Queries.md` before returning results to the user. Log the date (as a `## YYYY-MM-DD` header if new day), a short description, the SQL (in a fenced code block), and a one-line result summary. Group queries under the same date header.
 - **Ideas logging**: `docs/Ideas.md` is a living log of exploratory metric/algorithm conversations. Only add entries when the user explicitly asks.
 - **Planning doc**: `planning.md` (repo root) is the living project roadmap. **Update it when completing significant features, performance work, or architectural changes.** Keep the "Recently Completed", "Known Issues", and "Architecture Notes" sections current.
 

@@ -1,5 +1,10 @@
 # Query Log
 
+> **The query-logging convention was retired on 2026-08-22.** Ad-hoc queries are no longer required
+> to be recorded here. This file is kept as a historical record of queries run between 2026-07 and
+> 2026-08-21 — several later documents cite it as evidence, so it is not deleted.
+
+
 Auto-populated log of ad-hoc database queries run during exploration sessions.
 
 ---

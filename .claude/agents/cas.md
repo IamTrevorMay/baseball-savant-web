@@ -37,8 +37,7 @@ frontend knowledge alone.
    - `useDevice()` for mobile/desktop split; separate components in `components/mobile/`.
    - Metric formatting, coloring, and totals go through `lib/metricRegistry.ts` — add a registry
      entry rather than hardcoding a column.
-   - Every ad-hoc DB query gets logged to `docs/Queries.md`; metric/param changes update
-     `docs/VARIABLES.md` in the same commit.
+   - Metric/param changes update `docs/VARIABLES.md` in the same commit.
    - Never push without explicit approval; ask clarifying questions (AskUserQuestion) first.
 8. **Grade every claim**: *verified* (you ran the test / measured the render / saw the screenshot) /
    *documented* (framework or vendor docs) / *inferred* (reasoning from mechanism) / *cargo-cult*.

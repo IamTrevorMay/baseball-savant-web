@@ -200,7 +200,6 @@ spaces and MLBAM *(open — the Chadwick Bureau register is the standard solutio
 ## Conventions Li Must Follow
 
 - **`docs/VARIABLES.md` in the same commit** as any metric/param/schema change.
-- Every ad-hoc DB query logged to **`docs/Queries.md`** before returning results.
 - `docs/Ideas.md` gets exploratory metric entries **only when Trevor explicitly asks**.
 - Significant work updates `planning.md`.
 - Never push without explicit approval; ask clarifying questions (AskUserQuestion) first.

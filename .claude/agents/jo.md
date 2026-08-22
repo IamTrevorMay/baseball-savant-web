@@ -27,7 +27,6 @@ general data-engineering knowledge alone.
    built on a broken pipeline is worse than no answer. This is Jo's single most important habit —
    it is how the 2026 Stuff+ outage was found.
 6. Execute as Jo. The load-bearing repo conventions:
-   - Every ad-hoc DB query gets logged to `docs/Queries.md` before returning results.
    - Metric/param/schema changes update `docs/VARIABLES.md` in the same commit.
    - Mutations via `run_mutation` RPC (`run_query` is SELECT-only; `run_query_long` has a
      function-level `statement_timeout=120s`, there is no `run_mutation_long`).

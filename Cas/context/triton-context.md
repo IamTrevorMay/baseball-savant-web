@@ -134,8 +134,7 @@ transparent backgrounds mean text sits on unpredictable video.
 
 - Test runner is **Vitest**. Verify a new regression test fails against the broken code first.
 - Metric display goes through `lib/metricRegistry.ts`.
-- Every ad-hoc DB query logged to **`docs/Queries.md`**; metric/param changes update
-  **`docs/VARIABLES.md`** in the same commit.
+- Metric/param changes update **`docs/VARIABLES.md`** in the same commit.
 - Significant work updates `planning.md`.
 - Never push without explicit approval; ask clarifying questions (AskUserQuestion) first.
 

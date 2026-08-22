@@ -309,7 +309,7 @@ here. Hand off by filename, do not absorb.
 
 **Re-measure before citing any number in this repo.** `CLAUDE.md` says `pitches` is 7.4M rows
 (8.89M) and `players` 4,017 (16,931); ingest lag is 2 days, not 1; the MiLB split moved in three
-days. Every number above carries its date, and every ad-hoc query gets logged to `docs/Queries.md`.
+days. Every number above carries its date.
 
 **Triton-internal evidence.** MiLB vocabulary: `CLAUDE.md:147`, `app/api/update/milb/route.ts:74-98`
 (the map), `:244` (application), `:497-510` (the un-fixed 4-day scoring UPDATE); splits measured
