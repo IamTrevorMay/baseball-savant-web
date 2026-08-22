@@ -11,11 +11,16 @@ import { toPitcherX } from '@/lib/pitcherPerspective'
 
 type View = 'rankings' | 'brink' | 'cluster' | 'hdev' | 'vdev' | 'missfire' | 'close_pct' | 'movement'
 
-interface Props { data: any[] }
+interface Props {
+  data: any[]
+  /** Breakpoint population. MiLB pages must pass 'MiLB' or AAA pitchers are ranked
+   *  against MLB breakpoints, which pegs them near the 99th percentile. */
+  level?: 'MLB' | 'MiLB'
+}
 
 const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
-export default function PercentileTab({ data }: Props) {
+export default function PercentileTab({ data, level = 'MLB' }: Props) {
   const [view, setView] = useState<View>('rankings')
   const [deceptionVals, setDeceptionVals] = useState<Record<string, number | null>>({
     unique_score: null, deception_score: null, xdeception_score: null,
@@ -44,7 +49,7 @@ export default function PercentileTab({ data }: Props) {
     const years = [...new Set(data.map(d => d.game_year).filter(Boolean))] as number[]
     if (years.length === 0) return
     const season = Math.max(...years)
-    fetch(`/api/league-percentiles?season=${season}&role=${role}`)
+    fetch(`/api/league-percentiles?season=${season}&role=${role}&level=${level}`)
       .then(r => r.ok ? r.json() : [])
       .then((rows: any[]) => {
         const map: Record<string, { breakpoints: number[]; higher_better: boolean }> = {}
@@ -54,7 +59,7 @@ export default function PercentileTab({ data }: Props) {
         setPercentileMap(map)
       })
       .catch(() => {})
-  }, [data, role])
+  }, [data, role, level])
 
   // Fetch pre-computed deception scores
   useEffect(() => {

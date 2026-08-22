@@ -353,7 +353,7 @@ export default function MilbPlayerDashboard() {
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}
           {tab === 'splits' && <SplitsTab data={data} />}
           {tab === 'gamelog' && <GameLogTab data={data} />}
-          {tab === 'percentile' && <PercentileTab data={data} />}
+          {tab === 'percentile' && <PercentileTab data={data} level="MiLB" />}
           {tab === 'pitchlevel' && <PitchLevelTab data={data} />}
           {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}
         </div>

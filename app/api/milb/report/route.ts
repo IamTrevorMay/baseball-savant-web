@@ -6,7 +6,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const result = buildReportQuery({
-      table: 'milb_pitches',
+      // Normalized view: events in MLB snake_case and pfx_x/pfx_z in feet, so the shared
+      // reportMetrics SQL is valid here. Writes still target the base table.
+      table: 'milb_pitches_normalized',
       extraGroupCols: {
         level: 'level',
         parent_org_home: 'parent_org_home',

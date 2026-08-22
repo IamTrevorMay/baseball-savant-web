@@ -11,7 +11,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 // sensitive tables (profiles, email_subscribers, auth.*, …). Restrict to the
 // analytics surface the AI is prompted to use.
 const ALLOWED_TABLES = new Set([
-  'pitches', 'milb_pitches', 'players', 'player_summary', 'batter_summary',
+  'pitches', 'milb_pitches', 'milb_pitches_normalized', 'players', 'player_summary', 'batter_summary',
   'pitcher_season_command', 'pitcher_season_deception', 'league_averages', 'league_percentiles',
   'glossary', 'pitch_baselines', 'sos_scores', 'park_factors',
   'bat_tracking_swing_miss', 'bat_tracking_swing_miss_latest',

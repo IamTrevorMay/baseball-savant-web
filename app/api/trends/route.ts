@@ -11,8 +11,13 @@ export async function POST(req: NextRequest) {
     const safeSeason = parseInt(season)
     if (isNaN(safeSeason)) return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
 
-    // Check DB cache (6h TTL)
-    const cacheKey = `trends:${safeSeason}:${playerType}:${minPitches}`
+    // Check DB cache (6h TTL).
+    // `tab` MUST be in the key: this read happens before the tab dispatch below, so a key
+    // without it served the Overview payload — { rows } — to the Stuff and Arsenal tabs,
+    // which expect { leaders, gainers, losers }. The two branches also wrote
+    // `trends:stuff:*` / `trends:arsenal:*`, keys nothing ever read, so those branches had a
+    // structural 0% hit rate.
+    const cacheKey = `trends:${tab}:${safeSeason}:${playerType}:${minPitches}`
     const cached = await getCached(cacheKey)
     if (cached) {
       return NextResponse.json(cached, {
@@ -71,7 +76,7 @@ export async function POST(req: NextRequest) {
         losers: changes.filter((r: any) => r.delta < 0).slice(-15).reverse(),
         recentDate, latestDate,
       }
-      setCache(`trends:stuff:${safeSeason}:${mp}`, result, { ttlSeconds: 21600 }).catch(() => {})
+      setCache(cacheKey, result, { ttlSeconds: 21600 }).catch(() => {})
       return NextResponse.json(result, { headers: { 'Cache-Control': 'public, max-age=3600' } })
     }
 
@@ -107,7 +112,7 @@ export async function POST(req: NextRequest) {
         usage_delta: r.recent_usage != null && r.season_usage != null ? +(r.recent_usage - r.season_usage).toFixed(1) : 0,
       }))
       const result = { changes, recentDate, latestDate }
-      setCache(`trends:arsenal:${safeSeason}:${mp}`, result, { ttlSeconds: 21600 }).catch(() => {})
+      setCache(cacheKey, result, { ttlSeconds: 21600 }).catch(() => {})
       return NextResponse.json(result, { headers: { 'Cache-Control': 'public, max-age=3600' } })
     }
 
