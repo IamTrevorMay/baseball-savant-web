@@ -710,7 +710,6 @@ BEGIN
             + 6.664  * power((p._gb - p._fb - p._pu)::numeric / p._pa, 2)
             + 10.130 * (p._k::numeric  / p._pa) * ((p._gb - p._fb - p._pu)::numeric / p._pa)
             -  5.195 * (p._bb::numeric / p._pa) * ((p._gb - p._fb - p._pu)::numeric / p._pa)
-            -  0.986 * ln(GREATEST(p._ip, 1))
           ELSE NULL END AS siera
         FROM per_pitcher p CROSS JOIN floors f
       ),

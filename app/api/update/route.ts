@@ -11,7 +11,7 @@ const supabase = createClient(
 const GAME_TYPE_MAP: Record<string, string> = {
   R: 'R|',
   S: 'S|',
-  P: 'P|',
+  P: 'PO|',
 }
 
 async function syncNewPlayers(rows: any[]) {

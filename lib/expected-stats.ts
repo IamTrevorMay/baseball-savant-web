@@ -68,7 +68,6 @@ export function calcXERA(s: PitcherSeasonStats): number | null {
  * SIERA = 6.145 − 16.986×(K/PA) + 11.434×(BB/PA) − 1.858×((GB−FB−PU)/PA)
  *       + 7.653×(K/PA)² + 6.664×((GB−FB−PU)/PA)²
  *       + 10.130×(K/PA)×((GB−FB−PU)/PA) − 5.195×(BB/PA)×((GB−FB−PU)/PA)
- *       − 0.986×ln(IP)
  */
 export function calcSIERA(s: PitcherSeasonStats): number | null {
   if (s.ip <= 0 || s.pa <= 0) return null
@@ -84,5 +83,4 @@ export function calcSIERA(s: PitcherSeasonStats): number | null {
     + 6.664 * netGB * netGB
     + 10.130 * kRate * netGB
     - 5.195 * bbRate * netGB
-    - 0.986 * Math.log(Math.max(s.ip, 1))
 }

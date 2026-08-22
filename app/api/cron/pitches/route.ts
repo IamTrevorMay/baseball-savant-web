@@ -30,7 +30,8 @@ export async function GET(req: NextRequest) {
   const gameTypes: string[] = []
   if (month >= 2 && month <= 3) gameTypes.push('S')
   if (month === 3 || (month >= 4 && month <= 9)) gameTypes.push('R')
-  if (month >= 10 && month <= 11) gameTypes.push('P')
+  // October carries regular-season games as well as postseason; request both.
+  if (month >= 10 && month <= 11) { gameTypes.push('R'); gameTypes.push('P') }
   if (gameTypes.length === 0) gameTypes.push('R')
 
   // Sync last 3 days (covers delayed Savant uploads)
