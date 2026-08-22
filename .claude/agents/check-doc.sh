@@ -6,18 +6,24 @@
 AGENT="$1"; shift
 CHECK_LINKS=0
 LIGHT=0
+APPLIED=0
 # Flags may appear in any order before the file list.
 while :; do
   case "$1" in
     --links) CHECK_LINKS=1; shift ;;
     --light) LIGHT=1; shift ;;
+    --applied) APPLIED=1; shift ;;
     *) break ;;
   esac
 done
 
 # Tiers. "standard" is the original contract; "light" is the reduced-depth tier
 # (see BUILD.md § Doc tiers) — same structure, less length and fewer sources.
-if [ "$LIGHT" = "1" ]; then
+if [ "$APPLIED" = "1" ]; then
+  # Applied playbooks: a sequenced build plan, not research. NOW/NEXT/LATER instead of numbered
+  # sections, and no Sources section — they cite the repo and their own domain corpus.
+  MAX_BYTES=22528; MIN_BYTES=14000; TIER="applied"
+elif [ "$LIGHT" = "1" ]; then
   MAX_BYTES=15872; MIN_BYTES=9000; MIN_SRC=10; MAX_SRC=14; TIER="light"
 else
   MAX_BYTES=22528; MIN_BYTES=15000; MIN_SRC=17; MAX_SRC=24; TIER="standard"
@@ -27,6 +33,7 @@ case "$AGENT" in
   Jo) GOOD="measured|documented|inferred|folklore" ;;
   Li) GOOD="established|computed|estimated|folk-sabermetrics" ;;
   Cas) GOOD="verified|documented|inferred|cargo-cult" ;;
+  Soto) GOOD="measured|documented|inferred|folklore" ;;
   *) echo "unknown agent: $AGENT"; exit 1 ;;
 esac
 ALL="measured|documented|inferred|folklore|established|computed|estimated|folk-sabermetrics|verified|cargo-cult"
@@ -40,7 +47,7 @@ for f in "$@"; do
 
   grep -q '^title:'   "$f" || probs+=("no title:")
   grep -q '^domain:'  "$f" || probs+=("no domain:")
-  grep -q '^sources_reviewed:' "$f" || probs+=("no sources_reviewed:")
+  [ "$APPLIED" = "1" ] || grep -q '^sources_reviewed:' "$f" || probs+=("no sources_reviewed:")
   grep -q '^last_updated:'     "$f" || probs+=("no last_updated:")
 
   # Block form:  tags:\n  - a\n  - b     Inline form:  tags: [a, b]
@@ -55,9 +62,24 @@ for f in "$@"; do
   tldr=$(awk '/^## TL;DR/{f=1;next} /^## /{f=0} f&&/^- /' "$f" | wc -l | tr -d ' ')
   { [ "$tldr" -lt 8 ] || [ "$tldr" -gt 12 ]; } && probs+=("TL;DR bullets=$tldr (want 8-12)")
 
-  grep -qi 'What Triton should do, in order' "$f" || probs+=("no 'What Triton should do, in order'")
-  grep -qi 'Anti-recommendation' "$f" || probs+=("no Anti-recommendation")
-  grep -q  '^## Sources' "$f" || probs+=("no Sources section")
+  if [ "$APPLIED" = "1" ]; then
+    grep -q '^## NOW'   "$f" || probs+=("no '## NOW' section")
+    grep -q '^## NEXT'  "$f" || probs+=("no '## NEXT' section")
+    grep -q '^## LATER' "$f" || probs+=("no '## LATER' section")
+    grep -qi '^## Standing Rules' "$f" || probs+=("no Standing Rules")
+    grep -q '^## Sources' "$f" && probs+=("has a Sources section (playbooks cite the repo and their own domain)")
+    grep -q '^domain: applied' "$f" || probs+=("domain: is not 'applied'")
+    # Every actionable item must be locatable. Require file:line citations in the body.
+    # NB: bracket expression must be POSIX-literal — `]` first, `-` last. The earlier form
+    # `[A-Za-z0-9_./()\[\]-]` closed the class at its second `]`, leaving `-]+` as literal
+    # requirements, so this check matched nothing and could never pass. Fixed 2026-08-21.
+    fl=$(grep -cE '`[][A-Za-z0-9_./()-]+\.(ts|tsx|sql|js|json|md):[0-9]+' "$f")
+    [ "$fl" -lt 10 ] && probs+=("only $fl file:line citations (want 10+; every item needs one)")
+  else
+    grep -qi 'What Triton should do, in order' "$f" || probs+=("no 'What Triton should do, in order'")
+    grep -qi 'Anti-recommendation' "$f" || probs+=("no Anti-recommendation")
+    grep -q  '^## Sources' "$f" || probs+=("no Sources section")
+  fi
   grep -qi 'Triton-internal evidence' "$f" || probs+=("no Triton-internal evidence")
 
   # grade vocabulary: flag any grade belonging to another agent
@@ -72,7 +94,9 @@ for f in "$@"; do
   done < <(grep -oE '\b(Jo|Li|Cas|Soto)/[a-z0-9-]+/' "$f" | sort -u)
 
   n_src=$(awk '/^## Sources/{f=1;next} /^## /{f=0} f' "$f" | grep -cE 'https?://')
-  { [ "$n_src" -lt "$MIN_SRC" ] || [ "$n_src" -gt "$MAX_SRC" ]; } && probs+=("sources=$n_src (want ${MIN_SRC}-${MAX_SRC}, ${TIER})")
+  if [ "$APPLIED" != "1" ]; then
+    { [ "$n_src" -lt "$MIN_SRC" ] || [ "$n_src" -gt "$MAX_SRC" ]; } && probs+=("sources=$n_src (want ${MIN_SRC}-${MAX_SRC}, ${TIER})")
+  fi
 
   if [ ${#probs[@]} -eq 0 ]; then
     printf "PASS  %-58s %6sB  %2d src\n" "$(basename "$f")" "$bytes" "$n_src"
