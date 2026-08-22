@@ -23,7 +23,7 @@ refuted rather than deleted.
 | A1 | `pitches` is missing 2026-08-12 and 08-13; Savant has both | **P0** | measured | ✅ query |
 | A1b | The 2026-08-14 09:00 UTC `pitches` invocation never ran, and nothing detects an absent run | **P0** | measured | ✅ query |
 | A5 | MiLB Stuff+ scoring silently failed for 08-06/07/08 — 13,702 pitches unscored | **P0** | measured | ✅ query |
-| A10 | `POST /api/update/milb` writes to `milb_pitches` with **no authentication** | **P1** | measured | ✅ code |
+| A10 | ~~`POST /api/update/milb` writes to `milb_pitches` with **no authentication**~~ — **FIXED 2026-08-22** (`15b7cac`), `checkMachineAuth` added. Was *not* closed by `f5e57c4` despite an earlier note here. | **P1** | measured | ✅ code |
 | A2 | Any single date gets only ~2 fetch attempts, ever; nothing revisits older gaps | **P1** | measured | ✅ code |
 | A3 | `checkMaterializedViews` returns `pass` *because* the data is missing | **P2** | measured | ✅ code |
 | A11 | A missed ingest makes `/api/cron/refresh` skip its whole downstream and log `success` | **P2** | measured | ✅ code |
