@@ -334,62 +334,57 @@ export async function checkMaterializedViews(): Promise<CheckResult> {
 // ── Check 7: League Averages ────────────────────────────────────────────────
 
 export async function checkLeagueAverages(year: number): Promise<CheckResult> {
+  // Rows existing proves nothing: league_averages was populated and 57 days stale while this
+  // check reported pass on COUNT(*) > 0 alone. What matters is whether the denominator keeps
+  // up with the data it normalizes, so compare its write time to the latest game it covers.
+  const STALE_DAYS = 3
+
   const { data: rows, error } = await supabaseAdmin.rpc('run_query', {
-    query_text: `SELECT COUNT(*)::int AS cnt FROM league_averages WHERE season = ${year}`,
+    query_text: `
+      SELECT
+        (SELECT COUNT(*)::int FROM league_averages WHERE season = ${year})                AS cnt,
+        (SELECT MAX(updated_at) FROM league_averages WHERE season = ${year})              AS refreshed_at,
+        (SELECT MAX(game_date) FROM pitches WHERE game_year = ${year} AND game_type = 'R') AS latest_game,
+        EXTRACT(EPOCH FROM (
+          (SELECT MAX(game_date)::timestamptz FROM pitches WHERE game_year = ${year} AND game_type = 'R')
+          - (SELECT MAX(updated_at) FROM league_averages WHERE season = ${year})
+        )) / 86400.0                                                                       AS lag_days
+    `,
   })
 
   if (error) {
-    return {
-      check_name: 'league_averages',
-      status: 'warn',
-      found: 0,
-      remediated: 0,
-      details: { queryError: error.message },
-    }
+    return { check_name: 'league_averages', status: 'warn', found: 0, remediated: 0,
+             details: { queryError: error.message } }
   }
 
-  const count = rows?.[0]?.cnt ?? 0
-  if (count > 0) {
-    return {
-      check_name: 'league_averages',
-      status: 'pass',
-      found: 0,
-      remediated: 0,
-      details: { rowCount: count },
-    }
+  const r = rows?.[0] ?? {}
+  const count = r.cnt ?? 0
+  const lagDays = r.lag_days == null ? null : Number(r.lag_days)
+  const stale = lagDays != null && lagDays > STALE_DAYS
+
+  if (count > 0 && !stale) {
+    return { check_name: 'league_averages', status: 'pass', found: 0, remediated: 0,
+             details: { rowCount: count, refreshedAt: r.refreshed_at, latestGame: r.latest_game,
+                        lagDays: lagDays == null ? null : Number(lagDays.toFixed(1)) } }
   }
 
-  // No rows for current year — refresh
+  const reason = count === 0 ? 'no rows for season' : `stale by ${lagDays?.toFixed(1)} days`
+
   try {
-    const { error: rpcErr } = await supabaseAdmin.rpc('refresh_league_averages', {
-      p_season: year,
-    })
+    const { error: rpcErr } = await supabaseAdmin.rpc('refresh_league_averages', { p_season: year })
     if (rpcErr) {
-      return {
-        check_name: 'league_averages',
-        status: 'warn',
-        found: 1,
-        remediated: 0,
-        details: { refreshError: rpcErr.message },
-      }
+      return { check_name: 'league_averages', status: 'warn', found: 1, remediated: 0,
+               details: { reason, refreshError: rpcErr.message, rowCount: count,
+                          refreshedAt: r.refreshed_at, latestGame: r.latest_game } }
     }
   } catch (e: any) {
-    return {
-      check_name: 'league_averages',
-      status: 'warn',
-      found: 1,
-      remediated: 0,
-      details: { refreshError: e.message },
-    }
+    return { check_name: 'league_averages', status: 'warn', found: 1, remediated: 0,
+             details: { reason, refreshError: e.message, rowCount: count } }
   }
 
-  return {
-    check_name: 'league_averages',
-    status: 'remediated',
-    found: 1,
-    remediated: 1,
-    details: { action: 'refresh_league_averages called' },
-  }
+  return { check_name: 'league_averages', status: 'remediated', found: 1, remediated: 1,
+           details: { reason, action: 'refresh_league_averages called',
+                      staleDays: lagDays == null ? null : Number(lagDays.toFixed(1)) } }
 }
 
 // ── Check 8: Pitch Baselines ────────────────────────────────────────────────

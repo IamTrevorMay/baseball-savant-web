@@ -86,7 +86,21 @@ export async function GET(req: NextRequest) {
                 headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
               }),
             ])
-            computeResults[gt] = { triton: await tritonRes.json(), deception: await deceptionRes.json() }
+            // Read HTTP status, not just the body. compute-triton returns 500 when a batch
+            // trips the statement cap; awaiting .json() on it yielded a nested {error} that
+            // the allComputeFailed check below never looked at, so a failed run recorded
+            // success and pitcher_season_command silently froze mid-season.
+            const triton = await tritonRes.json().catch(() => ({ error: 'unparseable response' }))
+            const deception = await deceptionRes.json().catch(() => ({ error: 'unparseable response' }))
+            const failures: string[] = []
+            if (!tritonRes.ok) failures.push(`triton HTTP ${tritonRes.status}: ${triton?.error ?? ''}`)
+            else if (triton?.error) failures.push(`triton: ${triton.error}`)
+            if (!deceptionRes.ok) failures.push(`deception HTTP ${deceptionRes.status}: ${deception?.error ?? ''}`)
+            else if (deception?.error) failures.push(`deception: ${deception.error}`)
+
+            computeResults[gt] = failures.length
+              ? { triton, deception, error: failures.join(' | ') }
+              : { triton, deception }
           } catch (e: any) {
             computeResults[gt] = { error: e.message }
           }
@@ -182,6 +196,7 @@ export async function GET(req: NextRequest) {
         result: payload,
         counts: {
           gameTypes, totalInserted,
+          computeResults,
           pitchBaselines: pitchBaselinesResult,
           leagueAverages: leagueAveragesResult,
           leaguePercentiles: leaguePercentilesResult,

@@ -23,6 +23,9 @@ export const SEASON_CONSTANTS: Record<number, {
 }
 
 // Park factors by team (5-year rolling, 2024 FanGraphs)
+// Keys must match the team codes Savant actually emits, which it normalizes across
+// history: 'AZ' (not ARI) and 'ATH' (not OAK), in every season including 2016.
+// A key that never matches silently yields a park factor of 100.
 // Using these as the baseline — they don't change dramatically year-to-year
 // basic = overall runs, pf_hr/pf_h/pf_so/pf_bb = component factors
 export const PARK_FACTORS: Record<string, {
@@ -37,13 +40,12 @@ export const PARK_FACTORS: Record<string, {
   KC:  { basic: 103, pf_hr: 95, pf_so: 97, pf_bb: 101 },
   MIN: { basic: 101, pf_hr: 99, pf_so: 100, pf_bb: 103 },
   NYY: { basic: 99, pf_hr: 104, pf_so: 100, pf_bb: 101 },
-  OAK: { basic: 96, pf_hr: 90, pf_so: 100, pf_bb: 100 },
   ATH: { basic: 96, pf_hr: 90, pf_so: 100, pf_bb: 100 },
   SEA: { basic: 94, pf_hr: 96, pf_so: 104, pf_bb: 97 },
   TB:  { basic: 96, pf_hr: 96, pf_so: 102, pf_bb: 101 },
   TEX: { basic: 99, pf_hr: 102, pf_so: 101, pf_bb: 100 },
   TOR: { basic: 99, pf_hr: 103, pf_so: 100, pf_bb: 99 },
-  ARI: { basic: 101, pf_hr: 91, pf_so: 99, pf_bb: 99 },
+  AZ:  { basic: 101, pf_hr: 91, pf_so: 99, pf_bb: 99 },
   ATL: { basic: 100, pf_hr: 99, pf_so: 102, pf_bb: 99 },
   CHC: { basic: 98, pf_hr: 98, pf_so: 101, pf_bb: 99 },
   CIN: { basic: 105, pf_hr: 114, pf_so: 101, pf_bb: 102 },

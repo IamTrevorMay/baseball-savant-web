@@ -165,8 +165,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message, sql: confirmedSql }, { status: 500 })
       }
 
-      const rows = (data || []).slice(0, 5000)
-      return NextResponse.json({ rows, count: rows.length, viz_config: confirmedViz })
+      const allRows = data || []
+      const rows = allRows.slice(0, 5000)
+      // count used to be rows.length — the truncated length reported as the total, so a
+      // capped result set was indistinguishable from a complete one.
+      return NextResponse.json({
+        rows,
+        count: allRows.length,
+        returned: rows.length,
+        truncated: allRows.length > rows.length,
+        viz_config: confirmedViz,
+      })
     }
 
     // Generate query plan via Claude

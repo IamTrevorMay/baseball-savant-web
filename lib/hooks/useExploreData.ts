@@ -227,7 +227,10 @@ export function useExploreData(): UseExploreDataReturn {
             minPA: qualifier.minPA,
           }),
         })
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
+        // A 500 previously fell through to `data.rows || []`, so a query the database
+        // cancelled rendered as "0 rows" with no error anywhere on screen.
+        if (!res.ok) throw new Error(data?.error || `Query failed (HTTP ${res.status})`)
 
         let fetchedRows = data.rows || []
 

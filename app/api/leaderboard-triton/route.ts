@@ -72,6 +72,14 @@ export async function POST(req: NextRequest) {
       supabase.rpc('run_query', { query_text: stuffSql }),
     ])
     if (error) return NextResponse.json({ error: error.message, sql }, { status: 500 })
+    // The Stuff+ scan is a separate query; without this its failure rendered every
+    // *_stuff_plus column as null at HTTP 200, indistinguishable from "no Stuff+ data".
+    if (stuffRes.error) {
+      return NextResponse.json(
+        { error: `stuff_plus query failed: ${stuffRes.error.message}` },
+        { status: 500 },
+      )
+    }
 
     // Build stuff+ lookup: pitcher → pitch_name → avg_stuff_plus
     const stuffMap = new Map<number, Record<string, number>>()
