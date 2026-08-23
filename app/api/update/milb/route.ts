@@ -71,10 +71,25 @@ const TYPE_MAP: Record<string, string> = {
   V: 'B',   // Automatic ball (violation)
 }
 
-// MiLB Title Case events → MLB lowercase event normalization
-const EVENT_NORMALIZE_MAP: Record<string, string> = {
+// MiLB Title Case events → the MLB vocabulary used by lib/reportMetrics.ts.
+//
+// Must stay in step with milb_pitches_normalized (scripts/create-milb-pitches-normalized.sql)
+// and with the 2026-08-23 backfill, or new rows reintroduce the split this fixed. Three things
+// the earlier map got wrong:
+//   - 'Forceout' mapped to field_out, collapsing a category MLB records separately as
+//     force_out (3,908 rows in MLB 2025).
+//   - Seven values were absent, so the ?? fallback lower-cased them into vocabulary that
+//     exists nowhere else — 'Field Out', the three bunt outs, 'Sac Fly Double Play',
+//     'Triple Play', 'Catcher Interference'.
+//   - Baserunning events were given invented snake_case names. MLB does not record these in
+//     `events` at all; it leaves the column NULL and the plate appearance continues. Emitting
+//     a name for them inflates every denominator that counts `events IS NOT NULL` as a PA.
+const EVENT_NORMALIZE_MAP: Record<string, string | null> = {
   'Strikeout': 'strikeout',
+  'Strikeout Double Play': 'strikeout_double_play',
   'Walk': 'walk',
+  'Intent Walk': 'intent_walk',
+  'Hit By Pitch': 'hit_by_pitch',
   'Single': 'single',
   'Double': 'double',
   'Triple': 'triple',
@@ -83,19 +98,34 @@ const EVENT_NORMALIZE_MAP: Record<string, string> = {
   'Flyout': 'field_out',
   'Lineout': 'field_out',
   'Pop Out': 'field_out',
-  'Forceout': 'field_out',
-  'Grounded Into DP': 'grounded_into_double_play',
+  'Field Out': 'field_out',
+  'Bunt Groundout': 'field_out',
+  'Bunt Pop Out': 'field_out',
+  'Bunt Lineout': 'field_out',
+  'Forceout': 'force_out',
   'Double Play': 'double_play',
+  'Grounded Into DP': 'grounded_into_double_play',
   'Sac Fly': 'sac_fly',
   'Sac Bunt': 'sac_bunt',
+  'Sac Fly Double Play': 'sac_fly_double_play',
+  'Triple Play': 'triple_play',
   'Field Error': 'field_error',
-  'Hit By Pitch': 'hit_by_pitch',
-  'Intent Walk': 'intent_walk',
   'Fielders Choice': 'fielders_choice',
   'Fielders Choice Out': 'fielders_choice_out',
-  'Caught Stealing 2B': 'caught_stealing_2b',
-  'Strikeout Double Play': 'strikeout_double_play',
-  'Runner Out': 'runner_out',
+  'Catcher Interference': 'catcher_interf',
+
+  // No MLB equivalent — MLB leaves `events` NULL for these.
+  'Caught Stealing 2B': null,
+  'Caught Stealing 3B': null,
+  'Caught Stealing Home': null,
+  'Pickoff Caught Stealing Home': null,
+  'Cs Double Play': null,
+  'Stolen Base 2B': null,
+  'Stolen Base 3B': null,
+  'Wild Pitch': null,
+  'Passed Ball': null,
+  'Runner Out': null,
+  'Batter Out': null,
 }
 
 // hitData.trajectory → bb_type mapping
@@ -242,7 +272,12 @@ async function extractPitchesFromGame(
         // Pitch result
         description: details.description ? (DESCRIPTION_MAP[details.description] || details.description) : null,
         type: details.call?.code ? (TYPE_MAP[details.call.code] || null) : null,
-        events: event ? (EVENT_NORMALIZE_MAP[event] ?? event.toLowerCase().replace(/ /g, '_')) : null,
+        // `in` rather than ??, so a deliberate null above is not overwritten by the fallback.
+        events: event
+          ? (event in EVENT_NORMALIZE_MAP
+              ? EVENT_NORMALIZE_MAP[event]
+              : event.toLowerCase().replace(/ /g, '_'))
+          : null,
 
         // Velocity
         release_speed: pd.startSpeed ?? null,

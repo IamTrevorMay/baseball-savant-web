@@ -44,15 +44,39 @@ export async function POST(req: NextRequest) {
     // level moved every value toward zero: a league-average .320 xwOBA hitter at Coors
     // (PF 112) rendered .286, as if a neutral hitter in a hitters' park were below average.
     //   adjusted = leagueAvg + (observed - leagueAvg) * (100 / PF)
+    //
+    // The anchor comes from league_averages, not from the 300 rows this route returns — those
+    // are the top of a leaderboard, so their mean is not the league. The `hitter` role carries
+    // the league-wide rate for both categories: a pitcher's xwOBA-against and a hitter's xwOBA
+    // describe the same events from opposite sides.
     const all = (data || []) as any[]
-    const leagueAvg = (key: string): number | null => {
-      const vals = all.map(r => r[key]).filter((v: any) => v != null).map(Number)
-      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+
+    const { data: laRows, error: laErr } = await q(`
+      SELECT metric, value FROM league_averages
+      WHERE season = ${safeSeason} AND level = 'MLB' AND role = 'hitter'
+        AND metric IN ('avg_xwoba', 'k_pct', 'bb_pct')
+    `)
+    if (laErr) return NextResponse.json({ error: laErr.message }, { status: 500 })
+
+    const la = new Map<string, number>(
+      ((laRows || []) as any[]).map((r: any) => [r.metric, Number(r.value)]),
+    )
+
+    // league_averages carries no hr_pct, so take it from the same population the route reads
+    // — the whole season, not the leaderboard slice.
+    const { data: hrRows } = await q(`
+      SELECT ROUND(100.0 * SUM(home_runs)::numeric / NULLIF(SUM(pa), 0), 3) AS hr_pct
+      FROM mv_pitcher_season_stats WHERE game_year = ${safeSeason}
+    `)
+
+    const finite = (v: any): number | null => {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
     }
-    const avgXwoba = leagueAvg('xwoba')
-    const avgHrPct = leagueAvg('hr_pct')
-    const avgKPct  = leagueAvg('k_pct')
-    const avgBbPct = leagueAvg('bb_pct')
+    const avgXwoba = finite(la.get('avg_xwoba'))
+    const avgKPct  = finite(la.get('k_pct'))
+    const avgBbPct = finite(la.get('bb_pct'))
+    const avgHrPct = finite(((hrRows || []) as any[])[0]?.hr_pct)
 
     const adjust = (v: number | null, avg: number | null, pf: number, dp: number): number | null => {
       if (v == null) return null
