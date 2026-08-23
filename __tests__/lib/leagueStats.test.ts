@@ -68,13 +68,16 @@ describe('plusToPercentile', () => {
     expect(plusToPercentile(100)).toBe(50)
   })
 
-  it('returns ~84 for plus=110 (1 stddev)', () => {
-    // z = (110-100)/10 = 1.0 → normalCDF(1) ≈ 0.8413 → 84
-    expect(plusToPercentile(110)).toBe(84)
+  it('returns ~84 for plus=115 (1 stddev)', () => {
+    // One SD is 15 points, not 10: computePlus and valueToPercentile both scale by
+    // PLUS_SCALE_SD = 15. These cases previously asserted 110 -> 84, which only holds if
+    // the scale is 10 — the mismatch that made plusToPercentile inflate z by 1.5x and
+    // report the 93rd percentile for a genuine +1 SD. Audit step 21.
+    expect(plusToPercentile(115)).toBe(84)
   })
 
-  it('returns ~16 for plus=90 (-1 stddev)', () => {
-    expect(plusToPercentile(90)).toBe(16)
+  it('returns ~16 for plus=85 (-1 stddev)', () => {
+    expect(plusToPercentile(85)).toBe(16)
   })
 
   it('clamps extreme high values to 99', () => {

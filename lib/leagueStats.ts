@@ -1317,10 +1317,14 @@ export function percentileColor(pct: number): string {
   }
 }
 
+/** Points per standard deviation on the plus-stat scale. computePlus, valueToPercentile
+ *  and plusToPercentile must all use this one number. */
+export const PLUS_SCALE_SD = 15
+
 export function computePlus(pitcherAvg: number, leagueMean: number, leagueStddev: number): number {
   // Guard zero/NaN stddev → return the neutral 100 instead of ±Infinity/NaN.
   if (!(leagueStddev > 0) || !Number.isFinite(leagueStddev)) return 100
-  return ((pitcherAvg - leagueMean) / leagueStddev) * 15 + 100
+  return ((pitcherAvg - leagueMean) / leagueStddev) * PLUS_SCALE_SD + 100
 }
 
 // Normal CDF approximation (Abramowitz & Stegun)
@@ -1335,8 +1339,19 @@ export function normalCDF(z: number): number {
 }
 
 /** Convert a plus stat to a league percentile rank (1–99) */
-export function plusToPercentile(plus: number): number {
-  const z = (plus - 100) / 10
+/**
+ * Convert a plus-stat to a 1-99 percentile.
+ *
+ * `sd` MUST match the scale that produced the value. Both producers in this file —
+ * computePlus and valueToPercentile — use `* 15 + 100`, but this function divided by a
+ * hardcoded 10, inflating z by 1.5x: a genuine +1 SD pitcher (plus = 115) rendered at the
+ * 93rd percentile instead of the 84th. Stuff+ is a third scale again — measured at
+ * 1 SD ≈ 6.1 points — so anything on that scale must pass its own sd rather than rely on
+ * the default.
+ */
+export function plusToPercentile(plus: number, sd: number = PLUS_SCALE_SD): number {
+  if (!(sd > 0) || !Number.isFinite(sd)) return 50
+  const z = (plus - 100) / sd
   return Math.max(1, Math.min(99, Math.round(normalCDF(z) * 100)))
 }
 
@@ -1348,7 +1363,7 @@ export function valueToPercentile(
   higherBetter: boolean
 ): number {
   if (stddev <= 0) return 50
-  const plus = ((value - mean) / stddev) * 15 + 100
+  const plus = ((value - mean) / stddev) * PLUS_SCALE_SD + 100
   const adjusted = higherBetter ? plus : 200 - plus
   return plusToPercentile(adjusted)
 }

@@ -641,6 +641,25 @@ export function formatMetric(key: string, value: any): string {
 }
 
 /** Get cell color class for a metric value. */
+/**
+ * Numeric value of a cell, or null when there is nothing to colour.
+ *
+ * `Number(null)` is 0 and `Number('')` is 0, so an isNaN guard alone lets a MISSING value
+ * through as a real zero — which coloured every absent Stuff+ as below-average orange rather
+ * than neutral. Missing must be distinguishable from zero everywhere, and colour is where
+ * users read it fastest.
+ */
+function numericOrNull(value: any): number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') {
+    const t = value.trim()
+    // '', '—', '-', 'N/A' are all "no data" as rendered elsewhere in the UI.
+    if (t === '' || t === '\u2014' || t === '-' || t.toUpperCase() === 'N/A') return null
+  }
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 export function getCellColor(key: string, value: any): string {
   const def = METRIC_REGISTRY[key]
   if (!def) return 'text-zinc-300'
@@ -649,8 +668,8 @@ export function getCellColor(key: string, value: any): string {
     case 'static':
       return color.class
     case 'plus': {
-      const n = Number(value)
-      if (isNaN(n)) return 'text-zinc-400'
+      const n = numericOrNull(value)
+      if (n === null) return 'text-zinc-400'
       const high = color.high ?? 100
       const low = color.low ?? 100
       if (n > high) return color.above
@@ -658,7 +677,10 @@ export function getCellColor(key: string, value: any): string {
       return color.neutral ?? 'text-zinc-300'
     }
     case 'inverted_value': {
-      const n = Number(value)
+      // Previously unguarded: a null became 0 and took the bad branch, so a missing value
+      // rendered in the same red as a genuinely bad one.
+      const n = numericOrNull(value)
+      if (n === null) return 'text-zinc-400'
       if (color.good === 'negative') return n < 0 ? color.goodClass : color.badClass
       return n > 0 ? color.goodClass : color.badClass
     }
