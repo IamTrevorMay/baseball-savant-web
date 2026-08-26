@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase/server'
+import { extractSavantMp4Url } from '@/lib/savantMp4'
 
 // Live Savant resolves can retry (see fetchSavant); give the function headroom
 // so a couple of slow MLB responses can't be cut off by the default limit.
@@ -82,8 +83,6 @@ function toVideoRow(r: any) {
   }
 }
 
-const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
-
 /**
  * Fetch an external Savant URL with a per-attempt timeout and small backoff
  * retry. MLB's endpoints (especially the ~3MB /gf game feed) intermittently
@@ -124,8 +123,7 @@ async function resolveSavantMp4(playId: string): Promise<string | null> {
     })
     if (!res.ok) return null
     const html = await res.text()
-    const m = html.match(MP4_RE)
-    return m ? m[0] : null
+    return extractSavantMp4Url(html)
   } catch (e: any) {
     console.error(`[pitch-video] resolveSavantMp4 failed for playId=${playId}: ${e?.message}`)
     return null

@@ -27,6 +27,7 @@ import { resolve, dirname } from 'path'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import { execSync } from 'child_process'
+import { extractSavantMp4Url } from '@/lib/savantMp4'
 
 // Parse .env.local manually
 const envPath = resolve(process.cwd(), '.env.local')
@@ -103,7 +104,6 @@ process.on('exit', () => {
 process.on('SIGINT', () => process.exit(130))
 process.on('SIGTERM', () => process.exit(143))
 const MIN_FREE_GB = 100
-const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
 
 interface VideoRow {
   game_pk: number
@@ -143,8 +143,7 @@ async function resolveMp4Url(playId: string): Promise<string | null> {
   })
   if (!res.ok) throw new Error(`sporty-videos ${res.status}`)
   const html = await res.text()
-  const m = html.match(MP4_RE)
-  return m ? m[0] : null
+  return extractSavantMp4Url(html)
 }
 
 async function downloadTo(url: string, dest: string): Promise<number> {
