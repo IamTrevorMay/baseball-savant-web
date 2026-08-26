@@ -56,7 +56,7 @@ export async function setCache(key: string, response: any, opts?: CacheOptions):
  * - `pctile:` — percentile breakpoint caches (league_percentiles table)
  */
 export const CACHE_TAG_REGISTRY = {
-  pitches: ['trends:', 'mvpct:', 'player:', 'scene:'],
+  pitches: ['trends:', 'mvpct:', 'player:', 'scene:', 'hot:'],
   milb_pitches: ['milb:'],
   league_averages: ['league:', 'pctile:'],
 } as const

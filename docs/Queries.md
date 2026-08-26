@@ -1891,3 +1891,31 @@ SELECT game_year FROM t WHERE game_year IS NOT NULL;
 Result: identical output (9 seasons, 2018–2026), **~30x faster**. `idx_pitches_batter_year_date`
 exists and both forms use it; only the recursive one avoids reading all ~25k of the player's rows.
 Note in passing: `idx_pitches_game_pk` **does** exist — CLAUDE.md's "No index on `game_pk`" is stale.
+
+**Hot page timeout — reproducing the failure and sizing the query**
+
+```sql
+SELECT count(*) AS rows_scanned, count(DISTINCT pitcher) AS pitchers, count(DISTINCT game_pk) AS games
+FROM pitches WHERE game_year = 2026 AND game_type = 'R';
+```
+
+Result: **586,896 rows / 824 pitchers / 1,989 games** feeding the per-(pitcher, game_pk) appearance
+aggregate behind `/api/hot`.
+
+Ran the route's own aggregate against both RPCs from a script:
+
+```
+run_query_long: 16,911 rows  16,396ms
+run_query     : ERROR canceling statement due to statement timeout  8,261ms
+```
+
+**Root cause confirmed.** The route imported `supabaseAdminLong` (120s *HTTP* timeout) but called
+`run_query`, which carries the `authenticator` role's 8s **statement_timeout** regardless of client.
+The long client made it look handled. Fixed to `run_query_long` + `maxDuration = 60` + the DB-backed
+`query_cache` (the old `Map` was per-lambda). Measured after: **cold 17.3s, warm 0.15–0.23s**, cache
+rows ~2.4KB with a 6h TTL.
+
+Same client/RPC mismatch exists in **15 other routes** — `park-adjusted`, `trends`, `report`,
+`scene-stats`, `sos`, `movement-percentiles`, `leaderboard-triton`, `team-tendencies`,
+`milb/{player-data,report}`, `wbc/{leaders,report}`, `game/puzzle`, and two `admin/*` backfills.
+Not audited yet; each needs its own timing before swapping.
