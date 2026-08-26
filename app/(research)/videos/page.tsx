@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
 import type { PlayerResult } from '@/lib/types'
 import type { ClipRow as VideoRow } from '@/lib/video/types'
+import ResearchNav from '@/components/ResearchNav'
 import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl, matchupLabel } from '@/lib/video/clip'
 import Telestrator from '@/components/videos/Telestrator'
 import PitchOverlay from '@/components/videos/PitchOverlay'
@@ -968,501 +969,504 @@ export default function VideosPage() {
 
   // ── Render ──
   return (
-    <div className="max-w-[1500px] mx-auto px-4 md:px-6 py-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div>
-          <h1 className="text-2xl font-bold">Videos</h1>
-          <p className="text-xs text-zinc-600">Pitch video archive — search, review, download</p>
-        </div>
-        <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 ml-3">
-          {(['search', 'playlist', 'overlay'] as const).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-3.5 py-1 rounded text-sm font-semibold capitalize transition ${view === v ? 'bg-emerald-600/20 text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1" />
-        {view === 'search' && (
-          <button
-            onClick={() => setDrawerOpen(o => !o)}
-            className={`${btnCls} border ${drawerOpen ? 'bg-emerald-600/20 border-emerald-600 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'}`}
-          >
-            History
-          </button>
-        )}
-      </div>
-
-      <div className="flex gap-5 items-start">
-        {view === 'playlist' && renderPlaylistView()}
-        {view === 'overlay' && (
-          overlayClips
-            ? <PitchOverlay clips={overlayClips} onExit={() => { setOverlayClips(null); setView('search') }} />
-            : <div className="flex-1 py-24 text-center text-sm text-zinc-600">Select exactly 2 pitches in the Search view and hit <span className="text-sky-400">Overlay</span>.</div>
-        )}
-        {view === 'search' && (<>
-        {/* ── Left: filters ── */}
-        <div className="w-[260px] shrink-0 space-y-3">
-          {/* Pitches / Game mode toggle */}
-          <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-            {(['pitches', 'game'] as const).map(m => (
+    <div className="min-h-screen bg-zinc-950 text-zinc-200">
+      <ResearchNav active="/videos" />
+      <div className="max-w-[1500px] mx-auto px-4 md:px-6 py-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div>
+            <h1 className="text-2xl font-bold">Videos</h1>
+            <p className="text-xs text-zinc-600">Pitch video archive — search, review, download</p>
+          </div>
+          <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 ml-3">
+            {(['search', 'playlist', 'overlay'] as const).map(v => (
               <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 px-2 py-1 rounded text-xs font-semibold capitalize transition ${mode === m ? 'bg-emerald-600/20 text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-3.5 py-1 rounded text-sm font-semibold capitalize transition ${view === v ? 'bg-emerald-600/20 text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
-                {m}
+                {v}
               </button>
             ))}
           </div>
+          <div className="flex-1" />
+          {view === 'search' && (
+            <button
+              onClick={() => setDrawerOpen(o => !o)}
+              className={`${btnCls} border ${drawerOpen ? 'bg-emerald-600/20 border-emerald-600 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'}`}
+            >
+              History
+            </button>
+          )}
+        </div>
 
-          {mode === 'game' && (
-            <>
-              <div>
-                <label className={labelCls}>Game date</label>
-                <input
-                  type="date"
-                  className={`${inputCls} [color-scheme:dark]`}
-                  value={gameDate}
-                  onChange={e => { setGameDate(e.target.value); loadGamesForDate(e.target.value) }}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Matchup</label>
-                <select
-                  className={inputCls}
-                  value={selectedGamePk}
-                  onChange={e => setSelectedGamePk(e.target.value)}
-                  disabled={gamesLoading || games.length === 0}
+        <div className="flex gap-5 items-start">
+          {view === 'playlist' && renderPlaylistView()}
+          {view === 'overlay' && (
+            overlayClips
+              ? <PitchOverlay clips={overlayClips} onExit={() => { setOverlayClips(null); setView('search') }} />
+              : <div className="flex-1 py-24 text-center text-sm text-zinc-600">Select exactly 2 pitches in the Search view and hit <span className="text-sky-400">Overlay</span>.</div>
+          )}
+          {view === 'search' && (<>
+          {/* ── Left: filters ── */}
+          <div className="w-[260px] shrink-0 space-y-3">
+            {/* Pitches / Game mode toggle */}
+            <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+              {(['pitches', 'game'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`flex-1 px-2 py-1 rounded text-xs font-semibold capitalize transition ${mode === m ? 'bg-emerald-600/20 text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
                 >
-                  <option value="">
-                    {gamesLoading ? 'Loading…' : games.length ? 'Select a game…' : gameDate ? 'No games found' : 'Pick a date first'}
-                  </option>
-                  {games.map(g => (
-                    <option key={g.game_pk} value={g.game_pk}>
-                      {matchupLabel(g)} ({g.pitch_count})
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            {mode === 'game' && (
+              <>
+                <div>
+                  <label className={labelCls}>Game date</label>
+                  <input
+                    type="date"
+                    className={`${inputCls} [color-scheme:dark]`}
+                    value={gameDate}
+                    onChange={e => { setGameDate(e.target.value); loadGamesForDate(e.target.value) }}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Matchup</label>
+                  <select
+                    className={inputCls}
+                    value={selectedGamePk}
+                    onChange={e => setSelectedGamePk(e.target.value)}
+                    disabled={gamesLoading || games.length === 0}
+                  >
+                    <option value="">
+                      {gamesLoading ? 'Loading…' : games.length ? 'Select a game…' : gameDate ? 'No games found' : 'Pick a date first'}
                     </option>
-                  ))}
+                    {games.map(g => (
+                      <option key={g.game_pk} value={g.game_pk}>
+                        {matchupLabel(g)} ({g.pitch_count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className={`${btnCls} w-full bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
+                  onClick={loadGame}
+                  disabled={!selectedGamePk || searching}
+                >
+                  {searching ? 'Loading…' : 'Load game'}
+                </button>
+                <button
+                  className={`${btnCls} w-full bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 disabled:opacity-40 disabled:hover:text-zinc-300 disabled:hover:border-zinc-700`}
+                  onClick={startReviewGame}
+                  disabled={!selectedGamePk || reviewLoading}
+                >
+                  {reviewLoading ? 'Building…' : 'Review game'}
+                </button>
+                {searchError && <div className="text-sm text-red-400">{searchError}</div>}
+                <p className="text-[11px] text-zinc-600 leading-snug">
+                  <span className="text-zinc-500">Load game</span> lists every pitch in order, with the
+                  video-less ones greyed out. <span className="text-zinc-500">Review game</span> skips
+                  straight to the player with every playable clip queued up — nothing is saved.
+                </p>
+              </>
+            )}
+
+            {mode === 'pitches' && (<>
+            <div>
+              <PlayerSearchInput
+                type="pitcher"
+                value={pitcherSel}
+                onSelect={p => setPitcherSel(p)}
+                onClear={() => setPitcherSel(null)}
+                label="Pitcher"
+                placeholder="Search pitchers…"
+              />
+            </div>
+            <div>
+              <PlayerSearchInput
+                type="batter"
+                value={batterSel}
+                onSelect={p => setBatterSel(p)}
+                onClear={() => setBatterSel(null)}
+                label="Batter"
+                placeholder="Search batters…"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Team</label>
+              <input className={inputCls} value={filters.team} maxLength={3} placeholder="e.g. PIT"
+                onChange={e => setF({ team: e.target.value })} />
+            </div>
+            <div>
+              <label className={labelCls}>Pitch types</label>
+              <div className="flex flex-wrap gap-1.5">
+                {PITCH_TYPES.map(([code, name]) => {
+                  const on = filters.pitchTypes.includes(code)
+                  return (
+                    <button
+                      key={code}
+                      title={name}
+                      onClick={() => setF({
+                        pitchTypes: on ? filters.pitchTypes.filter(c => c !== code) : [...filters.pitchTypes, code],
+                      })}
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border transition ${on ? 'bg-emerald-600/20 border-emerald-600 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:text-zinc-300'}`}
+                    >
+                      {code}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Result (event)</label>
+              <select className={inputCls} value={filters.event} onChange={e => setF({ event: e.target.value })}>
+                <option value="">Any</option>
+                {EVENTS.map(ev => <option key={ev} value={ev}>{label(ev)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Pitch result</label>
+              <select className={inputCls} value={filters.description} onChange={e => setF({ description: e.target.value })}>
+                <option value="">Any</option>
+                {DESCRIPTIONS.map(d => <option key={d} value={d}>{label(d)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Season</label>
+              <input className={inputCls} value={filters.gameYear} placeholder="2026"
+                onChange={e => setF({ gameYear: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
+            </div>
+            <div>
+              <label className={labelCls}>Date from / to</label>
+              <input type="date" className={`${inputCls} [color-scheme:dark]`} value={filters.dateFrom}
+                onChange={e => setF({ dateFrom: e.target.value })} />
+              <input type="date" className={`${inputCls} mt-1.5 [color-scheme:dark]`} value={filters.dateTo}
+                onChange={e => setF({ dateTo: e.target.value })} />
+            </div>
+            <div>
+              <label className={labelCls}>Velo (mph)</label>
+              <div className="flex gap-1.5">
+                <input className={inputCls} value={filters.veloMin} placeholder="min"
+                  onChange={e => setF({ veloMin: e.target.value.replace(/[^\d.]/g, '') })} />
+                <input className={inputCls} value={filters.veloMax} placeholder="max"
+                  onChange={e => setF({ veloMax: e.target.value.replace(/[^\d.]/g, '') })} />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Count (B-S)</label>
+              <div className="flex gap-1.5">
+                <select className={inputCls} value={filters.balls} onChange={e => setF({ balls: e.target.value })}>
+                  <option value="">B</option>
+                  {[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <select className={inputCls} value={filters.strikes} onChange={e => setF({ strikes: e.target.value })}>
+                  <option value="">S</option>
+                  {[0, 1, 2].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
+            </div>
+            <div>
+              <label className={labelCls}>Sides</label>
+              <div className="flex gap-1.5">
+                <select className={inputCls} value={filters.stand} onChange={e => setF({ stand: e.target.value })}>
+                  <option value="">Bat: any</option>
+                  <option value="L">Bat: L</option>
+                  <option value="R">Bat: R</option>
+                </select>
+                <select className={inputCls} value={filters.pThrows} onChange={e => setF({ pThrows: e.target.value })}>
+                  <option value="">Thr: any</option>
+                  <option value="L">Thr: L</option>
+                  <option value="R">Thr: R</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Inning</label>
+              <input className={inputCls} value={filters.inning} placeholder="any"
+                onChange={e => setF({ inning: e.target.value.replace(/\D/g, '').slice(0, 2) })} />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+              <input type="checkbox" checked={filters.onlyArchived} onChange={e => setF({ onlyArchived: e.target.checked })} />
+              Archived only
+            </label>
+            <div className="flex gap-2 pt-1">
               <button
-                className={`${btnCls} w-full bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
-                onClick={loadGame}
-                disabled={!selectedGamePk || searching}
+                className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
+                onClick={() => { setFilters(EMPTY_FILTERS); setPitcherSel(null); setBatterSel(null) }}
               >
-                {searching ? 'Loading…' : 'Load game'}
+                Clear
               </button>
               <button
-                className={`${btnCls} w-full bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 disabled:opacity-40 disabled:hover:text-zinc-300 disabled:hover:border-zinc-700`}
-                onClick={startReviewGame}
-                disabled={!selectedGamePk || reviewLoading}
+                className={`${btnCls} flex-1 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
+                onClick={runSearch}
+                disabled={searching}
               >
-                {reviewLoading ? 'Building…' : 'Review game'}
+                {searching ? 'Searching…' : 'Search'}
               </button>
-              {searchError && <div className="text-sm text-red-400">{searchError}</div>}
-              <p className="text-[11px] text-zinc-600 leading-snug">
-                <span className="text-zinc-500">Load game</span> lists every pitch in order, with the
-                video-less ones greyed out. <span className="text-zinc-500">Review game</span> skips
-                straight to the player with every playable clip queued up — nothing is saved.
-              </p>
-            </>
-          )}
+            </div>
+            {searchError && <div className="text-sm text-red-400">{searchError}</div>}
+            </>)}
+          </div>
 
-          {mode === 'pitches' && (<>
-          <div>
-            <PlayerSearchInput
-              type="pitcher"
-              value={pitcherSel}
-              onSelect={p => setPitcherSel(p)}
-              onClear={() => setPitcherSel(null)}
-              label="Pitcher"
-              placeholder="Search pitchers…"
-            />
+          {/* ── Center: results ── */}
+          <div className="flex-1 min-w-0">
+            {rows === null ? (
+              <div className="py-24 text-center text-sm text-zinc-600">Set filters on the left and run a search.</div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+                  <span className="text-sm text-zinc-500">
+                    {rows.length} pitches · {archivedRows.length} with video
+                    {selectedRows.length > 0 && ` · ${selectedRows.length} selected`}
+                  </span>
+                  <div className="flex-1" />
+                  {batch ? (
+                    <>
+                      <span className="text-sm text-emerald-400">
+                        Downloading {batch.done}/{batch.total}{batch.failed ? ` (${batch.failed} failed)` : ''}
+                      </span>
+                      <button className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400`}
+                        onClick={() => { batchCancelRef.current = true }}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : selectedRows.length > 0 ? (
+                    <>
+                      <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={openPlaylist}>View selected</button>
+                      {selectedRows.length === 2 && (
+                        <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setOverlayClips([selectedRows[0], selectedRows[1]]); setView('overlay') }}>Overlay</button>
+                      )}
+                      <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => setAddPicker({ rows: selectedRows })}>Add to playlist</button>
+                      <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => runBatchDownload(selectedRows)}>Download</button>
+                      <button className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400`} onClick={() => setSelectedKeys(new Set())}>Clear</button>
+                    </>
+                  ) : archivedRows.length > 0 && (
+                    <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => runBatchDownload(archivedRows)}>
+                      Download all ({archivedRows.length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="overflow-auto rounded-lg border border-zinc-800 max-h-[calc(100vh-220px)]">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wide sticky top-0 z-10">
+                      <tr>
+                        <th className="px-2 py-2 text-left w-8">
+                          <input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all" />
+                        </th>
+                        {SORT_COLUMNS.map(col => (
+                          <th
+                            key={col.key ?? '_actions'}
+                            className={`px-2 py-2 text-left whitespace-nowrap ${col.key ? 'cursor-pointer select-none hover:text-zinc-200' : ''}`}
+                            onClick={col.key ? () => clickSort(col.key!) : undefined}
+                          >
+                            {col.label}
+                            {col.key && sortCol === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(displayRows || []).map(row => {
+                        const key = rowKey(row)
+                        const checked = selectedKeys.has(key)
+                        return (
+                          <tr
+                            key={key}
+                            onClick={() => openSingle(row)}
+                            className={`cursor-pointer border-b border-zinc-800/60 hover:bg-zinc-900/60 ${checked ? 'bg-emerald-600/10' : ''} ${!row.video_url ? 'opacity-40 hover:opacity-100' : ''}`}
+                          >
+                            <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
+                              <input type="checkbox" checked={checked} onChange={() => toggleKey(key)} />
+                            </td>
+                            <td className="px-2 py-1.5 whitespace-nowrap text-zinc-300">{row.game_date}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap text-zinc-200">{row.player_name}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap text-zinc-200">{row.batter_name}</td>
+                            <td className="px-2 py-1.5 text-zinc-300">{row.pitch_type || '—'}</td>
+                            <td className="px-2 py-1.5 text-zinc-300">{row.release_speed ? row.release_speed.toFixed(1) : '—'}</td>
+                            <td className="px-2 py-1.5 text-zinc-300">{row.balls ?? '–'}-{row.strikes ?? '–'}</td>
+                            <td className="px-2 py-1.5 text-zinc-300">{row.inning ?? '—'}</td>
+                            <td className="px-2 py-1.5 text-zinc-300">{halfLabel(row.inning_topbot)}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap capitalize text-zinc-300">{outcome(row)}</td>
+                            <td className="px-2 py-1.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                              {!row.video_url && (
+                                <span className="text-[11px] italic text-zinc-600 mr-1.5" title={`Status: ${row.status || 'not archived'} — downloads via Savant CDN`}>{row.status || 'not archived'}</span>
+                              )}
+                              <button
+                                className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-sky-400 hover:bg-zinc-800 mr-1"
+                                title="Telestrate this pitch"
+                                onClick={() => setTelestrateRow(row)}
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" />
+                                </svg>
+                              </button>
+                              <button
+                                className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-emerald-400 hover:bg-zinc-800"
+                                title={row.video_url ? 'Download clip' : 'Download via Savant'}
+                                onClick={() => downloadClip(row)}
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {rows.length === 0 && (
+                        <tr><td colSpan={11} className="px-2 py-8 text-center text-zinc-600">No pitches matched these filters.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
-          <div>
-            <PlayerSearchInput
-              type="batter"
-              value={batterSel}
-              onSelect={p => setBatterSel(p)}
-              onClear={() => setBatterSel(null)}
-              label="Batter"
-              placeholder="Search batters…"
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Team</label>
-            <input className={inputCls} value={filters.team} maxLength={3} placeholder="e.g. PIT"
-              onChange={e => setF({ team: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Pitch types</label>
-            <div className="flex flex-wrap gap-1.5">
-              {PITCH_TYPES.map(([code, name]) => {
-                const on = filters.pitchTypes.includes(code)
-                return (
+
+          {/* ── Right: history drawer ── */}
+          {drawerOpen && (
+            <div className="w-[300px] shrink-0 rounded-lg border border-zinc-800 max-h-[calc(100vh-160px)] flex flex-col">
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800">
+                <span className="text-sm font-semibold">Search History</span>
+                <button className="text-zinc-500 hover:text-zinc-300 text-lg leading-none" onClick={() => setDrawerOpen(false)}>×</button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-2 space-y-2">
+                {history.length === 0 && <div className="py-8 text-center text-sm text-zinc-600">No searches yet.</div>}
+                {history.map(entry => (
                   <button
-                    key={code}
-                    title={name}
-                    onClick={() => setF({
-                      pitchTypes: on ? filters.pitchTypes.filter(c => c !== code) : [...filters.pitchTypes, code],
-                    })}
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border transition ${on ? 'bg-emerald-600/20 border-emerald-600 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:text-zinc-300'}`}
+                    key={entry.id}
+                    className="block w-full text-left rounded-lg border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 px-3 py-2"
+                    onClick={() => applyHistoryEntry(entry)}
                   >
-                    {code}
+                    <div className="flex justify-between mb-0.5">
+                      <span className="text-xs font-semibold text-emerald-400">{entry.user_name || 'Unknown'}</span>
+                      <span className="text-[11px] text-zinc-600">{timeAgo(entry.created_at)}</span>
+                    </div>
+                    <div className="text-xs text-zinc-300 leading-snug">{summarizeFilters(entry.filters || {})}</div>
+                    {entry.result_count != null && (
+                      <div className="text-[11px] text-zinc-600 mt-0.5">{entry.result_count} results</div>
+                    )}
                   </button>
-                )
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-          <div>
-            <label className={labelCls}>Result (event)</label>
-            <select className={inputCls} value={filters.event} onChange={e => setF({ event: e.target.value })}>
-              <option value="">Any</option>
-              {EVENTS.map(ev => <option key={ev} value={ev}>{label(ev)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>Pitch result</label>
-            <select className={inputCls} value={filters.description} onChange={e => setF({ description: e.target.value })}>
-              <option value="">Any</option>
-              {DESCRIPTIONS.map(d => <option key={d} value={d}>{label(d)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>Season</label>
-            <input className={inputCls} value={filters.gameYear} placeholder="2026"
-              onChange={e => setF({ gameYear: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
-          </div>
-          <div>
-            <label className={labelCls}>Date from / to</label>
-            <input type="date" className={`${inputCls} [color-scheme:dark]`} value={filters.dateFrom}
-              onChange={e => setF({ dateFrom: e.target.value })} />
-            <input type="date" className={`${inputCls} mt-1.5 [color-scheme:dark]`} value={filters.dateTo}
-              onChange={e => setF({ dateTo: e.target.value })} />
-          </div>
-          <div>
-            <label className={labelCls}>Velo (mph)</label>
-            <div className="flex gap-1.5">
-              <input className={inputCls} value={filters.veloMin} placeholder="min"
-                onChange={e => setF({ veloMin: e.target.value.replace(/[^\d.]/g, '') })} />
-              <input className={inputCls} value={filters.veloMax} placeholder="max"
-                onChange={e => setF({ veloMax: e.target.value.replace(/[^\d.]/g, '') })} />
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Count (B-S)</label>
-            <div className="flex gap-1.5">
-              <select className={inputCls} value={filters.balls} onChange={e => setF({ balls: e.target.value })}>
-                <option value="">B</option>
-                {[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <select className={inputCls} value={filters.strikes} onChange={e => setF({ strikes: e.target.value })}>
-                <option value="">S</option>
-                {[0, 1, 2].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Sides</label>
-            <div className="flex gap-1.5">
-              <select className={inputCls} value={filters.stand} onChange={e => setF({ stand: e.target.value })}>
-                <option value="">Bat: any</option>
-                <option value="L">Bat: L</option>
-                <option value="R">Bat: R</option>
-              </select>
-              <select className={inputCls} value={filters.pThrows} onChange={e => setF({ pThrows: e.target.value })}>
-                <option value="">Thr: any</option>
-                <option value="L">Thr: L</option>
-                <option value="R">Thr: R</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Inning</label>
-            <input className={inputCls} value={filters.inning} placeholder="any"
-              onChange={e => setF({ inning: e.target.value.replace(/\D/g, '').slice(0, 2) })} />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
-            <input type="checkbox" checked={filters.onlyArchived} onChange={e => setF({ onlyArchived: e.target.checked })} />
-            Archived only
-          </label>
-          <div className="flex gap-2 pt-1">
-            <button
-              className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
-              onClick={() => { setFilters(EMPTY_FILTERS); setPitcherSel(null); setBatterSel(null) }}
-            >
-              Clear
-            </button>
-            <button
-              className={`${btnCls} flex-1 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
-              onClick={runSearch}
-              disabled={searching}
-            >
-              {searching ? 'Searching…' : 'Search'}
-            </button>
-          </div>
-          {searchError && <div className="text-sm text-red-400">{searchError}</div>}
+          )}
           </>)}
         </div>
 
-        {/* ── Center: results ── */}
-        <div className="flex-1 min-w-0">
-          {rows === null ? (
-            <div className="py-24 text-center text-sm text-zinc-600">Set filters on the left and run a search.</div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-2.5 flex-wrap">
-                <span className="text-sm text-zinc-500">
-                  {rows.length} pitches · {archivedRows.length} with video
-                  {selectedRows.length > 0 && ` · ${selectedRows.length} selected`}
+        {/* ── Review modal ── */}
+        {modal && modalClip && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setModal(null)}>
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[720px] max-w-[92vw] max-h-[90vh] overflow-auto p-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="text-[15px] font-bold">
+                  {flipName(modalClip.player_name)} to {flipName(modalClip.batter_name)}
+                  <span className="font-normal text-zinc-500 text-[13px]">
+                    {' '}· {modalClip.pitch_name || modalClip.pitch_type}{modalClip.release_speed ? ` ${modalClip.release_speed.toFixed(1)} mph` : ''}
+                    {' '}· {modalClip.balls ?? '–'}-{modalClip.strikes ?? '–'} · {outcome(modalClip)}
+                  </span>
+                </div>
+                <button className="text-zinc-500 hover:text-zinc-300 text-xl leading-none px-1" onClick={() => setModal(null)}>×</button>
+              </div>
+              {(modalClip.video_url || savantMp4[rowKey(modalClip)]) ? (
+                <video
+                  key={rowKey(modalClip)}
+                  src={modalClip.video_url || savantMp4[rowKey(modalClip)] || undefined}
+                  controls
+                  autoPlay
+                  onEnded={() => { if (modal.index < modal.clips.length - 1) modalNext() }}
+                  className="w-full rounded-lg bg-black"
+                />
+              ) : resolvingKey === rowKey(modalClip) ? (
+                <div className="py-16 text-center text-sm text-zinc-500 bg-zinc-950/60 rounded-lg">Loading clip from Savant…</div>
+              ) : (
+                <div className="py-16 text-center text-sm text-zinc-500 bg-zinc-950/60 rounded-lg">
+                  No clip available for this pitch ({modalClip.status || 'not archived'}).{' '}
+                  <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-emerald-400">Try Savant</a>
+                </div>
+              )}
+              <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+                <span className="text-xs text-zinc-500">
+                  {modalClip.away_team} @ {modalClip.home_team} · {modalClip.game_date} · {modalClip.inning_topbot} {modalClip.inning}
                 </span>
                 <div className="flex-1" />
-                {batch ? (
+                {modal.clips.length > 1 && (
                   <>
-                    <span className="text-sm text-emerald-400">
-                      Downloading {batch.done}/{batch.total}{batch.failed ? ` (${batch.failed} failed)` : ''}
-                    </span>
-                    <button className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400`}
-                      onClick={() => { batchCancelRef.current = true }}>
-                      Cancel
-                    </button>
+                    <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalPrev} disabled={modal.index === 0}>‹ Prev</button>
+                    <span className="text-sm text-zinc-400 min-w-[52px] text-center">{modal.index + 1} / {modal.clips.length}</span>
+                    <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalNext} disabled={modal.index === modal.clips.length - 1}>Next ›</button>
                   </>
-                ) : selectedRows.length > 0 ? (
-                  <>
-                    <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={openPlaylist}>View selected</button>
-                    {selectedRows.length === 2 && (
-                      <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setOverlayClips([selectedRows[0], selectedRows[1]]); setView('overlay') }}>Overlay</button>
-                    )}
-                    <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => setAddPicker({ rows: selectedRows })}>Add to playlist</button>
-                    <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => runBatchDownload(selectedRows)}>Download</button>
-                    <button className={`${btnCls} bg-zinc-900 border border-zinc-700 text-zinc-400`} onClick={() => setSelectedKeys(new Set())}>Clear</button>
-                  </>
-                ) : archivedRows.length > 0 && (
-                  <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => runBatchDownload(archivedRows)}>
-                    Download all ({archivedRows.length})
-                  </button>
                 )}
+                <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setModal(null); setTelestrateRow(modalClip) }}>Telestrate</button>
+                <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => downloadClip(modalClip)}>Download</button>
+                <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-emerald-400">Savant ↗</a>
               </div>
-
-              <div className="overflow-auto rounded-lg border border-zinc-800 max-h-[calc(100vh-220px)]">
-                <table className="w-full text-sm border-collapse">
-                  <thead className="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wide sticky top-0 z-10">
-                    <tr>
-                      <th className="px-2 py-2 text-left w-8">
-                        <input type="checkbox" checked={allSelected} onChange={toggleAll} title="Select all" />
-                      </th>
-                      {SORT_COLUMNS.map(col => (
-                        <th
-                          key={col.key ?? '_actions'}
-                          className={`px-2 py-2 text-left whitespace-nowrap ${col.key ? 'cursor-pointer select-none hover:text-zinc-200' : ''}`}
-                          onClick={col.key ? () => clickSort(col.key!) : undefined}
-                        >
-                          {col.label}
-                          {col.key && sortCol === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(displayRows || []).map(row => {
-                      const key = rowKey(row)
-                      const checked = selectedKeys.has(key)
-                      return (
-                        <tr
-                          key={key}
-                          onClick={() => openSingle(row)}
-                          className={`cursor-pointer border-b border-zinc-800/60 hover:bg-zinc-900/60 ${checked ? 'bg-emerald-600/10' : ''} ${!row.video_url ? 'opacity-40 hover:opacity-100' : ''}`}
-                        >
-                          <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
-                            <input type="checkbox" checked={checked} onChange={() => toggleKey(key)} />
-                          </td>
-                          <td className="px-2 py-1.5 whitespace-nowrap text-zinc-300">{row.game_date}</td>
-                          <td className="px-2 py-1.5 whitespace-nowrap text-zinc-200">{row.player_name}</td>
-                          <td className="px-2 py-1.5 whitespace-nowrap text-zinc-200">{row.batter_name}</td>
-                          <td className="px-2 py-1.5 text-zinc-300">{row.pitch_type || '—'}</td>
-                          <td className="px-2 py-1.5 text-zinc-300">{row.release_speed ? row.release_speed.toFixed(1) : '—'}</td>
-                          <td className="px-2 py-1.5 text-zinc-300">{row.balls ?? '–'}-{row.strikes ?? '–'}</td>
-                          <td className="px-2 py-1.5 text-zinc-300">{row.inning ?? '—'}</td>
-                          <td className="px-2 py-1.5 text-zinc-300">{halfLabel(row.inning_topbot)}</td>
-                          <td className="px-2 py-1.5 whitespace-nowrap capitalize text-zinc-300">{outcome(row)}</td>
-                          <td className="px-2 py-1.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                            {!row.video_url && (
-                              <span className="text-[11px] italic text-zinc-600 mr-1.5" title={`Status: ${row.status || 'not archived'} — downloads via Savant CDN`}>{row.status || 'not archived'}</span>
-                            )}
-                            <button
-                              className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-sky-400 hover:bg-zinc-800 mr-1"
-                              title="Telestrate this pitch"
-                              onClick={() => setTelestrateRow(row)}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" />
-                              </svg>
-                            </button>
-                            <button
-                              className="inline-flex items-center justify-center w-6 h-6 rounded border border-zinc-700 text-emerald-400 hover:bg-zinc-800"
-                              title={row.video_url ? 'Download clip' : 'Download via Savant'}
-                              onClick={() => downloadClip(row)}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                              </svg>
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                    {rows.length === 0 && (
-                      <tr><td colSpan={11} className="px-2 py-8 text-center text-zinc-600">No pitches matched these filters.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* ── Right: history drawer ── */}
-        {drawerOpen && (
-          <div className="w-[300px] shrink-0 rounded-lg border border-zinc-800 max-h-[calc(100vh-160px)] flex flex-col">
-            <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-800">
-              <span className="text-sm font-semibold">Search History</span>
-              <button className="text-zinc-500 hover:text-zinc-300 text-lg leading-none" onClick={() => setDrawerOpen(false)}>×</button>
-            </div>
-            <div className="overflow-y-auto flex-1 p-2 space-y-2">
-              {history.length === 0 && <div className="py-8 text-center text-sm text-zinc-600">No searches yet.</div>}
-              {history.map(entry => (
-                <button
-                  key={entry.id}
-                  className="block w-full text-left rounded-lg border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 px-3 py-2"
-                  onClick={() => applyHistoryEntry(entry)}
-                >
-                  <div className="flex justify-between mb-0.5">
-                    <span className="text-xs font-semibold text-emerald-400">{entry.user_name || 'Unknown'}</span>
-                    <span className="text-[11px] text-zinc-600">{timeAgo(entry.created_at)}</span>
-                  </div>
-                  <div className="text-xs text-zinc-300 leading-snug">{summarizeFilters(entry.filters || {})}</div>
-                  {entry.result_count != null && (
-                    <div className="text-[11px] text-zinc-600 mt-0.5">{entry.result_count} results</div>
-                  )}
-                </button>
-              ))}
             </div>
           </div>
         )}
-        </>)}
-      </div>
 
-      {/* ── Review modal ── */}
-      {modal && modalClip && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setModal(null)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[720px] max-w-[92vw] max-h-[90vh] overflow-auto p-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="text-[15px] font-bold">
-                {flipName(modalClip.player_name)} to {flipName(modalClip.batter_name)}
-                <span className="font-normal text-zinc-500 text-[13px]">
-                  {' '}· {modalClip.pitch_name || modalClip.pitch_type}{modalClip.release_speed ? ` ${modalClip.release_speed.toFixed(1)} mph` : ''}
-                  {' '}· {modalClip.balls ?? '–'}-{modalClip.strikes ?? '–'} · {outcome(modalClip)}
-                </span>
+        {/* ── Add-to-playlist picker modal ── */}
+        {addPicker && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => !addBusy && setAddPicker(null)}>
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[420px] max-w-[92vw] p-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="text-[15px] font-bold">
+                  Add {addPicker.rows.length} clip{addPicker.rows.length > 1 ? 's' : ''} to playlist
+                </div>
+                <button className="text-zinc-500 hover:text-zinc-300 text-xl leading-none px-1" onClick={() => setAddPicker(null)}>×</button>
               </div>
-              <button className="text-zinc-500 hover:text-zinc-300 text-xl leading-none px-1" onClick={() => setModal(null)}>×</button>
-            </div>
-            {(modalClip.video_url || savantMp4[rowKey(modalClip)]) ? (
-              <video
-                key={rowKey(modalClip)}
-                src={modalClip.video_url || savantMp4[rowKey(modalClip)] || undefined}
-                controls
-                autoPlay
-                onEnded={() => { if (modal.index < modal.clips.length - 1) modalNext() }}
-                className="w-full rounded-lg bg-black"
-              />
-            ) : resolvingKey === rowKey(modalClip) ? (
-              <div className="py-16 text-center text-sm text-zinc-500 bg-zinc-950/60 rounded-lg">Loading clip from Savant…</div>
-            ) : (
-              <div className="py-16 text-center text-sm text-zinc-500 bg-zinc-950/60 rounded-lg">
-                No clip available for this pitch ({modalClip.status || 'not archived'}).{' '}
-                <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-emerald-400">Try Savant</a>
+              <div className="space-y-1 max-h-[280px] overflow-y-auto mb-3">
+                {playlists.map(p => (
+                  <button
+                    key={p.id}
+                    disabled={addBusy}
+                    className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 px-3 py-2 text-sm text-zinc-200 disabled:opacity-50"
+                    onClick={() => addRowsToPlaylist(p.id, addPicker.rows)}
+                  >
+                    <span>{p.name}</span>
+                    <span className="text-xs text-zinc-500">{p.pitch_playlist_items?.[0]?.count ?? 0}</span>
+                  </button>
+                ))}
+                {playlists.length === 0 && (
+                  <div className="py-4 text-center text-sm text-zinc-600">No playlists yet — create one below.</div>
+                )}
               </div>
-            )}
-            <div className="flex items-center gap-2.5 mt-3 flex-wrap">
-              <span className="text-xs text-zinc-500">
-                {modalClip.away_team} @ {modalClip.home_team} · {modalClip.game_date} · {modalClip.inning_topbot} {modalClip.inning}
-              </span>
-              <div className="flex-1" />
-              {modal.clips.length > 1 && (
-                <>
-                  <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalPrev} disabled={modal.index === 0}>‹ Prev</button>
-                  <span className="text-sm text-zinc-400 min-w-[52px] text-center">{modal.index + 1} / {modal.clips.length}</span>
-                  <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={modalNext} disabled={modal.index === modal.clips.length - 1}>Next ›</button>
-                </>
-              )}
-              <button className={`${btnCls} bg-sky-600/20 border border-sky-600 text-sky-400`} onClick={() => { setModal(null); setTelestrateRow(modalClip) }}>Telestrate</button>
-              <button className={`${btnCls} bg-emerald-600/20 border border-emerald-600 text-emerald-400`} onClick={() => downloadClip(modalClip)}>Download</button>
-              <a href={modalClip.savant_url || '#'} target="_blank" rel="noreferrer" className="text-sm text-emerald-400">Savant ↗</a>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Add-to-playlist picker modal ── */}
-      {addPicker && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => !addBusy && setAddPicker(null)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[420px] max-w-[92vw] p-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="text-[15px] font-bold">
-                Add {addPicker.rows.length} clip{addPicker.rows.length > 1 ? 's' : ''} to playlist
-              </div>
-              <button className="text-zinc-500 hover:text-zinc-300 text-xl leading-none px-1" onClick={() => setAddPicker(null)}>×</button>
-            </div>
-            <div className="space-y-1 max-h-[280px] overflow-y-auto mb-3">
-              {playlists.map(p => (
+              <div className="flex gap-2">
+                <input
+                  className={inputCls}
+                  value={newPlaylistName}
+                  placeholder="New playlist name"
+                  onChange={e => setNewPlaylistName(e.target.value)}
+                  onKeyDown={e => e.stopPropagation()}
+                />
                 <button
-                  key={p.id}
-                  disabled={addBusy}
-                  className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 px-3 py-2 text-sm text-zinc-200 disabled:opacity-50"
-                  onClick={() => addRowsToPlaylist(p.id, addPicker.rows)}
+                  className={`${btnCls} shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
+                  disabled={addBusy || !newPlaylistName.trim()}
+                  onClick={async () => {
+                    const pl = await createPlaylist(newPlaylistName)
+                    if (pl) {
+                      setNewPlaylistName('')
+                      await addRowsToPlaylist(pl.id, addPicker.rows)
+                      setActivePlaylistId(pl.id)
+                    }
+                  }}
                 >
-                  <span>{p.name}</span>
-                  <span className="text-xs text-zinc-500">{p.pitch_playlist_items?.[0]?.count ?? 0}</span>
+                  Create + add
                 </button>
-              ))}
-              {playlists.length === 0 && (
-                <div className="py-4 text-center text-sm text-zinc-600">No playlists yet — create one below.</div>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                className={inputCls}
-                value={newPlaylistName}
-                placeholder="New playlist name"
-                onChange={e => setNewPlaylistName(e.target.value)}
-                onKeyDown={e => e.stopPropagation()}
-              />
-              <button
-                className={`${btnCls} shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
-                disabled={addBusy || !newPlaylistName.trim()}
-                onClick={async () => {
-                  const pl = await createPlaylist(newPlaylistName)
-                  if (pl) {
-                    setNewPlaylistName('')
-                    await addRowsToPlaylist(pl.id, addPicker.rows)
-                    setActivePlaylistId(pl.id)
-                  }
-                }}
-              >
-                Create + add
-              </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Telestrator ── */}
-      {telestrateRow && (
-        <Telestrator row={telestrateRow} onClose={() => setTelestrateRow(null)} />
-      )}
+        {/* ── Telestrator ── */}
+        {telestrateRow && (
+          <Telestrator row={telestrateRow} onClose={() => setTelestrateRow(null)} />
+        )}
+      </div>
     </div>
   )
 }
