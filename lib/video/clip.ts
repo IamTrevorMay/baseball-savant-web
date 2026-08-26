@@ -17,6 +17,29 @@ export function flipName(name: string | null): string {
   return String(name || '').trim()
 }
 
+// "Skenes, Paul" → "Skenes". Savant serves "Last, First"; the game dropdown
+// wants the surname alone, the way a matchup is spoken.
+export const surname = (name: string | null) => String(name || '').split(',')[0].trim()
+
+/**
+ * Game-dropdown label: "Skenes (PIT) vs. Wheeler (PHI)".
+ *
+ * Away starter first, matching the away @ home reading order. Falls back to the
+ * bare matchup whenever a starter is missing — a game can be indexed before its
+ * pitches land, and half a matchup reads worse than none.
+ */
+export function matchupLabel(g: {
+  home_team: string
+  away_team: string
+  home_starter?: string | null
+  away_starter?: string | null
+}): string {
+  const away = surname(g.away_starter ?? null)
+  const home = surname(g.home_starter ?? null)
+  if (!away || !home) return `${g.away_team} @ ${g.home_team}`
+  return `${away} (${g.away_team}) vs. ${home} (${g.home_team})`
+}
+
 export const outcome = (row: ClipRow) =>
   titleCase(row.events || row.description || 'Unknown')
 

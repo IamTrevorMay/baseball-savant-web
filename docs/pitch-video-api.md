@@ -102,6 +102,33 @@ Response: `{ "rows": [ ...same row shape as above... ], "count": 100, "limit": 1
 
 Rows are ordered `game_date DESC`, then game/AB/pitch.
 
+### 3. Game list
+
+Every game on one date, for the Videos page's Game mode dropdown:
+
+```
+GET /api/pitch-video?games_on=2026-08-24
+```
+
+```json
+{
+  "games": [
+    {
+      "game_pk": 823828, "game_date": "2026-08-24",
+      "away_team": "BOS", "home_team": "MIA", "pitch_count": 319,
+      "away_starter": "Suarez, Ranger", "home_starter": "Alcantara, Sandy"
+    }
+  ]
+}
+```
+
+Starters are the first pitcher each side threw — home in the top half, away in
+the bottom — taken from Statcast's `player_name` rather than a `players` join,
+since `players.name` mixes formats and 513 names are shared by 2+ players. Both
+starter fields are nullable; `matchupLabel()` (`lib/video/clip.ts`) renders
+`Skenes (PIT) vs. Wheeler (PHI)` and falls back to `PIT @ PHI` when either is
+missing.
+
 ## Playback & download
 
 `video_url` streams with HTTP range support — works directly in a `<video>`

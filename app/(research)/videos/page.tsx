@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
 import type { PlayerResult } from '@/lib/types'
 import type { ClipRow as VideoRow } from '@/lib/video/types'
-import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl } from '@/lib/video/clip'
+import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl, matchupLabel } from '@/lib/video/clip'
 import Telestrator from '@/components/videos/Telestrator'
 import PitchOverlay from '@/components/videos/PitchOverlay'
 
@@ -118,6 +118,8 @@ interface GameOption {
   home_team: string
   away_team: string
   pitch_count: number
+  home_starter: string | null
+  away_starter: string | null
 }
 
 // Results-table columns. `key` drives header-click sorting; null = not sortable.
@@ -228,6 +230,19 @@ export default function VideosPage() {
   const [addPicker, setAddPicker] = useState<{ rows: VideoRow[] } | null>(null)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [addBusy, setAddBusy] = useState(false)
+
+  // "Review game" — the whole game as an in-memory queue, so watching a game
+  // back doesn't litter the playlist list with throwaway rows. Shaped like
+  // PlaylistItem so the playlist view and player work unchanged; `skipped`
+  // records the pitches dropped for having no clip at all.
+  const [reviewSession, setReviewSession] = useState<
+    { label: string; items: PlaylistItem[]; skipped: number } | null
+  >(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
+
+  // Declared up here because the index-clamp effect below runs before the
+  // viewer's derived state is built.
+  const queueLength = reviewSession ? reviewSession.items.length : playlistItems.length
 
   const setF = (patch: Partial<Filters>) => setFilters(f => ({ ...f, ...patch }))
 
@@ -375,6 +390,77 @@ export default function VideosPage() {
     }
   }
 
+  /**
+   * Build an ephemeral queue from every playable pitch in the selected game and
+   * drop straight into the playlist viewer. Nothing is written to the DB — the
+   * header's "Save as playlist" is the only path that persists anything.
+   */
+  const startReviewGame = async () => {
+    if (!selectedGamePk) return
+    setReviewLoading(true)
+    setSearchError(null)
+    try {
+      const res = await fetch(`/api/pitch-video?game_pk=${selectedGamePk}&limit=1000`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || `Load failed (${res.status})`)
+      const all = (json.rows as VideoRow[]) || []
+      // Playable = archived on the NAS, or a play_id Savant can resolve on
+      // demand. Anything else would be a dead stop in the middle of a reel.
+      const playable = all.filter(r => r.video_url || r.savant_url)
+      if (playable.length === 0) throw new Error('No clips available for this game yet')
+
+      const game = games.find(g => String(g.game_pk) === String(selectedGamePk))
+      const label = game
+        ? `${matchupLabel(game)} · ${game.game_date}`
+        : `Game ${selectedGamePk}`
+
+      setReviewSession({
+        label,
+        skipped: all.length - playable.length,
+        items: playable.map((r, i) => ({
+          id: `review-${rowKey(r)}`,
+          playlist_id: 'review',
+          row_key: rowKey(r),
+          clip: r,
+          position: i,
+          added_at: '',
+        })),
+      })
+      setActivePlaylistId(null)
+      setPlayIndex(0)
+      setView('playlist')
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Review failed')
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  /** Persist the review queue as a real playlist and hand the session over. */
+  const saveReviewAsPlaylist = async () => {
+    if (!reviewSession) return
+    const name = window.prompt('Save review as playlist', reviewSession.label)
+    if (!name || !name.trim()) return
+    setAddBusy(true)
+    try {
+      const pl = await createPlaylist(name)
+      if (!pl) { setSearchError('Could not create playlist'); return }
+      const rows = reviewSession.items.map((it, i) => ({
+        playlist_id: pl.id,
+        row_key: it.row_key,
+        clip: it.clip,
+        position: i,
+      }))
+      const { error } = await supabase.from('pitch_playlist_items').insert(rows)
+      if (error) { setSearchError(error.message); return }
+      await fetchPlaylists()
+      setReviewSession(null)
+      setActivePlaylistId(pl.id)
+    } finally {
+      setAddBusy(false)
+    }
+  }
+
   // ── Sorting ── click a header: none → asc → desc → none (back to API order)
   const clickSort = (key: string) => {
     if (sortCol !== key) { setSortCol(key); setSortDir('asc') }
@@ -448,8 +534,8 @@ export default function VideosPage() {
 
   // Keep the playing index inside the queue when items are removed
   useEffect(() => {
-    setPlayIndex(i => Math.min(i, Math.max(0, playlistItems.length - 1)))
-  }, [playlistItems.length])
+    setPlayIndex(i => Math.min(i, Math.max(0, queueLength - 1)))
+  }, [queueLength])
 
   const createPlaylist = async (name: string): Promise<Playlist | null> => {
     const trimmed = (name || '').trim()
@@ -674,7 +760,10 @@ export default function VideosPage() {
 
   // ── Playlist view ──
   const activePlaylist = playlists.find(p => p.id === activePlaylistId) || null
-  const playClip: VideoRow | null = playlistItems[playIndex]?.clip || null
+  // The viewer reads one queue. A review session shadows the saved playlist so
+  // the player, the "now playing" panel and the item list need no branching.
+  const queueItems = reviewSession ? reviewSession.items : playlistItems
+  const playClip: VideoRow | null = queueItems[playIndex]?.clip || null
   const playClipKey = playClip ? rowKey(playClip) : null
   const playSrc = playClip && playClipKey ? (playClip.video_url || savantMp4[playClipKey]) : null
 
@@ -707,12 +796,40 @@ export default function VideosPage() {
       <>
         {/* ── Left: playlist column (replaces filters) ── */}
         <div className="w-[260px] shrink-0 space-y-3">
+          {reviewSession ? (
+            <div className="rounded-lg border border-emerald-600/50 bg-emerald-600/10 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-emerald-500/80 font-semibold">
+                Reviewing game
+              </div>
+              <div className="text-sm font-semibold text-zinc-100 mt-0.5">{reviewSession.label}</div>
+              <div className="text-[11px] text-zinc-500 mt-1">
+                {reviewSession.items.length} clips
+                {reviewSession.skipped > 0 && ` · ${reviewSession.skipped} pitches without video skipped`}
+                {' · not saved'}
+              </div>
+              <div className="flex gap-1.5 mt-2">
+                <button
+                  className={`${btnCls} flex-1 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
+                  onClick={saveReviewAsPlaylist}
+                  disabled={addBusy}
+                >
+                  {addBusy ? 'Saving…' : 'Save as playlist'}
+                </button>
+                <button
+                  className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
+                  onClick={() => { setReviewSession(null); setPlayIndex(0); setView('search') }}
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+          ) : (
           <div>
             <label className={labelCls}>Playlist</label>
             <select
               className={inputCls}
               value={activePlaylistId || ''}
-              onChange={e => setActivePlaylistId(e.target.value || null)}
+              onChange={e => { setReviewSession(null); setActivePlaylistId(e.target.value || null) }}
             >
               <option value="">Select a playlist…</option>
               {playlists.map(p => (
@@ -738,6 +855,7 @@ export default function VideosPage() {
               </div>
             )}
           </div>
+          )}
 
           {playClip && (
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
@@ -767,16 +885,16 @@ export default function VideosPage() {
           )}
 
           <div>
-            <label className={labelCls}>Queue ({playlistItems.length})</label>
+            <label className={labelCls}>Queue ({queueItems.length})</label>
             <div className="space-y-1 max-h-[45vh] overflow-y-auto">
               {playlistLoading && <div className="py-4 text-center text-sm text-zinc-600">Loading…</div>}
-              {!playlistLoading && !activePlaylistId && (
+              {!playlistLoading && !activePlaylistId && !reviewSession && (
                 <div className="py-4 text-center text-sm text-zinc-600">Pick a playlist, or select pitches in Search and hit “Add to playlist”.</div>
               )}
               {!playlistLoading && activePlaylistId && playlistItems.length === 0 && (
                 <div className="py-4 text-center text-sm text-zinc-600">Empty — add pitches from the Search view.</div>
               )}
-              {playlistItems.map((it, idx) => {
+              {queueItems.map((it, idx) => {
                 const c = it.clip
                 const current = idx === playIndex
                 return (
@@ -793,11 +911,15 @@ export default function VideosPage() {
                         {c.pitch_name || c.pitch_type}{c.release_speed ? ` · ${c.release_speed.toFixed(1)}` : ''} · {outcome(c)}{!c.video_url ? ' · Savant' : ''}
                       </div>
                     </div>
-                    <div className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
-                      <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, -1)} disabled={idx === 0} title="Move up">↑</button>
-                      <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, 1)} disabled={idx === playlistItems.length - 1} title="Move down">↓</button>
-                      <button className="text-zinc-600 hover:text-red-400 text-xs px-1" onClick={() => removePlaylistItem(it.id)} title="Remove">×</button>
-                    </div>
+                    {/* Reordering writes to the DB, so it has no meaning for an
+                        unsaved review queue — save it first to rearrange. */}
+                    {!reviewSession && (
+                      <div className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+                        <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, -1)} disabled={idx === 0} title="Move up">↑</button>
+                        <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, 1)} disabled={idx === playlistItems.length - 1} title="Move down">↓</button>
+                        <button className="text-zinc-600 hover:text-red-400 text-xs px-1" onClick={() => removePlaylistItem(it.id)} title="Remove">×</button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -809,15 +931,15 @@ export default function VideosPage() {
         <div className="flex-1 min-w-0">
           {playClip && playSrc ? (
             <PlaylistPlayer
-              key={playlistItems[playIndex]?.id}
+              key={queueItems[playIndex]?.id}
               src={playSrc}
               index={playIndex}
-              total={playlistItems.length}
+              total={queueItems.length}
               autoAdvance={autoAdvance}
               onToggleAutoAdvance={() => setAutoAdvance(v => !v)}
               onPrev={() => setPlayIndex(i => Math.max(0, i - 1))}
-              onNext={() => setPlayIndex(i => Math.min(playlistItems.length - 1, i + 1))}
-              onEnded={() => { if (autoAdvance) setPlayIndex(i => (i < playlistItems.length - 1 ? i + 1 : i)) }}
+              onNext={() => setPlayIndex(i => Math.min(queueItems.length - 1, i + 1))}
+              onEnded={() => { if (autoAdvance) setPlayIndex(i => (i < queueItems.length - 1 ? i + 1 : i)) }}
             />
           ) : playClip && playClipKey && savantMp4[playClipKey] === undefined ? (
             <div className="py-24 text-center text-sm text-zinc-600">Loading clip from Savant…</div>
@@ -831,12 +953,12 @@ export default function VideosPage() {
               </div>
               <div className="flex gap-2 justify-center mt-3.5">
                 <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={() => setPlayIndex(i => Math.max(0, i - 1))} disabled={playIndex === 0}>‹ Prev</button>
-                <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={() => setPlayIndex(i => Math.min(playlistItems.length - 1, i + 1))} disabled={playIndex >= playlistItems.length - 1}>Next ›</button>
+                <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={() => setPlayIndex(i => Math.min(queueItems.length - 1, i + 1))} disabled={playIndex >= queueItems.length - 1}>Next ›</button>
               </div>
             </div>
           ) : (
             <div className="py-24 text-center text-sm text-zinc-600">
-              {activePlaylistId ? 'This playlist is empty.' : 'Select a playlist on the left.'}
+              {activePlaylistId ? 'This playlist is empty.' : 'Select a playlist on the left, or use “Review game” in Search.'}
             </div>
           )}
         </div>
@@ -921,7 +1043,7 @@ export default function VideosPage() {
                   </option>
                   {games.map(g => (
                     <option key={g.game_pk} value={g.game_pk}>
-                      {g.away_team} @ {g.home_team} ({g.pitch_count})
+                      {matchupLabel(g)} ({g.pitch_count})
                     </option>
                   ))}
                 </select>
@@ -933,9 +1055,18 @@ export default function VideosPage() {
               >
                 {searching ? 'Loading…' : 'Load game'}
               </button>
+              <button
+                className={`${btnCls} w-full bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 disabled:opacity-40 disabled:hover:text-zinc-300 disabled:hover:border-zinc-700`}
+                onClick={startReviewGame}
+                disabled={!selectedGamePk || reviewLoading}
+              >
+                {reviewLoading ? 'Building…' : 'Review game'}
+              </button>
               {searchError && <div className="text-sm text-red-400">{searchError}</div>}
               <p className="text-[11px] text-zinc-600 leading-snug">
-                Loads every pitch in the game in order. Pitches without video are greyed out.
+                <span className="text-zinc-500">Load game</span> lists every pitch in order, with the
+                video-less ones greyed out. <span className="text-zinc-500">Review game</span> skips
+                straight to the player with every playable clip queued up — nothing is saved.
               </p>
             </>
           )}

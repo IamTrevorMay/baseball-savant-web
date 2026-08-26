@@ -234,15 +234,32 @@ export async function GET(req: NextRequest) {
     const gamesOn = sp.get('games_on')
     if (gamesOn) {
       if (!DATE_RE.test(gamesOn)) return NextResponse.json({ error: 'Invalid games_on' }, { status: 400 })
-      const gsql = `SELECT p.game_pk,
-          MAX(p.game_date) AS game_date,
-          MAX(p.home_team) AS home_team,
-          MAX(p.away_team) AS away_team,
-          COUNT(*) AS pitch_count
-        FROM pitches p
-        WHERE p.game_date = '${gamesOn}'
-        GROUP BY p.game_pk
-        ORDER BY MAX(p.away_team)`
+      // Starters come from the first pitch each side threw: the home team
+      // pitches in the top half, the away team in the bottom. `player_name` is
+      // Statcast's pitcher name, so no players join is needed — which matters,
+      // since players.name is not a usable key (mixed formats, 513 duplicates).
+      const gsql = `WITH g AS (
+          SELECT p.game_pk,
+            MAX(p.game_date) AS game_date,
+            MAX(p.home_team) AS home_team,
+            MAX(p.away_team) AS away_team,
+            COUNT(*) AS pitch_count
+          FROM pitches p
+          WHERE p.game_date = '${gamesOn}'
+          GROUP BY p.game_pk
+        ), s AS (
+          SELECT DISTINCT ON (p.game_pk, p.inning_topbot)
+            p.game_pk, p.inning_topbot, p.player_name
+          FROM pitches p
+          WHERE p.game_date = '${gamesOn}'
+          ORDER BY p.game_pk, p.inning_topbot, p.inning, p.at_bat_number, p.pitch_number
+        )
+        SELECT g.game_pk, g.game_date, g.home_team, g.away_team, g.pitch_count,
+          MAX(CASE WHEN s.inning_topbot = 'Top' THEN s.player_name END) AS home_starter,
+          MAX(CASE WHEN s.inning_topbot = 'Bot' THEN s.player_name END) AS away_starter
+        FROM g LEFT JOIN s ON s.game_pk = g.game_pk
+        GROUP BY g.game_pk, g.game_date, g.home_team, g.away_team, g.pitch_count
+        ORDER BY g.away_team`
       const { data, error } = await supabase.rpc('run_query', { query_text: gsql })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ games: data || [] })
