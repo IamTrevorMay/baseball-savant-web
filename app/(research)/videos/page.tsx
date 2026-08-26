@@ -113,6 +113,24 @@ interface HistoryEntry {
   created_at: string
 }
 
+/** A game from one player's perspective: who they faced, and how many of their pitches are in it. */
+interface PlayerGameOption {
+  game_pk: number
+  game_date: string
+  home_team: string
+  away_team: string
+  player_team: string | null
+  pitch_count: number
+}
+
+/** "2026-08-25 · @ SD (87)" — home/away read from the player's own club. */
+function playerGameLabel(g: PlayerGameOption): string {
+  const opp = g.player_team === g.home_team ? g.away_team : g.home_team
+  const where = g.player_team === g.home_team ? 'vs.' : '@'
+  const site = g.player_team ? `${where} ${opp}` : `${g.away_team} @ ${g.home_team}`
+  return `${g.game_date} · ${site} (${g.pitch_count})`
+}
+
 interface GameOption {
   game_pk: number
   game_date: string
@@ -195,11 +213,21 @@ export default function VideosPage() {
   const [searchError, setSearchError] = useState<string | null>(null)
 
   // Search sub-mode: filter by pitch criteria, or load an entire game.
-  const [mode, setMode] = useState<'pitches' | 'game'>('pitches')
+  const [mode, setMode] = useState<'pitches' | 'game' | 'player'>('pitches')
   const [gameDate, setGameDate] = useState('')
   const [games, setGames] = useState<GameOption[]>([])
   const [gamesLoading, setGamesLoading] = useState(false)
   const [selectedGamePk, setSelectedGamePk] = useState('')
+
+  // Player mode: one player, one season, one of their games. `playerRole`
+  // decides whether we show the pitches they threw or the ones they saw.
+  const [playerRole, setPlayerRole] = useState<'pitcher' | 'batter'>('pitcher')
+  const [playerSel, setPlayerSel] = useState<PlayerResult | null>(null)
+  const [playerSeasons, setPlayerSeasons] = useState<number[]>([])
+  const [playerSeason, setPlayerSeason] = useState('')
+  const [playerGames, setPlayerGames] = useState<PlayerGameOption[]>([])
+  const [playerGamesLoading, setPlayerGamesLoading] = useState(false)
+  const [playerGamePk, setPlayerGamePk] = useState('')
 
   // Column sorting (both modes). null col = API order (chronological for a game).
   const [sortCol, setSortCol] = useState<string | null>(null)
@@ -371,15 +399,82 @@ export default function VideosPage() {
     }
   }, [])
 
+  /** The selected player's MLBAM id, from whichever role field the search filled. */
+  const playerId = playerSel ? (playerRole === 'batter' ? playerSel.batter : playerSel.pitcher) ?? null : null
+
+  // Seasons follow the player; games follow the season. Each resets what sits
+  // below it so a stale game_pk can never survive a change further up.
+  useEffect(() => {
+    setPlayerSeasons([])
+    setPlayerSeason('')
+    setPlayerGames([])
+    setPlayerGamePk('')
+    if (playerId == null) return
+    let cancelled = false
+    ;(async () => {
+      const res = await fetch(`/api/pitch-video?player_seasons=${playerId}&role=${playerRole}`)
+      const json = await res.json().catch(() => ({}))
+      if (cancelled) return
+      const seasons = (json.seasons as number[]) || []
+      setPlayerSeasons(seasons)
+      if (seasons.length) setPlayerSeason(String(seasons[0]))
+    })()
+    return () => { cancelled = true }
+  }, [playerId, playerRole])
+
+  useEffect(() => {
+    setPlayerGames([])
+    setPlayerGamePk('')
+    if (playerId == null || !playerSeason) return
+    let cancelled = false
+    setPlayerGamesLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/pitch-video?player_games=${playerId}&role=${playerRole}&season=${playerSeason}`,
+        )
+        const json = await res.json().catch(() => ({}))
+        if (!cancelled) setPlayerGames((json.games as PlayerGameOption[]) || [])
+      } finally {
+        if (!cancelled) setPlayerGamesLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [playerId, playerRole, playerSeason])
+
+  /**
+   * Game and Player mode both come down to "one game's pitches, optionally
+   * narrowed to one player" — same request, different label. Returning null
+   * means nothing is selected yet, which is what disables both buttons.
+   */
+  const gameQuery = (): { qs: string; label: string } | null => {
+    if (mode === 'player') {
+      if (!playerGamePk || playerId == null) return null
+      const g = playerGames.find(x => String(x.game_pk) === playerGamePk)
+      const who = flipName(playerSel?.player_name ?? '')
+      return {
+        qs: `game_pk=${playerGamePk}&${playerRole}=${playerId}&limit=1000`,
+        label: `${who} · ${g ? playerGameLabel(g) : `Game ${playerGamePk}`}`,
+      }
+    }
+    if (!selectedGamePk) return null
+    const g = games.find(x => String(x.game_pk) === String(selectedGamePk))
+    return {
+      qs: `game_pk=${selectedGamePk}&limit=1000`,
+      label: g ? `${matchupLabel(g)} · ${g.game_date}` : `Game ${selectedGamePk}`,
+    }
+  }
+
   const loadGame = async () => {
-    if (!selectedGamePk) return
+    const q = gameQuery()
+    if (!q) return
     setSearching(true)
     setSearchError(null)
     setSelectedKeys(new Set())
     setSortCol(null)
     try {
       // All pitches in the game (no only_archived), chronological (API order).
-      const res = await fetch(`/api/pitch-video?game_pk=${selectedGamePk}&limit=1000`)
+      const res = await fetch(`/api/pitch-video?${q.qs}`)
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || `Load failed (${res.status})`)
       setRows((json.rows as VideoRow[]) || [])
@@ -397,11 +492,12 @@ export default function VideosPage() {
    * header's "Save as playlist" is the only path that persists anything.
    */
   const startReviewGame = async () => {
-    if (!selectedGamePk) return
+    const q = gameQuery()
+    if (!q) return
     setReviewLoading(true)
     setSearchError(null)
     try {
-      const res = await fetch(`/api/pitch-video?game_pk=${selectedGamePk}&limit=1000`)
+      const res = await fetch(`/api/pitch-video?${q.qs}`)
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || `Load failed (${res.status})`)
       const all = (json.rows as VideoRow[]) || []
@@ -410,13 +506,8 @@ export default function VideosPage() {
       const playable = all.filter(r => r.video_url || r.savant_url)
       if (playable.length === 0) throw new Error('No clips available for this game yet')
 
-      const game = games.find(g => String(g.game_pk) === String(selectedGamePk))
-      const label = game
-        ? `${matchupLabel(game)} · ${game.game_date}`
-        : `Game ${selectedGamePk}`
-
       setReviewSession({
-        label,
+        label: q.label,
         skipped: all.length - playable.length,
         items: playable.map((r, i) => ({
           id: `review-${rowKey(r)}`,
@@ -1009,9 +1100,9 @@ export default function VideosPage() {
           {view === 'search' && (<>
           {/* ── Left: filters ── */}
           <div className="w-[260px] shrink-0 space-y-3">
-            {/* Pitches / Game mode toggle */}
+            {/* Pitches / Game / Player mode toggle */}
             <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-              {(['pitches', 'game'] as const).map(m => (
+              {(['pitches', 'game', 'player'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
@@ -1070,6 +1161,92 @@ export default function VideosPage() {
                   <span className="text-zinc-500">Load game</span> lists every pitch in order, with the
                   video-less ones greyed out. <span className="text-zinc-500">Review game</span> skips
                   straight to the player with every playable clip queued up — nothing is saved.
+                </p>
+              </>
+            )}
+
+            {mode === 'player' && (
+              <>
+                <div>
+                  <label className={labelCls}>Role</label>
+                  <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+                    {(['pitcher', 'batter'] as const).map(r => (
+                      <button
+                        key={r}
+                        onClick={() => { setPlayerRole(r); setPlayerSel(null) }}
+                        className={`flex-1 px-2 py-1 rounded text-xs font-semibold transition ${playerRole === r ? 'bg-emerald-600/20 text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                      >
+                        {r === 'pitcher' ? 'Pitcher' : 'Hitter'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <PlayerSearchInput
+                    key={playerRole}
+                    type={playerRole}
+                    value={playerSel}
+                    onSelect={p => setPlayerSel(p)}
+                    onClear={() => setPlayerSel(null)}
+                    label={playerRole === 'pitcher' ? 'Pitcher' : 'Hitter'}
+                    placeholder={playerRole === 'pitcher' ? 'Search pitchers…' : 'Search hitters…'}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Season</label>
+                  <select
+                    className={inputCls}
+                    value={playerSeason}
+                    onChange={e => setPlayerSeason(e.target.value)}
+                    disabled={!playerSel || playerSeasons.length === 0}
+                  >
+                    {playerSeasons.length === 0 && (
+                      <option value="">{playerSel ? 'No seasons found' : 'Pick a player first'}</option>
+                    )}
+                    {playerSeasons.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Game</label>
+                  <select
+                    className={inputCls}
+                    value={playerGamePk}
+                    onChange={e => setPlayerGamePk(e.target.value)}
+                    disabled={playerGamesLoading || playerGames.length === 0}
+                  >
+                    <option value="">
+                      {playerGamesLoading
+                        ? 'Loading…'
+                        : playerGames.length
+                          ? `Select a game… (${playerGames.length})`
+                          : playerSeason ? 'No games found' : 'Pick a season first'}
+                    </option>
+                    {playerGames.map(g => (
+                      <option key={g.game_pk} value={g.game_pk}>{playerGameLabel(g)}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className={`${btnCls} w-full bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
+                  onClick={loadGame}
+                  disabled={!playerGamePk || searching}
+                >
+                  {searching ? 'Loading…' : 'Load pitches'}
+                </button>
+                <button
+                  className={`${btnCls} w-full bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 disabled:opacity-40 disabled:hover:text-zinc-300 disabled:hover:border-zinc-700`}
+                  onClick={startReviewGame}
+                  disabled={!playerGamePk || reviewLoading}
+                >
+                  {reviewLoading ? 'Building…' : 'Review game'}
+                </button>
+                {searchError && <div className="text-sm text-red-400">{searchError}</div>}
+                <p className="text-[11px] text-zinc-600 leading-snug">
+                  Only the pitches this {playerRole === 'pitcher' ? 'pitcher threw' : 'hitter saw'} in
+                  the selected game. <span className="text-zinc-500">Review game</span> queues them all
+                  in the player — nothing is saved.
                 </p>
               </>
             )}

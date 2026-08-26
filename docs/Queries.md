@@ -1854,3 +1854,40 @@ Result: **153,152 rows requeued.** Status counts after: downloaded 1,073,931 · 
 pre-outage terminals) · pending 153,152 · failed 0. Verification run
 (`--limit 2 --concurrency 4 --max-pitches 30`) downloaded **3/3, 0 failed** — 5.6–8.1 MB mp4s landing at
 `/PitchVideos/{2016,2019}/{game_pk}/{play_id}.mp4`. Fix confirmed end to end.
+
+**Player-mode game lists for the Videos page**
+
+```sql
+SELECT p.game_pk, MAX(p.game_date) AS game_date,
+       MAX(p.home_team) AS home_team, MAX(p.away_team) AS away_team,
+       MAX(CASE WHEN p.inning_topbot = 'Top' THEN p.home_team ELSE p.away_team END) AS player_team,
+       COUNT(*) AS pitch_count
+FROM pitches p WHERE p.pitcher = 694973 AND p.game_year = 2026
+GROUP BY p.game_pk ORDER BY MAX(p.game_date) DESC;
+```
+
+Result: 29 games for Skenes in 2026, `player_team` = PIT on every row, counts matching the API
+(87 on 08-25 @ SD). The `inning_topbot` expression flips for hitters (top half = visiting club).
+
+**Season list — `SELECT DISTINCT` vs. loose index scan**
+
+```sql
+-- 5-8s, intermittently exceeds the 8s run_query statement_timeout
+SELECT DISTINCT p.game_year FROM pitches p WHERE p.batter = 660271 ORDER BY 1 DESC;
+
+-- 0.2s: one index seek per season instead of a full scan of the player's rows
+WITH RECURSIVE t AS (
+  (SELECT game_year FROM pitches WHERE batter = 660271 AND game_year IS NOT NULL
+    ORDER BY game_year DESC LIMIT 1)
+  UNION ALL
+  SELECT (SELECT p.game_year FROM pitches p
+           WHERE p.batter = 660271 AND p.game_year < t.game_year AND p.game_year IS NOT NULL
+           ORDER BY p.game_year DESC LIMIT 1)
+  FROM t WHERE t.game_year IS NOT NULL
+)
+SELECT game_year FROM t WHERE game_year IS NOT NULL;
+```
+
+Result: identical output (9 seasons, 2018–2026), **~30x faster**. `idx_pitches_batter_year_date`
+exists and both forms use it; only the recursive one avoids reading all ~25k of the player's rows.
+Note in passing: `idx_pitches_game_pk` **does** exist — CLAUDE.md's "No index on `game_pk`" is stale.

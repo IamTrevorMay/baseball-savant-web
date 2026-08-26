@@ -265,6 +265,68 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ games: data || [] })
     }
 
+    // ── Mode 2b: one player's seasons / games, for the Player finder ──
+    // `role` decides which side of the pitch the player is on: a pitcher's
+    // games are the ones they threw in, a hitter's the ones they batted in.
+    const playerSeasons = intParam('player_seasons')
+    const playerGames = intParam('player_games')
+    if (playerSeasons != null || playerGames != null) {
+      const pid = playerSeasons ?? playerGames
+      if (pid == null || isNaN(pid)) {
+        return NextResponse.json({ error: 'Invalid player id' }, { status: 400 })
+      }
+      const role = sp.get('role') === 'batter' ? 'batter' : 'pitcher'
+      const col = role === 'batter' ? 'p.batter' : 'p.pitcher'
+
+      if (playerSeasons != null) {
+        // Loose index scan, not SELECT DISTINCT. Distinct reads every row the
+        // player appears in — ~25k for a long-career hitter, which measured
+        // 5-8s and tripped the 8s statement_timeout outright on a cold cache.
+        // Each recursive step is a single seek into (batter|pitcher, game_year),
+        // so the cost tracks the number of seasons, not the number of pitches.
+        const { data, error } = await supabase.rpc('run_query', {
+          query_text: `WITH RECURSIVE t AS (
+              (SELECT p.game_year FROM pitches p
+                WHERE ${col} = ${pid} AND p.game_year IS NOT NULL
+                ORDER BY p.game_year DESC LIMIT 1)
+              UNION ALL
+              SELECT (SELECT p.game_year FROM pitches p
+                       WHERE ${col} = ${pid} AND p.game_year < t.game_year
+                         AND p.game_year IS NOT NULL
+                       ORDER BY p.game_year DESC LIMIT 1)
+              FROM t WHERE t.game_year IS NOT NULL
+            )
+            SELECT game_year FROM t WHERE game_year IS NOT NULL`,
+        })
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ seasons: (data || []).map((r: { game_year: number }) => r.game_year) })
+      }
+
+      const season = intParam('season')
+      if (season == null || isNaN(season)) {
+        return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
+      }
+      // The player's own team: a pitcher works the top half for the home club,
+      // a hitter bats the top half for the visiting one.
+      const teamExpr = role === 'batter'
+        ? `MAX(CASE WHEN p.inning_topbot = 'Top' THEN p.away_team ELSE p.home_team END)`
+        : `MAX(CASE WHEN p.inning_topbot = 'Top' THEN p.home_team ELSE p.away_team END)`
+      const { data, error } = await supabase.rpc('run_query', {
+        query_text: `SELECT p.game_pk,
+            MAX(p.game_date) AS game_date,
+            MAX(p.home_team) AS home_team,
+            MAX(p.away_team) AS away_team,
+            ${teamExpr} AS player_team,
+            COUNT(*) AS pitch_count
+          FROM pitches p
+          WHERE ${col} = ${pid} AND p.game_year = ${season}
+          GROUP BY p.game_pk
+          ORDER BY MAX(p.game_date) DESC`,
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ games: data || [] })
+    }
+
     // ── Mode 3: search ──
     const conds: string[] = []
 
