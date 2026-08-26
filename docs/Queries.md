@@ -1919,3 +1919,43 @@ Same client/RPC mismatch exists in **15 other routes** — `park-adjusted`, `tre
 `scene-stats`, `sos`, `movement-percentiles`, `leaderboard-triton`, `team-tendencies`,
 `milb/{player-data,report}`, `wbc/{leaders,report}`, `game/puzzle`, and two `admin/*` backfills.
 Not audited yet; each needs its own timing before swapping.
+
+**Audit: all 15 routes pairing `supabaseAdminLong` with `run_query`**
+
+Timed serially against a local dev server on 2026 data (serial on purpose — concurrent load against
+this DB has caused an outage before). Before → after the `run_query_long` fix:
+
+| Route | Before | After |
+|---|---|---|
+| `/api/report` (Explore) | **8.2s ERROR 57014** | 18.4s ok |
+| `/api/trends` overview | **11.4s ERROR 57014** | 22.3s ok |
+| `/api/trends` arsenal | **11.5s ERROR 57014** | ok |
+| `/api/movement-percentiles` | **8.3s ERROR 57014** | 15.0s ok |
+| `/api/team-tendencies` momentum | **8.3s ERROR 57014** | 17.5s ok |
+| `/api/game/puzzle` | **8.2s ERROR 57014** (hidden behind "Failed to build puzzle") | ok |
+| `/api/sos` | 16.2s ok (multi-query, each under 8s) | 16.2s ok |
+| `/api/leaderboard-triton` | 8.3s ok | ok |
+| `/api/milb/report` | 6.9s ok | 6.8s ok |
+| `/api/park-adjusted` | 0.6s | unchanged, left on `run_query` |
+| `/api/wbc/leaders` | 1.0s | unchanged |
+| `/api/wbc/report` | 0.4s | unchanged |
+| `/api/team-tendencies` pitching | 0.3s | unchanged (hits an MV) |
+| `/api/scene-stats` | 2.0s | unchanged |
+| `/api/admin/*` (2 backfills) | not invoked — they mutate | unchanged, already `maxDuration = 300` |
+
+`lib/trendAlerts.ts` held a second `run_query` helper, which is why the trends overview tab still
+timed out after the route was fixed. It also powers `/api/cron/briefs`, which was passing the **30s**
+`supabaseAdmin` into the same season-wide aggregates — switched to `supabaseAdminLong`.
+
+**Unrelated bug found while timing:** `/api/milb/player-data` returns 500 on every request —
+`column "estimated_slg_using_speedangle" does not exist`.
+
+```sql
+SELECT table_name, column_name FROM information_schema.columns
+WHERE column_name LIKE 'estimated_%' AND table_name IN ('pitches','milb_pitches');
+```
+
+Result: `pitches` has `estimated_ba/woba/slg_using_speedangle`; **`milb_pitches` has only ba and
+woba** — no `slg`. `BASE_COLUMNS` in that route (line 4) asks for the MLB-only column against the
+MiLB table, so the MiLB hitter dashboard and MiLB reports are hard-broken, not slow. Not fixed here:
+dropping the column changes what the dashboard shows, which is a product call.

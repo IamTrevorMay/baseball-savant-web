@@ -7,6 +7,11 @@ import {
   type StatDef,
 } from '@/lib/gameConstants'
 
+// Puzzle construction scans a season and failed with 57014 behind a generic message.
+// Needs run_query_long (8s -> 120s statement_timeout) and room past the
+// platform's default function timeout.
+export const maxDuration = 60
+
 const cache = new Map<string, { data: PuzzleResponse; ts: number }>()
 
 interface StatResult { key: string; label: string; value: number; percentile: number; unit: string }
@@ -147,7 +152,7 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
 FROM ${computedSub}
 ORDER BY comp_q.player_id`
 
-  const { data, error } = await supabaseGame.rpc('run_query', { query_text: sql.trim() })
+  const { data, error } = await supabaseGame.rpc('run_query_long', { query_text: sql.trim() })
   if (error) throw error
   if (!data || data.length === 0) throw new Error('No qualified pitchers found')
 
@@ -255,7 +260,7 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
 FROM ${withSpeedSub}
 ORDER BY spd_q.player_id`
 
-  const { data, error } = await supabaseGame.rpc('run_query', { query_text: sql.trim() })
+  const { data, error } = await supabaseGame.rpc('run_query_long', { query_text: sql.trim() })
   if (error) throw error
   if (!data || data.length === 0) throw new Error('No qualified hitters found')
 

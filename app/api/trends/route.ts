@@ -3,7 +3,12 @@ import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { getCached, setCache } from '@/lib/queryCache'
 import { computeTrendAlerts } from '@/lib/trendAlerts'
 
-const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+// Overview and arsenal tabs timed out at 11.4s; stuff runs 18.1s across its sub-queries.
+// Needs run_query_long (8s -> 120s statement_timeout) and room past the
+// platform's default function timeout.
+export const maxDuration = 60
+
+const q = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 
 export async function POST(req: NextRequest) {
   try {

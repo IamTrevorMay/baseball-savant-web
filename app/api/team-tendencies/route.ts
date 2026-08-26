@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
-const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+// The momentum/leverage tab scans a full season: 8.3s.
+// Needs run_query_long (8s -> 120s statement_timeout) and room past the
+// platform's default function timeout.
+export const maxDuration = 60
+
+const q = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 
 // Team-level IR/IRS. The MLB team-stats endpoint omits inherited runners, so
 // aggregate the league-wide per-player season splits by team (a traded

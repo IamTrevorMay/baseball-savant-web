@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { PITCH_NAME_TO_ABBREV } from '@/lib/constants-data'
 
+// Two season-wide leaderboard scans in parallel: 8.3s.
+// Needs run_query_long (8s -> 120s statement_timeout) and room past the
+// platform's default function timeout.
+export const maxDuration = 60
+
 // In-memory cache of the fully-built (pivoted/filtered/sorted) rows, keyed by the
 // query params that affect them (NOT limit/offset, so client paging reuses it).
 // Avoids re-running the full-season stuff_plus scan on every load. 30-min TTL,
@@ -68,8 +73,8 @@ export async function POST(req: NextRequest) {
     `.trim()
 
     const [{ data, error }, stuffRes] = await Promise.all([
-      supabase.rpc('run_query', { query_text: sql }),
-      supabase.rpc('run_query', { query_text: stuffSql }),
+      supabase.rpc('run_query_long', { query_text: sql }),
+      supabase.rpc('run_query_long', { query_text: stuffSql }),
     ])
     if (error) return NextResponse.json({ error: error.message, sql }, { status: 500 })
 
