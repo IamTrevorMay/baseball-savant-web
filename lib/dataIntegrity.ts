@@ -431,3 +431,87 @@ export async function checkPitchBaselines(year: number): Promise<CheckResult> {
     },
   }
 }
+
+// ── Check 9: Pitch Video Archive (dead-man) ─────────────────────────────────
+
+/**
+ * Dead-man switch for the clip archive.
+ *
+ * The archive went 35 days without gaining a clip in July–August 2026 and
+ * nothing noticed: indexing stayed current, so the Videos page looked healthy
+ * while every download 403'd. This check watches the one signal that actually
+ * moves when the worker is alive — `max(downloaded_at)`.
+ *
+ * Staleness only counts as a failure when there is work queued. An archive with
+ * an empty queue is caught up, not broken, and a dead-man that cries during the
+ * offseason is a dead-man everyone learns to ignore.
+ */
+const ARCHIVE_WARN_HOURS = 48
+const ARCHIVE_FAIL_HOURS = 96
+
+export async function checkPitchVideoArchive(): Promise<CheckResult> {
+  const { data: rows, error } = await supabaseAdmin.rpc('run_query', {
+    query_text: `
+      SELECT
+        max(downloaded_at)                                      AS last_download,
+        count(*) FILTER (WHERE status = 'pending')::int          AS pending,
+        count(*) FILTER (WHERE status = 'failed')::int           AS failed,
+        count(*) FILTER (WHERE status = 'downloaded')::int       AS downloaded
+      FROM pitch_videos
+    `,
+  })
+
+  if (error) {
+    return {
+      check_name: 'pitch_video_archive',
+      status: 'warn',
+      found: 0,
+      remediated: 0,
+      details: { queryError: error.message },
+    }
+  }
+
+  const r = rows?.[0] ?? {}
+  const pending = r.pending ?? 0
+  const failed = r.failed ?? 0
+  const queued = pending + failed
+  const lastDownload: string | null = r.last_download ?? null
+  const ageHours = lastDownload
+    ? (Date.now() - new Date(lastDownload).getTime()) / 3_600_000
+    : Infinity
+
+  const details = {
+    lastDownload,
+    ageHours: Number.isFinite(ageHours) ? Math.round(ageHours) : null,
+    pending,
+    failed,
+    downloaded: r.downloaded ?? 0,
+    warnHours: ARCHIVE_WARN_HOURS,
+    failHours: ARCHIVE_FAIL_HOURS,
+  }
+
+  // Nothing queued → the worker has nothing to do and silence is correct.
+  if (queued === 0) {
+    return {
+      check_name: 'pitch_video_archive',
+      status: 'pass',
+      found: 0,
+      remediated: 0,
+      details: { ...details, note: 'queue empty — archive caught up' },
+    }
+  }
+
+  if (ageHours < ARCHIVE_WARN_HOURS) {
+    return { check_name: 'pitch_video_archive', status: 'pass', found: 0, remediated: 0, details }
+  }
+
+  // `found` carries the stalled backlog so the integrity_checks history shows
+  // how much data the outage is holding up, not just that one occurred.
+  return {
+    check_name: 'pitch_video_archive',
+    status: ageHours >= ARCHIVE_FAIL_HOURS ? 'fail' : 'warn',
+    found: queued,
+    remediated: 0,
+    details,
+  }
+}
