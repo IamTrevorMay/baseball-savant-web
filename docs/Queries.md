@@ -1801,3 +1801,56 @@ neither missing baselines nor missing inputs explains it — the historical scor
 never to have completed for 2015–2018. **Hand to Slice D.** Three rows have `std_velo` NULL-or-zero
 (2016, 2021, 2026); `NULLIF(std_velo,0)` → NULL → `COALESCE(...,0)` means those pitch types score a
 flat 100 on the velocity term.
+
+## 2026-08-26
+
+**Pitch video library freshness — is the archive up to date?**
+
+```sql
+SELECT status, count(*) AS n, max(requested_at) AS last_requested, max(downloaded_at) AS last_downloaded
+FROM pitch_videos GROUP BY status ORDER BY n DESC;
+```
+
+Result: downloaded 1,073,931 (last download **2026-07-22**), missing 443,895, failed 18,868,
+**pending 0**. Index rows are being created through 2026-08-25, but nothing has downloaded in 35 days.
+
+```sql
+WITH g AS (SELECT DISTINCT game_pk, game_date FROM pitches WHERE game_date >= '2026-06-01'),
+v AS (SELECT game_pk, count(*) FILTER (WHERE status='downloaded') AS dl,
+             count(*) FILTER (WHERE status='missing') AS miss,
+             count(*) FILTER (WHERE status='failed') AS fail
+      FROM pitch_videos GROUP BY game_pk)
+SELECT date_trunc('week', g.game_date)::date AS wk, count(*) AS games,
+       count(*) FILTER (WHERE v.game_pk IS NOT NULL) AS games_indexed,
+       sum(coalesce(v.dl,0)) AS dl, sum(coalesce(v.miss,0)) AS miss, sum(coalesce(v.fail,0)) AS fail
+FROM g LEFT JOIN v USING (game_pk) GROUP BY 1 ORDER BY 1;
+```
+
+Result: ~26k clips/week downloaded through the week of 2026-07-13, then a cliff — week of 07-20 only
+3,799 downloads, and **0 downloads every week from 07-27 onward** while 27k+ rows/week get marked
+missing. Indexing (play_id resolution) is current; downloading is not.
+
+```sql
+SELECT status, left(coalesce(error,'(null)'),120) AS err, count(*) AS n,
+       min(requested_at), max(requested_at), max(attempts)
+FROM pitch_videos WHERE requested_at >= '2026-07-20' GROUP BY 1,2 ORDER BY n DESC;
+```
+
+Result: root cause is **`mp4 fetch 403`** — 119,925 rows already burned to terminal `missing`
+(MAX_ATTEMPTS=6) plus 18,868 still `failed`. Confirmed live with curl: the Savant page still resolves
+the clip URL (200), but `sporty-clips.mlb.com` now 403s the bare `Mozilla/5.0` User-Agent the worker
+sends; a full browser UA returns 200 (Referer is irrelevant). Totals across all time: **153,152 rows
+carry the 403 error, 134,284 of them terminal `missing`**; archive holds 1,073,931 clips / 5.74 TB
+across 5,290 games.
+
+**Requeue of the 403-blocked rows (write)**
+
+```sql
+UPDATE pitch_videos SET status='pending', attempts=0, error=NULL
+ WHERE error = 'mp4 fetch 403';
+```
+
+Result: **153,152 rows requeued.** Status counts after: downloaded 1,073,931 · missing 309,611 (genuine
+pre-outage terminals) · pending 153,152 · failed 0. Verification run
+(`--limit 2 --concurrency 4 --max-pitches 30`) downloaded **3/3, 0 failed** — 5.6–8.1 MB mp4s landing at
+`/PitchVideos/{2016,2019}/{game_pk}/{play_id}.mp4`. Fix confirmed end to end.

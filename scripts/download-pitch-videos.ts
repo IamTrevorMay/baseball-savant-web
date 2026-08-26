@@ -65,6 +65,17 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 // before a row is settled as terminal 'missing'.
 const MAX_ATTEMPTS = 6
 
+// Savant's clip CDN (sporty-clips.mlb.com) started 403ing bare 'Mozilla/5.0' in
+// July 2026 — it wants a full browser UA. The sporty-videos page itself never
+// cared, so the scrape kept resolving URLs while every download failed.
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+
+// A block or server error says nothing about whether the clip exists, so it must
+// never count toward MAX_ATTEMPTS. Letting it did cost 134k real clips: the UA
+// 403 burned six attempts in six nights and settled them all as 'missing'.
+const BLOCKED_RE = /(?:mp4 fetch|sporty-videos) (?:403|429|5\d\d)$/
+
 // Single-instance lock: the nightly pm2 job must not overlap a long manual
 // backfill (or a previous night still running). PID-checked so a stale file
 // from a killed run never wedges the schedule.
@@ -128,7 +139,7 @@ function isMounted(root: string): boolean {
 async function resolveMp4Url(playId: string): Promise<string | null> {
   const res = await fetch(`https://baseballsavant.mlb.com/sporty-videos?playId=${playId}`, {
     signal: AbortSignal.timeout(20000),
-    headers: { 'User-Agent': 'Mozilla/5.0' }
+    headers: { 'User-Agent': BROWSER_UA, 'Referer': 'https://baseballsavant.mlb.com/' }
   })
   if (!res.ok) throw new Error(`sporty-videos ${res.status}`)
   const html = await res.text()
@@ -139,7 +150,7 @@ async function resolveMp4Url(playId: string): Promise<string | null> {
 async function downloadTo(url: string, dest: string): Promise<number> {
   const res = await fetch(url, {
     signal: AbortSignal.timeout(120000),
-    headers: { 'User-Agent': 'Mozilla/5.0' }
+    headers: { 'User-Agent': BROWSER_UA, 'Referer': 'https://baseballsavant.mlb.com/' }
   })
   if (!res.ok || !res.body) throw new Error(`mp4 fetch ${res.status}`)
   mkdirSync(dirname(dest), { recursive: true })
@@ -187,11 +198,17 @@ async function processPitch(row: VideoRow, year: number, root: string): Promise<
       downloaded_at: new Date().toISOString()
     }
   } catch (e: any) {
+    const error = e.message?.slice(0, 500)
+    // Blocked/5xx: leave attempts untouched so the row stays claimable by
+    // --include-failed forever. A backlog we can see beats a silent write-off.
+    if (BLOCKED_RE.test(error ?? '')) {
+      return { status: 'failed', attempts: row.attempts, error }
+    }
     const attempts = row.attempts + 1
     return {
       status: attempts >= MAX_ATTEMPTS ? 'missing' : 'failed',
       attempts,
-      error: e.message?.slice(0, 500)
+      error
     }
   }
 }
@@ -227,7 +244,7 @@ async function main() {
   console.log(`root=${root} concurrency=${concurrency} limit=${gameLimit === Infinity ? 'none' : gameLimit} dateFrom=${dateFrom || 'none'} freeGB=${freeSpaceGB(root).toFixed(0)}`)
 
   const statusFilter = includeFailed
-    ? `(status = 'pending' OR (status = 'failed' AND attempts < ${MAX_ATTEMPTS}))`
+    ? `(status = 'pending' OR (status = 'failed' AND (attempts < ${MAX_ATTEMPTS} OR error ~ 'fetch (403|429|5[0-9][0-9])$')))`
     : `status = 'pending'`
 
   // Work game by game: one year lookup per game, one status upsert per game
