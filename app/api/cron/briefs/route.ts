@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import Parser from 'rss-parser'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { supabaseAdminLong } from '@/lib/supabase-admin'
 import { createClient } from '@supabase/supabase-js'
 import { computeOutingCommand, PitchRow } from '@/lib/outingCommand'
 import { computeTrendAlerts, type TrendAlertRow } from '@/lib/trendAlerts'
@@ -1288,8 +1289,11 @@ async function fetchTrendAlerts(_date: string): Promise<TrendAlertsData | null> 
   let pitcherRows: TrendAlertRow[] = []
   let hitterRows: TrendAlertRow[] = []
   const [pResult, hResult] = await Promise.allSettled([
-    computeTrendAlerts({ supabase: supabaseAdmin, season: year, playerType: 'pitcher', minPitches }),
-    computeTrendAlerts({ supabase: supabaseAdmin, season: year, playerType: 'hitter', minPitches }),
+    // supabaseAdminLong, not supabaseAdmin: these aggregates run past the 30s
+    // default client timeout, and a cron that quietly returns no surges is
+    // exactly the silent failure this function was extracted to end.
+    computeTrendAlerts({ supabase: supabaseAdminLong, season: year, playerType: 'pitcher', minPitches }),
+    computeTrendAlerts({ supabase: supabaseAdminLong, season: year, playerType: 'hitter', minPitches }),
   ])
 
   if (pResult.status === 'fulfilled') pitcherRows = pResult.value.rows

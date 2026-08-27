@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 
+// Strength-of-schedule walks every opponent faced: 16.2s.
+// Needs run_query_long (8s -> 120s statement_timeout) and room past the
+// platform's default function timeout.
+export const maxDuration = 60
+
 const REGRESSION_K = 60 // PA regression constant — blends toward league avg
 
 const DATE_FILTER = (start: string, end: string, gameType: string, prefix = '') => {
@@ -45,7 +50,7 @@ export async function GET(req: NextRequest) {
     const isFullSeason = safeStart === `${startYear}-01-01` && safeEnd === `${startYear}-12-31` && safeGameType === 'R'
 
     if (isFullSeason) {
-      const { data: cached, error: cacheErr } = await supabase.rpc('run_query', {
+      const { data: cached, error: cacheErr } = await supabase.rpc('run_query_long', {
         query_text: `SELECT sos, raw_opponent_xwoba AS raw_sos, league_avg_xwoba AS lg_avg, opponents_faced AS opp_count, total_pa FROM sos_scores WHERE player_id = ${safeId} AND game_year = ${startYear} AND role = '${role}'`
       })
       if (!cacheErr && cached && cached.length > 0) {
@@ -99,7 +104,7 @@ export async function POST(req: NextRequest) {
     const isFullSeason = safeStart === `${startYear}-01-01` && safeEnd === `${startYear}-12-31` && safeGameType === 'R'
 
     if (isFullSeason) {
-      const { data: cached, error: cacheErr } = await supabase.rpc('run_query', {
+      const { data: cached, error: cacheErr } = await supabase.rpc('run_query_long', {
         query_text: `SELECT player_id, sos, raw_opponent_xwoba AS raw_sos, league_avg_xwoba AS lg_avg, opponents_faced AS opp_count, total_pa FROM sos_scores WHERE player_id IN (${safeIds.join(',')}) AND game_year = ${startYear} AND role = '${role}'`
       })
       if (!cacheErr && cached && cached.length > 0) {

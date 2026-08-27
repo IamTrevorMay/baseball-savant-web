@@ -102,6 +102,64 @@ Response: `{ "rows": [ ...same row shape as above... ], "count": 100, "limit": 1
 
 Rows are ordered `game_date DESC`, then game/AB/pitch.
 
+### 3. Game list
+
+Every game on one date, for the Videos page's Game mode dropdown:
+
+```
+GET /api/pitch-video?games_on=2026-08-24
+```
+
+```json
+{
+  "games": [
+    {
+      "game_pk": 823828, "game_date": "2026-08-24",
+      "away_team": "BOS", "home_team": "MIA", "pitch_count": 319,
+      "away_starter": "Suarez, Ranger", "home_starter": "Alcantara, Sandy"
+    }
+  ]
+}
+```
+
+Starters are the first pitcher each side threw — home in the top half, away in
+the bottom — taken from Statcast's `player_name` rather than a `players` join,
+since `players.name` mixes formats and 513 names are shared by 2+ players. Both
+starter fields are nullable; `matchupLabel()` (`lib/video/clip.ts`) renders
+`Skenes (PIT) vs. Wheeler (PHI)` and falls back to `PIT @ PHI` when either is
+missing.
+
+### 4. One player's seasons and games
+
+Backs the Videos page's Player mode. `role` picks the side of the pitch —
+`pitcher` (pitches thrown) or `batter` (pitches seen); anything else is treated
+as `pitcher`.
+
+```
+GET /api/pitch-video?player_seasons=660271&role=batter
+→ { "seasons": [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018] }
+
+GET /api/pitch-video?player_games=660271&role=batter&season=2026
+→ { "games": [ { "game_pk": 824881, "game_date": "2026-08-25",
+                 "home_team": "ATL", "away_team": "LAD",
+                 "player_team": "LAD", "pitch_count": 21 }, … ] }
+```
+
+`player_team` is the player's own club in that game — a pitcher works the top
+half for the home club, a hitter bats the top half for the visiting one — so the
+UI can render `vs. ATL` or `@ ATL` without a second lookup. Games come back
+newest first.
+
+The seasons query is a **loose index scan (recursive CTE), not `SELECT
+DISTINCT`**. Distinct reads every row the player appears in — ~25k for a
+long-career hitter, measured at 5–8s and tripping the 8s `run_query`
+`statement_timeout` outright on a cold cache. The recursive form seeks once per
+season into `(batter|pitcher, game_year)`, so cost tracks seasons rather than
+pitches: **0.2s**. Keep it that way if you touch this query.
+
+Fetching the pitches themselves needs no new mode — the search mode already
+takes `game_pk` plus `pitcher` or `batter`.
+
 ## Playback & download
 
 `video_url` streams with HTTP range support — works directly in a `<video>`

@@ -42,6 +42,8 @@ const supabase = createClient(
 )
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+// Season game lists scan millions of pitches rows — needs the 120s RPC
+const qLong = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -81,8 +83,9 @@ async function main() {
 
   console.log(`=== Backfilling pitch_videos play_ids for ${year} ===`)
 
-  const { data: gameRows, error: gameErr } = await q(
-    `SELECT DISTINCT game_pk FROM pitches WHERE game_year = ${year} ORDER BY game_pk`
+  // game_date is indexed on pitches; game_year is not
+  const { data: gameRows, error: gameErr } = await qLong(
+    `SELECT DISTINCT game_pk FROM pitches WHERE game_date >= '${year}-01-01' AND game_date < '${year + 1}-01-01' ORDER BY game_pk`
   )
   if (gameErr) throw gameErr
   let gamePks = (gameRows || []).map((r: any) => Number(r.game_pk)).filter(Boolean)

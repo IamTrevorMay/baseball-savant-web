@@ -65,7 +65,11 @@ export async function computeTrendAlerts({
   playerType,
   minPitches = 100,
 }: ComputeTrendAlertsArgs): Promise<TrendAlertsResult> {
-  const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+  // These are season-wide aggregates over `pitches` — 11s+ on the overview tab,
+  // well past the 8s statement_timeout that plain `run_query` carries. Callers
+  // must pass a client whose HTTP timeout outlasts that: supabaseAdminLong
+  // (120s), not the 30s default.
+  const q = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
 
   const regSeasonCheck = await q(`SELECT 1 FROM pitches WHERE game_year = ${season} AND game_type = 'R' LIMIT 1`)
   const hasRegularSeason = (regSeasonCheck.data || []).length > 0

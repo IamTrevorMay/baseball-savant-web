@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
+import { getCached, setCache } from '@/lib/queryCache'
 
-const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+// The season-wide appearance aggregate scans ~587k pitch rows and takes ~16s,
+// so it needs `run_query_long`. `run_query` carries the authenticator role's 8s
+// statement_timeout no matter which client calls it — the 120s client above sets
+// the HTTP timeout, not the database's, which is what made this look fixed.
+const q = (sql: string) => supabase.rpc('run_query_long', { query_text: sql.trim() })
+
+// ~16s of query plus response assembly, against a platform default of 15s.
+export const maxDuration = 60
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface Appearance {
@@ -41,19 +49,21 @@ function flipName(n: string): string {
   return n
 }
 
-const cache = new Map<string, { data: unknown; ts: number }>()
-
 export async function GET(req: NextRequest) {
   const year = parseInt(req.nextUrl.searchParams.get('year') || '2026')
   if (year < 2015 || year > 2026) {
     return NextResponse.json({ error: 'Invalid year' }, { status: 400 })
   }
 
-  const cacheKey = `hot-${year}`
-  const cached = cache.get(cacheKey)
-  // 30 min in-memory cache
-  if (cached && Date.now() - cached.ts < 1_800_000) {
-    return NextResponse.json(cached.data, {
+  // DB-backed, so it survives across serverless instances — the previous
+  // in-process Map was per-lambda, meaning most requests missed it and paid the
+  // full 16s anyway. 6h TTL matches /api/trends; the `hot:` prefix is registered
+  // under `pitches` in CACHE_TAG_REGISTRY, so the nightly ingest clears it and
+  // the TTL never serves a stale day.
+  const cacheKey = `hot:${year}`
+  const cached = await getCached(cacheKey)
+  if (cached) {
+    return NextResponse.json(cached, {
       headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=300' },
     })
   }
@@ -189,7 +199,8 @@ export async function GET(req: NextRequest) {
     completed: rank(completed),
   }
 
-  cache.set(cacheKey, { data: payload, ts: Date.now() })
+  // Don't let a cache write failure fail the request — the payload is already good.
+  setCache(cacheKey, payload, { ttlSeconds: 21600 }).catch(() => {})
   return NextResponse.json(payload, {
     headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=300' },
   })

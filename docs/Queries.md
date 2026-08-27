@@ -1806,3 +1806,161 @@ neither missing baselines nor missing inputs explains it — the historical scor
 never to have completed for 2015–2018. **Hand to Slice D.** Three rows have `std_velo` NULL-or-zero
 (2016, 2021, 2026); `NULLIF(std_velo,0)` → NULL → `COALESCE(...,0)` means those pitch types score a
 flat 100 on the velocity term.
+
+## 2026-08-26
+
+**Pitch video library freshness — is the archive up to date?**
+
+```sql
+SELECT status, count(*) AS n, max(requested_at) AS last_requested, max(downloaded_at) AS last_downloaded
+FROM pitch_videos GROUP BY status ORDER BY n DESC;
+```
+
+Result: downloaded 1,073,931 (last download **2026-07-22**), missing 443,895, failed 18,868,
+**pending 0**. Index rows are being created through 2026-08-25, but nothing has downloaded in 35 days.
+
+```sql
+WITH g AS (SELECT DISTINCT game_pk, game_date FROM pitches WHERE game_date >= '2026-06-01'),
+v AS (SELECT game_pk, count(*) FILTER (WHERE status='downloaded') AS dl,
+             count(*) FILTER (WHERE status='missing') AS miss,
+             count(*) FILTER (WHERE status='failed') AS fail
+      FROM pitch_videos GROUP BY game_pk)
+SELECT date_trunc('week', g.game_date)::date AS wk, count(*) AS games,
+       count(*) FILTER (WHERE v.game_pk IS NOT NULL) AS games_indexed,
+       sum(coalesce(v.dl,0)) AS dl, sum(coalesce(v.miss,0)) AS miss, sum(coalesce(v.fail,0)) AS fail
+FROM g LEFT JOIN v USING (game_pk) GROUP BY 1 ORDER BY 1;
+```
+
+Result: ~26k clips/week downloaded through the week of 2026-07-13, then a cliff — week of 07-20 only
+3,799 downloads, and **0 downloads every week from 07-27 onward** while 27k+ rows/week get marked
+missing. Indexing (play_id resolution) is current; downloading is not.
+
+```sql
+SELECT status, left(coalesce(error,'(null)'),120) AS err, count(*) AS n,
+       min(requested_at), max(requested_at), max(attempts)
+FROM pitch_videos WHERE requested_at >= '2026-07-20' GROUP BY 1,2 ORDER BY n DESC;
+```
+
+Result: root cause is **`mp4 fetch 403`** — 119,925 rows already burned to terminal `missing`
+(MAX_ATTEMPTS=6) plus 18,868 still `failed`. Confirmed live with curl: the Savant page still resolves
+the clip URL (200), but `sporty-clips.mlb.com` now 403s the bare `Mozilla/5.0` User-Agent the worker
+sends; a full browser UA returns 200 (Referer is irrelevant). Totals across all time: **153,152 rows
+carry the 403 error, 134,284 of them terminal `missing`**; archive holds 1,073,931 clips / 5.74 TB
+across 5,290 games.
+
+**Requeue of the 403-blocked rows (write)**
+
+```sql
+UPDATE pitch_videos SET status='pending', attempts=0, error=NULL
+ WHERE error = 'mp4 fetch 403';
+```
+
+Result: **153,152 rows requeued.** Status counts after: downloaded 1,073,931 · missing 309,611 (genuine
+pre-outage terminals) · pending 153,152 · failed 0. Verification run
+(`--limit 2 --concurrency 4 --max-pitches 30`) downloaded **3/3, 0 failed** — 5.6–8.1 MB mp4s landing at
+`/PitchVideos/{2016,2019}/{game_pk}/{play_id}.mp4`. Fix confirmed end to end.
+
+**Player-mode game lists for the Videos page**
+
+```sql
+SELECT p.game_pk, MAX(p.game_date) AS game_date,
+       MAX(p.home_team) AS home_team, MAX(p.away_team) AS away_team,
+       MAX(CASE WHEN p.inning_topbot = 'Top' THEN p.home_team ELSE p.away_team END) AS player_team,
+       COUNT(*) AS pitch_count
+FROM pitches p WHERE p.pitcher = 694973 AND p.game_year = 2026
+GROUP BY p.game_pk ORDER BY MAX(p.game_date) DESC;
+```
+
+Result: 29 games for Skenes in 2026, `player_team` = PIT on every row, counts matching the API
+(87 on 08-25 @ SD). The `inning_topbot` expression flips for hitters (top half = visiting club).
+
+**Season list — `SELECT DISTINCT` vs. loose index scan**
+
+```sql
+-- 5-8s, intermittently exceeds the 8s run_query statement_timeout
+SELECT DISTINCT p.game_year FROM pitches p WHERE p.batter = 660271 ORDER BY 1 DESC;
+
+-- 0.2s: one index seek per season instead of a full scan of the player's rows
+WITH RECURSIVE t AS (
+  (SELECT game_year FROM pitches WHERE batter = 660271 AND game_year IS NOT NULL
+    ORDER BY game_year DESC LIMIT 1)
+  UNION ALL
+  SELECT (SELECT p.game_year FROM pitches p
+           WHERE p.batter = 660271 AND p.game_year < t.game_year AND p.game_year IS NOT NULL
+           ORDER BY p.game_year DESC LIMIT 1)
+  FROM t WHERE t.game_year IS NOT NULL
+)
+SELECT game_year FROM t WHERE game_year IS NOT NULL;
+```
+
+Result: identical output (9 seasons, 2018–2026), **~30x faster**. `idx_pitches_batter_year_date`
+exists and both forms use it; only the recursive one avoids reading all ~25k of the player's rows.
+Note in passing: `idx_pitches_game_pk` **does** exist — CLAUDE.md's "No index on `game_pk`" is stale.
+
+**Hot page timeout — reproducing the failure and sizing the query**
+
+```sql
+SELECT count(*) AS rows_scanned, count(DISTINCT pitcher) AS pitchers, count(DISTINCT game_pk) AS games
+FROM pitches WHERE game_year = 2026 AND game_type = 'R';
+```
+
+Result: **586,896 rows / 824 pitchers / 1,989 games** feeding the per-(pitcher, game_pk) appearance
+aggregate behind `/api/hot`.
+
+Ran the route's own aggregate against both RPCs from a script:
+
+```
+run_query_long: 16,911 rows  16,396ms
+run_query     : ERROR canceling statement due to statement timeout  8,261ms
+```
+
+**Root cause confirmed.** The route imported `supabaseAdminLong` (120s *HTTP* timeout) but called
+`run_query`, which carries the `authenticator` role's 8s **statement_timeout** regardless of client.
+The long client made it look handled. Fixed to `run_query_long` + `maxDuration = 60` + the DB-backed
+`query_cache` (the old `Map` was per-lambda). Measured after: **cold 17.3s, warm 0.15–0.23s**, cache
+rows ~2.4KB with a 6h TTL.
+
+Same client/RPC mismatch exists in **15 other routes** — `park-adjusted`, `trends`, `report`,
+`scene-stats`, `sos`, `movement-percentiles`, `leaderboard-triton`, `team-tendencies`,
+`milb/{player-data,report}`, `wbc/{leaders,report}`, `game/puzzle`, and two `admin/*` backfills.
+Not audited yet; each needs its own timing before swapping.
+
+**Audit: all 15 routes pairing `supabaseAdminLong` with `run_query`**
+
+Timed serially against a local dev server on 2026 data (serial on purpose — concurrent load against
+this DB has caused an outage before). Before → after the `run_query_long` fix:
+
+| Route | Before | After |
+|---|---|---|
+| `/api/report` (Explore) | **8.2s ERROR 57014** | 18.4s ok |
+| `/api/trends` overview | **11.4s ERROR 57014** | 22.3s ok |
+| `/api/trends` arsenal | **11.5s ERROR 57014** | ok |
+| `/api/movement-percentiles` | **8.3s ERROR 57014** | 15.0s ok |
+| `/api/team-tendencies` momentum | **8.3s ERROR 57014** | 17.5s ok |
+| `/api/game/puzzle` | **8.2s ERROR 57014** (hidden behind "Failed to build puzzle") | ok |
+| `/api/sos` | 16.2s ok (multi-query, each under 8s) | 16.2s ok |
+| `/api/leaderboard-triton` | 8.3s ok | ok |
+| `/api/milb/report` | 6.9s ok | 6.8s ok |
+| `/api/park-adjusted` | 0.6s | unchanged, left on `run_query` |
+| `/api/wbc/leaders` | 1.0s | unchanged |
+| `/api/wbc/report` | 0.4s | unchanged |
+| `/api/team-tendencies` pitching | 0.3s | unchanged (hits an MV) |
+| `/api/scene-stats` | 2.0s | unchanged |
+| `/api/admin/*` (2 backfills) | not invoked — they mutate | unchanged, already `maxDuration = 300` |
+
+`lib/trendAlerts.ts` held a second `run_query` helper, which is why the trends overview tab still
+timed out after the route was fixed. It also powers `/api/cron/briefs`, which was passing the **30s**
+`supabaseAdmin` into the same season-wide aggregates — switched to `supabaseAdminLong`.
+
+**Unrelated bug found while timing:** `/api/milb/player-data` returns 500 on every request —
+`column "estimated_slg_using_speedangle" does not exist`.
+
+```sql
+SELECT table_name, column_name FROM information_schema.columns
+WHERE column_name LIKE 'estimated_%' AND table_name IN ('pitches','milb_pitches');
+```
+
+Result: `pitches` has `estimated_ba/woba/slg_using_speedangle`; **`milb_pitches` has only ba and
+woba** — no `slg`. `BASE_COLUMNS` in that route (line 4) asks for the MLB-only column against the
+MiLB table, so the MiLB hitter dashboard and MiLB reports are hard-broken, not slow. Not fixed here:
+dropping the column changes what the dashboard shows, which is a product call.

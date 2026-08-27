@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
 import { createClient } from '@/lib/supabase/server'
+import { extractSavantMp4Url } from '@/lib/savantMp4'
 
 // Live Savant resolves can retry (see fetchSavant); give the function headroom
 // so a couple of slow MLB responses can't be cut off by the default limit.
@@ -82,8 +83,6 @@ function toVideoRow(r: any) {
   }
 }
 
-const MP4_RE = /https:\/\/sporty-clips\.mlb\.com\/[^"'\s\\]+\.mp4/
-
 /**
  * Fetch an external Savant URL with a per-attempt timeout and small backoff
  * retry. MLB's endpoints (especially the ~3MB /gf game feed) intermittently
@@ -124,8 +123,7 @@ async function resolveSavantMp4(playId: string): Promise<string | null> {
     })
     if (!res.ok) return null
     const html = await res.text()
-    const m = html.match(MP4_RE)
-    return m ? m[0] : null
+    return extractSavantMp4Url(html)
   } catch (e: any) {
     console.error(`[pitch-video] resolveSavantMp4 failed for playId=${playId}: ${e?.message}`)
     return null
@@ -236,16 +234,95 @@ export async function GET(req: NextRequest) {
     const gamesOn = sp.get('games_on')
     if (gamesOn) {
       if (!DATE_RE.test(gamesOn)) return NextResponse.json({ error: 'Invalid games_on' }, { status: 400 })
-      const gsql = `SELECT p.game_pk,
-          MAX(p.game_date) AS game_date,
-          MAX(p.home_team) AS home_team,
-          MAX(p.away_team) AS away_team,
-          COUNT(*) AS pitch_count
-        FROM pitches p
-        WHERE p.game_date = '${gamesOn}'
-        GROUP BY p.game_pk
-        ORDER BY MAX(p.away_team)`
+      // Starters come from the first pitch each side threw: the home team
+      // pitches in the top half, the away team in the bottom. `player_name` is
+      // Statcast's pitcher name, so no players join is needed — which matters,
+      // since players.name is not a usable key (mixed formats, 513 duplicates).
+      const gsql = `WITH g AS (
+          SELECT p.game_pk,
+            MAX(p.game_date) AS game_date,
+            MAX(p.home_team) AS home_team,
+            MAX(p.away_team) AS away_team,
+            COUNT(*) AS pitch_count
+          FROM pitches p
+          WHERE p.game_date = '${gamesOn}'
+          GROUP BY p.game_pk
+        ), s AS (
+          SELECT DISTINCT ON (p.game_pk, p.inning_topbot)
+            p.game_pk, p.inning_topbot, p.player_name
+          FROM pitches p
+          WHERE p.game_date = '${gamesOn}'
+          ORDER BY p.game_pk, p.inning_topbot, p.inning, p.at_bat_number, p.pitch_number
+        )
+        SELECT g.game_pk, g.game_date, g.home_team, g.away_team, g.pitch_count,
+          MAX(CASE WHEN s.inning_topbot = 'Top' THEN s.player_name END) AS home_starter,
+          MAX(CASE WHEN s.inning_topbot = 'Bot' THEN s.player_name END) AS away_starter
+        FROM g LEFT JOIN s ON s.game_pk = g.game_pk
+        GROUP BY g.game_pk, g.game_date, g.home_team, g.away_team, g.pitch_count
+        ORDER BY g.away_team`
       const { data, error } = await supabase.rpc('run_query', { query_text: gsql })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ games: data || [] })
+    }
+
+    // ── Mode 2b: one player's seasons / games, for the Player finder ──
+    // `role` decides which side of the pitch the player is on: a pitcher's
+    // games are the ones they threw in, a hitter's the ones they batted in.
+    const playerSeasons = intParam('player_seasons')
+    const playerGames = intParam('player_games')
+    if (playerSeasons != null || playerGames != null) {
+      const pid = playerSeasons ?? playerGames
+      if (pid == null || isNaN(pid)) {
+        return NextResponse.json({ error: 'Invalid player id' }, { status: 400 })
+      }
+      const role = sp.get('role') === 'batter' ? 'batter' : 'pitcher'
+      const col = role === 'batter' ? 'p.batter' : 'p.pitcher'
+
+      if (playerSeasons != null) {
+        // Loose index scan, not SELECT DISTINCT. Distinct reads every row the
+        // player appears in — ~25k for a long-career hitter, which measured
+        // 5-8s and tripped the 8s statement_timeout outright on a cold cache.
+        // Each recursive step is a single seek into (batter|pitcher, game_year),
+        // so the cost tracks the number of seasons, not the number of pitches.
+        const { data, error } = await supabase.rpc('run_query', {
+          query_text: `WITH RECURSIVE t AS (
+              (SELECT p.game_year FROM pitches p
+                WHERE ${col} = ${pid} AND p.game_year IS NOT NULL
+                ORDER BY p.game_year DESC LIMIT 1)
+              UNION ALL
+              SELECT (SELECT p.game_year FROM pitches p
+                       WHERE ${col} = ${pid} AND p.game_year < t.game_year
+                         AND p.game_year IS NOT NULL
+                       ORDER BY p.game_year DESC LIMIT 1)
+              FROM t WHERE t.game_year IS NOT NULL
+            )
+            SELECT game_year FROM t WHERE game_year IS NOT NULL`,
+        })
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ seasons: (data || []).map((r: { game_year: number }) => r.game_year) })
+      }
+
+      const season = intParam('season')
+      if (season == null || isNaN(season)) {
+        return NextResponse.json({ error: 'Invalid season' }, { status: 400 })
+      }
+      // The player's own team: a pitcher works the top half for the home club,
+      // a hitter bats the top half for the visiting one.
+      const teamExpr = role === 'batter'
+        ? `MAX(CASE WHEN p.inning_topbot = 'Top' THEN p.away_team ELSE p.home_team END)`
+        : `MAX(CASE WHEN p.inning_topbot = 'Top' THEN p.home_team ELSE p.away_team END)`
+      const { data, error } = await supabase.rpc('run_query', {
+        query_text: `SELECT p.game_pk,
+            MAX(p.game_date) AS game_date,
+            MAX(p.home_team) AS home_team,
+            MAX(p.away_team) AS away_team,
+            ${teamExpr} AS player_team,
+            COUNT(*) AS pitch_count
+          FROM pitches p
+          WHERE ${col} = ${pid} AND p.game_year = ${season}
+          GROUP BY p.game_pk
+          ORDER BY MAX(p.game_date) DESC`,
+      })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ games: data || [] })
     }

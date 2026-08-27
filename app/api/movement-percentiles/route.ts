@@ -3,6 +3,11 @@ import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
 import { getCached, setCache } from '@/lib/queryCache'
 import { parseMovementPercentilesRows } from '@/lib/schemas/movementPercentiles'
 
+// One scan per pitch type across a season: 8.3s.
+// Needs run_query_long (8s -> 120s statement_timeout) and room past the
+// platform's default function timeout.
+export const maxDuration = 60
+
 /**
  * GET /api/movement-percentiles?season=2026&hand=R&entries=FF:95.5,SI:93.2,SL:87.1
  *
@@ -84,7 +89,7 @@ SELECT pitch_type,
 FROM pool
 GROUP BY pitch_type`
 
-  const { data, error } = await supabase.rpc('run_query', { query_text: sql })
+  const { data, error } = await supabase.rpc('run_query_long', { query_text: sql })
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
