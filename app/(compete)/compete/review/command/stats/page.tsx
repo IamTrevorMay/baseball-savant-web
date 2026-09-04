@@ -38,7 +38,7 @@ export default function CQRStatsPage() {
   const [reviews, setReviews] = useState<ReviewRow[]>([])
 
   useEffect(() => {
-    fetch('/api/compete/review/stats')
+    fetch('/api/compete/review/command/stats')
       .then(r => r.json())
       .then(d => {
         setSummary(d.summary || { total: 0, avg: 0, best: 0, worst: 0 })
@@ -87,9 +87,9 @@ export default function CQRStatsPage() {
     <div className="max-w-4xl mx-auto p-6 mt-6 space-y-6">
       {/* Sub-tabs */}
       <div className="flex gap-4 border-b border-zinc-800 pb-2">
-        <Link href="/compete/review" className="text-zinc-500 hover:text-zinc-300 pb-2">Review</Link>
+        <Link href="/compete/review/command" className="text-zinc-500 hover:text-zinc-300 pb-2">Review</Link>
         <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Stats</span>
-        <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
+        <Link href="/compete/review/command/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
       </div>
 
       <h1 className="text-xl font-bold text-white">CQR Stats</h1>
@@ -97,7 +97,7 @@ export default function CQRStatsPage() {
       {summary.total === 0 ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
           <p className="text-zinc-400">No reviews yet. Complete a CQR review to see stats here.</p>
-          <Link href="/compete/review" className="text-amber-400 hover:text-amber-300 text-sm mt-2 inline-block">
+          <Link href="/compete/review/command" className="text-amber-400 hover:text-amber-300 text-sm mt-2 inline-block">
             &larr; Go to Review
           </Link>
         </div>

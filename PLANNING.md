@@ -2,6 +2,32 @@
 
 ## Recently Completed
 
+### Compete Nav Restructure — Grouped, Collapsible Sidebar (2026-09-04)
+
+First step of the Compete platform build-out. The flat 8-item sidebar became three collapsible
+groups plus three top-level items, and every page moved so its URL mirrors the nav.
+
+**Route moves.** `/compete/review` → `/compete/review/command` (with `settings`/`stats` following it
+down), `/compete/video` → `/compete/review/video`, `/compete/whoop` → `/compete/performance/health`,
+`/compete/reports` → `/compete/performance/scouting-reports` (the coach-delivered PDF list, plus its
+`[id]` detail page), `/compete/performance` → `/compete/reports/bullpen` (the TrackMan upload page).
+Note the last two crossed: `performance` and `reports` are now group segments whose old pages live
+under the *other* group, so `next.config.ts` redirects send each old URL to where its content
+actually went, not to its namesake group. Those redirects are `permanent: false` on purpose, and
+there is deliberately no `/compete/reports/:id` rule — config redirects match before filesystem
+routes and it would shadow the four real `/compete/reports/*` pages.
+
+**New stubs.** `review/my-data`, `performance/programming`, `reports/biomechanics`,
+`reports/command`, `reports/live-abs` are real routes rendering a shared
+`components/compete/ComingSoon.tsx`; building each one is replacing the page body.
+
+**Sidebar.** `CompeteSidebar.tsx` now takes a `NavEntry[]` of links and groups. Group headers toggle
+rather than navigate, several can be open at once, the group holding the current route auto-expands
+(so links from outside the sidebar never land on a hidden item), and collapse state persists in
+`localStorage` under `compete-nav-groups`. Groups default to expanded on first paint and stored
+preferences apply after hydration, avoiding a server/client mismatch. `/api/compete/*` paths were
+not touched.
+
 ### Biomech Report PDFs — Public Bucket Closed (2026-08-13)
 `scripts/create-biomech-captures.sql` created the `biomech-reports` storage bucket with
 `public = true`, relying on unguessable UUID paths. These PDFs name a real athlete — at Neptune,

@@ -51,7 +51,7 @@ export default function CompeteReportsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
-      <h1 className="text-xl font-bold text-white mb-6">Reports</h1>
+      <h1 className="text-xl font-bold text-white mb-6">Scouting Reports</h1>
 
       {reports.length === 0 ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-12 text-center">
@@ -66,7 +66,7 @@ export default function CompeteReportsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {reports.map(report => (
-            <Link key={report.id} href={`/compete/reports/${report.id}`}
+            <Link key={report.id} href={`/compete/performance/scouting-reports/${report.id}`}
               className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-amber-500/30 transition group relative block">
               {/* Delete button */}
               <button
