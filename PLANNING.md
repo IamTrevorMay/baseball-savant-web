@@ -2,6 +2,32 @@
 
 ## Recently Completed
 
+### Research Game Log — Official Box-Score Line + Watch (2026-09-07)
+
+The pitching dashboard's Game Log tab now reads like a box score: **IP, H, K, BB, R, ER, Pitches,
+Whiff%**, with a **Watch** button per game.
+
+**Where the numbers come from.** IP/H/K/BB/R/ER are the official MLB Stats API game log
+(`/api/pitcher-gamelog`, keyed by `gamePk`), not Statcast. `pitches` has no earned-run bookkeeping
+at all, so ER is underivable from it, and Statcast's run columns credit a run to whoever was on the
+mound rather than to the pitcher who allowed the runner — a derived R would disagree with the box
+score on every inherited runner. Pitches and Whiff% stay derived from the loaded rows, so they still
+respond to the FilterEngine. A game with no official line (spring, or the API lagging) falls back to
+the Statcast counts for H/K/BB and blanks IP/R/ER.
+
+**Watch.** Opens the Videos page's "Review Game" as a modal, scoped to that pitcher and that game —
+the queue, the now-playing panel, the frame-step player, auto-advance, and Save as playlist. Pitches
+with no clip anywhere are skipped and counted in the header, same as the Videos page. It closes only
+via the Close button: no Escape, no backdrop click, so a stray click can't discard the queue.
+
+**Shared, not copied.** The review/playlist half of `app/(research)/videos/page.tsx` was extracted to
+`components/videos/ClipQueueViewer.tsx` (queue + now-playing + player + live Savant mp4 resolution)
+and `lib/video/playlists.ts` (create/append). The Videos page and the new
+`components/videos/GameReviewModal.tsx` both render the same component, so the two can't drift.
+
+`GameLogTab`'s new `pitcher` prop gates all of this — the MiLB dashboard passes no pitcher and is
+unchanged (no MLB video exists for it anyway).
+
 ### Compete Nav Restructure — Grouped, Collapsible Sidebar (2026-09-04)
 
 First step of the Compete platform build-out. The flat 8-item sidebar became three collapsible

@@ -430,6 +430,21 @@ GET, Bearer-key auth (`PITCH_VIDEO_API_KEYS`). Two modes: single resolve (`?play
 
 ---
 
+## 8.9 Pitcher Game Log — `/api/pitcher-gamelog`
+
+GET, unauthenticated proxy over the MLB Stats API (`/people/{id}/stats?stats=gameLog&group=pitching`). Returns the official per-game pitching line keyed by `gamePk`, so a caller holding Statcast pitch rows can join onto it directly. Used by the Research pitching dashboard's Game Log tab.
+
+Why it exists: `pitches` has no earned-run bookkeeping, so **ER is not derivable from Statcast at all**, and Statcast's run columns credit a run to whoever was on the mound rather than to the pitcher who allowed the runner — so a derived R disagrees with the box score on inherited runners. IP/H/K/BB come from here too so a row reads as one consistent official line.
+
+| Param | Type / Values | Notes |
+|---|---|---|
+| `id` | int (required) | MLBAM player id |
+| `seasons` | comma list of ints (required) | one upstream call each; deduped, capped at 15 |
+
+Response: `{ games: Record<gamePk, PitcherGameLogLine>, seasons: number[] }` where each line is `{ gamePk, date, gameType, ip, outs, h, k, bb, r, er, pitches }`. `ip` is the MLB API's string form (`"5.2"` = 5⅔). Upstream `gameType=R,P,S` (regular, all postseason rounds, spring); games with no Statcast rows are simply never looked up. A season that errors upstream yields no rows rather than failing the request.
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |
