@@ -2,6 +2,30 @@
 
 ## Recently Completed
 
+### Mayday Studio SSO — Triton Half (2026-09-09)
+
+"Continue with Mayday Studio" on the Triton login page: Mayday verifies its own session, signs
+a 60-second HMAC assertion ({email, name?, iat}) with a shared secret, and redirects to
+`/api/auth/mayday`, which verifies it (`lib/maydaySso.ts`, constant-time compare, 7 unit
+tests), finds or auto-provisions the account (default role `user` + a `research` tool grant —
+the manual-invite baseline), mints a magiclink via the admin API, and hands off to the
+existing `/auth/callback`. Passwords never leave Mayday; the two Supabase projects stay
+separate. Needs env: `MAYDAY_SSO_SECRET` (Triton) and `NEXT_PUBLIC_MAYDAY_SSO_URL` (gates the
+login button). **The Mayday-side start endpoint is not built yet** — its exact contract,
+signing reference code, and env vars are specced in `docs/mayday-sso.md`.
+
+### Client run_query Callers Fixed — Deception Was Silently Blank (2026-09-09)
+
+The security hardening revoked `run_query` EXECUTE from `authenticated`, which silently broke
+all seven browser-side `supabase.rpc('run_query', …)` callers — most visibly Deception/Unique
+on the pitcher Overview Advanced table (every caller ignored `error`, so cells showed "—" with
+no failure signal). Explore never broke because it runs through a server route. Fix: three new
+server routes — `/api/deception` (raw season rows, callers keep their own weighting),
+`/api/db-info` (cached COUNT/MAX banner for the pitchers/hitters pages), `/api/pitch-shapes`
+(Pitch Simulation's per-pitch averages; its season list now reuses
+`/api/player-filter-options`) — and all seven callers converted. No client code calls
+`run_query` anymore.
+
 ### Clip Reviewer — Queue Filters + Auto-Advance Default (2026-09-09)
 
 `ClipQueueViewer` (shared by the Videos page's playlist/review view and the game log's Watch
