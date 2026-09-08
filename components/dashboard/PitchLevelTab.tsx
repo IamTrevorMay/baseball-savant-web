@@ -1,6 +1,5 @@
 'use client'
 import { useMemo, useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import {
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
   isFastball, computeXDeceptionScore,
@@ -32,9 +31,10 @@ export default function PitchLevelTab({ data }: Props) {
     if (years.length === 0) return
 
     async function fetchDeception() {
-      const yearList = years.join(',')
-      const sql = `SELECT pitch_type, pitch_name, pitches, unique_score, deception_score, z_vaa, z_haa, z_vb, z_hb, z_ext, game_year FROM pitcher_season_deception WHERE pitcher = ${pitcherId} AND game_year IN (${yearList})`
-      const { data: rows } = await supabase.rpc('run_query', { query_text: sql })
+      // Server-side fetch: client run_query was revoked in the security
+      // hardening, which is why these cells silently went blank.
+      const res = await fetch(`/api/deception?pitcher=${pitcherId}&years=${years.join(',')}`)
+      const rows = res.ok ? (await res.json()).rows : null
       if (!rows) return
       // Group by pitch_type, weighted average across years
       const byType: Record<string, { unique_sum: number; dec_sum: number; weight: number; z: Record<string, number>; zw: number }> = {}

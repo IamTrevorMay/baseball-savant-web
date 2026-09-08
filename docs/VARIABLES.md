@@ -488,6 +488,20 @@ are also absent from the Advanced preset — no defensible multi-season aggregat
 
 ---
 
+## 8.11 Client-Query Replacements — `/api/deception`, `/api/db-info`, `/api/pitch-shapes`
+
+Three small GET routes that exist because the security hardening revoked `run_query` EXECUTE
+from the `authenticated` role, silently breaking every `supabase.rpc('run_query', …)` call made
+from the browser (callers ignored `error`, so cells just showed "—").
+
+| Route | Params | Returns | Replaces client SQL in |
+|---|---|---|---|
+| `/api/deception` | `pitcher` (req), `years` csv | raw `pitcher_season_deception` rows (game_year, pitch_type, pitch_name, pitches, scores, z_*) — callers still do their own pitch-weighted aggregation | OverviewTab, PercentileTab, PitchLevelTab, PercentileRankings |
+| `/api/db-info` | — | `{ total, lastDate }` from `pitches`; cached 10 min, `run_query_long` (COUNT over ~9M rows) | pitchers/hitters landing pages |
+| `/api/pitch-shapes` | `pitcher`, `years` csv (both req) | per-pitch-type shape averages (velo, spin, axis, pfx, release) with `COUNT(*) >= 3` | Graphics Pitch Simulation template (seasons now come from `/api/player-filter-options`) |
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |

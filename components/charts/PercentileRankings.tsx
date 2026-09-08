@@ -4,7 +4,6 @@ import {
   empiricalPercentile, percentileColor,
   METRIC_META, METRIC_TO_DB_KEY, isFastball, computeXDeceptionScore,
 } from '@/lib/leagueStats'
-import { supabase } from '@/lib/supabase'
 
 const avgArr = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
 
@@ -52,9 +51,10 @@ export default function PercentileRankings({ data }: { data: any[] }) {
     if (years.length === 0) return
 
     async function fetchDeception() {
-      const yearList = years.join(',')
-      const sql = `SELECT pitch_type, pitches, unique_score, deception_score, z_vaa, z_haa, z_vb, z_hb, z_ext FROM pitcher_season_deception WHERE pitcher = ${pitcherId} AND game_year IN (${yearList})`
-      const { data: rows } = await supabase.rpc('run_query', { query_text: sql })
+      // Server-side fetch: client run_query was revoked in the security
+      // hardening, which is why these cells silently went blank.
+      const res = await fetch(`/api/deception?pitcher=${pitcherId}&years=${years.join(',')}`)
+      const rows = res.ok ? (await res.json()).rows : null
       if (!rows?.length) return
 
       let uniqueSum = 0, decSum = 0, totalW = 0, decW = 0

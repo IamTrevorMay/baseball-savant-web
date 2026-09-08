@@ -2114,3 +2114,45 @@ SELECT DISTINCT pitch_name FROM pitcher_season_command ORDER BY 1;
 Result: 13 names — `4-Seam Fastball, Changeup, Curveball, Cutter, Eephus, Forkball, Knuckle Curve,
 Knuckleball, Sinker, Slider, Slurve, Split-Finger, Sweeper` — matching `pitches.pitch_name`, so the
 Pitch view's code→name map covers the command join.
+
+---
+
+## 2026-09-09
+
+### Why Deception/Unique were blank on pitcher profiles — RPC grants
+```sql
+SELECT p.proname, p.prosecdef,
+  (SELECT string_agg(pr.privilege_type || ':' || pr.grantee, ', ')
+   FROM information_schema.routine_privileges pr
+   WHERE pr.routine_name = p.proname) AS grants
+FROM pg_proc p WHERE p.proname IN ('run_query','run_query_long');
+```
+Result: both RPCs grant EXECUTE to **postgres and service_role only** — `authenticated` was
+revoked in the security hardening, so every client-side `supabase.rpc('run_query', …)` call
+fails (silently, since callers ignored `error`). Explore worked because it goes through a
+server route. Fixed by adding `/api/deception`, `/api/db-info`, `/api/pitch-shapes` and
+converting the seven client-side callers.
+
+### Table-side check — RLS on the deception/command tables
+```sql
+SELECT c.relname, c.relrowsecurity,
+  (SELECT count(*) FROM pg_policies pol WHERE pol.tablename = c.relname) AS policies
+FROM pg_class c
+WHERE c.relname IN ('pitcher_season_deception','pitcher_season_command') AND c.relkind = 'r';
+```
+Result: RLS enabled with 1 policy each and broad role grants — the tables were readable; the
+revoked RPC was the only blocker.
+
+### Video ingest health check
+```sql
+SELECT status, COUNT(*)::int AS rows, pg_size_pretty(SUM(size_bytes)) AS bytes
+FROM pitch_videos GROUP BY status ORDER BY rows DESC;
+-- plus: MAX(downloaded_at); per-season file_path counts; last-6-days join to pitches;
+-- per-status breakdown for 2026-09-04 and 2026-09-06
+```
+Result: downloaded **1,337,266** (6,630 GB) · missing 252,687 · **pending 0 · failed 0** (queue
+drained; +83k downloaded and 4.2k failed cleared since 8/27). Coverage still 2025 (708,724) +
+2026 (628,465), 2024 absent. Last download **2026-09-07 11:31 UTC**; Sept 6 complete
+(4,367/4,378). Two problems: **Sept 4 written off — all 4,581 rows status 'missing'** (nothing
+will retry them), and **Sept 7+ games have no pitch_videos rows at all** — the queue step hasn't
+run since.
