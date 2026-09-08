@@ -2,6 +2,82 @@
 
 ## Recently Completed
 
+### Compare — Side-by-Side Player Comparison (2026-09-08)
+
+New `/compare` page in the Research app (Advanced Tools nav), Stathead-style: up to four
+hitters or pitchers side by side, career or single-season, with headshots, team-colour
+accents, per-row winner shading, shareable URL state, and PNG export (html2canvas-pro).
+
+**Three sources, kept in separate banded sections** (`lib/compareMetrics.ts` is the catalog):
+Lahman box-score history (through 2021 — the import's vintage, noted in the section banner),
+Statcast aggregates (2015+, reusing `reportMetrics.METRICS` via `buildReportQuery`), and
+Triton+ command (pitch-weighted via `pivotTritonRows`). Awards & Honors (HOF/All-Star/MVP/
+Cy Young/Gold Glove/Silver Slugger/ROY) from the Lahman award tables. A player with no data
+for a source shows an em dash for that whole section — McCovey's whiff rate is unknown, not
+zero. WAR and OPS+ are not stored anywhere, so they are deliberately absent.
+
+**Overview-mirror presets (2026-09-08, same day).** Traditional / Advanced / Arsenal (pitchers)
+and Traditional / Advanced / vs Pitch Type (hitters) mirror the player Overview page's stat
+tables column for column. Traditional mixes sources — box-score totals from Lahman, the
+against-splits a box score lacks (2B/3B, OBP/SLG/OPS against, K%/BB%/Whiff%) from Statcast —
+with the banner note saying so. Advanced adds FPS%/CSt% (new `fps_pct`/`cs_pct` in
+`reportMetrics.METRICS`), statcast K/9-BB/9-HR/9 (client-derived), RE24, and pitch-weighted
+Deception/Uniqueness; FIP/xFIP/xERA/SIERA and SOS deliberately left out (no defensible
+multi-season aggregation). Arsenal / vs Pitch Type render as per-player mini-tables inside one
+band, since different arsenals can't row-align across columns.
+
+**Official line via MLB Stats API (2026-09-08, follow-up).** The Traditional/Overall W/L/ERA/
+G/GS/SV/IP/BF/H/HR/BB/SO/HBP/WHIP line initially came only from Lahman, which dashes out for
+2022+ seasons and 2022+ debuts (import ends 2021). Now it is fetched from statsapi
+(`stats=career`/`stats=season`) — the same upstream the player Overview's `/api/mlbstats` uses —
+merged field-by-field over the Lahman sums, which remain the fallback for players with no MLBAM
+id. Header team/years also come from statsapi (`hydrate=currentTeam`, `active` flag), so an
+active player reads "2019– · TOR" instead of a stale Lahman final_game. Awards remain
+Lahman-only (through 2021), noted in that section's banner.
+
+**Custom range + Individual windows (2026-09-08, follow-up).** The Career/Season toggle gained
+Custom (a from/to date range: statsapi `byDateRange` for the official line, `game_date BETWEEN`
+for Statcast; season-level sources — Triton+, Deception, Awards, Lahman fallback — widen to the
+seasons the range touches, noted in the section banner). Clicking the centre date label opens a
+Global/Individual choice (Season and Custom scopes only): Individual puts a season dropdown or
+date pair under each player's header, so cross-era comparisons like Judge 2024 vs McCovey 1969
+work. The API takes per-player `season`/`dateFrom`/`dateTo` overrides and batches queries per
+distinct window; the traded-player statsapi quirk (per-team splits + a combined no-team split)
+is handled by preferring the combined split. All of it round-trips through the URL
+(`s=custom`, `df`/`dt`, `tm=ind`, `w=key:val` chunks).
+
+**Pitch view + layout polish (2026-09-08, follow-up).** The Hitters/Pitchers toggle gained
+Pitch: pick one pitch type (dropdown of the 12 Statcast codes; vocabulary verified against
+`pitcher_season_command`) and compare pitchers' versions of that pitch — Traits (count, usage%,
+velo, spin, IVB/HB, ext, arm°, release), Results (whiff/CSW/CSt/chase/zone, BA/SLG/wOBA/xwOBA
+against, EV, hard-hit%, barrel%), and Triton (avg Stuff+, pitch-weighted Brink/Cluster ±plus,
+Deception/Uniqueness). `/api/compare` takes `group='pitch'` + `pitchType`; usage% is the pitch's
+share of the pitcher's total pitches in the same window; time windows and individual mode apply
+unchanged. `compare_presets.player_group` now allows 'pitch' (migration applied). Layout: the
+"+ Player" control moved above the card, control rows are centered, and the chip row is titled
+"Presets".
+
+**Pitch Movement preset (2026-09-08, follow-up).** Pitchers gained a Pitch Movement chip —
+movement only means something per pitch type, so it renders like Arsenal (per-player mini table
+off the same byPitch payload): pitch, #, use%, velo, spin, IVB, HB, ext, arm°, and avg release
+height/side (two new columns on the byPitch query).
+
+**Layout editing + presets + duplicate columns (2026-09-08, follow-up).** Every preset-section
+row is closable (hover ✕; toggling the section off and on restores the full list; closures ride
+the URL as `cr=`). "Save preset" stores the row layout — active sections, closed rows, custom-row
+metrics, never players or windows — in the new `compare_presets` table (owner-only RLS, applied
+to prod), and a "Custom ▾" dropdown at the end of the Stat sets chips lists, applies, and deletes
+them per group. PNG export now renders chrome-free: player/row ✕s and "+ Add row" disappear,
+selects and date pickers become plain text, an empty Custom band is dropped. Columns are keyed by
+a client `uid` rather than player id, and `/api/compare` keeps results keyed per time window —
+so the same player can occupy two columns with two windows (Judge 2024 vs Judge 2025 verified).
+
+**`/api/compare`** resolves identity through `lahman_people` (either id in, both out where
+possible), sums seasons and recomputes career rates from components (never averaged season
+rates; IP travels as outs so thirds survive). Preset sections toggle as chips; a Custom
+section adds dropdown-picked rows. Winner highlight follows each metric's higherBetter, with
+no shading on ties, directionless context rows (G, GS), or volume-dependent counting stats.
+
 ### Research Game Log — Official Box-Score Line + Watch (2026-09-07)
 
 The pitching dashboard's Game Log tab now reads like a box score: **IP, H, K, BB, R, ER, Pitches,

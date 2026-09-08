@@ -2092,3 +2092,25 @@ Result: 7 rows, all `status='ready'`, 8 throws each. Six are the `seed-mechanics
 (2026-04-26 / 06-07 / 07-19 × 2 athletes) with `raw_file_path` NULL — metrics written directly,
 no C3D, so the SkeletonViewer can't replay them. One real ingest exists: Trevor May 2026-08-05
 with `has_raw=true`, i.e. exactly one file has ever gone through `parseC3D` in production.
+
+---
+
+## 2026-09-08
+
+### Lahman import vintage — latest year in each table
+```sql
+SELECT MAX(year) AS max_batting,
+       (SELECT MAX(year) FROM lahman_pitching) AS max_pitching,
+       (SELECT MAX(year) FROM lahman_awards) AS max_awards
+FROM lahman_batting;
+```
+Result: all three end at **2021**. The Compare page's Lahman-sourced sections say so in their
+banner note — an active player's "career" line is missing 2022+ until the import is refreshed.
+
+### Compare Pitch view — pitch_name vocabulary in pitcher_season_command
+```sql
+SELECT DISTINCT pitch_name FROM pitcher_season_command ORDER BY 1;
+```
+Result: 13 names — `4-Seam Fastball, Changeup, Curveball, Cutter, Eephus, Forkball, Knuckle Curve,
+Knuckleball, Sinker, Slider, Slurve, Split-Finger, Sweeper` — matching `pitches.pitch_name`, so the
+Pitch view's code→name map covers the command join.

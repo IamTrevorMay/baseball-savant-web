@@ -101,6 +101,8 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 | `k_minus_bb` | K-BB % | `k_pct − bb_pct` |
 | `whiff_pct` | Whiff % | swinging strikes ÷ swings |
 | `swstr_pct` | SwStr % | swinging strikes ÷ pitches |
+| `cs_pct` | CSt % | called strikes ÷ pitches (dashboard `csPct`) |
+| `fps_pct` | FPS % | first-pitch strikes (called/swinging/foul/in-play on pitch 1) ÷ first pitches (dashboard `fpsPct`) |
 | `csw_pct` | CSW % | called + swinging strikes ÷ pitches |
 | `zone_pct` | Zone % | pitches in `zone 1-9` ÷ pitches with non-null zone |
 | `chase_pct` | Chase % | swings on `zone > 9` ÷ pitches in `zone > 9` |
@@ -442,6 +444,47 @@ Why it exists: `pitches` has no earned-run bookkeeping, so **ER is not derivable
 | `seasons` | comma list of ints (required) | one upstream call each; deduped, capped at 15 |
 
 Response: `{ games: Record<gamePk, PitcherGameLogLine>, seasons: number[] }` where each line is `{ gamePk, date, gameType, ip, outs, h, k, bb, r, er, pitches }`. `ip` is the MLB API's string form (`"5.2"` = 5⅔). Upstream `gameType=R,P,S` (regular, all postseason rounds, spring); games with no Statcast rows are simply never looked up. A season that errors upstream yields no rows rather than failing the request.
+
+---
+
+## 8.10 Player Comparison — `/api/compare`
+
+POST, unauthenticated. Side-by-side stats for up to 4 players for the Compare page
+(`/compare`). Body:
+
+| Field | Type / Values | Notes |
+|---|---|---|
+| `group` | `hitting` \| `pitching` \| `pitch` | picks the metric catalog and Lahman table. `pitch` compares pitchers on one pitch type: statcast/triton only (no box-score line or awards for a single pitch), stats from a dedicated pitch-filtered aggregation (traits, results, avg Stuff+) plus that pitch's command (`pitcher_season_command` by `pitch_name`) and deception (`pitcher_season_deception` by `pitch_type`), pitch-weighted across the window's years |
+| `pitchType` | Statcast code (`FF`, `SL`, …) | required when `group=pitch`; vocabulary in `compareMetrics.PITCH_TYPES` |
+| `scope` | `career` \| `season` \| `range` | career = all seasons summed |
+| `season` | int | required when `scope=season` |
+| `dateFrom` / `dateTo` | YYYY-MM-DD | required when `scope=range`; statsapi `byDateRange` + `pitches.game_date BETWEEN`; season-level tables (Lahman fallback, Triton, Deception, Awards) widen to the seasons the range touches |
+| `sources` | array of `lahman` \| `statcast` \| `triton` \| `awards` | only requested sources are queried; `triton` is pitching-only |
+| `byPitch` | boolean | adds per-pitch-type rows: the Overview page's Arsenal table (pitchers — usage, velo, spin, HB/IVB, ext, arm°, whiff/CSt%, EV, xBA, avg release height/side, avg Stuff+, pitch-weighted Brink/Cluster + plus from `pitcher_season_command`) or vs-Pitch-Type table (hitters — faced%, velo, whiff%, BA, EV, LA, xBA, xwOBA). The pitcher payload also feeds the Pitch Movement preset (velo, spin, IVB/HB, ext, arm°, rel H/S) |
+| `players` | `[{ mlbId?, lahmanId?, season?, dateFrom?, dateTo? }]` max 4 | either id; the other is resolved via `lahman_people` (the crosswalk — `players.lahman_id` is only 19% populated). The optional per-player window (Individual mode) overrides the global one under the same scope; invalid overrides fall back to global. Queries batch per distinct window and results stay keyed per window, so the same player may appear in two columns with two windows |
+
+Returns `{ players: ComparePlayerPayload[] }` in input order; each entry carries `name`,
+`debut`/`finalGame`/`active`, `team` (current club via statsapi `hydrate=currentTeam`, else the
+Lahman last club), and one object per source (`lahman`, `statcast`, `triton`, `awards`) — null
+when the player has no data there. The `lahman` bag is really the **official line**: fetched from
+the MLB Stats API (`stats=career` or `stats=season` — the same upstream the player Overview's
+`/api/mlbstats` uses, so it is always current and covers all of history), merged field-by-field
+over the Lahman sums, which only carry players with no MLBAM id. Lahman career rate stats
+(BA/OBP/SLG/OPS, ERA/WHIP/K9) are recomputed from summed components, never averaged season
+rates; IP travels as `ipouts` (statsapi `outs`) so thirds survive. Statcast metrics reuse
+`reportMetrics.METRICS` via `buildReportQuery`; Triton+ rows are pitch-weighted with
+`pivotTritonRows`. All-Star counts are `COUNT(DISTINCT year)` (1959–62 had two games). Metric
+catalog, sections, formats, and higher-is-better directions live in `lib/compareMetrics.ts`.
+Saved row layouts (the page's "Save preset" + Custom dropdown) live in `compare_presets`
+(owner-only RLS; `scripts/create-compare-presets.sql`, applied 2026-09-08): name, `player_group`,
+and a jsonb `config` of `{sections, closedRows, customMetrics}` — never players, scope, or
+windows. Coverage caveats: awards are Lahman-only and end at 2021 (import vintage — an active player's
+All-Star/MVP counts stop there), Statcast 2015+, bat tracking 2023+.
+The `triton` payload also carries pitch-weighted `deception_score`/`unique_score` from
+`pitcher_season_deception`. Client-derived rows (statcast K/9, BB/9, HR/9) are computed in
+`lib/compareMetrics.ts` from `k_count`/`bb_count`/`hr_count`/`ip`, which the route always includes.
+Neither WAR nor OPS+ is stored anywhere, so the page has no such rows. FIP/xFIP/xERA/SIERA and SOS
+are also absent from the Advanced preset — no defensible multi-season aggregation yet.
 
 ---
 

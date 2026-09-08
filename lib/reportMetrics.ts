@@ -26,6 +26,8 @@ export const METRICS: Record<string, string> = {
   bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
   whiff_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)",
   csw_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'called_strike' OR description = 'swinging_pitchout') / NULLIF(COUNT(*), 0), 1)",
+  cs_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description = 'called_strike') / NULLIF(COUNT(*), 0), 1)",
+  fps_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE pitch_number = 1 AND (description = 'called_strike' OR description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE pitch_number = 1), 0), 1)",
   zone_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)",
   chase_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1)",
   // Batting

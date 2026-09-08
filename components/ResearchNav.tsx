@@ -15,6 +15,7 @@ const PRIMARY_LINKS = [
 
 const ADVANCED_LINKS = [
   { href: '/reports', label: 'Reports' },
+  { href: '/compare', label: 'Compare' },
   { href: '/abs', label: 'ABS' },
   { href: '/umpire', label: 'Umpires' },
   { href: '/matchups', label: 'Matchups' },
