@@ -2,6 +2,22 @@
 
 ## Recently Completed
 
+### Research Nav — Media Group; Imagine → Graphics (2026-09-09)
+
+The Research nav gained a **Media** dropdown: Briefs, Videos, Compare, Matchups, Reports,
+Report Cards, Graphics. Reports/Compare/Matchups left Advanced Tools and Briefs/Videos left
+More — each page lives in exactly one group. With Media holding the creation pages, the
+Advanced Tools remnant (ABS, Umpires, Sequencing, Park Adj, Data Export) folded into More,
+so the bar is Primary links + Media + More.
+
+**Graphics** is Design's Imagine tool (widget picker → filters → PNG export, persistent
+history), moved into `(research)` at `/graphics` and renamed. **Report Cards** moved from
+Design to `/report-cards` the same way. Both now sit behind the standard research gate instead
+of the Design app's `design` tool permission, with the Research nav on top via per-route
+layouts. `next.config.ts` redirects `/design/imagine` → `/graphics` and `/design/report-cards`
+→ `/report-cards` (non-permanent, like the Compete moves). The standalone Visualize app is
+untouched; `lib/imagine/*` and `components/imagine/*` keep their names.
+
 ### Compare — Side-by-Side Player Comparison (2026-09-08)
 
 New `/compare` page in the Research app (Advanced Tools nav), Stathead-style: up to four

@@ -30,6 +30,11 @@ const nextConfig: NextConfig = {
       // the coach-delivered PDF list. Send them where their content actually went.
       { source: '/compete/performance', destination: '/compete/reports/bullpen', permanent: false },
       { source: '/compete/reports', destination: '/compete/performance/scouting-reports', permanent: false },
+      // Media restructure (2026-09-09): Design's Imagine moved into Research
+      // as /graphics, and Report Cards moved out of Design too. Non-permanent
+      // for the same reason as above.
+      { source: '/design/imagine', destination: '/graphics', permanent: false },
+      { source: '/design/report-cards', destination: '/report-cards', permanent: false },
     ]
   },
 };

@@ -28,10 +28,10 @@ ls app/api/cron                         # cron jobs
 
 | Group | What lives there |
 |---|---|
-| `(research)` | **Main analytics app** — player pages, reports, standings, analyst, explore, glossary (28 pages) |
+| `(research)` | **Main analytics app** — player pages, reports, standings, analyst, explore, glossary, compare, plus the Media tools (graphics — formerly Design's Imagine — and report-cards, moved in 2026-09-09) |
 | `(compete)` | Athlete-facing Compete: performance, reports, review, messages (12 pages) |
 | `(work)` | Internal ops: board, sprints, channels, messages, calendar, goals (10 pages) |
-| `(design)` | Asset designer, Imagine, email product builder (11 pages) |
+| `(design)` | Asset designer, email product builder (Imagine and Report Cards moved to Research 2026-09-09) |
 | `(milb)` | MiLB mirror of the analytics app — players, hitters, reports, explore (7 pages) |
 | `(broadcast)` | Projects, project editor, producer control panel |
 | `(models)` | gamecall, matchup, risk models |
