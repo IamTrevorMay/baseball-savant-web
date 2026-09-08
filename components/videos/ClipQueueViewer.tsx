@@ -9,7 +9,7 @@
 // Everything queue-shaped that differs between callers — the block above the
 // queue, the per-item buttons, the empty states — comes in as props.
 
-import { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react'
 import type { ClipRow } from '@/lib/video/types'
 import { flipName, outcome, rowKey } from '@/lib/video/clip'
 
@@ -20,6 +20,52 @@ export interface QueueItem {
   clip: ClipRow
   position: number
 }
+
+// ── Queue filters ───────────────────────────────────────────────────────────
+// Client-side narrowing of the loaded queue. Multi-select within a facet is
+// OR; facets combine with AND. "Situation" is outs + inning — the pitch rows
+// carry no baserunner state, so runners-on can't be filtered here.
+
+interface QueueFilters {
+  pitchTypes: string[]
+  outcomes: string[]
+  counts: string[]
+  stand: '' | 'L' | 'R'
+  outs: number[]
+  innings: number[]
+}
+
+const EMPTY_QUEUE_FILTERS: QueueFilters = {
+  pitchTypes: [], outcomes: [], counts: [], stand: '', outs: [], innings: [],
+}
+
+const desc = (c: ClipRow) => (c.description || '').toLowerCase()
+
+/** Outcome buckets — per-pitch results plus PA-enders; same vocab as the dashboards. */
+const OUTCOME_TESTS: Record<string, { label: string; test: (c: ClipRow) => boolean }> = {
+  whiff: { label: 'Whiff', test: c => desc(c).includes('swinging_strike') || desc(c) === 'missed_bunt' || desc(c) === 'swinging_pitchout' },
+  called_strike: { label: 'Called Strike', test: c => desc(c) === 'called_strike' },
+  foul: { label: 'Foul', test: c => desc(c).includes('foul') },
+  ball: { label: 'Ball', test: c => desc(c).includes('ball') && !desc(c).includes('hit') },
+  in_play: { label: 'In Play', test: c => desc(c).startsWith('hit_into_play') },
+  hit: { label: 'Hit', test: c => ['single', 'double', 'triple', 'home_run'].includes(c.events || '') },
+  hr: { label: 'HR', test: c => c.events === 'home_run' },
+  k: { label: 'K', test: c => (c.events || '').includes('strikeout') },
+  bb: { label: 'BB', test: c => c.events === 'walk' },
+}
+
+function clipMatches(c: ClipRow, f: QueueFilters): boolean {
+  if (f.pitchTypes.length && !f.pitchTypes.includes(c.pitch_name || c.pitch_type || '')) return false
+  if (f.stand && (c.stand || '') !== f.stand) return false
+  if (f.counts.length && !f.counts.includes(`${c.balls ?? '?'}-${c.strikes ?? '?'}`)) return false
+  if (f.outs.length && !f.outs.includes(c.outs_when_up ?? -1)) return false
+  if (f.innings.length && !f.innings.includes(c.inning ?? -1)) return false
+  if (f.outcomes.length && !f.outcomes.some(k => OUTCOME_TESTS[k]?.test(c))) return false
+  return true
+}
+
+const countActiveFilters = (f: QueueFilters) =>
+  f.pitchTypes.length + f.outcomes.length + f.counts.length + (f.stand ? 1 : 0) + f.outs.length + f.innings.length
 
 const labelCls = 'text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block'
 const infoKeyCls = 'text-[10px] text-zinc-500 uppercase tracking-wider self-center'
@@ -61,7 +107,10 @@ export default function ClipQueueViewer({
   cache: externalCache,
   onCache,
 }: ClipQueueViewerProps) {
-  const [autoAdvance, setAutoAdvance] = useState(false)
+  // On by default — reviewing an outing is watching a reel, not one clip.
+  const [autoAdvance, setAutoAdvance] = useState(true)
+  const [filters, setFilters] = useState<QueueFilters>(EMPTY_QUEUE_FILTERS)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [localCache, setLocalCache] = useState<Record<string, string | null>>({})
   const cache = externalCache ?? localCache
 
@@ -73,6 +122,22 @@ export default function ClipQueueViewer({
     },
     [onCache],
   )
+
+  // Indices (into the full items array) that pass the filters. playIndex keeps
+  // full-list semantics so the caller's bookkeeping (removal, reordering)
+  // stays valid; navigation just skips the hidden entries.
+  const visible = useMemo(
+    () => items.map((it, i) => (clipMatches(it.clip, filters) ? i : -1)).filter(i => i >= 0),
+    [items, filters],
+  )
+  const activeFilterCount = countActiveFilters(filters)
+
+  // If the playing clip gets filtered out, hop to the nearest visible one.
+  useEffect(() => {
+    if (!visible.length || visible.includes(playIndex)) return
+    const next = visible.find(i => i > playIndex) ?? visible[visible.length - 1]
+    onPlayIndexChange(next)
+  }, [visible, playIndex, onPlayIndexChange])
 
   const playClip: ClipRow | null = items[playIndex]?.clip || null
   const playClipKey = playClip ? rowKey(playClip) : null
@@ -100,8 +165,36 @@ export default function ClipQueueViewer({
     }
   }, [playClip, cache, setCached])
 
-  const prev = () => onPlayIndexChange(Math.max(0, playIndex - 1))
-  const next = () => onPlayIndexChange(Math.min(items.length - 1, playIndex + 1))
+  const pos = visible.indexOf(playIndex)
+  const prev = () => {
+    const target = [...visible].reverse().find(i => i < playIndex)
+    if (target != null) onPlayIndexChange(target)
+  }
+  const next = () => {
+    const target = visible.find(i => i > playIndex)
+    if (target != null) onPlayIndexChange(target)
+  }
+
+  const toggleIn = <T,>(list: T[], v: T): T[] =>
+    list.includes(v) ? list.filter(x => x !== v) : [...list, v]
+
+  // Facet options come from what's actually in the queue.
+  const facetOptions = useMemo(() => {
+    const pitches = new Set<string>()
+    const counts = new Set<string>()
+    const innings = new Set<number>()
+    for (const it of items) {
+      const c = it.clip
+      if (c.pitch_name || c.pitch_type) pitches.add(c.pitch_name || c.pitch_type || '')
+      if (c.balls != null && c.strikes != null) counts.add(`${c.balls}-${c.strikes}`)
+      if (c.inning != null) innings.add(c.inning)
+    }
+    return {
+      pitches: [...pitches].sort(),
+      counts: [...counts].sort((a, b) => a.localeCompare(b)),
+      innings: [...innings].sort((a, b) => a - b),
+    }
+  }, [items])
 
   return (
     <>
@@ -137,11 +230,77 @@ export default function ClipQueueViewer({
         )}
 
         <div>
-          <label className={labelCls}>Queue ({items.length})</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-zinc-500 uppercase tracking-wider">
+              Queue ({activeFilterCount ? `${visible.length} of ${items.length}` : items.length})
+            </label>
+            <button
+              onClick={() => setFiltersOpen(o => !o)}
+              className={`text-[10px] uppercase tracking-wider font-semibold transition ${
+                filtersOpen || activeFilterCount ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-300'
+              }`}
+            >
+              Filters{activeFilterCount ? ` (${activeFilterCount})` : ''} {filtersOpen ? '▴' : '▾'}
+            </button>
+          </div>
+
+          {filtersOpen && (
+            <div className="mb-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-2.5 space-y-2">
+              <FilterChipGroup
+                label="Pitch"
+                options={facetOptions.pitches.map(v => ({ value: v, label: v }))}
+                selected={filters.pitchTypes}
+                onToggle={v => setFilters(f => ({ ...f, pitchTypes: toggleIn(f.pitchTypes, v) }))}
+              />
+              <FilterChipGroup
+                label="Outcome"
+                options={Object.entries(OUTCOME_TESTS).map(([value, o]) => ({ value, label: o.label }))}
+                selected={filters.outcomes}
+                onToggle={v => setFilters(f => ({ ...f, outcomes: toggleIn(f.outcomes, v) }))}
+              />
+              <FilterChipGroup
+                label="Count"
+                options={facetOptions.counts.map(v => ({ value: v, label: v }))}
+                selected={filters.counts}
+                onToggle={v => setFilters(f => ({ ...f, counts: toggleIn(f.counts, v) }))}
+              />
+              <FilterChipGroup
+                label="Batter Side"
+                options={[{ value: 'L', label: 'LHH' }, { value: 'R', label: 'RHH' }]}
+                selected={filters.stand ? [filters.stand] : []}
+                onToggle={v => setFilters(f => ({ ...f, stand: f.stand === v ? '' : (v as 'L' | 'R') }))}
+              />
+              <FilterChipGroup
+                label="Outs"
+                options={[0, 1, 2].map(v => ({ value: String(v), label: String(v) }))}
+                selected={filters.outs.map(String)}
+                onToggle={v => setFilters(f => ({ ...f, outs: toggleIn(f.outs, Number(v)) }))}
+              />
+              <FilterChipGroup
+                label="Inning"
+                options={facetOptions.innings.map(v => ({ value: String(v), label: String(v) }))}
+                selected={filters.innings.map(String)}
+                onToggle={v => setFilters(f => ({ ...f, innings: toggleIn(f.innings, Number(v)) }))}
+              />
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => setFilters(EMPTY_QUEUE_FILTERS)}
+                  className="w-full text-[11px] text-zinc-500 hover:text-red-400 transition pt-0.5"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
+
           <div className={`space-y-1 ${queueMaxHeightClass} overflow-y-auto`}>
             {loading && <div className="py-4 text-center text-sm text-zinc-600">Loading…</div>}
             {!loading && items.length === 0 && emptyQueueMessage}
-            {items.map((it, idx) => {
+            {!loading && items.length > 0 && visible.length === 0 && (
+              <div className="py-4 text-center text-sm text-zinc-600">No clips match the filters.</div>
+            )}
+            {visible.map(idx => {
+              const it = items[idx]
               const c = it.clip
               const current = idx === playIndex
               return (
@@ -151,8 +310,10 @@ export default function ClipQueueViewer({
                   onClick={() => onPlayIndexChange(idx)}
                 >
                   <div className="flex-1 min-w-0">
+                    {/* The batter, not the pitcher — reviewing an outing, every
+                        row would otherwise repeat the same name. */}
                     <div className="text-xs font-semibold text-zinc-200 whitespace-nowrap overflow-hidden text-ellipsis">
-                      {idx + 1}. {flipName(c.player_name)}
+                      {idx + 1}. {flipName(c.batter_name)}
                     </div>
                     <div className="text-[11px] text-zinc-500 whitespace-nowrap overflow-hidden text-ellipsis">
                       {c.pitch_name || c.pitch_type}{c.release_speed ? ` · ${c.release_speed.toFixed(1)}` : ''} · {outcome(c)}{!c.video_url ? ' · Savant' : ''}
@@ -176,8 +337,8 @@ export default function ClipQueueViewer({
           <ClipPlayer
             key={items[playIndex]?.id}
             src={playSrc}
-            index={playIndex}
-            total={items.length}
+            index={pos >= 0 ? pos : 0}
+            total={visible.length || items.length}
             autoAdvance={autoAdvance}
             heightClass={playerHeightClass}
             onToggleAutoAdvance={() => setAutoAdvance(v => !v)}
@@ -196,8 +357,8 @@ export default function ClipQueueViewer({
               )}
             </div>
             <div className="flex gap-2 justify-center mt-3.5">
-              <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={prev} disabled={playIndex === 0}>‹ Prev</button>
-              <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={next} disabled={playIndex >= items.length - 1}>Next ›</button>
+              <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={prev} disabled={pos <= 0}>‹ Prev</button>
+              <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={next} disabled={pos < 0 || pos >= visible.length - 1}>Next ›</button>
             </div>
           </div>
         ) : (
@@ -205,6 +366,42 @@ export default function ClipQueueViewer({
         )}
       </div>
     </>
+  )
+}
+
+// ── Filter chips ──
+
+function FilterChipGroup({
+  label, options, selected, onToggle,
+}: {
+  label: string
+  options: { value: string; label: string }[]
+  selected: string[]
+  onToggle: (value: string) => void
+}) {
+  if (options.length === 0) return null
+  return (
+    <div>
+      <div className="text-[9px] text-zinc-600 uppercase tracking-wider mb-0.5">{label}</div>
+      <div className="flex flex-wrap gap-1">
+        {options.map(o => {
+          const on = selected.includes(o.value)
+          return (
+            <button
+              key={o.value}
+              onClick={() => onToggle(o.value)}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition ${
+                on
+                  ? 'bg-emerald-600/20 border-emerald-600/60 text-emerald-400'
+                  : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+              }`}
+            >
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

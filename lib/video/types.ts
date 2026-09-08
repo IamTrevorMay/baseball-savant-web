@@ -11,6 +11,8 @@ export interface ClipRow {
   batter_name: string
   pitch_type: string | null
   pitch_name: string | null
+  /** Batter side (L/R). In the API payload all along; typed 2026-09-09 for the queue filters. */
+  stand?: string | null
   release_speed: number | null
   balls: number | null
   strikes: number | null

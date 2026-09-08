@@ -2,6 +2,19 @@
 
 ## Recently Completed
 
+### Clip Reviewer — Queue Filters + Auto-Advance Default (2026-09-09)
+
+`ClipQueueViewer` (shared by the Videos page's playlist/review view and the game log's Watch
+modal) gained a Filters drawer above the queue: Pitch (from the queue's own arsenal), Outcome
+(Whiff / Called Strike / Foul / Ball / In Play / Hit / HR / K / BB), Count, Batter Side (the
+`stand` field was in the /api/pitch-video payload all along, now typed on `ClipRow`), Outs,
+and Inning. Multi-select is OR within a facet, AND across facets. The pitch rows carry no
+baserunner state, so runners-on situations can't be filtered. Filtering is display-level:
+`playIndex` keeps full-list semantics (so playlist reorder/remove bookkeeping stays valid),
+navigation and auto-advance skip hidden clips, the player's position readout counts only
+visible ones, and a clip filtered out mid-play hops to the nearest visible. Auto-advance now
+defaults to on.
+
 ### Research Nav — Media Group; Imagine → Graphics (2026-09-09)
 
 The Research nav gained a **Media** dropdown: Briefs, Videos, Compare, Matchups, Reports,
