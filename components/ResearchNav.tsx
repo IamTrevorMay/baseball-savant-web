@@ -13,26 +13,34 @@ const PRIMARY_LINKS = [
   { href: '/teams', label: 'Teams' },
 ]
 
-const ADVANCED_LINKS = [
+// Content-creation tools (2026-09-09): Reports/Compare/Matchups left Advanced
+// Tools and Briefs/Videos left More for this group. Graphics (formerly
+// Imagine) and Report Cards both came over from the Design app.
+const MEDIA_LINKS = [
+  { href: '/briefs', label: 'Briefs' },
+  { href: '/videos', label: 'Videos' },
+  { href: '/compare', label: 'Compare' },
+  { href: '/matchups', label: 'Matchups' },
   { href: '/reports', label: 'Reports' },
+  { href: '/report-cards', label: 'Report Cards' },
+  { href: '/graphics', label: 'Graphics' },
+]
+
+// Advanced Tools folded in here 2026-09-09 — Media took its creation pages,
+// and two dropdowns for what was left wasn't worth the click.
+const MORE_LINKS = [
   { href: '/abs', label: 'ABS' },
   { href: '/umpire', label: 'Umpires' },
-  { href: '/matchups', label: 'Matchups' },
   { href: '/sequencing', label: 'Sequencing' },
   { href: '/park-adjusted', label: 'Park Adj' },
   { href: '/data-export', label: 'Data Export' },
-]
-
-const MORE_LINKS = [
-  { href: '/videos', label: 'Videos' },
   { href: '/bat-tracking', label: 'Bat Tracking' },
   { href: '/leaders', label: 'Historical' },
-  { href: '/briefs', label: 'Briefs' },
   { href: '/wbc', label: 'WBC' },
   { href: '/glossary', label: 'Glossary' },
 ]
 
-const ALL_LINKS = [...PRIMARY_LINKS, ...ADVANCED_LINKS, ...MORE_LINKS]
+const ALL_LINKS = [...PRIMARY_LINKS, ...MEDIA_LINKS, ...MORE_LINKS]
 
 interface Props {
   active?: string
@@ -42,23 +50,23 @@ interface Props {
 
 export default function ResearchNav({ active, children, rightContent }: Props) {
   const [open, setOpen] = useState(false)
-  const [advOpen, setAdvOpen] = useState(false)
+  const [mediaOpen, setMediaOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const advRef = useRef<HTMLDivElement>(null)
+  const mediaRef = useRef<HTMLDivElement>(null)
   const moreRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
-      if (advRef.current && !advRef.current.contains(e.target as Node)) setAdvOpen(false)
+      if (mediaRef.current && !mediaRef.current.contains(e.target as Node)) setMediaOpen(false)
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const advActive = ADVANCED_LINKS.some(l => l.href === active)
+  const mediaActive = MEDIA_LINKS.some(l => l.href === active)
   const moreActive = MORE_LINKS.some(l => l.href === active)
 
   return (
@@ -84,20 +92,20 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
               {link.label}
             </a>
           ))}
-          {/* Advanced Tools dropdown */}
-          <div className="relative" ref={advRef}>
+          {/* Media dropdown */}
+          <div className="relative" ref={mediaRef}>
             <button
-              onClick={() => { setAdvOpen(!advOpen); setMoreOpen(false) }}
-              className={`flex items-center gap-0.5 ${advActive ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}`}
+              onClick={() => { setMediaOpen(!mediaOpen); setMoreOpen(false) }}
+              className={`flex items-center gap-0.5 ${mediaActive ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}`}
             >
-              Advanced Tools
+              Media
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {advOpen && (
+            {mediaOpen && (
               <div className="absolute top-full right-0 mt-2 w-36 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl z-50 py-1">
-                {ADVANCED_LINKS.map(link => (
+                {MEDIA_LINKS.map(link => (
                   <a key={link.href} href={link.href}
                     className={`block px-3 py-1.5 text-xs transition ${
                       active === link.href ? 'text-emerald-400 bg-zinc-700/30' : 'text-zinc-400 hover:text-white hover:bg-zinc-700/30'
@@ -111,7 +119,7 @@ export default function ResearchNav({ active, children, rightContent }: Props) {
           {/* More dropdown */}
           <div className="relative" ref={moreRef}>
             <button
-              onClick={() => { setMoreOpen(!moreOpen); setAdvOpen(false) }}
+              onClick={() => { setMoreOpen(!moreOpen); setMediaOpen(false) }}
               className={`flex items-center gap-0.5 ${moreActive ? 'text-emerald-400' : 'hover:text-zinc-300 transition'}`}
             >
               More

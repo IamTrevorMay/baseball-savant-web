@@ -14,6 +14,11 @@ function LoginForm() {
   const router = useRouter()
 
   const redirectTo = searchParams.get('redirectTo') || '/'
+  // /api/auth/mayday bounces failed hand-offs back here with these params.
+  const ssoError = searchParams.get('error') === 'mayday_sso'
+    ? `Mayday sign-in failed (${searchParams.get('reason') || 'unknown'}) — try again or use your password.`
+    : ''
+  const maydayUrl = process.env.NEXT_PUBLIC_MAYDAY_SSO_URL
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -32,9 +37,9 @@ function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 space-y-5">
-      {error && (
+      {(error || ssoError) && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
-          {error}
+          {error || ssoError}
         </div>
       )}
 
@@ -74,6 +79,22 @@ function LoginForm() {
       <Link href="/forgot-password" className="block text-center text-sm text-zinc-500 hover:text-emerald-400 transition">
         Forgot password?
       </Link>
+
+      {maydayUrl && (
+        <>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-zinc-800" />
+            <span className="text-[10px] uppercase tracking-wider text-zinc-600">or</span>
+            <div className="flex-1 h-px bg-zinc-800" />
+          </div>
+          <a
+            href={maydayUrl}
+            className="block w-full py-2.5 text-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition"
+          >
+            Continue with Mayday Studio
+          </a>
+        </>
+      )}
     </form>
   )
 }

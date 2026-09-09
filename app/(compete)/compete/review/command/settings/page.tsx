@@ -63,8 +63,8 @@ export default function CQRSettingsPage() {
     <div className="max-w-2xl mx-auto p-6 mt-6 space-y-6">
       {/* Sub-tabs */}
       <div className="flex gap-4 border-b border-zinc-800 pb-2">
-        <Link href="/compete/review" className="text-zinc-500 hover:text-zinc-300 pb-2">Review</Link>
-        <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+        <Link href="/compete/review/command" className="text-zinc-500 hover:text-zinc-300 pb-2">Review</Link>
+        <Link href="/compete/review/command/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
         <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Settings</span>
       </div>
 

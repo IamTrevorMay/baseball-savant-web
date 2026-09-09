@@ -74,7 +74,7 @@ export default function CompeteReportViewer() {
       const res = await fetch(`/api/compete/reports/${id}`, { method: 'DELETE' })
       const data = await res.json()
       if (data.error) { setDeleting(false); return }
-      router.push('/compete/reports')
+      router.push('/compete/performance/scouting-reports')
     } catch { setDeleting(false) }
   }
 
@@ -121,7 +121,7 @@ export default function CompeteReportViewer() {
     return (
       <div className="max-w-3xl mx-auto px-6 py-12 text-center">
         <p className="text-sm text-red-400 mb-4">{error || 'Report not found'}</p>
-        <Link href="/compete/reports" className="text-xs text-amber-400 hover:text-amber-300">Back to Reports</Link>
+        <Link href="/compete/performance/scouting-reports" className="text-xs text-amber-400 hover:text-amber-300">Back to Reports</Link>
       </div>
     )
   }
@@ -140,7 +140,7 @@ export default function CompeteReportViewer() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <Link href="/compete/reports" className="text-xs text-zinc-500 hover:text-zinc-300 transition mb-2 inline-block">
+          <Link href="/compete/performance/scouting-reports" className="text-xs text-zinc-500 hover:text-zinc-300 transition mb-2 inline-block">
             &larr; All Reports
           </Link>
           <h1 className="text-lg font-bold text-white">{report.title}</h1>

@@ -1,21 +1,52 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import { createClient } from '@/lib/supabase/client'
 import TridentLogo from '@/components/TridentLogo'
 
-const TABS = [
+type NavLink = { label: string; href: string }
+type NavGroup = { label: string; key: string; items: NavLink[] }
+type NavEntry = NavLink | NavGroup
+
+const isGroup = (e: NavEntry): e is NavGroup => 'items' in e
+
+const NAV: NavEntry[] = [
   { label: 'Dashboard', href: '/compete' },
-  { label: 'Schedule', href: '/compete/schedule' },
-  { label: 'Monitor', href: '/compete/whoop' },
-  { label: 'Performance', href: '/compete/performance' },
-  { label: 'Video', href: '/compete/video' },
-  { label: 'Reports', href: '/compete/reports' },
-  { label: 'Review', href: '/compete/review' },
   { label: 'Messages', href: '/compete/messages' },
+  { label: 'Schedule', href: '/compete/schedule' },
+  {
+    label: 'Review',
+    key: 'review',
+    items: [
+      { label: 'Command', href: '/compete/review/command' },
+      { label: 'Video', href: '/compete/review/video' },
+      { label: 'My Data', href: '/compete/review/my-data' },
+    ],
+  },
+  {
+    label: 'Performance',
+    key: 'performance',
+    items: [
+      { label: 'Health', href: '/compete/performance/health' },
+      { label: 'Programming', href: '/compete/performance/programming' },
+      { label: 'Scouting Reports', href: '/compete/performance/scouting-reports' },
+    ],
+  },
+  {
+    label: 'Reports',
+    key: 'reports',
+    items: [
+      { label: 'Biomechanics', href: '/compete/reports/biomechanics' },
+      { label: 'Command', href: '/compete/reports/command' },
+      { label: 'Live ABs / Stress Test', href: '/compete/reports/live-abs' },
+      { label: 'Bullpen', href: '/compete/reports/bullpen' },
+    ],
+  },
 ]
+
+const STORAGE_KEY = 'compete-nav-groups'
 
 function isActive(pathname: string, href: string) {
   return href === '/compete' ? pathname === '/compete' : pathname === href || pathname.startsWith(href + '/')
@@ -27,6 +58,40 @@ export default function CompeteSidebar({ athlete }: { athlete: boolean }) {
   const router = useRouter()
   const { user, profile } = useAuth()
   const [open, setOpen] = useState(false)
+
+  // Groups start expanded so the first paint never hides anything; stored
+  // preferences are applied after hydration to avoid a server/client mismatch.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) setCollapsed(JSON.parse(raw))
+    } catch {
+      // Corrupt or unavailable storage just means default-expanded.
+    }
+  }, [])
+
+  // Navigating into a collapsed group (from a link outside the sidebar) opens it,
+  // so the current page is always visible in the nav.
+  useEffect(() => {
+    const group = NAV.find(e => isGroup(e) && e.items.some(i => isActive(pathname, i.href)))
+    if (group && isGroup(group)) {
+      setCollapsed(prev => (prev[group.key] ? { ...prev, [group.key]: false } : prev))
+    }
+  }, [pathname])
+
+  function toggleGroup(key: string) {
+    setCollapsed(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // Preference just won't persist.
+      }
+      return next
+    })
+  }
 
   async function signOut() {
     await createClient().auth.signOut()
@@ -49,30 +114,61 @@ export default function CompeteSidebar({ athlete }: { athlete: boolean }) {
 
   // Shared inner content for both the desktop sidebar and the mobile drawer.
   function Panel({ onNavigate }: { onNavigate?: () => void }) {
+    function itemLink(item: NavLink, indented: boolean) {
+      const active = isActive(pathname, item.href)
+      return (
+        <Link
+          key={item.href}
+          href={item.href}
+          onClick={onNavigate}
+          className={`block py-2 rounded-lg text-sm transition ${indented ? 'pl-7 pr-3' : 'px-3'} ${
+            active
+              ? 'bg-amber-500/10 text-amber-400 font-semibold'
+              : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+          }`}
+        >
+          {item.label}
+        </Link>
+      )
+    }
+
     return (
       <div className="flex flex-col h-full">
-        <div className="h-12 flex items-center px-5 border-b border-zinc-800 shrink-0">
+        <div className="h-12 flex items-center gap-2 px-5 border-b border-zinc-800 shrink-0">
           {brand}
+          <span className="w-px h-3 bg-zinc-700 shrink-0" />
+          <span className="font-[family-name:var(--font-bebas)] text-amber-400 tracking-wide text-sm shrink-0">Compete</span>
         </div>
-        <div className="px-5 pt-4 pb-2">
-          <span className="font-[family-name:var(--font-bebas)] text-amber-400 tracking-wide text-sm">Compete</span>
-        </div>
-        <nav className="flex-1 overflow-y-auto px-3 space-y-0.5">
-          {TABS.map(tab => {
-            const active = isActive(pathname, tab.href)
+        <nav className="flex-1 overflow-y-auto px-3 pt-3 pb-4 space-y-0.5">
+          {NAV.map(entry => {
+            if (!isGroup(entry)) return itemLink(entry, false)
+
+            const expanded = !collapsed[entry.key]
+            const hasActiveChild = entry.items.some(i => isActive(pathname, i.href))
             return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                onClick={onNavigate}
-                className={`block px-3 py-2 rounded-lg text-sm transition ${
-                  active
-                    ? 'bg-amber-500/10 text-amber-400 font-semibold'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
-                }`}
-              >
-                {tab.label}
-              </Link>
+              <div key={entry.key}>
+                <button
+                  onClick={() => toggleGroup(entry.key)}
+                  aria-expanded={expanded}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition ${
+                    hasActiveChild ? 'text-zinc-100 font-semibold' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span>{entry.label}</span>
+                  <svg
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    className={`shrink-0 text-zinc-600 transition-transform ${expanded ? 'rotate-90' : ''}`}
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+                {expanded && (
+                  <div className="space-y-0.5">
+                    {entry.items.map(item => itemLink(item, true))}
+                  </div>
+                )}
+              </div>
             )
           })}
         </nav>

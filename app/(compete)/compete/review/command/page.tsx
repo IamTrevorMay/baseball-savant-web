@@ -244,8 +244,8 @@ export default function CQRReviewPage() {
         {/* Sub-tabs */}
         <div className="flex gap-4 border-b border-zinc-800 pb-2">
           <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Review</span>
-          <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
-          <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
+          <Link href="/compete/review/command/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+          <Link href="/compete/review/command/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
         </div>
 
         {/* CQR Score */}
@@ -356,8 +356,8 @@ export default function CQRReviewPage() {
         {/* Sub-tabs */}
         <div className="flex gap-4 border-b border-zinc-800 pb-2">
           <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Review</span>
-          <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
-          <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
+          <Link href="/compete/review/command/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+          <Link href="/compete/review/command/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
         </div>
 
         {/* Progress bar */}
@@ -508,8 +508,8 @@ export default function CQRReviewPage() {
       {/* Sub-tabs */}
       <div className="flex gap-4 border-b border-zinc-800 pb-2">
         <span className="text-white font-medium border-b-2 border-amber-500 pb-2">Review</span>
-        <Link href="/compete/review/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
-        <Link href="/compete/review/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
+        <Link href="/compete/review/command/stats" className="text-zinc-500 hover:text-zinc-300 pb-2">Stats</Link>
+        <Link href="/compete/review/command/settings" className="text-zinc-500 hover:text-zinc-300 pb-2">Settings</Link>
       </div>
 
       <h1 className="text-xl font-bold text-white">Command Quality Review</h1>
@@ -530,7 +530,7 @@ export default function CQRReviewPage() {
         </p>
       )}
       {isCustomConfig && (
-        <p className="text-amber-400 text-xs">Custom scoring active &mdash; <Link href="/compete/review/settings" className="underline hover:text-amber-300">edit settings</Link></p>
+        <p className="text-amber-400 text-xs">Custom scoring active &mdash; <Link href="/compete/review/command/settings" className="underline hover:text-amber-300">edit settings</Link></p>
       )}
 
       {/* Saved reviews */}

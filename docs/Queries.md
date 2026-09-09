@@ -1964,3 +1964,200 @@ Result: `pitches` has `estimated_ba/woba/slg_using_speedangle`; **`milb_pitches`
 woba** — no `slg`. `BASE_COLUMNS` in that route (line 4) asks for the MLB-only column against the
 MiLB table, so the MiLB hitter dashboard and MiLB reports are hard-broken, not slow. Not fixed here:
 dropping the column changes what the dashboard shows, which is a product call.
+
+---
+
+## 2026-08-27
+
+### Pitch video backfill — archive status counts
+```sql
+SELECT status, count(*) AS rows, pg_size_pretty(sum(size_bytes)) AS bytes
+FROM pitch_videos GROUP BY status ORDER BY rows DESC;
+```
+Result: downloaded 1,254,002 (6,226 GB) · missing 247,518 · pending 39,896 · failed 4,205.
+
+### Pitch video backfill — download rate, last 12h
+```sql
+SELECT date_trunc('hour', downloaded_at) AS hr, count(*) AS clips
+FROM pitch_videos WHERE downloaded_at > now() - interval '12 hours'
+GROUP BY 1 ORDER BY 1 DESC;
+```
+Result: steady ~8,600–9,000 clips/hr for 12 straight hours (concurrency 6).
+
+### Pitch video backfill — downloaded clips by season
+```sql
+SELECT substring(file_path from '/PitchVideos/([0-9]{4})/') AS yr, count(*) AS downloaded
+FROM pitch_videos WHERE status='downloaded' GROUP BY 1 ORDER BY 1;
+```
+Result (run_query_long): 2025 = 708,401 · 2026 = 545,524 · every season 2016–2023 in single/double
+digits (77 clips combined) · **2024 absent entirely**. The archive is effectively 2025+2026 only.
+
+### Pitch video backfill — remaining work, by status
+```sql
+SELECT status, count(DISTINCT game_pk) AS games, count(*) AS pitches,
+       min(game_pk) AS min_pk, max(game_pk) AS max_pk
+FROM pitch_videos WHERE status IN ('pending','failed') GROUP BY status;
+```
+Result: pending 39,566 pitches across 138 games · failed 4,205 across 106 games.
+
+### Pitch video backfill — failure reasons
+```sql
+SELECT error, count(*) AS rows, max(attempts) AS max_attempts
+FROM pitch_videos WHERE status='failed' GROUP BY error ORDER BY rows DESC LIMIT 10;
+```
+Result: 4,181 `sporty-videos 502`, 13 `500`, 2 `mp4 fetch 502`, 9 timeouts/fetch-failed. All
+upstream transients; `max_attempts = 0` on every 5xx bucket confirms `BLOCKED_RE` is correctly
+keeping server errors from burning the 6-attempt budget (the bug that cost 134k clips in July).
+
+---
+
+## 2026-08-28
+
+### Pitch video backfill — status check (worker stopped?)
+```sql
+SELECT status, count(*) AS rows, count(DISTINCT game_pk) AS games,
+       max(downloaded_at) AS last_download
+FROM pitch_videos GROUP BY status ORDER BY rows DESC;
+```
+Result: downloaded 1,284,658 (4,875 games) · missing 247,518 · pending 11,248 (38 games) ·
+failed 4,208 (109 games). **`last_download` = 2026-08-27 18:46 UTC** — the worker has been idle
+~27h, not finished: 15,456 rows still queued.
+
+### Pitch video backfill — coverage by season, joined to `pitches`
+```sql
+WITH g AS (
+  SELECT game_pk, min(game_date) AS gd FROM pitches
+  WHERE game_date >= '2025-01-01' GROUP BY game_pk
+)
+SELECT extract(year from g.gd)::int AS season,
+       count(DISTINCT g.game_pk) AS games_in_pitches,
+       count(DISTINCT v.game_pk) AS games_indexed,
+       count(*) FILTER (WHERE v.status='downloaded') AS downloaded,
+       count(*) FILTER (WHERE v.status='missing')    AS missing,
+       count(*) FILTER (WHERE v.status='pending')    AS pending,
+       count(*) FILTER (WHERE v.status='failed')     AS failed
+FROM g LEFT JOIN pitch_videos v ON v.game_pk = g.game_pk
+GROUP BY 1 ORDER BY 1;
+```
+Result: 2025 — 2,811/2,811 games indexed, 708,401 downloaded, 114,699 missing, 310 pending, 13
+failed (86.0% of clips held). 2026 — 2,459/2,459 games indexed, 576,180 downloaded, 132,808
+missing, 10,938 pending, 4,195 failed (79.6%). Game-level indexing is 100% for both seasons; all
+remaining work is download, not play_id resolution.
+
+### Pitch video backfill — do `missing` rows leave orphaned files on the NAS?
+```sql
+SELECT game_pk, count(*) FILTER (WHERE status='missing')    AS missing,
+                 count(*) FILTER (WHERE status='downloaded') AS downloaded
+FROM pitch_videos
+WHERE game_pk IN (SELECT game_pk FROM pitch_videos WHERE status='missing'
+                  GROUP BY game_pk ORDER BY count(*) DESC LIMIT 3)
+GROUP BY game_pk;
+```
+Result: 831495 (434 missing / 0 downloaded), 831785 (456/10), 832063 (415/8). Spot-checking those
+dirs on `/Volumes/May Server` shows exactly 10 and 8 mp4s — `missing` rows leave no file behind,
+so the index is not under-reporting the archive. Separately, `find -name '*.mp4'` counts 606,837
+entries in `/PitchVideos/2026` vs 576,180 `downloaded` rows; the 30,657-entry gap is entirely
+macOS AppleDouble sidecars (`._<uuid>.mp4`, 4,096 bytes each, one per clip in the dirs written
+around 2026-07-07) — not truncated downloads. Zero `.part`/`.tmp` files anywhere. Excluding
+sidecars, real clips on disk = 576,180 = the `downloaded` count exactly. Any future disk-based
+audit must filter `._*` or it will overcount.
+
+### Pitch video backfill — post-drain verification
+```sql
+SELECT status, count(*) AS rows, count(DISTINCT game_pk) AS games,
+       max(downloaded_at) AS last_download
+FROM pitch_videos GROUP BY status ORDER BY rows DESC;
+```
+Result: downloaded 1,300,114 (4,913 games) · missing 247,518 · **`pending` and `failed` buckets
+gone entirely**. Exactly +15,456 vs the pre-run count, matching the worker's
+`downloaded=15456 missing=0 failed=0 size=79.6GB`. All 4,208 previously-failed rows were upstream
+502 transients and every one resolved on retry — none converted to `missing`. The 247,518 `missing`
+rows are unchanged and remain unexamined.
+
+## 2026-09-04
+
+### Mechanics Lab — do the demo C3D athlete profiles still exist?
+```sql
+SELECT id, throws, height_in, position, current_team
+FROM athlete_profiles
+WHERE id IN ('da83a6a6-07b7-4a57-9e8f-8097881e9e78',
+             'd52e66fe-8bf5-4ed4-ad32-1eb94e3d105a');
+```
+Result: both present and unchanged from what `scripts/generate-mechanics-c3d.ts` hardcodes —
+Trevor May (R, 77 in, RHP) and EJ (R, 74 in, RHP). The upload route derives hand + height from
+these rows, so the generated captures will process with the geometry they were calibrated against.
+
+### Mechanics Lab — what biomech captures already exist?
+```sql
+SELECT athlete_profile_id, capture_date, status, throw_count,
+       raw_file_path IS NOT NULL AS has_raw
+FROM biomech_captures ORDER BY capture_date;
+```
+Result: 7 rows, all `status='ready'`, 8 throws each. Six are the `seed-mechanics-demo.ts` rows
+(2026-04-26 / 06-07 / 07-19 × 2 athletes) with `raw_file_path` NULL — metrics written directly,
+no C3D, so the SkeletonViewer can't replay them. One real ingest exists: Trevor May 2026-08-05
+with `has_raw=true`, i.e. exactly one file has ever gone through `parseC3D` in production.
+
+---
+
+## 2026-09-08
+
+### Lahman import vintage — latest year in each table
+```sql
+SELECT MAX(year) AS max_batting,
+       (SELECT MAX(year) FROM lahman_pitching) AS max_pitching,
+       (SELECT MAX(year) FROM lahman_awards) AS max_awards
+FROM lahman_batting;
+```
+Result: all three end at **2021**. The Compare page's Lahman-sourced sections say so in their
+banner note — an active player's "career" line is missing 2022+ until the import is refreshed.
+
+### Compare Pitch view — pitch_name vocabulary in pitcher_season_command
+```sql
+SELECT DISTINCT pitch_name FROM pitcher_season_command ORDER BY 1;
+```
+Result: 13 names — `4-Seam Fastball, Changeup, Curveball, Cutter, Eephus, Forkball, Knuckle Curve,
+Knuckleball, Sinker, Slider, Slurve, Split-Finger, Sweeper` — matching `pitches.pitch_name`, so the
+Pitch view's code→name map covers the command join.
+
+---
+
+## 2026-09-09
+
+### Why Deception/Unique were blank on pitcher profiles — RPC grants
+```sql
+SELECT p.proname, p.prosecdef,
+  (SELECT string_agg(pr.privilege_type || ':' || pr.grantee, ', ')
+   FROM information_schema.routine_privileges pr
+   WHERE pr.routine_name = p.proname) AS grants
+FROM pg_proc p WHERE p.proname IN ('run_query','run_query_long');
+```
+Result: both RPCs grant EXECUTE to **postgres and service_role only** — `authenticated` was
+revoked in the security hardening, so every client-side `supabase.rpc('run_query', …)` call
+fails (silently, since callers ignored `error`). Explore worked because it goes through a
+server route. Fixed by adding `/api/deception`, `/api/db-info`, `/api/pitch-shapes` and
+converting the seven client-side callers.
+
+### Table-side check — RLS on the deception/command tables
+```sql
+SELECT c.relname, c.relrowsecurity,
+  (SELECT count(*) FROM pg_policies pol WHERE pol.tablename = c.relname) AS policies
+FROM pg_class c
+WHERE c.relname IN ('pitcher_season_deception','pitcher_season_command') AND c.relkind = 'r';
+```
+Result: RLS enabled with 1 policy each and broad role grants — the tables were readable; the
+revoked RPC was the only blocker.
+
+### Video ingest health check
+```sql
+SELECT status, COUNT(*)::int AS rows, pg_size_pretty(SUM(size_bytes)) AS bytes
+FROM pitch_videos GROUP BY status ORDER BY rows DESC;
+-- plus: MAX(downloaded_at); per-season file_path counts; last-6-days join to pitches;
+-- per-status breakdown for 2026-09-04 and 2026-09-06
+```
+Result: downloaded **1,337,266** (6,630 GB) · missing 252,687 · **pending 0 · failed 0** (queue
+drained; +83k downloaded and 4.2k failed cleared since 8/27). Coverage still 2025 (708,724) +
+2026 (628,465), 2024 absent. Last download **2026-09-07 11:31 UTC**; Sept 6 complete
+(4,367/4,378). Two problems: **Sept 4 written off — all 4,581 rows status 'missing'** (nothing
+will retry them), and **Sept 7+ games have no pitch_videos rows at all** — the queue step hasn't
+run since.

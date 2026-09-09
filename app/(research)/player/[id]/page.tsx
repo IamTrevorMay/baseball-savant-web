@@ -136,7 +136,7 @@ export default function PlayerDashboard() {
           {tab === 'results' && <ResultsTab data={data} />}
           {tab === 'pitchlog' && <PitchLogTab data={data} mode="pitcher" />}
           {tab === 'splits' && <SplitsTab data={data} />}
-          {tab === 'gamelog' && <GameLogTab data={data} />}
+          {tab === 'gamelog' && <GameLogTab data={data} pitcher={{ id: info.pitcher, name: info.player_name }} />}
           {tab === 'percentile' && <PercentileTab data={data} />}
           {tab === 'pitchlevel' && <PitchLevelTab data={data} />}
           {modelTabs.map(m => tab === `model_${m.column_name}` && <ModelMetricTab key={m.id} data={data} model={m} />)}

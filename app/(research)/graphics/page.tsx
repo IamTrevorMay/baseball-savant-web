@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Imagine — three-pane visualization tool.
+ * Graphics (formerly Design's Imagine) — three-pane visualization tool.
  *   Left:   curated widget list
  *   Center: horizontal filter bar, size/aspect selector, Export, live preview
  *   Right:  per-user persistent history (click to restore)
@@ -81,7 +81,7 @@ async function saveBlobToDisk(blob: Blob, suggestedName: string): Promise<'saved
 
 /* ── Page ──────────────────────────────────────────────────────────────── */
 
-export default function ImaginePage() {
+export default function GraphicsPage() {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string>(IMAGINE_WIDGETS[0]?.id || '')
   const widget = getWidget(selectedWidgetId)
 

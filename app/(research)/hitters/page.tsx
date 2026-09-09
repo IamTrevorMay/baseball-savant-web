@@ -33,9 +33,11 @@ export default function HittersPage() {
   }, [])
 
   async function loadDbInfo() {
-    const { data: stats } = await supabase.rpc('run_query', { query_text: "SELECT COUNT(*)::int as total, MAX(game_date)::text as last_date FROM pitches" })
-    const row = stats?.[0]
-    setDbInfo({ total: row?.total || 0, lastDate: row?.last_date || '' })
+    // Server-side: client run_query was revoked in the security hardening,
+    // and a COUNT(*) over ~9M rows shouldn't run per pageview anyway.
+    const res = await fetch('/api/db-info')
+    const row = res.ok ? await res.json() : null
+    setDbInfo({ total: row?.total || 0, lastDate: row?.lastDate || '' })
   }
 
   async function loadTopHitters() {

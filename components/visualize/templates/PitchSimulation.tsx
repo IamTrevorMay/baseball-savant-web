@@ -253,15 +253,13 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
     setSearchQuery(pitcher.player_name)
     setShowSearchDropdown(false)
 
-    // Fetch available seasons
-    const { data } = await supabase.rpc('run_query', {
-      query_text: `SELECT DISTINCT game_year FROM pitches WHERE pitcher = ${pitcher.pitcher} AND pitch_type NOT IN ('PO', 'IN') ORDER BY game_year DESC`
-    })
-    if (data) {
-      const seasons = data.map((r: any) => r.game_year).filter(Boolean)
-      setAvailableSeasons(seasons)
-      setSelectedSeasons(seasons.length > 0 ? [seasons[0]] : [])
-    }
+    // Fetch available seasons — the filter-options route already aggregates
+    // them, and client run_query was revoked in the security hardening.
+    const res = await fetch(`/api/player-filter-options?id=${pitcher.pitcher}&col=pitcher`)
+    const opts = res.ok ? await res.json() : null
+    const seasons = ((opts?.game_year as number[] | null) || []).filter(Boolean)
+    setAvailableSeasons(seasons)
+    setSelectedSeasons(seasons.length > 0 ? [seasons[0]] : [])
   }
 
   function toggleSeason(season: number) {
@@ -275,9 +273,9 @@ export default function PitchSimulation({ data, playerName, quality, containerRe
     setSimulating(true)
     try {
       const seasonFilter = selectedSeasons.map(s => String(s)).join(',')
-      const sql = `SELECT pitch_name, AVG(release_speed) AS avg_velo, AVG(release_spin_rate) AS avg_spin, AVG(spin_axis) AS avg_axis, AVG(pfx_x) AS avg_hb, AVG(pfx_z) AS avg_ivb, AVG(release_pos_x) AS avg_rel_x, AVG(release_pos_z) AS avg_rel_z, COUNT(*) AS cnt FROM pitches WHERE pitcher = ${selectedPitcher.id} AND game_year IN (${seasonFilter}) AND pitch_name IS NOT NULL AND pitch_type NOT IN ('PO', 'IN') GROUP BY pitch_name HAVING COUNT(*) >= 3 ORDER BY COUNT(*) DESC`
-      const { data, error } = await supabase.rpc('run_query', { query_text: sql })
-      if (error || !data || !data.length) { setSimulating(false); return }
+      const res = await fetch(`/api/pitch-shapes?pitcher=${selectedPitcher.id}&years=${seasonFilter}`)
+      const data: any[] | null = res.ok ? (await res.json()).rows : null
+      if (!data || !data.length) { setSimulating(false); return }
 
       const imported: SimulatedPitch[] = []
       let maxVelo = 0

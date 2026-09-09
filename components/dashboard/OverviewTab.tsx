@@ -7,7 +7,6 @@ import { calcTraditionalByYear, calcAdvancedByYear, calcArsenal } from '@/lib/pi
 import type { LahmanPitchingSeason } from '@/lib/lahman-stats'
 import Tip from '@/components/Tip'
 import { getColumns, formatMetric, getCellColor, calcTotalsFromRegistry } from '@/lib/metricRegistry'
-import { supabase } from '@/lib/supabase'
 import { isFastball, computeXDeceptionScore } from '@/lib/leagueStats'
 
 interface Props { data: any[]; info: any; mlbStats?: any[]; lahmanPitching?: LahmanPitchingSeason[]; sosScores?: Record<number, { sos: number }> }
@@ -89,9 +88,10 @@ export default function OverviewTab({ data, info, mlbStats = [], lahmanPitching 
     if (years.length === 0) return
 
     async function fetchDeception() {
-      const yearList = years.join(',')
-      const sql = `SELECT game_year, pitch_type, pitches, unique_score, deception_score, z_vaa, z_haa, z_vb, z_hb, z_ext FROM pitcher_season_deception WHERE pitcher = ${pitcherId} AND game_year IN (${yearList})`
-      const { data: rows } = await supabase.rpc('run_query', { query_text: sql })
+      // Server-side fetch: client run_query was revoked in the security
+      // hardening, which is why these cells silently went blank.
+      const res = await fetch(`/api/deception?pitcher=${pitcherId}&years=${years.join(',')}`)
+      const rows = res.ok ? (await res.json()).rows : null
       if (!rows?.length) return
 
       // Group rows by year, compute pitch-weighted averages

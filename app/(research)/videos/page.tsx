@@ -27,6 +27,8 @@ import ResearchNav from '@/components/ResearchNav'
 import { label, flipName, outcome, rowKey, clipFilename, resolveClipUrl, matchupLabel } from '@/lib/video/clip'
 import Telestrator from '@/components/videos/Telestrator'
 import PitchOverlay from '@/components/videos/PitchOverlay'
+import ClipQueueViewer from '@/components/videos/ClipQueueViewer'
+import { createPlaylist as createPlaylistRow, type Playlist } from '@/lib/video/playlists'
 
 const PITCH_TYPES: [string, string][] = [
   ['FF', 'Four-Seam'], ['SI', 'Sinker'], ['FC', 'Cutter'],
@@ -84,15 +86,6 @@ const EMPTY_FILTERS: Filters = {
   strikes: '',
   inning: '',
   onlyArchived: true,
-}
-
-interface Playlist {
-  id: string
-  name: string
-  created_by: string
-  created_at: string
-  updated_at: string
-  pitch_playlist_items?: { count: number }[]
 }
 
 interface PlaylistItem {
@@ -201,7 +194,6 @@ function summarizeFilters(f: Partial<Filters>): string {
 
 const inputCls = 'w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-200'
 const labelCls = 'text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block'
-const infoKeyCls = 'text-[10px] text-zinc-500 uppercase tracking-wider self-center'
 const btnCls = 'px-3 py-1.5 rounded text-sm font-medium transition'
 
 export default function VideosPage() {
@@ -255,7 +247,6 @@ export default function VideosPage() {
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([])
   const [playlistLoading, setPlaylistLoading] = useState(false)
   const [playIndex, setPlayIndex] = useState(0)
-  const [autoAdvance, setAutoAdvance] = useState(false)
   const [addPicker, setAddPicker] = useState<{ rows: VideoRow[] } | null>(null)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [addBusy, setAddBusy] = useState(false)
@@ -630,18 +621,9 @@ export default function VideosPage() {
   }, [queueLength])
 
   const createPlaylist = async (name: string): Promise<Playlist | null> => {
-    const trimmed = (name || '').trim()
-    if (!trimmed) return null
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
-    const { data, error } = await supabase
-      .from('pitch_playlists')
-      .insert({ name: trimmed, created_by: user.id })
-      .select()
-      .single()
-    if (error) { console.error('Error creating playlist:', error); return null }
-    await fetchPlaylists()
-    return data as Playlist
+    const pl = await createPlaylistRow(name)
+    if (pl) await fetchPlaylists()
+    return pl
   }
 
   const addRowsToPlaylist = async (playlistId: string, rowsToAdd: VideoRow[]) => {
@@ -855,208 +837,101 @@ export default function VideosPage() {
   // The viewer reads one queue. A review session shadows the saved playlist so
   // the player, the "now playing" panel and the item list need no branching.
   const queueItems = reviewSession ? reviewSession.items : playlistItems
-  const playClip: VideoRow | null = queueItems[playIndex]?.clip || null
-  const playClipKey = playClip ? rowKey(playClip) : null
-  const playSrc = playClip && playClipKey ? (playClip.video_url || savantMp4[playClipKey]) : null
-
-  // Unarchived playlist clips: live-resolve the Savant CDN mp4 when they come
-  // up for playback (same path as the review modal).
-  useEffect(() => {
-    if (view !== 'playlist' || !playClip || playClip.video_url) return undefined
-    const key = rowKey(playClip)
-    if (savantMp4[key] !== undefined) return undefined
-    let cancelled = false
-    ;(async () => {
-      setResolvingKey(key)
-      try {
-        const res = await fetch(
-          `/api/pitch-video?game_pk=${playClip.game_pk}&ab=${playClip.at_bat_number}&pitch=${playClip.pitch_number}&resolve_mp4=true`,
-        )
-        const json = await res.json().catch(() => ({}))
-        if (!cancelled) setSavantMp4(m => ({ ...m, [key]: json?.row?.savant_mp4_url || null }))
-      } catch {
-        if (!cancelled) setSavantMp4(m => ({ ...m, [key]: null }))
-      } finally {
-        if (!cancelled) setResolvingKey(k => (k === key ? null : k))
-      }
-    })()
-    return () => { cancelled = true }
-  }, [view, playClip, savantMp4])
 
   function renderPlaylistView() {
-    return (
-      <>
-        {/* ── Left: playlist column (replaces filters) ── */}
-        <div className="w-[260px] shrink-0 space-y-3">
-          {reviewSession ? (
-            <div className="rounded-lg border border-emerald-600/50 bg-emerald-600/10 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-emerald-500/80 font-semibold">
-                Reviewing game
-              </div>
-              <div className="text-sm font-semibold text-zinc-100 mt-0.5">{reviewSession.label}</div>
-              <div className="text-[11px] text-zinc-500 mt-1">
-                {reviewSession.items.length} clips
-                {reviewSession.skipped > 0 && ` · ${reviewSession.skipped} pitches without video skipped`}
-                {' · not saved'}
-              </div>
-              <div className="flex gap-1.5 mt-2">
-                <button
-                  className={`${btnCls} flex-1 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
-                  onClick={saveReviewAsPlaylist}
-                  disabled={addBusy}
-                >
-                  {addBusy ? 'Saving…' : 'Save as playlist'}
-                </button>
-                <button
-                  className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
-                  onClick={() => { setReviewSession(null); setPlayIndex(0); setView('search') }}
-                >
-                  Exit
-                </button>
-              </div>
-            </div>
-          ) : (
-          <div>
-            <label className={labelCls}>Playlist</label>
-            <select
-              className={inputCls}
-              value={activePlaylistId || ''}
-              onChange={e => { setReviewSession(null); setActivePlaylistId(e.target.value || null) }}
+    // Left-column header: the review banner shadows the playlist picker, so
+    // the queue and player below need no branching.
+    const header = reviewSession ? (
+      <div className="rounded-lg border border-emerald-600/50 bg-emerald-600/10 p-3">
+        <div className="text-[11px] uppercase tracking-wide text-emerald-500/80 font-semibold">
+          Reviewing game
+        </div>
+        <div className="text-sm font-semibold text-zinc-100 mt-0.5">{reviewSession.label}</div>
+        <div className="text-[11px] text-zinc-500 mt-1">
+          {reviewSession.items.length} clips
+          {reviewSession.skipped > 0 && ` · ${reviewSession.skipped} pitches without video skipped`}
+          {' · not saved'}
+        </div>
+        <div className="flex gap-1.5 mt-2">
+          <button
+            className={`${btnCls} flex-1 bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50`}
+            onClick={saveReviewAsPlaylist}
+            disabled={addBusy}
+          >
+            {addBusy ? 'Saving…' : 'Save as playlist'}
+          </button>
+          <button
+            className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
+            onClick={() => { setReviewSession(null); setPlayIndex(0); setView('search') }}
+          >
+            Exit
+          </button>
+        </div>
+      </div>
+    ) : (
+      <div>
+        <label className={labelCls}>Playlist</label>
+        <select
+          className={inputCls}
+          value={activePlaylistId || ''}
+          onChange={e => { setReviewSession(null); setActivePlaylistId(e.target.value || null) }}
+        >
+          <option value="">Select a playlist…</option>
+          {playlists.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.name} ({p.pitch_playlist_items?.[0]?.count ?? 0})
+            </option>
+          ))}
+        </select>
+        {activePlaylist && (
+          <div className="flex gap-1.5 mt-1.5">
+            <button
+              className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
+              onClick={() => renamePlaylist(activePlaylist.id)}
             >
-              <option value="">Select a playlist…</option>
-              {playlists.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.pitch_playlist_items?.[0]?.count ?? 0})
-                </option>
-              ))}
-            </select>
-            {activePlaylist && (
-              <div className="flex gap-1.5 mt-1.5">
-                <button
-                  className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200`}
-                  onClick={() => renamePlaylist(activePlaylist.id)}
-                >
-                  Rename
-                </button>
-                <button
-                  className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-red-400/80 hover:text-red-400`}
-                  onClick={() => deletePlaylist(activePlaylist.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            )}
+              Rename
+            </button>
+            <button
+              className={`${btnCls} flex-1 bg-zinc-900 border border-zinc-700 text-red-400/80 hover:text-red-400`}
+              onClick={() => deletePlaylist(activePlaylist.id)}
+            >
+              Delete
+            </button>
           </div>
-          )}
+        )}
+      </div>
+    )
 
-          {playClip && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-              <label className={labelCls}>Now playing</label>
-              <div className="text-[15px] font-bold">{flipName(playClip.player_name)}</div>
-              <div className="text-xs text-zinc-500 mb-2">to {flipName(playClip.batter_name)}</div>
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-zinc-300">
-                <span className={infoKeyCls}>Pitch</span>
-                <span>{playClip.pitch_name || playClip.pitch_type || '—'}</span>
-                <span className={infoKeyCls}>Velo</span>
-                <span>{playClip.release_speed ? `${playClip.release_speed.toFixed(1)} mph` : '—'}</span>
-                <span className={infoKeyCls}>Count</span>
-                <span>{playClip.balls ?? '–'}-{playClip.strikes ?? '–'}</span>
-                <span className={infoKeyCls}>Result</span>
-                <span>{outcome(playClip)}</span>
-                <span className={infoKeyCls}>Game</span>
-                <span>{playClip.away_team} @ {playClip.home_team}</span>
-                <span className={infoKeyCls}>Date</span>
-                <span>{playClip.game_date}</span>
-                <span className={infoKeyCls}>Inning</span>
-                <span>{playClip.inning_topbot} {playClip.inning}</span>
-              </div>
-              {playClip.savant_url && (
-                <a href={playClip.savant_url} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 mt-2 inline-block">Savant ↗</a>
-              )}
-            </div>
-          )}
-
-          <div>
-            <label className={labelCls}>Queue ({queueItems.length})</label>
-            <div className="space-y-1 max-h-[45vh] overflow-y-auto">
-              {playlistLoading && <div className="py-4 text-center text-sm text-zinc-600">Loading…</div>}
-              {!playlistLoading && !activePlaylistId && !reviewSession && (
-                <div className="py-4 text-center text-sm text-zinc-600">Pick a playlist, or select pitches in Search and hit “Add to playlist”.</div>
-              )}
-              {!playlistLoading && activePlaylistId && playlistItems.length === 0 && (
-                <div className="py-4 text-center text-sm text-zinc-600">Empty — add pitches from the Search view.</div>
-              )}
-              {queueItems.map((it, idx) => {
-                const c = it.clip
-                const current = idx === playIndex
-                return (
-                  <div
-                    key={it.id}
-                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 cursor-pointer ${current ? 'bg-emerald-600/10 border-emerald-600/60' : 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700'}`}
-                    onClick={() => setPlayIndex(idx)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-zinc-200 whitespace-nowrap overflow-hidden text-ellipsis">
-                        {idx + 1}. {flipName(c.player_name)}
-                      </div>
-                      <div className="text-[11px] text-zinc-500 whitespace-nowrap overflow-hidden text-ellipsis">
-                        {c.pitch_name || c.pitch_type}{c.release_speed ? ` · ${c.release_speed.toFixed(1)}` : ''} · {outcome(c)}{!c.video_url ? ' · Savant' : ''}
-                      </div>
-                    </div>
-                    {/* Reordering writes to the DB, so it has no meaning for an
-                        unsaved review queue — save it first to rearrange. */}
-                    {!reviewSession && (
-                      <div className="flex gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
-                        <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, -1)} disabled={idx === 0} title="Move up">↑</button>
-                        <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, 1)} disabled={idx === playlistItems.length - 1} title="Move down">↓</button>
-                        <button className="text-zinc-600 hover:text-red-400 text-xs px-1" onClick={() => removePlaylistItem(it.id)} title="Remove">×</button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Center: player ── */}
-        <div className="flex-1 min-w-0">
-          {playClip && playSrc ? (
-            <PlaylistPlayer
-              key={queueItems[playIndex]?.id}
-              src={playSrc}
-              index={playIndex}
-              total={queueItems.length}
-              autoAdvance={autoAdvance}
-              onToggleAutoAdvance={() => setAutoAdvance(v => !v)}
-              onPrev={() => setPlayIndex(i => Math.max(0, i - 1))}
-              onNext={() => setPlayIndex(i => Math.min(queueItems.length - 1, i + 1))}
-              onEnded={() => { if (autoAdvance) setPlayIndex(i => (i < queueItems.length - 1 ? i + 1 : i)) }}
-            />
-          ) : playClip && playClipKey && savantMp4[playClipKey] === undefined ? (
-            <div className="py-24 text-center text-sm text-zinc-600">Loading clip from Savant…</div>
-          ) : playClip ? (
-            <div className="py-24 text-center text-sm text-zinc-600">
-              <div>
-                No clip available for this pitch.{' '}
-                {playClip.savant_url && (
-                  <a href={playClip.savant_url} target="_blank" rel="noreferrer" className="text-emerald-400">Try Savant ↗</a>
-                )}
-              </div>
-              <div className="flex gap-2 justify-center mt-3.5">
-                <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={() => setPlayIndex(i => Math.max(0, i - 1))} disabled={playIndex === 0}>‹ Prev</button>
-                <button className={`${btnCls} bg-zinc-800 border border-zinc-700 text-zinc-300 disabled:opacity-40`} onClick={() => setPlayIndex(i => Math.min(queueItems.length - 1, i + 1))} disabled={playIndex >= queueItems.length - 1}>Next ›</button>
-              </div>
-            </div>
-          ) : (
-            <div className="py-24 text-center text-sm text-zinc-600">
-              {activePlaylistId ? 'This playlist is empty.' : 'Select a playlist on the left, or use “Review game” in Search.'}
-            </div>
-          )}
-        </div>
-      </>
+    return (
+      <ClipQueueViewer
+        items={queueItems}
+        playIndex={playIndex}
+        onPlayIndexChange={setPlayIndex}
+        header={header}
+        loading={playlistLoading}
+        cache={savantMp4}
+        onCache={(key, url) => setSavantMp4(m => ({ ...m, [key]: url }))}
+        emptyQueueMessage={
+          activePlaylistId
+            ? <div className="py-4 text-center text-sm text-zinc-600">Empty — add pitches from the Search view.</div>
+            : !reviewSession
+              ? <div className="py-4 text-center text-sm text-zinc-600">Pick a playlist, or select pitches in Search and hit “Add to playlist”.</div>
+              : null
+        }
+        emptyPlayerMessage={activePlaylistId ? 'This playlist is empty.' : 'Select a playlist on the left, or use “Review game” in Search.'}
+        /* Reordering writes to the DB, so it has no meaning for an unsaved
+           review queue — save it first to rearrange. */
+        itemControls={reviewSession ? undefined : (it, idx) => (
+          <>
+            <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, -1)} disabled={idx === 0} title="Move up">↑</button>
+            <button className="text-zinc-600 hover:text-zinc-300 text-xs px-1 disabled:opacity-30" onClick={() => movePlaylistItem(idx, 1)} disabled={idx === playlistItems.length - 1} title="Move down">↓</button>
+            <button className="text-zinc-600 hover:text-red-400 text-xs px-1" onClick={() => removePlaylistItem(it.id)} title="Remove">×</button>
+          </>
+        )}
+      />
     )
   }
+
 
   // ── Render ──
   return (
@@ -1643,153 +1518,6 @@ export default function VideosPage() {
         {telestrateRow && (
           <Telestrator row={telestrateRow} onClose={() => setTelestrateRow(null)} />
         )}
-      </div>
-    </div>
-  )
-}
-
-// ── Playlist player ──
-// Custom <video> chrome: scrubber, quarter/half/normal/double speed, and
-// single-frame stepping. Savant broadcast clips are ~30fps, so a "frame"
-// is 1/30s (the <video> element exposes no real frame API).
-const PLAYBACK_RATES = [0.25, 0.5, 1, 2]
-const FRAME_S = 1 / 30
-
-const ctrlBtnCls = 'bg-zinc-800 border border-zinc-700 rounded-md text-zinc-200 px-2 py-1 text-[13px] leading-none hover:bg-zinc-700 disabled:opacity-40'
-
-interface PlaylistPlayerProps {
-  src: string
-  index: number
-  total: number
-  autoAdvance: boolean
-  onToggleAutoAdvance: () => void
-  onPrev: () => void
-  onNext: () => void
-  onEnded: () => void
-}
-
-function PlaylistPlayer({ src, index, total, autoAdvance, onToggleAutoAdvance, onPrev, onNext, onEnded }: PlaylistPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [rate, setRate] = useState(1)
-  const [time, setTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [muted, setMuted] = useState(false)
-
-  const setPlaybackRate = useCallback((r: number) => {
-    setRate(r)
-    if (videoRef.current) videoRef.current.playbackRate = r
-  }, [])
-
-  const togglePlay = useCallback(() => {
-    const v = videoRef.current
-    if (!v) return
-    if (v.paused) v.play().catch(() => {})
-    else v.pause()
-  }, [])
-
-  const stepFrame = useCallback((dir: number) => {
-    const v = videoRef.current
-    if (!v) return
-    v.pause()
-    const max = isFinite(v.duration) ? v.duration : Number.MAX_SAFE_INTEGER
-    v.currentTime = Math.min(Math.max(0, v.currentTime + dir * FRAME_S), max)
-  }, [])
-
-  // Keyboard: ←→ frame step · ↑↓ prev/next clip · space play/pause ·
-  // , ¼× · . ½× · / 1×
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      const tag = (target.tagName || '').toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable) return
-      if (e.key === 'ArrowRight') { e.preventDefault(); stepFrame(1) }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); stepFrame(-1) }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); onPrev() }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); onNext() }
-      else if (e.key === ' ') { e.preventDefault(); togglePlay() }
-      else if (e.key === ',') setPlaybackRate(0.25)
-      else if (e.key === '.') setPlaybackRate(0.5)
-      else if (e.key === '/') setPlaybackRate(1)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [stepFrame, togglePlay, onPrev, onNext, setPlaybackRate])
-
-  const fmt = (s: number) => {
-    if (!isFinite(s)) return '0:00.00'
-    const m = Math.floor(s / 60)
-    return `${m}:${(s - m * 60).toFixed(2).padStart(5, '0')}`
-  }
-
-  return (
-    <div ref={wrapRef} className="flex flex-col h-[calc(100vh-160px)] bg-black rounded-xl overflow-hidden border border-zinc-800">
-      <video
-        ref={videoRef}
-        src={src}
-        autoPlay
-        muted={muted}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onTimeUpdate={e => setTime((e.target as HTMLVideoElement).currentTime)}
-        onLoadedMetadata={e => {
-          const v = e.target as HTMLVideoElement
-          setDuration(v.duration || 0)
-          v.playbackRate = rate
-        }}
-        onEnded={onEnded}
-        onClick={togglePlay}
-        className="flex-1 min-h-0 w-full object-contain bg-black cursor-pointer"
-      />
-      <div className="bg-zinc-950 border-t border-zinc-800 px-3.5 pt-2 pb-2.5 space-y-1.5">
-        <input
-          type="range"
-          min={0}
-          max={duration || 0}
-          step={FRAME_S}
-          value={Math.min(time, duration || 0)}
-          onChange={e => {
-            const v = videoRef.current
-            if (v) v.currentTime = Number(e.target.value)
-            setTime(Number(e.target.value))
-          }}
-          className="w-full accent-emerald-500 cursor-pointer"
-        />
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button className={ctrlBtnCls} onClick={onPrev} disabled={index === 0} title="Previous clip (↑)">⏮</button>
-          <button className={ctrlBtnCls} onClick={() => stepFrame(-1)} title="Frame back (←)">‹｜</button>
-          <button
-            className="bg-emerald-600/20 border border-emerald-600 rounded-md text-emerald-400 px-3.5 py-1 text-[13px] leading-none hover:bg-emerald-600/30"
-            onClick={togglePlay}
-            title="Play / pause (space)"
-          >
-            {playing ? '❚❚' : '▶'}
-          </button>
-          <button className={ctrlBtnCls} onClick={() => stepFrame(1)} title="Frame forward (→)">｜›</button>
-          <button className={ctrlBtnCls} onClick={onNext} disabled={index >= total - 1} title="Next clip (↓)">⏭</button>
-          <span className="text-xs text-zinc-400 tabular-nums ml-1.5">{fmt(time)} / {fmt(duration)}</span>
-          <div className="flex-1" />
-          {PLAYBACK_RATES.map(r => (
-            <button
-              key={r}
-              className={`rounded-full border px-2.5 py-1 text-xs font-semibold leading-none ${rate === r ? 'bg-emerald-600/20 border-emerald-600 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:text-zinc-300'}`}
-              onClick={() => setPlaybackRate(r)}
-              title={r === 0.25 ? 'Quarter speed (,)' : r === 0.5 ? 'Half speed (.)' : r === 1 ? 'Normal speed (/)' : 'Double speed'}
-            >
-              {r === 0.25 ? '¼×' : r === 0.5 ? '½×' : `${r}×`}
-            </button>
-          ))}
-          <button className={ctrlBtnCls} onClick={() => setMuted(m => !m)} title={muted ? 'Unmute' : 'Mute'}>
-            {muted ? '🔇' : '🔊'}
-          </button>
-          <button className={ctrlBtnCls} onClick={() => wrapRef.current?.requestFullscreen?.()} title="Fullscreen">⛶</button>
-          <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer ml-2 select-none" title="Play the next clip automatically when this one ends">
-            <input type="checkbox" checked={autoAdvance} onChange={onToggleAutoAdvance} />
-            Auto-advance
-          </label>
-          <span className="text-xs text-zinc-500 ml-1">{index + 1} / {total}</span>
-        </div>
       </div>
     </div>
   )
