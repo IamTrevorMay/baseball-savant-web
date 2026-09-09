@@ -2161,3 +2161,20 @@ drained; +83k downloaded and 4.2k failed cleared since 8/27). Coverage still 202
 (4,367/4,378). Two problems: **Sept 4 written off — all 4,581 rows status 'missing'** (nothing
 will retry them), and **Sept 7+ games have no pitch_videos rows at all** — the queue step hasn't
 run since.
+
+### Trends Visualizer API smoke tests (new `/api/trends-viz`)
+```sql
+-- via POST /api/trends-viz (run_query_long); generated SQL, Wheeler (554430):
+-- 1) mode=pitch, xUnit=month, seasons=[2026], metric=usage_pct
+SELECT to_char(game_date, 'YYYY-MM') AS x, pitch_name, COUNT(*) AS n,
+  ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY to_char(game_date, 'YYYY-MM')), 0), 1) AS usage_pct
+FROM pitches
+WHERE pitcher = 554430 AND game_type = 'R' AND game_year IN (2026)
+  AND pitch_name IS NOT NULL AND pitch_type NOT IN ('PO','IN')
+GROUP BY 1, 2 ORDER BY 1, 2;
+-- 2) mode=metric, xUnit=appearance, custom 2026-06-01..2026-07-15,
+--    metrics avg_velo + whiff_pct + avg_stuff_plus (grouped by game_date, game_pk)
+```
+Result: (1) six pitch-type lines per month, usage sums to ~100% per bucket (e.g. 2026-06: FF
+35.7 / SW 16.8 / SI 14.2 / FS 14.2 / FC 11.6 / CU 7.4). (2) 8 appearances with velo/whiff/Stuff+
+per start. Injection probe (`playerId: "554430; DROP TABLE x"`) correctly rejected with 400.

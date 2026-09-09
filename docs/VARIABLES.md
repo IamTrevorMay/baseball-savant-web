@@ -297,6 +297,24 @@ These are the URL parameters the route reads off `req.nextUrl.searchParams`. Mos
 - pitcher: `300` pitches
 - batter: `150` pitches (note: this is **pitches seen**, not PA)
 
+### 6.4 `/api/trends-viz` (POST body — Trends Visualizer)
+
+Time-bucketed metric series for the Media → Trends Visualizer page. Types and the metric catalog live in `lib/trendsViz.ts`; metric SQL resolves through `METRICS` (§1) except the two route-local expressions noted below. Regular-season pitches only (`game_type = 'R'`).
+
+| Param | Type / Values | Notes |
+|---|---|---|
+| `playerId` | int (MLBAM pitcher id) | required |
+| `scope` | `career` \| `seasons` \| `custom` | career = no date filter |
+| `seasons` | int[] (2015+) | scope=seasons |
+| `startDate`, `endDate` | `YYYY-MM-DD` | scope=custom |
+| `xUnit` | `month` \| `appearance` | bucket = `to_char(game_date,'YYYY-MM')` or (`game_date`, `game_pk`) |
+| `mode` | `pitch` \| `metric` | pitch mode groups by `pitch_name` and excludes `pitch_type IN ('PO','IN')` |
+| `metrics` | metric keys from `TREND_METRICS` | pitch mode: exactly 1; metric mode: up to 6 |
+
+Route-local metric expressions (not in §1 `METRICS`):
+- `usage_pct` — share of the **time bucket** (`PARTITION BY` bucket expr), not `PARTITION BY player_name` like the §1 version; pitch mode only
+- `avg_stuff_plus` — `ROUND(AVG(stuff_plus)::numeric, 0)`
+
 ---
 
 ## 7. League-Average Benchmarks — `league_averages`

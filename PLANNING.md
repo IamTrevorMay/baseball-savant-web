@@ -2,6 +2,18 @@
 
 ## Recently Completed
 
+### Trends Visualizer — Media group (2026-09-09)
+
+New Research → Media page at `/trends-visualizer`: line charts of how a pitcher's usage,
+stuff, and results move over time. Pick a pitcher, a window (Career / seasons / custom date
+range), and an X unit (months or appearances). Two series modes: "By Pitch Type" (one metric,
+a color-coded line per pitch — the pitch-usage story) and "By Metric" (up to 6 player-level
+metrics, secondary Y axis when units differ). Optional trailing rolling average (3/5/10)
+drawn over the faded raw line. Server-side SQL over `pitches` via `/api/trends-viz`
+(`run_query_long`), regular season only; catalog + types in `lib/trendsViz.ts`, params
+documented in `docs/VARIABLES.md` §6.4. Pitcher-first by design — hitter support is the
+planned follow-up.
+
 ### Mayday Studio SSO — Triton Half (2026-09-09)
 
 "Continue with Mayday Studio" on the Triton login page: Mayday verifies its own session, signs
