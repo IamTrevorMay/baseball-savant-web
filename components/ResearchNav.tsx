@@ -24,6 +24,7 @@ const MEDIA_LINKS = [
   { href: '/reports', label: 'Reports' },
   { href: '/report-cards', label: 'Report Cards' },
   { href: '/graphics', label: 'Graphics' },
+  { href: '/trends-visualizer', label: 'Trends Visualizer' },
 ]
 
 // Advanced Tools folded in here 2026-09-09 — Media took its creation pages,
