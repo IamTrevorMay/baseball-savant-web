@@ -2,6 +2,14 @@
 
 ## Recently Completed
 
+### Athlete-Facing Biomechanics Page (2026-09-11)
+
+Compete → Reports → Biomechanics is no longer a stub: it lists the athlete's own biomech
+reports (athlete-scoped /api/compete/reports, subject_type='biomech'), with a movement-grade
+headline, session picker across capture history, PDF download, and the SAME renderers the
+staff preview uses (BiomechReport + BiomechTrend) — athlete and staff always see identical
+numbers. Empty state explains reports appear automatically after a Neptune capture.
+
 ### Whoop Nightly Cron (2026-09-11)
 
 `/api/cron/whoop` (17:00 UTC, in vercel.json + trackCronRun dead-man tracking): pulls a
