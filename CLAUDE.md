@@ -129,7 +129,9 @@ so `/player/123` is served by `app/(research)/player/[id]/page.tsx`.
 - `app/(work)/work/goals/page.tsx` — Personal + team goal tracking
 - `app/(work)/work/resources/page.tsx` — Shared resources (placeholder)
 - `app/(work)/work/jobs/page.tsx` — Job assignments (placeholder)
-- `app/(work)/work/assessments/page.tsx` — Assessments (placeholder)
+- `app/(work)/work/assessments/page.tsx` — Movement Screening assessments (athlete picker, form, history)
+- `app/api/work/assessments/route.ts` — screen list/create/delete (work-gated, service-role reads)
+- `lib/work/movementScreen.ts` — Movement Screening field registry (exact copy of NBP's S&C template; keeps per-field NBP element IDs for the deferred NBP import, planned post account-linking)
 - `components/work/WorkNav.tsx` — Left sidebar navigation (192px)
 - `components/work/WorkBoard.tsx` — Kanban board with drag-and-drop (Ready/In Progress/Holding/Done + Inbox/Backlog)
 - `components/work/SprintPanel.tsx` — Sprint summary + velocity chart + sprint goals
@@ -180,6 +182,7 @@ Row counts measured 2026-08-12 via `pg_class.reltuples`; they drift, so re-measu
 - `work_conversations` — DM conversations (1-to-1 or group, with name)
 - `work_conversation_participants` — conversation membership
 - `work_direct_messages` — direct messages within conversations
+- `work_movement_screens` — Movement Screening assessments per Compete athlete (`athlete_profiles`); JSONB responses keyed by `lib/work/movementScreen.ts`; `source='nbp'` rows imported from NBP (unique `nbp_submission_id`)
 
 ### Key RPCs
 - `run_query` — generic SQL execution for analytics

@@ -2,6 +2,19 @@
 
 ## Recently Completed
 
+### Movement Screening Assessments in the Work App (2026-09-11)
+
+/work/assessments is no longer a stub: staff pick a Compete athlete (athlete_profiles),
+fill out the Movement Screening form, and save it to the new `work_movement_screens`
+table (JSONB responses keyed by lib/work/movementScreen.ts — an exact copy of NBP's
+Strength & Conditioning template, which is the facility's movement screen). Per-athlete
+history renders below the form. An "Import from NBP" feature was built and then
+deliberately removed — it is deferred until NBP↔Triton account linking lands. The
+groundwork remains: `work_movement_screens.source`/`nbp_submission_id` (unique, for
+idempotent imports) and the per-field `nbpElementId` mapping in lib/work/movementScreen.ts
+(NBP S&C template 9c9b0eb3-5307-4dee-96cb-0428716af0fa in project cjilkqzifyhssbsiqgfu;
+its RLS requires the NBP service-role key server-side).
+
 ### Athlete-Facing Biomechanics Page (2026-09-11)
 
 Compete → Reports → Biomechanics is no longer a stub: it lists the athlete's own biomech
