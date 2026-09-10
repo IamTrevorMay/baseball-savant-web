@@ -88,6 +88,10 @@ The shared event/description sets are exported from `lib/reportMetrics.ts`
   Savant's seasonal weights differ by ~.003; documented approximation.
 - **Barrel%, Hard-Hit%, GB/FB/LD/PU%** ÷ batted-ball events (`bb_type IS NOT NULL`).
 - **Avg/Max EV, Avg LA, Avg Dist** are BBE-gated (fouls can carry tracked EV).
+  Known residual: Savant excludes bunts from Avg EV, but `pitches` carries no
+  bunt flag on in-play rows, so pitcher EV-against reads ~0.5–1.0 mph below
+  Savant (hitters are unaffected in practice — verified Judge exact at 94.1,
+  Skenes 87.1 vs Savant 88.1).
 - **No Savant equivalent — deliberately unchanged:** SwStr%, CSW%, CSt%, FPS%
   (conventional definitions; SwStr/CSW still exclude foul tips) and
   Contact%/Z-Swing%/O-Contact% (FanGraphs-style: foul tip = contact). Because
