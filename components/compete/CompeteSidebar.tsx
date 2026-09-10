@@ -15,6 +15,8 @@ const isGroup = (e: NavEntry): e is NavGroup => 'items' in e
 
 const NAV: NavEntry[] = [
   { label: 'Dashboard', href: '/compete' },
+  { label: 'Progress', href: '/compete/progress' },
+  { label: 'Trends', href: '/compete/trends' },
   { label: 'Messages', href: '/compete/messages' },
   { label: 'Schedule', href: '/compete/schedule' },
   {

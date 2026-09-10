@@ -2,6 +2,21 @@
 
 ## Recently Completed
 
+### Compete Progress (stub) + Trends Correlation Tool (2026-09-11)
+
+Two new athlete pages. Progress is a ComingSoon stub. Trends
+(`/compete/trends` + `/api/compete/trends`) overlays an athlete's history on
+one timeline with daily/weekly/monthly/yearly buckets and 90d/1y/all ranges:
+all Whoop metrics (recovery, sleep, workouts), biomech capture points
+(movement grade, mocap velo, every report metric via `bio.m.<key>`),
+TrackMan session metrics (wired to compete_pitches.athlete_profile_id —
+populates once upload stamping lands), Vision (plumbed, disabled with a
+pending note until pitches carry athlete identity), and MLB Statcast series
+for pro-linked athletes (player_id → pitches via run_query_long). Dual-unit
+Y axes like the Research Trends Visualizer, plus a Pearson-r matrix over
+bucket-aligned pairs (with n, and a "lead not a conclusion" caveat).
+Athletes see only themselves; owner/admin get a roster picker (both enforced
+server-side). Catalog in `lib/compete/trendsCatalog.ts`.
 ### Movement Screening Assessments in the Work App (2026-09-11)
 
 /work/assessments is no longer a stub: staff pick a Compete athlete (athlete_profiles),
