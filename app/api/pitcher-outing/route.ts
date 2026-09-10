@@ -171,7 +171,8 @@ export async function GET(req: NextRequest) {
     const stuffPlusByType: Record<string, number | null> = {}
     for (const [name, pts] of Object.entries(pitchByType)) {
       whiffsByType[name] = pts.filter((p: any) =>
-        typeof p.description === 'string' && p.description.includes('swinging_strike')
+        typeof p.description === 'string' &&
+        (p.description.includes('swinging_strike') || ['missed_bunt', 'swinging_pitchout', 'foul_tip', 'bunt_foul_tip'].includes(p.description))
       ).length
 
       const stuffArr = pts.map((p: any) => {

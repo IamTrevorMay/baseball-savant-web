@@ -74,14 +74,16 @@ function buildSql(args: {
   return `
 SELECT
   COUNT(*)::int AS n,
-  COUNT(*) FILTER (WHERE events IS NOT NULL)::int AS pa,
-  COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','strikeout','strikeout_double_play','field_out','force_out','grounded_into_double_play','fielders_choice','fielders_choice_out','double_play','triple_play','sac_fly_double_play'))::int AS ab,
+  COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home'))::int AS pa,
+  COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out'))::int AS ab,
   COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::int AS hits,
   COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))::int AS bb,
   COUNT(*) FILTER (WHERE events = 'hit_by_pitch')::int AS hbp,
   COUNT(*) FILTER (WHERE events IN ('strikeout','strikeout_double_play'))::int AS so,
   COALESCE(SUM(CASE events WHEN 'single' THEN 1 WHEN 'double' THEN 2 WHEN 'triple' THEN 3 WHEN 'home_run' THEN 4 ELSE 0 END), 0)::int AS tb,
-  COALESCE(SUM(woba_value) FILTER (WHERE events IS NOT NULL), 0)::float AS sum_woba,
+  COALESCE(SUM(CASE events WHEN 'walk' THEN 0.7 WHEN 'hit_by_pitch' THEN 0.7 WHEN 'single' THEN 0.9 WHEN 'double' THEN 1.25 WHEN 'triple' THEN 1.6 WHEN 'home_run' THEN 2.0 ELSE 0 END), 0)::float AS woba_num,
+  COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play'))::int AS woba_den,
+  COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play'))::int AS obp_den,
   AVG(estimated_ba_using_speedangle)   FILTER (WHERE bb_type IS NOT NULL)::float AS xba,
   AVG(estimated_slg_using_speedangle)  FILTER (WHERE bb_type IS NOT NULL)::float AS xslg,
   AVG(estimated_woba_using_speedangle) FILTER (WHERE bb_type IS NOT NULL)::float AS xwoba,
@@ -91,7 +93,7 @@ SELECT
   COUNT(*) FILTER (WHERE launch_speed_angle = 6)::int AS barrels,
   COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)::int AS hard_hits,
   COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout'))::int AS swings,
-  COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout'))::int AS whiffs,
+  COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip'))::int AS whiffs,
   COUNT(*) FILTER (WHERE zone >= 11)::int AS ooz,
   COUNT(*) FILTER (WHERE zone >= 11 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout'))::int AS chases
 FROM pitches
@@ -113,7 +115,9 @@ function deriveStats(row: any) {
   const hbp   = Number(row.hbp   ?? 0)
   const so    = Number(row.so    ?? 0)
   const tb    = Number(row.tb    ?? 0)
-  const sumW  = Number(row.sum_woba ?? 0)
+  const wobaNum = Number(row.woba_num ?? 0)
+  const wobaDen = Number(row.woba_den ?? 0)
+  const obpDen  = Number(row.obp_den ?? 0)
   const bbe   = Number(row.bbe ?? 0)
   const bar   = Number(row.barrels ?? 0)
   const hh    = Number(row.hard_hits ?? 0)
@@ -126,7 +130,7 @@ function deriveStats(row: any) {
     den > 0 ? num / den : null
 
   const ba  = safeDiv(hits, ab)
-  const obp = safeDiv(hits + bb + hbp, pa)
+  const obp = safeDiv(hits + bb + hbp, obpDen)
   const slg = safeDiv(tb, ab)
   const ops = ba != null && obp != null && slg != null ? obp + slg : null
 
@@ -139,7 +143,7 @@ function deriveStats(row: any) {
       ops,
       k_pct:       safeDiv(so, pa),
       bb_pct:      safeDiv(bb, pa),
-      woba:        safeDiv(sumW, pa),
+      woba:        safeDiv(wobaNum, wobaDen),
       xba:         row.xba   != null ? Number(row.xba)   : null,
       xslg:        row.xslg  != null ? Number(row.xslg)  : null,
       xwoba:       row.xwoba != null ? Number(row.xwoba) : null,

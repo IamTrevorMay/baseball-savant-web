@@ -143,7 +143,7 @@ export function buildReportQuery(
     }
   }
 
-  whereParts.push("pitch_type NOT IN ('PO', 'IN')")
+  whereParts.push("COALESCE(pitch_type, '') NOT IN ('PO','IN')")
   // Regular season only unless the caller filtered game_type themselves. Spring training
   // sits in the same table and was previously pooled into every season total.
   if (!filters.some((f: any) => f?.column === 'game_type')) {
@@ -157,7 +157,7 @@ export function buildReportQuery(
   const mp = typeof minPitches === 'number' ? minPitches : parseInt(String(minPitches))
   if (mp > 0) havingParts.push(`COUNT(*) >= ${mp}`)
   const mpa = typeof minPA === 'number' ? minPA : parseInt(String(minPA))
-  if (mpa > 0) havingParts.push(`COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) >= ${mpa}`)
+  if (mpa > 0) havingParts.push(`${METRICS.pa} >= ${mpa}`)
   const havingClause = havingParts.length > 0 ? `HAVING ${havingParts.join(' AND ')}` : ''
 
   // ORDER BY

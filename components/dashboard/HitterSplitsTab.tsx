@@ -9,7 +9,8 @@ function calcSplitStats(pitches: any[]) {
   const spins = pitches.map(p => p.release_spin_rate).filter(Boolean)
 
   const swingDescs = ['swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','foul_bunt','missed_bunt','swinging_pitchout']
-  const whiffDescs = ['swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout']
+  // Savant whiff: foul tips count as swinging strikes (matches METRICS.whiff_pct)
+  const whiffDescs = ['swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip']
 
   const swings = pitches.filter(p => {
     const d = (p.description || '').toLowerCase()

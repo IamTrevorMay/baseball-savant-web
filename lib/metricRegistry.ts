@@ -251,7 +251,7 @@ export const METRIC_REGISTRY: Record<string, MetricDef> = {
     color: { mode: 'static', class: 'text-emerald-400' },
     totals: 'avg',
     higherBetter: true,
-    tip: 'Swinging strikes divided by total swings',
+    tip: 'Swinging strikes plus foul tips, divided by total swings (Savant convention)',
   },
   swStrPct: {
     key: 'swStrPct', label: 'SwStr%', unit: '%',

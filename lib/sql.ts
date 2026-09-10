@@ -2,7 +2,7 @@
  * Shared SQL fragments, computation helpers, and backfill utilities for scene-stats
  * and related routes.
  */
-import { METRICS } from '@/lib/reportMetrics'
+import { METRICS, NON_PA_EVENTS, XWOBA_SQL } from '@/lib/reportMetrics'
 
 export const TRITON_COLUMNS = [
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus',
@@ -16,17 +16,15 @@ export const TRITON_COLUMNS = [
 export const TRITON_COL: Record<string, string> =
   Object.fromEntries(TRITON_COLUMNS.map(k => [k, k]))
 
-export const IP_ESTIMATE_SQL = `(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0`
+export const IP_ESTIMATE_SQL = `(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch','catcher_interf','field_error',${NON_PA_EVENTS}) THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0`
 
-// FanGraphs conventions (2026-09-11): BB includes intentional walks (FIP's
-// BB term does too); PA excludes truncated_pa.
 export const ERA_COMPONENTS_SQL = `COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
   COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) as bb,
   COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
   COUNT(*) FILTER (WHERE events = 'home_run') as hr,
   ${IP_ESTIMATE_SQL} as ip,
-  COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
-  AVG(estimated_woba_using_speedangle) as xwoba`
+  COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN (${NON_PA_EVENTS}) THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+  ${XWOBA_SQL} as xwoba`
 
 export function computeFIP(
   stats: { k: any; bb: any; hbp: any; hr: any; ip: any },
@@ -121,7 +119,7 @@ export async function backfillPitchesMetrics(
   if (metrics.length === 0 || result.length === 0) return
   try {
     const ids = result.map(r => r.player_id)
-    const where = [`p.${groupCol} IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')", ...extraWhere]
+    const where = [`p.${groupCol} IN (${ids.join(',')})`, "COALESCE(pitch_type, '') NOT IN ('PO','IN')", ...extraWhere]
     // Spring training lives in the same table; exclude it unless already constrained.
     if (!extraWhere.some(w => w.includes('game_type'))) where.push("p.game_type = 'R'")
     const selects = metrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
@@ -179,7 +177,7 @@ export async function backfillEraMetrics(
   if (fipXeraMetrics.length > 0) {
     tasks.push((async () => {
       try {
-        const where = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO','IN')", ...extraWhere]
+        const where = [`p.pitcher IN (${ids.join(',')})`, "COALESCE(pitch_type, '') NOT IN ('PO','IN')", ...extraWhere]
         if (!extraWhere.some(w => w.includes('game_type'))) where.push("p.game_type = 'R'")
         const sql = `SELECT p.pitcher as player_id, ${ERA_COMPONENTS_SQL} FROM pitches p WHERE ${where.join(' AND ')} GROUP BY p.pitcher`
         const { data } = await q(sql)

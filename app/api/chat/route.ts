@@ -162,7 +162,7 @@ IMPORTANT QUERY GUIDELINES:
 - Always use LIMIT to prevent huge results (max 100 rows for display)
 - For aggregations, use GROUP BY with appropriate metrics
 - player_name format is "Last, First" (e.g., "Burnes, Corbin")
-- Whiff = description ILIKE '%swinging_strike%'
+- Whiff = description ILIKE '%swinging_strike%' OR description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip') — Savant counts foul tips as whiffs
 - Called strike = description = 'called_strike'
 - Swing = description in swinging_strike variants + foul + hit_into_play
 - Zone% = pitches where zone between 1 and 9 / total pitches

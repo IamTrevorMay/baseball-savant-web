@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (isNaN(safeId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 })
 
   try {
-    const sql = `SELECT ${BASE_COLUMNS} FROM milb_pitches_normalized WHERE ${col} = ${safeId} AND pitch_type NOT IN ('PO', 'IN') ORDER BY game_date DESC LIMIT 50000`
+    const sql = `SELECT ${BASE_COLUMNS} FROM milb_pitches_normalized WHERE ${col} = ${safeId} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ORDER BY game_date DESC LIMIT 50000`
     const { data, error } = await supabase.rpc('run_query', { query_text: sql })
 
     if (error) {

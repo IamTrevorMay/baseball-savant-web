@@ -5,6 +5,7 @@
  */
 import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D, type Canvas, type Image } from '@napi-rs/canvas'
 import { getPitchColor } from '@/components/chartConfig'
+import { isAtBat, isWhiff, isSwing, isWobaDenomEvent, WOBA_WEIGHTS } from '@/lib/pitcherStats'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -718,37 +719,35 @@ function spectrumColor(t: number, mode: HeatmapColorMode = 'rainbow'): string {
 }
 
 const HM_HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run'])
-const HM_NON_AB_EVENTS = new Set(['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt', 'catcher_interf'])
 
+// Mirrors lib/imagine/heatmapMetrics.ts — keep the two switch bodies in sync.
 function calcHeatmapMetric(pitches: any[], metric: string): number | null {
   if (!pitches.length) return null
   const avg = (vals: number[]) => vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
-  const isSwing = (d: string) => d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
   switch (metric) {
     case 'frequency': return pitches.length
     case 'ba': {
-      const ab = pitches.filter(p => p.events && !HM_NON_AB_EVENTS.has(p.events))
+      const ab = pitches.filter(p => isAtBat(p.events))
       const h = ab.filter(p => HM_HIT_EVENTS.has(p.events))
       return ab.length ? h.length / ab.length : null
     }
     case 'slg': {
-      const ab = pitches.filter(p => p.events && !HM_NON_AB_EVENTS.has(p.events))
+      const ab = pitches.filter(p => isAtBat(p.events))
       if (!ab.length) return null
       const tb = ab.reduce((s, p) => s + (p.events === 'single' ? 1 : p.events === 'double' ? 2 : p.events === 'triple' ? 3 : p.events === 'home_run' ? 4 : 0), 0)
       return tb / ab.length
     }
-    case 'woba': return avg(pitches.map(p => p.woba_value).filter((x: any) => x != null))
-    case 'xba': {
-      const pa = pitches.filter(p => p.events)
-      const abCount = pa.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
-      return abCount > 0 ? pa.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0) / abCount : null
+    case 'woba': {
+      const den = pitches.filter(p => isWobaDenomEvent(p.events)).length
+      return den ? pitches.reduce((s, p) => s + (WOBA_WEIGHTS[p.events] ?? 0), 0) / den : null
     }
-    case 'xwoba': return avg(pitches.map(p => p.estimated_woba_using_speedangle).filter((x: any) => x != null))
-    case 'xslg': return avg(pitches.map(p => p.estimated_slg_using_speedangle).filter((x: any) => x != null))
-    case 'ev': return avg(pitches.filter(p => p.bb_type != null).map(p => p.launch_speed))
+    case 'xba': return avg(pitches.filter(p => p.bb_type != null).map(p => p.estimated_ba_using_speedangle).filter((x: any) => x != null))
+    case 'xwoba': return avg(pitches.filter(p => p.bb_type != null).map(p => p.estimated_woba_using_speedangle).filter((x: any) => x != null))
+    case 'xslg': return avg(pitches.filter(p => p.bb_type != null).map(p => p.estimated_slg_using_speedangle).filter((x: any) => x != null))
+    case 'ev': return avg(pitches.filter(p => p.bb_type != null).map(p => p.launch_speed).filter((x: any) => x != null))
     case 'whiff_pct': {
       const sw = pitches.filter(p => isSwing(((p.description || '') as string).toLowerCase()))
-      const wh = pitches.filter(p => { const d = ((p.description || '') as string).toLowerCase(); return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout' })
+      const wh = pitches.filter(p => isWhiff(((p.description || '') as string).toLowerCase()))
       return sw.length ? wh.length / sw.length : null
     }
     case 'chase_pct': {

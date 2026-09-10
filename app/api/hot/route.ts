@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
         WHEN 'triple_play' THEN 3
         ELSE 0
       END) AS outs,
-      COUNT(*) FILTER (WHERE pitch_type NOT IN ('PO', 'IN') OR pitch_type IS NULL) AS comp_pitches
+      COUNT(*) FILTER (WHERE COALESCE(pitch_type, '') NOT IN ('PO','IN') OR pitch_type IS NULL) AS comp_pitches
     FROM pitches
     WHERE game_year = ${year}
       AND game_type = 'R'

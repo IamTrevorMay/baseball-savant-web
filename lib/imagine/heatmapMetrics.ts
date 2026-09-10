@@ -30,11 +30,12 @@ export const HEATMAP_VXX = 1.76
 export const HEATMAP_VZM = 0.24
 export const HEATMAP_VZX = 4.06
 
+import { isAtBat, isWhiff, isSwing, isWobaDenomEvent, WOBA_WEIGHTS } from '@/lib/pitcherStats'
+
 const HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run'])
-const NON_AB_EVENTS = new Set(['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt', 'catcher_interf'])
 
 function isSwingDesc(d: string): boolean {
-  return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
+  return isSwing(d)
 }
 
 /** Per-cell metric value. Returns null when the cell has no data. */
@@ -44,25 +45,30 @@ export function calcHeatmapMetricCell(pitches: any[], metric: HeatmapMetricKey):
   switch (metric) {
     case 'frequency': return pitches.length
     case 'ba': {
-      const ab = pitches.filter(p => p.events && !NON_AB_EVENTS.has(p.events))
+      const ab = pitches.filter(p => isAtBat(p.events))
       const h = ab.filter(p => HIT_EVENTS.has(p.events))
       return ab.length ? h.length / ab.length : null
     }
     case 'slg': {
-      const ab = pitches.filter(p => p.events && !NON_AB_EVENTS.has(p.events))
+      const ab = pitches.filter(p => isAtBat(p.events))
       if (!ab.length) return null
       const tb = ab.reduce((s, p) => s + (p.events === 'single' ? 1 : p.events === 'double' ? 2 : p.events === 'triple' ? 3 : p.events === 'home_run' ? 4 : 0), 0)
       return tb / ab.length
     }
-    case 'woba': return avg(pitches.map(p => p.woba_value).filter((x: any) => x != null))
-    case 'xba':  return avg(pitches.map(p => p.estimated_ba_using_speedangle).filter((x: any) => x != null))
-    case 'xwoba':return avg(pitches.map(p => p.estimated_woba_using_speedangle).filter((x: any) => x != null))
-    case 'xslg': return avg(pitches.map(p => p.estimated_slg_using_speedangle).filter((x: any) => x != null))
-    case 'ev':   return avg(pitches.map(p => p.launch_speed).filter((x: any) => x != null))
-    case 'la':   return avg(pitches.map(p => p.launch_angle).filter((x: any) => x != null))
+    // Event-derived wOBA (stored woba_value miscredits errors/FC); x-stats are
+    // per-BBE cell averages — pitch-location-conditioned, not the season formula.
+    case 'woba': {
+      const den = pitches.filter(p => isWobaDenomEvent(p.events)).length
+      return den ? pitches.reduce((s, p) => s + (WOBA_WEIGHTS[p.events] ?? 0), 0) / den : null
+    }
+    case 'xba':  return avg(pitches.filter(p => p.bb_type != null).map(p => p.estimated_ba_using_speedangle).filter((x: any) => x != null))
+    case 'xwoba':return avg(pitches.filter(p => p.bb_type != null).map(p => p.estimated_woba_using_speedangle).filter((x: any) => x != null))
+    case 'xslg': return avg(pitches.filter(p => p.bb_type != null).map(p => p.estimated_slg_using_speedangle).filter((x: any) => x != null))
+    case 'ev':   return avg(pitches.filter(p => p.bb_type != null).map(p => p.launch_speed).filter((x: any) => x != null))
+    case 'la':   return avg(pitches.filter(p => p.bb_type != null).map(p => p.launch_angle).filter((x: any) => x != null))
     case 'whiff_pct': {
       const sw = pitches.filter(p => isSwingDesc(((p.description || '') as string).toLowerCase()))
-      const wh = pitches.filter(p => { const d = ((p.description || '') as string).toLowerCase(); return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout' })
+      const wh = pitches.filter(p => isWhiff(((p.description || '') as string).toLowerCase()))
       return sw.length ? wh.length / sw.length : null
     }
     case 'chase_pct': {

@@ -440,7 +440,7 @@ async function fetchByPitch(
       ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY ${idCol}), 1) AS ${shareAlias},
       ${statCols}
     FROM pitches
-    WHERE ${idCol} IN (${ids.join(',')}) AND pitch_type NOT IN ('PO', 'IN')
+    WHERE ${idCol} IN (${ids.join(',')}) AND COALESCE(pitch_type, '') NOT IN ('PO','IN')
       AND pitch_name IS NOT NULL${yearClause}
     GROUP BY ${idCol}, pitch_name
     ORDER BY ${idCol}, count DESC
@@ -504,7 +504,7 @@ async function fetchPitchLevel(
     WITH tot AS (
       SELECT pitcher, COUNT(*) AS n
       FROM pitches
-      WHERE pitcher IN (${ids.join(',')}) AND pitch_type NOT IN ('PO', 'IN')${w}
+      WHERE pitcher IN (${ids.join(',')}) AND COALESCE(pitch_type, '') NOT IN ('PO','IN')${w}
       GROUP BY pitcher
     )
     SELECT p.pitcher, COUNT(*) AS count,
