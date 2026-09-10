@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         ? "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
         : "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END"
 
-      const where: string[] = ["p.pitch_type NOT IN ('PO', 'IN')", "p.game_type = 'R'"]
+      const where: string[] = ["COALESCE(p.pitch_type, '') NOT IN ('PO','IN')", "p.game_type = 'R'"]
       if (gameYear) where.push(`p.game_year = ${parseInt(gameYear)}`)
       if (dateFrom) where.push(`p.game_date >= '${dateFrom.replace(/'/g, "''")}'`)
       if (dateTo) where.push(`p.game_date <= '${dateTo.replace(/'/g, "''")}'`)
@@ -746,7 +746,7 @@ export async function GET(req: NextRequest) {
       const col = playerType === 'batter' ? 'batter' : 'pitcher'
 
       // Fetch aggregated stats from pitches table
-      const where = `p.${col} IN (${playerIds.join(',')}) AND p.game_year = ${gameYear} AND p.game_type = 'R' AND p.pitch_type NOT IN ('PO','IN')`
+      const where = `p.${col} IN (${playerIds.join(',')}) AND p.game_year = ${gameYear} AND p.game_type = 'R' AND COALESCE(p.pitch_type, '') NOT IN ('PO','IN')`
       const sql = `SELECT
         p.${col} as player_id,
         p.player_name,
@@ -835,7 +835,7 @@ export async function GET(req: NextRequest) {
       // Starter = has ≥3 games with 50+ pitches in the season
       // Reliever = has <3 games with 50+ pitches
       const pitcherRoleYear = parseInt(gameYear || '2026')
-      const roleSubquery = `SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
+      const roleSubquery = `SELECT pitcher FROM pitches WHERE game_year = ${pitcherRoleYear} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
       const starterSubquery = pitcherRole === 'starter'
         ? `AND pitcher IN (SELECT pitcher FROM (${roleSubquery}) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
         : pitcherRole === 'reliever'
@@ -872,7 +872,7 @@ export async function GET(req: NextRequest) {
 
         // Apply pitcher role filter
         if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
-          const rsq = `SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
+          const rsq = `SELECT pitcher FROM pitches WHERE game_year = ${year} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
           const roleRes = await q(`SELECT pitcher FROM (${rsq}) gs GROUP BY pitcher HAVING COUNT(*) >= 3`)
           const starterIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
           rows = rows.filter(r => pitcherRole === 'starter' ? starterIds.has(r.player_id) : !starterIds.has(r.player_id))
@@ -980,7 +980,7 @@ export async function GET(req: NextRequest) {
 
         // Apply pitcher role filter
         if (pitcherRole === 'starter' || pitcherRole === 'reliever') {
-          const rsq = `SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
+          const rsq = `SELECT pitcher FROM pitches WHERE game_year = ${year} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50`
           const roleRes = await q(`SELECT pitcher FROM (${rsq}) gs GROUP BY pitcher HAVING COUNT(*) >= 3`)
           const starterIds = new Set((roleRes.data || []).map((r: any) => r.pitcher))
           rows = rows.filter(r => pitcherRole === 'starter' ? starterIds.has(r.player_id) : !starterIds.has(r.player_id))
@@ -1011,7 +1011,7 @@ export async function GET(req: NextRequest) {
         const pitchesMetrics = allMetrics.filter(m => m.alias !== 'primary_value' && METRICS[m.key] && !TRITON_PLUS_METRIC_KEYS.has(m.key) && !DECEPTION_METRIC_KEYS.has(m.key) && !ERA_METRIC_KEYS.has(m.key))
         if (pitchesMetrics.length > 0 && result.length > 0) {
           const ids = result.map(r => r.player_id)
-          const where2 = [`p.pitcher IN (${ids.join(',')})`, "pitch_type NOT IN ('PO', 'IN')"]
+          const where2 = [`p.pitcher IN (${ids.join(',')})`, "COALESCE(pitch_type, '') NOT IN ('PO','IN')"]
           if (gameYear) where2.push(`game_year = ${parseInt(gameYear)}`)
           if (pitchType) where2.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
           const selects2 = pitchesMetrics.map(m => `${METRICS[m.key]} as ${m.alias}`)
@@ -1067,7 +1067,7 @@ export async function GET(req: NextRequest) {
         const constants = SEASON_CONSTANTS[year] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
         const minSample = parseInt(sp.get('minSample') || '150')
 
-        const where: string[] = ["pitch_type NOT IN ('PO', 'IN')", "game_type = 'R'"]
+        const where: string[] = ["COALESCE(pitch_type, '') NOT IN ('PO','IN')", "game_type = 'R'"]
         if (gameYear) where.push(`game_year = ${year}`)
         if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
         if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
@@ -1190,9 +1190,9 @@ export async function GET(req: NextRequest) {
 
         if (canUseMV) {
           const roleFilter = pitcherRole === 'starter'
-            ? `AND mv.player_id IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+            ? `AND mv.player_id IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${year} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
             : pitcherRole === 'reliever'
-            ? `AND mv.player_id NOT IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+            ? `AND mv.player_id NOT IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${year} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
             : ''
           const res = await q(`
             SELECT mv.player_id, pl.name as player_name, mv.pitches,
@@ -1204,7 +1204,7 @@ export async function GET(req: NextRequest) {
           `)
           data = res.data; error = res.error
         } else {
-          const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
+          const where: string[] = ["COALESCE(pitch_type, '') NOT IN ('PO','IN')"]
           if (gameYear) where.push(`game_year = ${year}`)
           if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
           if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
@@ -1289,9 +1289,9 @@ export async function GET(req: NextRequest) {
         const mvTable = playerType === 'batter' ? 'mv_batter_season_stats' : 'mv_pitcher_season_stats'
         const yr = parseInt(gameYear)
         const roleFilter = playerType === 'pitcher' && pitcherRole === 'starter'
-          ? `AND mv.player_id IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${yr} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+          ? `AND mv.player_id IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${yr} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
           : playerType === 'pitcher' && pitcherRole === 'reliever'
-          ? `AND mv.player_id NOT IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${yr} AND pitch_type NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
+          ? `AND mv.player_id NOT IN (SELECT pitcher FROM (SELECT pitcher FROM pitches WHERE game_year = ${yr} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') GROUP BY pitcher, game_pk HAVING COUNT(*) >= 50) gs GROUP BY pitcher HAVING COUNT(*) >= 3)`
           : ''
 
         const mvSelects = [`mv.${metric} as primary_value`]
@@ -1308,7 +1308,7 @@ export async function GET(req: NextRequest) {
         `)
         data = res.data; error = res.error
       } else {
-        const where: string[] = ["pitch_type NOT IN ('PO', 'IN')"]
+        const where: string[] = ["COALESCE(pitch_type, '') NOT IN ('PO','IN')"]
         if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
         if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
         if (dateTo) where.push(`game_date <= '${dateTo.replace(/'/g, "''")}'`)
@@ -1453,7 +1453,7 @@ export async function GET(req: NextRequest) {
         'hc_y IS NOT NULL',
         'bb_type IS NOT NULL',
         'launch_angle IS NOT NULL',
-        "pitch_type NOT IN ('PO', 'IN')",
+        "COALESCE(pitch_type, '') NOT IN ('PO','IN')",
       ]
       if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
       if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
@@ -1488,7 +1488,7 @@ export async function GET(req: NextRequest) {
     // Build WHERE clauses
     const playerType = sp.get('playerType') || 'pitcher'
     const groupCol = playerType === 'batter' ? 'batter' : 'pitcher'
-    const where: string[] = [`${groupCol} = ${parseInt(playerId)}`, "pitch_type NOT IN ('PO', 'IN')"]
+    const where: string[] = [`${groupCol} = ${parseInt(playerId)}`, "COALESCE(pitch_type, '') NOT IN ('PO','IN')"]
     if (gameYear) where.push(`game_year = ${parseInt(gameYear)}`)
     if (pitchType) where.push(`pitch_type = '${pitchType.replace(/'/g, "''")}'`)
     if (dateFrom) where.push(`game_date >= '${dateFrom.replace(/'/g, "''")}'`)
@@ -1658,7 +1658,7 @@ export async function GET(req: NextRequest) {
           : "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END"
         const wrcSql = `SELECT ${WOBA_EVENT_SQL} as woba,
           MODE() WITHIN GROUP (ORDER BY (${teamCol})) as primary_team
-          FROM pitches WHERE ${col} = ${pid} AND pitch_type NOT IN ('PO','IN')${gameYear ? ` AND game_year = ${year}` : ''}`
+          FROM pitches WHERE ${col} = ${pid} AND COALESCE(pitch_type, '') NOT IN ('PO','IN')${gameYear ? ` AND game_year = ${year}` : ''}`
         const { data: d } = await q(wrcSql)
         if (d?.[0]?.woba != null) {
           const woba = Number(d[0].woba)

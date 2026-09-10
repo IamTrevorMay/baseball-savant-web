@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     const COLUMNS = await getColumnsWithModels()
     // Prefix columns with p. for the pitches table
     const prefixedColumns = COLUMNS.split(',').map(c => `p.${c.trim()}`).join(', ')
-    const sql = `SELECT ${prefixedColumns}, pl.name as ${nameCol}_name FROM pitches p LEFT JOIN players pl ON pl.id = p.${nameCol} WHERE p.${col} = ${safeId} AND p.pitch_type NOT IN ('PO', 'IN')${yearFilter} ORDER BY p.game_date DESC LIMIT 50000`
+    const sql = `SELECT ${prefixedColumns}, pl.name as ${nameCol}_name FROM pitches p LEFT JOIN players pl ON pl.id = p.${nameCol} WHERE p.${col} = ${safeId} AND COALESCE(p.pitch_type, '') NOT IN ('PO','IN')${yearFilter} ORDER BY p.game_date DESC LIMIT 50000`
     const { data, error } = await supabase.rpc('run_query_long', { query_text: sql })
 
     if (error) {

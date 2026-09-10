@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     }
     const gtFilter = gtMap[gameType] || ''
 
-    const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}${dateFilter}`
+    const yearFilter = `game_year = ${safeSeason} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${gtFilter}${dateFilter}`
 
     // Use materialized views for regular-season full-season queries (no date filters)
     const canUseMV = (gameType === 'regular' || gameType === 'all') && !safeStart && !safeEnd

@@ -179,7 +179,7 @@ async function generateTrends(): Promise<any> {
           ${seasonCols}, ${recentCols}
         FROM pitches p
         JOIN players pl ON pl.id = p.${groupCol}
-        WHERE game_year = ${season} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}
+        WHERE game_year = ${season} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${gtFilter}
         GROUP BY p.${groupCol}, pl.name
         HAVING COUNT(*) >= ${minPitches}
           AND COUNT(*) FILTER (WHERE game_date >= '${recentDate}') >= 30

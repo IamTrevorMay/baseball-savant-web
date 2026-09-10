@@ -66,8 +66,8 @@ export async function POST(req: NextRequest) {
               / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
             ELSE 0 END AS bb_pct,
           ROUND(AVG(w.launch_speed) FILTER (WHERE w.bb_type IS NOT NULL)::numeric, 1) AS avg_ev
-        FROM (SELECT DISTINCT batter FROM wbc_pitches WHERE pitch_type NOT IN ('PO','IN') ${seasonFilter}) b
-        JOIN wbc_pitches w ON w.batter = b.batter AND w.pitch_type NOT IN ('PO','IN') ${seasonFilter}
+        FROM (SELECT DISTINCT batter FROM wbc_pitches WHERE COALESCE(pitch_type, '') NOT IN ('PO','IN') ${seasonFilter}) b
+        JOIN wbc_pitches w ON w.batter = b.batter AND COALESCE(w.pitch_type, '') NOT IN ('PO','IN') ${seasonFilter}
         LEFT JOIN players p ON p.id = b.batter
         GROUP BY b.batter, p.name
         HAVING COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN w.game_pk::bigint * 10000 + w.at_bat_number END) >= 5
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
               / COUNT(CASE WHEN w.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out') THEN 1 END), 3)
             ELSE 0 END AS ba
         FROM wbc_pitches w
-        WHERE w.pitch_type NOT IN ('PO','IN') ${seasonFilter}
+        WHERE COALESCE(w.pitch_type, '') NOT IN ('PO','IN') ${seasonFilter}
         GROUP BY w.pitcher, w.player_name
         HAVING COUNT(*) >= 30
         ORDER BY ${safeSortBy} ${safeSortDir}

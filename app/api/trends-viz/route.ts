@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       where.push(`game_date >= '${body.startDate}'`, `game_date <= '${body.endDate}'`)
     }
     if (mode === 'pitch')
-      where.push(`pitch_name IS NOT NULL`, `pitch_type NOT IN ('PO','IN')`)
+      where.push(`pitch_name IS NOT NULL`, `COALESCE(pitch_type, '') NOT IN ('PO','IN')`)
 
     const bucketCols = xUnit === 'month'
       ? [`to_char(game_date, 'YYYY-MM') AS x`]

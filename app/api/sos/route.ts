@@ -10,7 +10,7 @@ const REGRESSION_K = 60 // PA regression constant — blends toward league avg
 
 const DATE_FILTER = (start: string, end: string, gameType: string, prefix = '') => {
   const p = prefix ? `${prefix}.` : ''
-  return `${p}game_date BETWEEN '${start}' AND '${end}' AND ${p}events IS NOT NULL AND ${p}game_type = '${gameType}' AND ${p}pitch_type NOT IN ('PO','IN')`
+  return `${p}game_date BETWEEN '${start}' AND '${end}' AND ${p}events IS NOT NULL AND ${p}game_type = '${gameType}' AND ${p}COALESCE(pitch_type, '') NOT IN ('PO','IN')`
 }
 
 /**

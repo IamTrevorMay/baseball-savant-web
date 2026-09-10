@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const seasonClause = season && season !== 'all' ? `AND game_year = ${parseInt(season)}` : ''
-    const matchWhere = `pitcher = ${safePitcher} AND batter = ${safeBatter} AND pitch_type NOT IN ('PO', 'IN') ${seasonClause}`
+    const matchWhere = `pitcher = ${safePitcher} AND batter = ${safeBatter} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${seasonClause}`
 
     // 4 parallel queries
     const [summaryRes, breakdownRes, locationsRes, namesRes] = await Promise.all([

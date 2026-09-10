@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
           COUNT(*) as pitches,
           ROUND(AVG(stuff_plus)::numeric, 0) as avg_stuff_plus
         FROM pitches p JOIN players pl ON pl.id = p.pitcher
-        WHERE game_year = ${safeSeason} AND stuff_plus IS NOT NULL AND pitch_type NOT IN ('PO','IN') ${gameTypeFilter}
+        WHERE game_year = ${safeSeason} AND stuff_plus IS NOT NULL AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${gameTypeFilter}
         GROUP BY p.pitcher, pl.name
         HAVING COUNT(*) >= ${mp}
         ORDER BY avg_stuff_plus DESC LIMIT 25
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
           ROUND(AVG(stuff_plus)::numeric, 0) as season_stuff,
           ROUND(AVG(stuff_plus) FILTER (WHERE game_date >= '${recentDate}')::numeric, 0) as recent_stuff
         FROM pitches p JOIN players pl ON pl.id = p.pitcher
-        WHERE game_year = ${safeSeason} AND stuff_plus IS NOT NULL AND pitch_type NOT IN ('PO','IN') ${gameTypeFilter}
+        WHERE game_year = ${safeSeason} AND stuff_plus IS NOT NULL AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${gameTypeFilter}
         GROUP BY p.pitcher, pl.name, pitch_name
         HAVING COUNT(*) >= 20 AND COUNT(*) FILTER (WHERE game_date >= '${recentDate}') >= 5
       `)
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
           ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '${recentDate}')
             / NULLIF(SUM(COUNT(*) FILTER (WHERE game_date >= '${recentDate}')) OVER (PARTITION BY p.pitcher), 0), 1) as recent_usage
         FROM pitches p JOIN players pl ON pl.id = p.pitcher
-        WHERE game_year = ${safeSeason} AND pitch_type NOT IN ('PO','IN') ${gameTypeFilter}
+        WHERE game_year = ${safeSeason} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${gameTypeFilter}
         GROUP BY p.pitcher, pl.name, pitch_name
         HAVING COUNT(*) >= 20 AND COUNT(*) FILTER (WHERE game_date >= '${recentDate}') >= 5
       `)

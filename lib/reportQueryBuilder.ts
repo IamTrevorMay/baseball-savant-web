@@ -143,7 +143,7 @@ export function buildReportQuery(
     }
   }
 
-  whereParts.push("pitch_type NOT IN ('PO', 'IN')")
+  whereParts.push("COALESCE(pitch_type, '') NOT IN ('PO','IN')")
   // Regular season only unless the caller filtered game_type themselves. Spring training
   // sits in the same table and was previously pooled into every season total.
   if (!filters.some((f: any) => f?.column === 'game_type')) {

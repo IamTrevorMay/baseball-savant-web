@@ -106,7 +106,7 @@ SELECT
   -- RE24
   ROUND(SUM(p.delta_run_exp)::numeric, 1) AS total_re24
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R'
 GROUP BY p.pitcher, p.game_year, p.p_throws;
 
 ALTER TABLE mv_pitcher_season_stats ADD PRIMARY KEY (player_id, game_year, p_throws);
@@ -164,7 +164,7 @@ SELECT
   -- RE24
   ROUND(SUM(p.delta_run_exp)::numeric, 1) AS total_re24
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R'
 GROUP BY p.batter, p.game_year;
 
 CREATE UNIQUE INDEX ON mv_batter_season_stats (player_id, game_year);
@@ -209,7 +209,7 @@ SELECT
   -- wOBA for wRC+ (batting perspective — stored here for convenience)
   ((0.7 * COUNT(*) FILTER (WHERE p.events = 'walk') + 0.7 * COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch') + 0.9 * COUNT(*) FILTER (WHERE p.events = 'single') + 1.25 * COUNT(*) FILTER (WHERE p.events = 'double') + 1.6 * COUNT(*) FILTER (WHERE p.events = 'triple') + 2.0 * COUNT(*) FILTER (WHERE p.events = 'home_run')) / NULLIF(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0)) AS woba_raw
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R'
 GROUP BY 1, p.game_year;
 
 CREATE UNIQUE INDEX ON mv_team_pitching_stats (team, game_year);
@@ -244,7 +244,7 @@ SELECT
   -- wOBA for wRC+
   ((0.7 * COUNT(*) FILTER (WHERE p.events = 'walk') + 0.7 * COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch') + 0.9 * COUNT(*) FILTER (WHERE p.events = 'single') + 1.25 * COUNT(*) FILTER (WHERE p.events = 'double') + 1.6 * COUNT(*) FILTER (WHERE p.events = 'triple') + 2.0 * COUNT(*) FILTER (WHERE p.events = 'home_run')) / NULLIF(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0)) AS woba_raw
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R'
 GROUP BY 1, p.game_year;
 
 CREATE UNIQUE INDEX ON mv_team_batting_stats (team, game_year);
@@ -269,7 +269,7 @@ SELECT
     / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R' AND p.inning >= 6
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R' AND p.inning >= 6
 GROUP BY 1, p.game_year;
 
 CREATE UNIQUE INDEX ON mv_team_bullpen_stats (team, game_year);
@@ -298,7 +298,7 @@ SELECT
   ROUND((COUNT(*) FILTER (WHERE p.events = 'single') + 2 * COUNT(*) FILTER (WHERE p.events = 'double') + 3 * COUNT(*) FILTER (WHERE p.events = 'triple') + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run'))::numeric
     / NULLIF(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0), 3) AS slg
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R'
 GROUP BY 1, p.game_year, p.p_throws;
 
 CREATE UNIQUE INDEX ON mv_team_platoon_stats (team, game_year, p_throws);
@@ -322,7 +322,7 @@ SELECT
   ROUND(AVG(p.stuff_plus)::numeric, 1) AS avg_stuff_plus,
   COUNT(p.stuff_plus)::int AS stuff_plus_n
 FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
+WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type = 'R'
 GROUP BY p.pitcher, p.game_year, p.pitch_type;
 
 CREATE UNIQUE INDEX ON mv_pitcher_pitch_stats (player_id, game_year, pitch_type);
@@ -372,7 +372,7 @@ BEGIN
     COUNT(*) FILTER(WHERE p.events='hit_by_pitch')::int, COUNT(*) FILTER(WHERE p.events='home_run')::int,
     COUNT(p.estimated_woba_using_speedangle)::int,
     ROUND(AVG(p.stuff_plus)::numeric,1), COUNT(p.stuff_plus)::int, ROUND(SUM(p.delta_run_exp)::numeric,1)
-  FROM pitches p WHERE p.pitch_type NOT IN ('PO','IN') AND p.game_type='R'
+  FROM pitches p WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type='R'
     AND p.game_year >= EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
   GROUP BY p.pitcher, p.game_year, p.p_throws;
 

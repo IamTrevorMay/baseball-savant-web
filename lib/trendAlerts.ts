@@ -119,7 +119,7 @@ export async function computeTrendAlerts({
       ${recentCols}
     FROM pitches p
     JOIN players pl ON pl.id = p.${groupCol}
-    WHERE game_year = ${season} AND pitch_type NOT IN ('PO', 'IN') ${gameTypeFilter}
+    WHERE game_year = ${season} AND COALESCE(pitch_type, '') NOT IN ('PO','IN') ${gameTypeFilter}
     GROUP BY p.${groupCol}, pl.name
     HAVING COUNT(*) >= ${mp}
       AND COUNT(*) FILTER (WHERE game_date >= '${recentDate}') >= 30
