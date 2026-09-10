@@ -2,6 +2,14 @@
 
 ## Recently Completed
 
+### Whoop Nightly Cron (2026-09-11)
+
+`/api/cron/whoop` (17:00 UTC, in vercel.json + trackCronRun dead-man tracking): pulls a
+7-day window for every `whoop_connected` athlete server-side via stored refresh tokens —
+collection no longer depends on athletes opening Compete. Sequential with per-athlete error
+isolation (a revoked token can't block the roster). Verified live: 1 connected athlete,
+8 cycles upserted, latest cycle/sleep current.
+
 ### Compete Admin — Athlete Account Creation (2026-09-11)
 
 New role-gated Admin group in the Compete sidebar (owner/admin only) with an Athlete

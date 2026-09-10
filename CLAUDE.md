@@ -44,7 +44,7 @@ Non-grouped: `app/overlay/` (OBS browser sources), `app/player/`, `app/hitter/`,
 ### Cron jobs (`app/api/cron/`)
 `abs`, `briefs`, `challenges`, `cleanup`, `daily-cards`, `daily-graphics`, `emails`, `integrity`,
 `janitor`, `milb-pitches`, `newsletter`, `pitches`, `player-stats`, `refresh`, `roster`,
-`sos-weekly`, `wbc`
+`sos-weekly`, `wbc`, `whoop`
 
 ## Key Files — Analytics
 The analytics pages live in the `(research)` route group — the group name is not part of the URL,
