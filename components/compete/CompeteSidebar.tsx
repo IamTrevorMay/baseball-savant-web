@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
+import { isAdminRole } from '@/lib/roles'
 import { createClient } from '@/lib/supabase/client'
 import TridentLogo from '@/components/TridentLogo'
 
@@ -58,6 +59,10 @@ export default function CompeteSidebar({ athlete }: { athlete: boolean }) {
   const router = useRouter()
   const { user, profile } = useAuth()
   const [open, setOpen] = useState(false)
+
+  // Role-derived (server-enforced by the API; this only controls visibility).
+  // Rendered pinned above the account block, per Trevor — not in the nav list.
+  const showAdmin = !athlete && isAdminRole(profile?.role)
 
   // Groups start expanded so the first paint never hides anything; stored
   // preferences are applied after hydration to avoid a server/client mismatch.
@@ -172,6 +177,21 @@ export default function CompeteSidebar({ athlete }: { athlete: boolean }) {
             )
           })}
         </nav>
+        {showAdmin && (
+          <div className="border-t border-zinc-800 px-3 py-2 shrink-0">
+            <Link
+              href="/compete/admin"
+              onClick={onNavigate}
+              className={`block px-3 py-2 rounded-lg text-sm transition ${
+                isActive(pathname, '/compete/admin')
+                  ? 'bg-amber-500/10 text-amber-400 font-semibold'
+                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
+              }`}
+            >
+              Admin
+            </Link>
+          </div>
+        )}
         <div className="border-t border-zinc-800 p-3 shrink-0">
           <div className="px-2 py-1.5">
             <p className="text-sm text-white truncate">{name}</p>

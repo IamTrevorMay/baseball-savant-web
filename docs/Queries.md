@@ -2204,3 +2204,72 @@ fixed lists + legacy remap in widget normalizeFilters. Smoke tests: NYY 2026 →
 (real, matches MLB API), fip 3.73, xera 3.44, era rank 1/30; date-filtered and gameType=all
 requests correctly return era null; MLB API team/league byMonth endpoints verified dead
 (person-level works but loses team attribution after trades) → no monthly team ERA anywhere.
+
+### Skenes Splits-page audit vs FanGraphs / MLB official
+```sql
+-- via GET /api/player-data?id=694973&year=2026 (raw pitch rows, 2,741;
+-- 2,623 regular season), replicating SplitsTab.tsx calcSplitStats in a script;
+-- cross-checked vs FanGraphs 2026 splits and statsapi statSplits (vl/vr) +
+-- gameLog + playByPlay for games 823391 / 824188
+```
+Result: K (102/79), BB (31/14), HR (8/7), H vs L (74) all match FG/official exactly.
+Three discrepancies: (1) **BA bug** — SplitsTab computes `hits/PA`, not `hits/AB` (vs L shows
+.196, truth .221); (2) **PA counts `truncated_pa` rows** (+2 vs L → 377 vs official TBF 375);
+(3) **two stale hits vs R** — Herrera 4/30 and Allen 6/3 singles were officially re-scored as
+errors after ingest and `pitches` never re-pulls (61 H vs official 59). Not-fixed; reported.
+
+## 2026-09-11
+
+### FanGraphs-conventions migration (functions patched server-side)
+```sql
+-- Migrations: fangraphs_conventions_functions (DO + replace() on
+-- pg_get_functiondef for refresh_materialized_views / refresh_league_averages
+-- / refresh_league_percentiles, with raise-if-no-match guards),
+-- fangraphs_conventions_monthly_mvs (DROP/CREATE monthly MVs from patched
+-- pg_get_viewdef), temp_full_rebuild_pitcher_season (clone of the refresh
+-- function minus year filters).
+-- Sampled events universe (game_date 2025-05..07, indexed):
+SELECT events, count(*) FROM pitches
+WHERE game_date >= '2025-05-01' AND game_date < '2025-08-01' AND events IS NOT NULL
+GROUP BY events ORDER BY 2 DESC;
+-- + pg_get_functiondef/viewdef pulls for the 3 functions and 8 MVs
+```
+Result: 21 distinct events values — `truncated_pa` is the only non-PA value (no running
+events at pitch level). Deployed league/refresh functions and the six older MVs were
+ALREADY truncated_pa- and intent_walk-aware (metrics-audit remediation) while the repo
+scripts had drifted behind — scripts now synced from production. Remaining fixes deployed:
+FB% popup fold, `pu_pct`→`iffb_pct` in league benchmark keys, AB list completion, and the
+two monthly team MVs recreated. `mv_pitcher_season_stats` rebuilt for all seasons; league
+averages + percentiles re-run 2015–2026.
+
+### Savant-faithful xwOBA/wOBA + xFIP popup fix (follow-ups)
+```sql
+-- Migrations: xfip_fb_includes_popups (xFIP FB term now (fb+popup), matching
+-- the FG lgHR/FB constants; SIERA untouched), monthly_mvs_savant_xwoba
+-- (blended xwOBA + xwoba_raw in the two monthly MVs); METRICS.avg_xwoba /
+-- avg_woba rewritten; puzzle HR/FB denominator popup-inclusive; scene-stats
+-- mvPitchingCols trimmed to the MV's real columns.
+-- Verified vs Savant expected-statistics leaderboard (Skenes 2026):
+-- ours avg_xwoba .279 / avg_xba .217 / avg_xslg .343 vs Savant .280/.217/.343
+-- (fixed 0.7 weights vs yearly weights explain the .001); avg_woba .302 vs
+-- .295 — mostly the two known stale re-scored hits.
+```
+Result: the five older MVs and the pitcher-season INSERT were ALREADY blended
+(remediation work) — only the two monthly MVs and METRICS needed it. League
+benchmarks re-run 2015–2026 for the xFIP change.
+
+### Clear Compete test data (per Trevor — all test cases)
+```sql
+DELETE FROM compete_pitch_sessions WHERE id IS NOT NULL;  -- cascades to compete_pitches
+```
+Result: removed 1 test session (Pitching_2026-04-13T175503_verified.csv) and its 443
+pitches; both tables now empty. Clean slate for athlete-linked ingestion.
+
+### Athlete account creation — schema
+```sql
+-- Migration athlete_profiles_level_and_unique_profile:
+ALTER TABLE athlete_profiles ADD COLUMN IF NOT EXISTS level text
+  CHECK (level IN ('youth','hs','college','indy','pro'));
+CREATE UNIQUE INDEX IF NOT EXISTS athlete_profiles_profile_id_key ON athlete_profiles (profile_id);
+```
+Result: level column added; one athlete profile per login enforced.

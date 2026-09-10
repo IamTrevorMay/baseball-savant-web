@@ -2,6 +2,43 @@
 
 ## Recently Completed
 
+### Compete Admin — Athlete Account Creation (2026-09-11)
+
+New role-gated Admin group in the Compete sidebar (owner/admin only) with an Athlete
+Accounts page (`/compete/admin`): create an athlete with name, height, weight, level
+(youth/hs/college/indy/pro — new `athlete_profiles.level` column), and email. Creation
+invites the email via the existing branded Resend + Supabase generateLink flow
+(→ /set-password → launcher bounces the athlete role straight into Compete), sets
+`profiles.role='athlete'` (Compete-only), and creates the `athlete_profiles` row — whose id
+is the canonical Athlete ID every integration keys to. Roster table shows Invited/Active
+status with a Resend Invite action (links expire in 24h; resend uses a recovery link since
+invite links are one-shot). One-profile-per-login now enforced (unique index on
+profile_id). API: `/api/compete/admin/athletes` (GET/POST/PUT). Also cleared the Compete
+test data (1 session / 443 pitches) for a clean athlete-keyed start.
+
+
+### FanGraphs-Standard Conventions Platform-Wide (2026-09-11)
+
+Triggered by a Skenes Splits-page audit vs FanGraphs (BA was H/PA, PA counted
+`truncated_pa`, two stale re-scored hits). Adopted FG as the industry standard everywhere:
+PA/TBF excludes `truncated_pa`; BB includes IBB (except wOBA formulas — official wOBA uses
+uBB); AB = PA − BB − HBP − SF − SH − CI; FB% folds popups (GB+LD+FB = 100%); `pu_pct` →
+`iffb_pct` (popups ÷ fly balls). Shared SQL fragments exported from `lib/reportMetrics.ts`
+(PA_SQL, AB_SQL, BB_EVENTS_SQL, NON_AB_EVENTS_SQL). Updated: METRICS, both splits tabs,
+ERA_COMPONENTS_SQL, 10 routes with inline SQL, the two monthly team MVs (recreated), the
+deployed refresh functions (patched server-side via replace() on pg_get_functiondef with
+match guards), `mv_pitcher_season_stats` rebuilt full-history, and league
+averages/percentiles re-run for 2015–2026 so benchmark rows carry the new math + `iffb_pct`
+key. Discovered: the deployed DB objects had already been part-modernized while repo
+`scripts/*.sql` drifted — scripts are now synced FROM production and marked as copies.
+Verified vs FanGraphs: Skenes vs-L splits now match exactly (PA 375, AB 335, .221, 27.2/8.3).
+Follow-ups same day: `avg_xwoba` made Savant-faithful (blended; verified .279 vs Savant's
+.280), `avg_woba` on the official denominator, xFIP's FB term popup-inclusive (SIERA left
+popup-exclusive by design), puzzle HR/FB fixed, and scene-stats' teamStats MV allowlist
+trimmed to the deployed MV's real columns (it promised ~30, the MV has 12 — those requests
+had been erroring on the fast path).
+
+
 ### Team Trends + real team ERA (2026-09-10)
 
 Trends Visualizer gains a Pitcher/Team toggle (pitching perspective): staff pitch mix and
