@@ -157,7 +157,7 @@ export function buildReportQuery(
   const mp = typeof minPitches === 'number' ? minPitches : parseInt(String(minPitches))
   if (mp > 0) havingParts.push(`COUNT(*) >= ${mp}`)
   const mpa = typeof minPA === 'number' ? minPA : parseInt(String(minPA))
-  if (mpa > 0) havingParts.push(`COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) >= ${mpa}`)
+  if (mpa > 0) havingParts.push(`${METRICS.pa} >= ${mpa}`)
   const havingClause = havingParts.length > 0 ? `HAVING ${havingParts.join(' AND ')}` : ''
 
   // ORDER BY

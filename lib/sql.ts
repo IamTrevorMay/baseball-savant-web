@@ -2,7 +2,7 @@
  * Shared SQL fragments, computation helpers, and backfill utilities for scene-stats
  * and related routes.
  */
-import { METRICS } from '@/lib/reportMetrics'
+import { METRICS, NON_PA_EVENTS, XWOBA_SQL } from '@/lib/reportMetrics'
 
 export const TRITON_COLUMNS = [
   'cmd_plus', 'rpcom_plus', 'brink_plus', 'cluster_plus',
@@ -16,15 +16,15 @@ export const TRITON_COLUMNS = [
 export const TRITON_COL: Record<string, string> =
   Object.fromEntries(TRITON_COLUMNS.map(k => [k, k]))
 
-export const IP_ESTIMATE_SQL = `(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0`
+export const IP_ESTIMATE_SQL = `(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch','catcher_interf','field_error',${NON_PA_EVENTS}) THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0`
 
 export const ERA_COMPONENTS_SQL = `COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
-  COUNT(*) FILTER (WHERE events = 'walk') as bb,
+  COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) as bb,
   COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
   COUNT(*) FILTER (WHERE events = 'home_run') as hr,
   ${IP_ESTIMATE_SQL} as ip,
-  COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
-  AVG(estimated_woba_using_speedangle) as xwoba`
+  COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN (${NON_PA_EVENTS}) THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+  ${XWOBA_SQL} as xwoba`
 
 export function computeFIP(
   stats: { k: any; bb: any; hbp: any; hr: any; ip: any },

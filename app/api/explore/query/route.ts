@@ -111,7 +111,7 @@ QUERY RULES:
 - Always include LIMIT (max 5000)
 - player_name is "Last, First" format
 - Use game_year for season filtering, not EXTRACT(YEAR FROM game_date)
-- Whiff = description ILIKE '%swinging_strike%'
+- Whiff = description ILIKE '%swinging_strike%' OR description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip') — Savant counts foul tips as whiffs
 - Zone 1-9 = in strike zone, zone > 9 = outside
 - Exclude pitch_type IN ('PO','IN') for valid pitch analysis
 - For pitch movement, multiply pfx_x/pfx_z by 12 for inches

@@ -2,6 +2,27 @@
 
 ## Recently Completed
 
+### Savant Convention Alignment — Every Internal Stat Formula (2026-09-09)
+
+Full audit of hitter + pitcher calculations against Baseball Savant, fixing every metric where
+Savant publishes a verifiable convention. Conventions were pinned **empirically** by reproducing
+Savant's displayed values exactly (Skenes 27.80% whiff, Judge's full slash/x-stat line, Skubal's
+K%/BB%/chase/barrel): whiff now counts foul tips; PA excludes `truncated_pa` + baserunning rows
+(matches batters faced); BB/OBP include intentional walks; AB is a positive event list; xBA/xSLG
+divide per-BBE sums by AB; xwOBA blends BBE estimates with 0.7·uBB + 0.7·HBP over AB+uBB+SF+HBP
+(reproduced Judge's .411 exactly); wOBA is event-derived with static weights because the stored
+`woba_value` column miscredits errors/FC/CI; barrel/EV/LA denominators are BBE-gated.
+Shared sets exported from `lib/reportMetrics.ts` (SQL) and `lib/pitcherStats.ts` (client).
+Applied across: reportMetrics, pitcherStats, trendAlerts (season/recent variants had drifted
+apart — now built from one template), sql.ts ERA components, serverRenderCard + heatmapMetrics +
+TileViz (three heatmap mirrors unified), team-tendencies, matchup-lookup, wbc/leaders,
+scene-stats, sequencing, daily-graphics (now imports trendAlerts), pitch-area-stats,
+pitcher-outing, reportQueryBuilder, explore/chat prompts, both league refresh DB functions
+(migrated + re-run for 2026; MiLB CASE gained `Field Out`/`Intent Walk`/baserunning→NULL
+branches), and create-materialized-views.sql. Deliberately unchanged (no Savant equivalent,
+documented in `docs/VARIABLES.md` §1.0): SwStr%, CSW%, CSt%, FPS%, Contact%/Z-Swing%/O-Contact%
+(FG-style), model internals (`models/*`, `engines/*`, game/puzzle, compete CQR, SOS).
+
 ### Mayday Studio SSO — Triton Half (2026-09-09)
 
 "Continue with Mayday Studio" on the Triton login page: Mayday verifies its own session, signs

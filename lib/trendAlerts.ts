@@ -8,22 +8,40 @@ interface MetricDef {
   higherIsBetter: boolean
 }
 
+// Savant-matched fragments — keep in sync with lib/reportMetrics.ts and
+// docs/VARIABLES.md. Each takes an optional extra condition (the recent-window
+// date guard) so the season and recent variants use the SAME definition; the
+// old hand-written recent copies had drifted (narrower swing set, no pitchout).
+const RECENT = "game_date >= '{recent}' AND "
+const WHIFF_SET = "(description LIKE '%swinging_strike%' OR description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip'))"
+const SWING_SET = "(description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')"
+const NON_PA = "'truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home'"
+const AB_SET = "'single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out'"
+const paCount = (c: string) => `COUNT(DISTINCT CASE WHEN ${c}events IS NOT NULL AND events NOT IN (${NON_PA}) THEN game_pk::bigint * 10000 + at_bat_number END)`
+const whiffSQL = (c: string) => `ROUND(100.0 * COUNT(*) FILTER (WHERE ${c}${WHIFF_SET}) / NULLIF(COUNT(*) FILTER (WHERE ${c}${SWING_SET}), 0), 1)`
+const kPctSQL = (c: string) => `ROUND(100.0 * COUNT(*) FILTER (WHERE ${c}events LIKE '%strikeout%') / NULLIF(${paCount(c)}, 0), 1)`
+const bbPctSQL = (c: string) => `ROUND(100.0 * COUNT(*) FILTER (WHERE ${c}events IN ('walk','intent_walk')) / NULLIF(${paCount(c)}, 0), 1)`
+const zonePctSQL = (c: string) => `ROUND(100.0 * COUNT(*) FILTER (WHERE ${c}zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE ${c}zone IS NOT NULL), 0), 1)`
+// Savant xwOBA: per-BBE estimates + 0.7·uBB + 0.7·HBP over AB + uBB + SF + HBP.
+const xwobaSQL = (c: string) => `ROUND((COALESCE(SUM(estimated_woba_using_speedangle) FILTER (WHERE ${c}description LIKE 'hit_into_play%'), 0) + 0.7 * COUNT(*) FILTER (WHERE ${c}events = 'walk') + 0.7 * COUNT(*) FILTER (WHERE ${c}events = 'hit_by_pitch'))::numeric / NULLIF(COUNT(*) FILTER (WHERE ${c}events IN (${AB_SET},'walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0), 3)`
+const hardHitSQL = (c: string) => `ROUND(100.0 * COUNT(*) FILTER (WHERE ${c}launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE ${c}bb_type IS NOT NULL), 0), 1)`
+
 export const PITCHER_METRICS: MetricDef[] = [
   { key: 'velo', label: 'Avg Velo', seasonSQL: 'ROUND(AVG(release_speed)::numeric, 1)', recentSQL: "ROUND(AVG(release_speed) FILTER (WHERE game_date >= '{recent}')::numeric, 1)", higherIsBetter: true },
-  { key: 'whiff', label: 'Whiff%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description = 'missed_bunt')) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt')), 0), 1)", higherIsBetter: true },
-  { key: 'k_pct', label: 'K%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", higherIsBetter: true },
-  { key: 'zone_pct', label: 'Zone%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND zone IS NOT NULL), 0), 1)", higherIsBetter: false },
-  { key: 'xwoba', label: 'xwOBA', seasonSQL: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)', recentSQL: "ROUND(AVG(estimated_woba_using_speedangle) FILTER (WHERE game_date >= '{recent}')::numeric, 3)", higherIsBetter: false },
+  { key: 'whiff', label: 'Whiff%', seasonSQL: whiffSQL(''), recentSQL: whiffSQL(RECENT), higherIsBetter: true },
+  { key: 'k_pct', label: 'K%', seasonSQL: kPctSQL(''), recentSQL: kPctSQL(RECENT), higherIsBetter: true },
+  { key: 'zone_pct', label: 'Zone%', seasonSQL: zonePctSQL(''), recentSQL: zonePctSQL(RECENT), higherIsBetter: false },
+  { key: 'xwoba', label: 'xwOBA', seasonSQL: xwobaSQL(''), recentSQL: xwobaSQL(RECENT), higherIsBetter: false },
   { key: 'spin', label: 'Avg Spin', seasonSQL: 'ROUND(AVG(release_spin_rate)::numeric, 0)', recentSQL: "ROUND(AVG(release_spin_rate) FILTER (WHERE game_date >= '{recent}')::numeric, 0)", higherIsBetter: true },
 ]
 
 export const HITTER_METRICS: MetricDef[] = [
   { key: 'ev', label: 'Avg EV', seasonSQL: 'ROUND(AVG(launch_speed) FILTER (WHERE bb_type IS NOT NULL)::numeric, 1)', recentSQL: "ROUND(AVG(launch_speed) FILTER (WHERE bb_type IS NOT NULL AND game_date >= '{recent}')::numeric, 1)", higherIsBetter: true },
-  { key: 'xwoba', label: 'xwOBA', seasonSQL: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)', recentSQL: "ROUND(AVG(estimated_woba_using_speedangle) FILTER (WHERE game_date >= '{recent}')::numeric, 3)", higherIsBetter: true },
-  { key: 'k_pct', label: 'K%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", higherIsBetter: false },
-  { key: 'bb_pct', label: 'BB%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", higherIsBetter: true },
-  { key: 'hard_hit', label: 'Hard Hit%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND bb_type IS NOT NULL), 0), 1)", higherIsBetter: true },
-  { key: 'whiff', label: 'Whiff%', seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description = 'missed_bunt')) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt')), 0), 1)", higherIsBetter: false },
+  { key: 'xwoba', label: 'xwOBA', seasonSQL: xwobaSQL(''), recentSQL: xwobaSQL(RECENT), higherIsBetter: true },
+  { key: 'k_pct', label: 'K%', seasonSQL: kPctSQL(''), recentSQL: kPctSQL(RECENT), higherIsBetter: false },
+  { key: 'bb_pct', label: 'BB%', seasonSQL: bbPctSQL(''), recentSQL: bbPctSQL(RECENT), higherIsBetter: true },
+  { key: 'hard_hit', label: 'Hard Hit%', seasonSQL: hardHitSQL(''), recentSQL: hardHitSQL(RECENT), higherIsBetter: true },
+  { key: 'whiff', label: 'Whiff%', seasonSQL: whiffSQL(''), recentSQL: whiffSQL(RECENT), higherIsBetter: false },
 ]
 
 export interface TrendAlertRow {

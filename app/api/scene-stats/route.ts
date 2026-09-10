@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
-import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS, COMPUTED_METRIC_KEYS } from '@/lib/reportMetrics'
+import { METRICS, WOBA_EVENT_SQL, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEYS, COMPUTED_METRIC_KEYS } from '@/lib/reportMetrics'
 import { parseSceneStatsRows } from '@/lib/schemas/sceneStats'
 import { SEASON_CONSTANTS, LATEST_SEASON_YEAR, PARK_FACTORS } from '@/lib/constants-data'
 import { computeXDeceptionScore, isFastball } from '@/lib/leagueStats'
 import {
   TRITON_COLUMNS, TRITON_COL,
-  ERA_COMPONENTS_SQL,
+  ERA_COMPONENTS_SQL, IP_ESTIMATE_SQL,
   computeFIP, computeXERA, computeWRCPlus,
   pivotTritonRows, backfillFromLookup,
   backfillPitchesMetrics, backfillTritonMetrics, backfillEraMetrics,
@@ -380,8 +380,8 @@ export async function GET(req: NextRequest) {
         const battingTeamExpr = "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
         const wrcSql = `
           SELECT (${battingTeamExpr}) as team,
-            AVG(woba_value) as woba,
-            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa
+            ${WOBA_EVENT_SQL} as woba,
+            ${METRICS.pa} as pa
           FROM pitches p
           WHERE ${where.join(' AND ')}
           GROUP BY (${battingTeamExpr})
@@ -751,17 +751,11 @@ export async function GET(req: NextRequest) {
         p.${col} as player_id,
         p.player_name,
         COUNT(DISTINCT game_pk) as games,
-        (COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END)
-         + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END)
-         + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip,
+        ${IP_ESTIMATE_SQL} as ip,
         COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
-        COUNT(*) FILTER (WHERE events = 'walk') as bb,
-        ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as baa,
-        ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0)
-          + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ops
+        COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) as bb,
+        ${METRICS.ba} as baa,
+        ${METRICS.ops} as ops
       FROM pitches p
       WHERE ${where}
       GROUP BY p.${col}, p.player_name`
@@ -1081,14 +1075,14 @@ export async function GET(req: NextRequest) {
         // Query all batters' wOBA, PA, and primary team
         const wrcSql = `
           SELECT p.batter as player_id, pl.name as player_name,
-            AVG(woba_value) as woba,
-            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+            ${WOBA_EVENT_SQL} as woba,
+            ${METRICS.pa} as pa,
             MODE() WITHIN GROUP (ORDER BY CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END) as primary_team
           FROM pitches p
           JOIN players pl ON pl.id = p.batter
           WHERE ${where.join(' AND ')}
           GROUP BY p.batter, pl.name
-          HAVING COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) >= ${minSample}
+          HAVING ${METRICS.pa} >= ${minSample}
         `
         const { data, error } = await q(wrcSql)
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -1662,7 +1656,7 @@ export async function GET(req: NextRequest) {
         const teamCol = playerType === 'batter'
           ? "CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END"
           : "CASE WHEN inning_topbot = 'Top' THEN home_team ELSE away_team END"
-        const wrcSql = `SELECT AVG(woba_value) as woba,
+        const wrcSql = `SELECT ${WOBA_EVENT_SQL} as woba,
           MODE() WITHIN GROUP (ORDER BY (${teamCol})) as primary_team
           FROM pitches WHERE ${col} = ${pid} AND pitch_type NOT IN ('PO','IN')${gameYear ? ` AND game_year = ${year}` : ''}`
         const { data: d } = await q(wrcSql)

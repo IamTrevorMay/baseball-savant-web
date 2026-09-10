@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { populateReportCard } from '@/lib/reportCardPopulate'
+import { PITCHER_METRICS, HITTER_METRICS } from '@/lib/trendAlerts'
 import { DATA_DRIVEN_TEMPLATES } from '@/lib/sceneTemplates'
 
 export const maxDuration = 300
@@ -145,29 +146,8 @@ async function generateTrends(): Promise<any> {
     const isPitcher = playerType === 'pitcher'
     const groupCol = isPitcher ? 'pitcher' : 'batter'
 
-    interface MetricDef {
-      key: string; label: string; higherIsBetter: boolean
-      seasonSQL: string; recentSQL: string // recentSQL uses {recent} placeholder
-    }
-
-    const PITCHER_METRICS: MetricDef[] = [
-      { key: 'velo', label: 'Avg Velo', higherIsBetter: true, seasonSQL: 'ROUND(AVG(release_speed)::numeric, 1)', recentSQL: "ROUND(AVG(release_speed) FILTER (WHERE game_date >= '{recent}')::numeric, 1)" },
-      { key: 'whiff', label: 'Whiff%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description = 'missed_bunt')) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt')), 0), 1)" },
-      { key: 'k_pct', label: 'K%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)" },
-      { key: 'zone_pct', label: 'Zone%', higherIsBetter: false, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND zone IS NOT NULL), 0), 1)" },
-      { key: 'xwoba', label: 'xwOBA', higherIsBetter: false, seasonSQL: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)', recentSQL: "ROUND(AVG(estimated_woba_using_speedangle) FILTER (WHERE game_date >= '{recent}')::numeric, 3)" },
-      { key: 'spin', label: 'Avg Spin', higherIsBetter: true, seasonSQL: 'ROUND(AVG(release_spin_rate)::numeric, 0)', recentSQL: "ROUND(AVG(release_spin_rate) FILTER (WHERE game_date >= '{recent}')::numeric, 0)" },
-    ]
-
-    const HITTER_METRICS: MetricDef[] = [
-      { key: 'ev', label: 'Avg EV', higherIsBetter: true, seasonSQL: 'ROUND(AVG(launch_speed) FILTER (WHERE bb_type IS NOT NULL)::numeric, 1)', recentSQL: "ROUND(AVG(launch_speed) FILTER (WHERE bb_type IS NOT NULL AND game_date >= '{recent}')::numeric, 1)" },
-      { key: 'xwoba', label: 'xwOBA', higherIsBetter: true, seasonSQL: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)', recentSQL: "ROUND(AVG(estimated_woba_using_speedangle) FILTER (WHERE game_date >= '{recent}')::numeric, 3)" },
-      { key: 'k_pct', label: 'K%', higherIsBetter: false, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)" },
-      { key: 'bb_pct', label: 'BB%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND game_date >= '{recent}' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)" },
-      { key: 'hard_hit', label: 'Hard Hit%', higherIsBetter: true, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND bb_type IS NOT NULL), 0), 1)" },
-      { key: 'whiff', label: 'Whiff%', higherIsBetter: false, seasonSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)", recentSQL: "ROUND(100.0 * COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description = 'missed_bunt')) / NULLIF(COUNT(*) FILTER (WHERE game_date >= '{recent}' AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description = 'hit_into_play' OR description = 'foul_tip' OR description = 'missed_bunt')), 0), 1)" },
-    ]
-
+    // Shared Savant-matched definitions — season and recent variants come from
+    // the same builders, so the trend delta compares like with like.
     const metrics = isPitcher ? PITCHER_METRICS : HITTER_METRICS
 
     // Check if regular season data exists

@@ -6,6 +6,7 @@ import {
   computeYearWeightedPlus, computeCommandPlus, computeRPComPlus,
 } from '@/lib/leagueStats'
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
+import { isAtBat, isWhiff, isSwing, isWobaDenomEvent, WOBA_WEIGHTS } from '@/lib/pitcherStats'
 import { toPitcherX } from '@/lib/pitcherPerspective'
 import { batterSilhouetteImages } from '@/lib/batterSilhouette'
 
@@ -30,38 +31,42 @@ const METRIC_LABELS: Record<MetricKey, string> = {
   xba:'xBA', xwoba:'xwOBA', xslg:'xSLG', ev:'Exit Velo', la:'Launch Angle', whiff_pct:'Whiff%', chase_pct:'Chase%', swing_pct:'Swing%',
 }
 
+// Per-cell math mirrors lib/imagine/heatmapMetrics.ts — keep in sync.
 function calcMetric(pitches: any[], metric: MetricKey): number|null {
   if (!pitches.length) return null
   switch(metric) {
     case 'frequency': return pitches.length
     case 'ba': {
-      const ab = pitches.filter(p=>p.events&&!['walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf'].includes(p.events))
+      const ab = pitches.filter(p=>isAtBat(p.events))
       const h = ab.filter(p=>['single','double','triple','home_run'].includes(p.events))
       return ab.length ? h.length/ab.length : null
     }
     case 'slg': {
-      const ab = pitches.filter(p=>p.events&&!['walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf'].includes(p.events))
+      const ab = pitches.filter(p=>isAtBat(p.events))
       if(!ab.length) return null
       const tb = ab.reduce((s,p)=>s+(p.events==='single'?1:p.events==='double'?2:p.events==='triple'?3:p.events==='home_run'?4:0),0)
       return tb/ab.length
     }
-    case 'woba': { const v=pitches.map(p=>p.woba_value).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
-    case 'xba': { const v=pitches.map(p=>p.estimated_ba_using_speedangle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
-    case 'xwoba': { const v=pitches.map(p=>p.estimated_woba_using_speedangle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
-    case 'xslg': { const v=pitches.map(p=>p.estimated_slg_using_speedangle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
-    case 'ev': { const v=pitches.map(p=>p.launch_speed).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
-    case 'la': { const v=pitches.map(p=>p.launch_angle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
+    case 'woba': {
+      const den = pitches.filter(p=>isWobaDenomEvent(p.events)).length
+      return den ? pitches.reduce((s,p)=>s+(WOBA_WEIGHTS[p.events]??0),0)/den : null
+    }
+    case 'xba': { const v=pitches.filter(p=>p.bb_type!=null).map(p=>p.estimated_ba_using_speedangle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
+    case 'xwoba': { const v=pitches.filter(p=>p.bb_type!=null).map(p=>p.estimated_woba_using_speedangle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
+    case 'xslg': { const v=pitches.filter(p=>p.bb_type!=null).map(p=>p.estimated_slg_using_speedangle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
+    case 'ev': { const v=pitches.filter(p=>p.bb_type!=null).map(p=>p.launch_speed).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
+    case 'la': { const v=pitches.filter(p=>p.bb_type!=null).map(p=>p.launch_angle).filter((x:any)=>x!=null); return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:null }
     case 'whiff_pct': {
-      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d==='missed_bunt'||d==='swinging_pitchout'})
-      const wh=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d==='missed_bunt'||d==='swinging_pitchout'})
+      const sw=pitches.filter(p=>isSwing((p.description||'').toLowerCase()))
+      const wh=pitches.filter(p=>isWhiff((p.description||'').toLowerCase()))
       return sw.length?wh.length/sw.length:null
     }
     case 'chase_pct': {
-      const oz=pitches.filter(p=>p.zone>9);const sw=oz.filter(p=>{const s=(p.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')||s==='missed_bunt'||s==='swinging_pitchout'})
+      const oz=pitches.filter(p=>p.zone>9);const sw=oz.filter(p=>isSwing((p.description||'').toLowerCase()))
       return oz.length?sw.length/oz.length:null
     }
     case 'swing_pct': {
-      const sw=pitches.filter(p=>{const d=(p.description||'').toLowerCase();return d.includes('swinging_strike')||d.includes('foul')||d.includes('hit_into_play')||d==='missed_bunt'||d==='swinging_pitchout'})
+      const sw=pitches.filter(p=>isSwing((p.description||'').toLowerCase()))
       return pitches.length?sw.length/pitches.length:null
     }
     default: return null
@@ -212,8 +217,8 @@ export function TileBar({data,metric='usage'}:{data:any[];metric?:BarMetric}) {
       case 'zone': {const iz=p.filter(d=>d.zone>=1&&d.zone<=9);const hz=p.filter(d=>d.zone!=null);return hz.length?100*iz.length/hz.length:0}
       case 'chase': {const oz=p.filter(d=>d.zone>9);const sw=oz.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')});return oz.length?100*sw.length/oz.length:0}
       case 'swing': {const sw=p.filter(d=>{const s=(d.description||'').toLowerCase();return s.includes('swinging_strike')||s.includes('foul')||s.includes('hit_into_play')||s.includes('foul_tip')});return p.length?100*sw.length/p.length:0}
-      case 'ev': {const v=p.map(d=>d.launch_speed).filter(Boolean);return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:0}
-      case 'xwoba': {const v=p.map(d=>d.estimated_woba_using_speedangle).filter((x:any)=>x!=null);return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:0}
+      case 'ev': {const v=p.filter((d:any)=>d.bb_type!=null).map((d:any)=>d.launch_speed).filter((x:any)=>x!=null);return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:0}
+      case 'xwoba': {const v=p.filter((d:any)=>d.bb_type!=null).map((d:any)=>d.estimated_woba_using_speedangle).filter((x:any)=>x!=null);return v.length?v.reduce((a:number,b:number)=>a+b,0)/v.length:0}
       default: return 0
     }
   })

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { METRICS } from '@/lib/reportMetrics'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
 
@@ -20,17 +21,12 @@ export async function POST(req: NextRequest) {
     const [summaryRes, breakdownRes, locationsRes, namesRes] = await Promise.all([
       // 1. Summary stats
       q(`SELECT
-        COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
-        ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ba,
-        ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0), 3) as obp,
-        ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as slg,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%')
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk')
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
+        ${METRICS.pa} as pa,
+        ${METRICS.ba} as ba,
+        ${METRICS.obp} as obp,
+        ${METRICS.slg} as slg,
+        ${METRICS.k_pct} as k_pct,
+        ${METRICS.bb_pct} as bb_pct,
         COUNT(*) as pitches
       FROM pitches WHERE ${matchWhere}`),
 
@@ -38,12 +34,10 @@ export async function POST(req: NextRequest) {
       q(`SELECT pitch_name,
         COUNT(*) as pitches,
         ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) as usage_pct,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
-          / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct,
-        ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as xwoba,
-        ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ba,
-        ROUND(AVG(launch_speed)::numeric, 1) as avg_ev
+        ${METRICS.whiff_pct} as whiff_pct,
+        ${METRICS.avg_xwoba} as xwoba,
+        ${METRICS.ba} as ba,
+        ${METRICS.avg_ev} as avg_ev
       FROM pitches
       WHERE ${matchWhere} AND pitch_name IS NOT NULL
       GROUP BY pitch_name ORDER BY pitches DESC`),

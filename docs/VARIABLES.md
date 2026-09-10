@@ -62,12 +62,48 @@ If a metric is deprecated, remove the row outright rather than leaving it with a
 
 All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). They run via the `run_query` RPC against the `pitches` table (or `milb_pitches`, with events normalized to lowercase). When used in a leaderboard, they accept an optional `secondaryMetric` / `tertiaryMetric` from the same set.
 
+### 1.0 Savant conventions (2026-09-09)
+
+Every metric with a published Baseball Savant definition now reproduces Savant's
+displayed value exactly (verified against Skenes/Skubal/Judge player pages).
+The shared event/description sets are exported from `lib/reportMetrics.ts`
+(SQL) and `lib/pitcherStats.ts` (client) — always reuse them:
+
+- **Whiff** = swinging_strike, swinging_strike_blocked, missed_bunt,
+  swinging_pitchout, **foul_tip, bunt_foul_tip**. Savant counts foul tips as
+  whiffs; the old strict swing-and-miss definition read ~1–2.5 points low.
+- **Swing** = whiffs + all fouls + hit_into_play (unchanged).
+- **PA** = distinct at-bat keys excluding `truncated_pa` and
+  baserunning/administrative events (`NON_PA_EVENTS`). Matches official
+  batters faced.
+- **AB** = positive event list (`AB_EVENTS`): hits + outs + errors + FC.
+  `intent_walk`/`truncated_pa` never count as AB.
+- **BB** (bb_pct, bb_count, OBP) **includes intentional walks**, matching the
+  official BB stat. wOBA/xwOBA exclude IBB entirely (numerator + denominator).
+- **xBA / xSLG** = Σ per-BBE estimates ÷ AB (strikeouts contribute 0).
+- **xwOBA** = (Σ est_wOBA over BBE + 0.7·uBB + 0.7·HBP) ÷ (AB + uBB + SF + HBP).
+- **wOBA** is event-derived with static Statcast-style weights
+  (.7 BB/HBP, .9 1B, 1.25 2B, 1.6 3B, 2.0 HR) over the same denominator.
+  The stored `woba_value` column is NOT used — it miscredits errors/FC/CI.
+  Savant's seasonal weights differ by ~.003; documented approximation.
+- **Barrel%, Hard-Hit%, GB/FB/LD/PU%** ÷ batted-ball events (`bb_type IS NOT NULL`).
+- **Avg/Max EV, Avg LA, Avg Dist** are BBE-gated (fouls can carry tracked EV).
+- **No Savant equivalent — deliberately unchanged:** SwStr%, CSW%, CSt%, FPS%
+  (conventional definitions; SwStr/CSW still exclude foul tips) and
+  Contact%/Z-Swing%/O-Contact% (FanGraphs-style: foul tip = contact). Because
+  whiff counts foul tips and contact counts them too, whiff% + contact%
+  intentionally sums to slightly over 100.
+
+The same conventions are applied in `refresh_league_averages` /
+`refresh_league_percentiles` (DB functions), `scripts/create-materialized-views.sql`,
+`lib/trendAlerts.ts`, and every stats route that embeds its own SQL.
+
 ### 1.1 Counting
 
 | Key | Label | Source / SQL | Notes |
 |---|---|---|---|
 | `pitches` | Pitch Count | `COUNT(*)` | Total pitches thrown / seen |
-| `pa` | PA | distinct `(game_pk, at_bat_number)` where `events IS NOT NULL` | Plate appearances |
+| `pa` | PA | distinct `(game_pk, at_bat_number)` where `events IS NOT NULL` and not in `NON_PA_EVENTS` | Plate appearances = official batters faced (see §1.0) |
 | `games` | Games | `COUNT(DISTINCT game_pk)` | Game appearances |
 | `ip` | IP | filtered `events` count / 3 (rounded 0.1) | Outs ÷ 3; not the full innings calculus |
 | `h` | Hits | `events IN (single, double, triple, home_run)` | |
@@ -75,7 +111,7 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 | `doubles` | Doubles | `events = 'double'` | |
 | `triples` | Triples | `events = 'triple'` | |
 | `hr_count` | Home Runs | `events = 'home_run'` | |
-| `bb_count` | Walks | `events = 'walk'` | |
+| `bb_count` | Walks | `events IN ('walk','intent_walk')` | Includes IBB (official BB) |
 | `k_count` | Strikeouts | `events LIKE '%strikeout%'` | Includes `strikeout_double_play` |
 | `hbp_count` | HBP | `events = 'hit_by_pitch'` | |
 | `usage_pct` | Usage % | `100 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY player_name)` | Pitch-mix share |
@@ -96,10 +132,10 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 
 | Key | Label | Definition |
 |---|---|---|
-| `k_pct` | K % | K / PA |
-| `bb_pct` | BB % | BB / PA |
-| `k_minus_bb` | K-BB % | `k_pct − bb_pct` |
-| `whiff_pct` | Whiff % | swinging strikes ÷ swings |
+| `k_pct` | K % | K / PA (Savant PA — see §1.0) |
+| `bb_pct` | BB % | BB (incl. IBB) / PA |
+| `k_minus_bb` | K-BB % | `(K − BB) / PA` |
+| `whiff_pct` | Whiff % | whiffs (incl. foul tips) ÷ swings (Savant) |
 | `swstr_pct` | SwStr % | swinging strikes ÷ pitches |
 | `cs_pct` | CSt % | called strikes ÷ pitches (dashboard `csPct`) |
 | `fps_pct` | FPS % | first-pitch strikes (called/swinging/foul/in-play on pitch 1) ÷ first pitches (dashboard `fpsPct`) |
@@ -114,8 +150,8 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 
 | Key | Label | Definition |
 |---|---|---|
-| `ba` | AVG | hits / at-bats (3-decimal) |
-| `obp` | OBP | reached / non-bunt PAs |
+| `ba` | AVG | hits / at-bats (positive `AB_EVENTS` list; 3-decimal) |
+| `obp` | OBP | (H + BB incl. IBB + HBP) / (AB + BB + HBP + SF) |
 | `slg` | SLG | total bases / at-bats |
 | `ops` | OPS | `obp + slg` |
 | `wrc_plus` | wRC+ | Computed in JS: `(((wOBA - lgwOBA) / wOBA_scale + r_pa) / (parkFactor/100 * r_pa)) * 100`. Uses `SEASON_CONSTANTS` + `PARK_FACTORS`. In `COMPUTED_METRIC_KEYS`, not in `METRICS`. |
@@ -124,22 +160,22 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 
 | Key | Label | Source column |
 |---|---|---|
-| `avg_xba` | xBA | `estimated_ba_using_speedangle` |
-| `avg_xwoba` | xwOBA | `estimated_woba_using_speedangle` |
-| `avg_xslg` | xSLG | `estimated_slg_using_speedangle` |
-| `avg_woba` | wOBA | `woba_value` |
+| `avg_xba` | xBA | Σ `estimated_ba_using_speedangle` ÷ AB |
+| `avg_xwoba` | xwOBA | (Σ est over BBE + 0.7·uBB + 0.7·HBP) ÷ (AB+uBB+SF+HBP) — see §1.0 |
+| `avg_xslg` | xSLG | Σ `estimated_slg_using_speedangle` ÷ AB |
+| `avg_woba` | wOBA | event-derived, static weights (NOT `woba_value`) — see §1.0 |
 | `total_re24` | RE24 | `SUM(delta_run_exp)` |
 
 ### 1.6 Batted Ball
 
 | Key | Label | Source / SQL |
 |---|---|---|
-| `avg_ev` | Avg Exit Velo | `launch_speed` |
-| `max_ev` | Max Exit Velo | `MAX(launch_speed)` |
-| `avg_la` | Avg Launch Angle | `launch_angle` |
-| `avg_dist` | Avg Distance | `hit_distance_sc` |
-| `hard_hit_pct` | Hard Hit % | `launch_speed >= 95` ÷ batted balls |
-| `barrel_pct` | Barrel % | `launch_speed_angle = 6` ÷ batted balls |
+| `avg_ev` | Avg Exit Velo | `launch_speed` (BBE-gated) |
+| `max_ev` | Max Exit Velo | `MAX(launch_speed)` (BBE-gated) |
+| `avg_la` | Avg Launch Angle | `launch_angle` (BBE-gated) |
+| `avg_dist` | Avg Distance | `hit_distance_sc` (BBE-gated) |
+| `hard_hit_pct` | Hard Hit % | `launch_speed >= 95` ÷ BBE |
+| `barrel_pct` | Barrel % | `launch_speed_angle = 6` ÷ BBE (`bb_type IS NOT NULL`) |
 | `gb_pct` | GB % | `bb_type = 'ground_ball'` |
 | `fb_pct` | FB % | `bb_type = 'fly_ball'` |
 | `ld_pct` | LD % | `bb_type = 'line_drive'` |

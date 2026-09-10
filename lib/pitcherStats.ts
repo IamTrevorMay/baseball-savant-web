@@ -42,6 +42,23 @@ export interface ArsenalRow {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Savant-matched event/description sets — keep in sync with lib/reportMetrics.ts
+// and docs/VARIABLES.md. Verified 2026-09-09 against Savant player pages.
+const NON_PA_EVENTS = new Set(['truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home'])
+const AB_EVENTS = new Set(['single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out'])
+export const isPlateAppearance = (e: string | null | undefined): boolean => !!e && !NON_PA_EVENTS.has(e)
+export const isAtBat = (e: string | null | undefined): boolean => !!e && AB_EVENTS.has(e)
+// Savant whiff: swing-and-miss plus foul tips
+export const isWhiff = (d: string): boolean =>
+  d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout' || d === 'foul_tip' || d === 'bunt_foul_tip'
+export const isSwing = (d: string): boolean =>
+  d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
+// Static Statcast-style linear weights (intent_walk deliberately absent —
+// wOBA/xwOBA exclude IBB from numerator and denominator).
+export const WOBA_WEIGHTS: Record<string, number> = { walk: 0.7, hit_by_pitch: 0.7, single: 0.9, double: 1.25, triple: 1.6, home_run: 2.0 }
+export const isWobaDenomEvent = (e: string | null | undefined): boolean =>
+  isAtBat(e) || e === 'walk' || e === 'hit_by_pitch' || e === 'sac_fly' || e === 'sac_fly_double_play'
+
 function groupByYear(data: any[]): Record<number, any[]> {
   const years: Record<number, any[]> = {}
   data.forEach(d => {
@@ -60,7 +77,7 @@ export function calcTraditionalByYear(data: any[]): TraditionalRow[] {
 
   return Object.entries(years).sort((a, b) => Number(b[0]) - Number(a[0])).map(([year, pitches]) => {
     const games = new Set(pitches.map(p => p.game_pk)).size
-    const pas = pitches.filter(p => p.events).length
+    const pas = pitches.filter(p => isPlateAppearance(p.events)).length
     const ks = pitches.filter(p => p.events?.includes('strikeout')).length
     const bbs = pitches.filter(p => p.events?.includes('walk')).length
     const hits = pitches.filter(p => ['single','double','triple','home_run'].includes(p.events)).length
@@ -81,21 +98,13 @@ export function calcTraditionalByYear(data: any[]): TraditionalRow[] {
     }
     const ipDisplay = outsToDisplayIP(outsFromEvents)
 
-    const whiffs = pitches.filter(p => {
-      const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
-    }).length
-    const swings = pitches.filter(p => {
-      const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
-    }).length
+    const whiffs = pitches.filter(p => isWhiff((p.description || '').toLowerCase())).length
+    const swings = pitches.filter(p => isSwing((p.description || '').toLowerCase())).length
     const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
 
     const tb = hits + doubles + triples * 2 + hrs * 3
-    // AB = PA - BB - HBP - SF - SH (sacrifice hits/bunts)
-    const sacFlies = pitches.filter(p => p.events && p.events.includes('sac_fly')).length
     const sacBunts = pitches.filter(p => p.events === 'sac_bunt').length
-    const abs = pas - bbs - hbps - sacFlies - sacBunts
+    const abs = pitches.filter(p => isAtBat(p.events)).length
     const ba = abs > 0 ? (hits / abs) : 0
     const obpDenom = pas - sacBunts - pitches.filter(p => p.events === 'catcher_interf').length
     const obp = obpDenom > 0 ? ((hits + bbs + hbps) / obpDenom) : 0
@@ -119,21 +128,24 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
   const years = groupByYear(data)
 
   return Object.entries(years).sort((a, b) => Number(b[0]) - Number(a[0])).map(([year, pitches]) => {
-    const pas = pitches.filter(p => p.events).length
+    const pas = pitches.filter(p => isPlateAppearance(p.events)).length
     const ks = pitches.filter(p => p.events?.includes('strikeout')).length
     const bbs = pitches.filter(p => p.events?.includes('walk')).length
     const hrs = pitches.filter(p => p.events === 'home_run').length
     const hbps = pitches.filter(p => p.events === 'hit_by_pitch').length
 
     const battedBalls = pitches.filter(p => p.bb_type != null)
-    const evs = battedBalls.map(p => p.launch_speed)
-    const las = battedBalls.map(p => p.launch_angle).filter(Boolean)
-    const xbaPA = pitches.filter(p => p.events)
-    const xbaSum = xbaPA.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
-    const xbaAB = xbaPA.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
-    const xwobas = pitches.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
-    const xslgs = pitches.map(p => p.estimated_slg_using_speedangle).filter((v: any) => v != null)
-    const wobas = pitches.map(p => p.woba_value).filter((v: any) => v != null)
+    const evs = battedBalls.map(p => p.launch_speed).filter((v: any) => v != null)
+    const las = battedBalls.map(p => p.launch_angle).filter((v: any) => v != null)
+    const abCount = pitches.filter(p => isAtBat(p.events)).length
+    const xbaSum = pitches.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+    const xslgSum = pitches.reduce((s: number, d: any) => s + (d.estimated_slg_using_speedangle || 0), 0)
+    // Savant xwOBA: per-BBE estimates blended with real walk/HBP outcomes over
+    // AB + uBB + SF + HBP; wOBA rebuilt from events (stored woba_value is unreliable).
+    const uBBs = pitches.filter(p => p.events === 'walk').length
+    const wobaDenomCt = pitches.filter(p => isWobaDenomEvent(p.events)).length
+    const xwobaNum = battedBalls.reduce((s: number, d: any) => s + (d.estimated_woba_using_speedangle ?? 0), 0) + 0.7 * uBBs + 0.7 * hbps
+    const wobaNum = pitches.reduce((s: number, d: any) => s + (WOBA_WEIGHTS[d.events] ?? 0), 0)
 
     const gbs = battedBalls.filter(p => p.bb_type === 'ground_ball').length
     const fbs = battedBalls.filter(p => p.bb_type === 'fly_ball').length
@@ -141,14 +153,8 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
     const pus = battedBalls.filter(p => p.bb_type === 'popup').length
     const bbT = battedBalls.length || 1
 
-    const whiffs = pitches.filter(p => {
-      const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
-    }).length
-    const swings = pitches.filter(p => {
-      const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
-    }).length
+    const whiffs = pitches.filter(p => isWhiff((p.description || '').toLowerCase())).length
+    const swings = pitches.filter(p => isSwing((p.description || '').toLowerCase())).length
     const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
     const pitchesWithZone = pitches.filter(p => p.zone != null)
     const zoneP = pitchesWithZone.filter(p => p.zone >= 1 && p.zone <= 9).length
@@ -215,7 +221,7 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
     const seasonStats = {
       year: Number(year), k: ks, bb: bbs, hbp: hbps, hr: hrs,
       ip: ipDecimal, fb: fbs, gb: gbs, ld: lds, pu: pus, pa: pas,
-      xwOBA: avg(xwobas),
+      xwOBA: wobaDenomCt > 0 ? xwobaNum / wobaDenomCt : null,
     }
     const fip = calcFIP(seasonStats)
     const xfip = calcXFIP(seasonStats)
@@ -230,8 +236,10 @@ export function calcAdvancedByYear(data: any[]): AdvancedRow[] {
       avgEV: f(avg(evs)), maxEV: f(evs.length ? Math.max(...evs) : null),
       avgLA: f(avg(las)),
       gbPct: pct(gbs, bbT), fbPct: pct(fbs, bbT), ldPct: pct(lds, bbT), puPct: pct(pus, bbT),
-      xBA: f(xbaAB > 0 ? xbaSum / xbaAB : null, 3), xwOBA: f(avg(xwobas), 3), xSLG: f(avg(xslgs), 3),
-      wOBA: f(avg(wobas), 3),
+      xBA: f(abCount > 0 ? xbaSum / abCount : null, 3),
+      xwOBA: f(wobaDenomCt > 0 ? xwobaNum / wobaDenomCt : null, 3),
+      xSLG: f(abCount > 0 ? xslgSum / abCount : null, 3),
+      wOBA: f(wobaDenomCt > 0 ? wobaNum / wobaDenomCt : null, 3),
       ip: ipDisplay,
       fip: f(fip, 2), xfip: f(xfip, 2), xera: f(xera, 2), siera: f(siera, 2),
       totalRE: f(dres.length ? dres.reduce((a: number, b: number) => a + b, 0) : null, 1),
@@ -257,19 +265,12 @@ export function calcArsenal(data: any[]): ArsenalRow[] {
     const exts = pitches.map(p => p.release_extension).filter(Boolean)
     const arms = pitches.map(p => p.arm_angle).filter(Boolean)
 
-    const whiffs = pitches.filter(p => {
-      const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d === 'missed_bunt' || d === 'swinging_pitchout'
-    }).length
-    const swings = pitches.filter(p => {
-      const d = (p.description || '').toLowerCase()
-      return d.includes('swinging_strike') || d.includes('foul') || d.includes('hit_into_play') || d === 'missed_bunt' || d === 'swinging_pitchout'
-    }).length
+    const whiffs = pitches.filter(p => isWhiff((p.description || '').toLowerCase())).length
+    const swings = pitches.filter(p => isSwing((p.description || '').toLowerCase())).length
     const cs = pitches.filter(p => (p.description || '').toLowerCase() === 'called_strike').length
-    const evs = pitches.filter(p => p.bb_type != null).map(p => p.launch_speed)
-    const ptXbaPA = pitches.filter(p => p.events)
-    const ptXbaSum = ptXbaPA.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
-    const ptXbaAB = ptXbaPA.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
+    const evs = pitches.filter(p => p.bb_type != null).map(p => p.launch_speed).filter((v: any) => v != null)
+    const ptXbaSum = pitches.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+    const ptXbaAB = pitches.filter((p: any) => isAtBat(p.events)).length
     const brinks = pitches.map(p => p.brink).filter((v: any) => v != null)
     const clusters = pitches.map(p => p.cluster).filter((v: any) => v != null)
 

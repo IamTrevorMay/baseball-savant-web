@@ -1,11 +1,52 @@
 /**
  * Shared SQL metric definitions used by /api/report and /api/scene-stats.
+ *
+ * Conventions match Baseball Savant where Savant publishes the metric
+ * (verified 2026-09-09 by reproducing Savant's displayed values exactly for
+ * Skenes/Skubal/Judge — see docs/VARIABLES.md):
+ * - Whiff counts foul tips (foul_tip, bunt_foul_tip) as swinging strikes.
+ * - PA excludes truncated_pa and baserunning-only events (matches batters faced).
+ * - BB / OBP include intentional walks; wOBA and xwOBA exclude them entirely.
+ * - AB is a positive event list (intent_walk / truncated_pa never count as AB).
+ * - Barrel%, Hard-Hit%, GB/FB/LD/PU% are per batted-ball event (bb_type set).
+ * - xBA/xSLG divide summed per-BBE estimates by AB (strikeouts add 0).
+ * - xwOBA = (Σ est_wOBA over BBE + 0.7·uBB + 0.7·HBP) / (AB + uBB + SF + HBP).
+ * - wOBA is derived from events with static Statcast-style weights
+ *   (.7/.7/.9/1.25/1.6/2.0) — not the stored woba_value column, which
+ *   miscredits errors/fielder's choice. Savant's seasonal weights differ by
+ *   ~.003; documented approximation.
+ * Contact%/O-Contact%/Z-Swing% stay FanGraphs-style (foul tip = contact) and
+ * CSW%/SwStr%/FPS% keep their conventional definitions — Savant publishes no
+ * equivalent, so whiff% + contact% intentionally exceeds 100 by the foul-tip share.
  */
+
+// Events that end a plate appearance but do not count as one (or are
+// baserunning/administrative rows): excluded from every PA denominator.
+export const NON_PA_EVENTS = "'truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home'"
+export const PA_COUNT = `COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN (${NON_PA_EVENTS}) THEN game_pk::bigint * 10000 + at_bat_number END)`
+
+// Official at-bats as a positive list (reproduces Savant AB exactly).
+export const AB_EVENTS = "'single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out'"
+export const AB_COUNT = `COUNT(*) FILTER (WHERE events IN (${AB_EVENTS}))`
+
+// wOBA/xwOBA denominator: AB + unintentional BB + SF + HBP (no IBB, no CI).
+export const WOBA_DENOM = `COUNT(*) FILTER (WHERE events IN (${AB_EVENTS},'walk','hit_by_pitch','sac_fly','sac_fly_double_play'))`
+
+// Savant xwOBA numerator+denominator as one expression, reusable outside METRICS.
+export const XWOBA_SQL = `ROUND((COALESCE(SUM(estimated_woba_using_speedangle) FILTER (WHERE description LIKE 'hit_into_play%'), 0) + 0.7 * COUNT(*) FILTER (WHERE events = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events = 'hit_by_pitch'))::numeric / NULLIF(${WOBA_DENOM}, 0), 3)`
+
+// Event-derived wOBA with static Statcast-style weights (stored woba_value
+// miscredits errors/FC/CI). IBB excluded from numerator and denominator.
+export const WOBA_EVENT_SQL = `ROUND((0.7 * COUNT(*) FILTER (WHERE events = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events = 'hit_by_pitch') + 0.9 * COUNT(*) FILTER (WHERE events = 'single') + 1.25 * COUNT(*) FILTER (WHERE events = 'double') + 1.6 * COUNT(*) FILTER (WHERE events = 'triple') + 2.0 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(${WOBA_DENOM}, 0), 3)`
+
+// Savant whiff: swing-and-miss plus foul tips.
+export const WHIFFS = "COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip'))"
+export const SWINGS = "COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')"
 
 export const METRICS: Record<string, string> = {
   // Counting
   pitches: 'COUNT(*)',
-  pa: "COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END)",
+  pa: PA_COUNT,
   games: 'COUNT(DISTINCT game_pk)',
   ip: "ROUND((COUNT(*) FILTER (WHERE events IN ('strikeout','field_out','force_out','fielders_choice','fielders_choice_out','sac_fly','sac_bunt')) + 2 * COUNT(*) FILTER (WHERE events IN ('strikeout_double_play','double_play','grounded_into_double_play','sac_fly_double_play')) + 3 * COUNT(*) FILTER (WHERE events = 'triple_play'))::numeric / 3, 1)",
   // Averages
@@ -16,31 +57,32 @@ export const METRICS: Record<string, string> = {
   avg_hbreak_in: 'ROUND(AVG(pfx_x * 12)::numeric, 1)',
   avg_ivb_in: 'ROUND(AVG(pfx_z * 12)::numeric, 1)',
   avg_arm_angle: 'ROUND(AVG(arm_angle)::numeric, 1)',
-  // Batted Ball
-  avg_ev: 'ROUND(AVG(launch_speed)::numeric, 1)',
-  max_ev: 'ROUND(MAX(launch_speed)::numeric, 1)',
-  avg_la: 'ROUND(AVG(launch_angle)::numeric, 1)',
-  avg_dist: 'ROUND(AVG(hit_distance_sc)::numeric, 0)',
+  // Batted Ball — gated to batted-ball events: fouls can carry tracked
+  // launch_speed/launch_angle, and Savant averages over BBE only.
+  avg_ev: 'ROUND(AVG(launch_speed) FILTER (WHERE bb_type IS NOT NULL)::numeric, 1)',
+  max_ev: 'ROUND(MAX(launch_speed) FILTER (WHERE bb_type IS NOT NULL)::numeric, 1)',
+  avg_la: 'ROUND(AVG(launch_angle) FILTER (WHERE bb_type IS NOT NULL)::numeric, 1)',
+  avg_dist: 'ROUND(AVG(hit_distance_sc) FILTER (WHERE bb_type IS NOT NULL)::numeric, 0)',
   // Rates
-  k_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
-  bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
-  whiff_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)",
+  k_pct: `ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(${PA_COUNT}, 0), 1)`,
+  bb_pct: `ROUND(100.0 * COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) / NULLIF(${PA_COUNT}, 0), 1)`,
+  whiff_pct: `ROUND(100.0 * ${WHIFFS} / NULLIF(${SWINGS}, 0), 1)`,
   csw_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'called_strike' OR description = 'swinging_pitchout') / NULLIF(COUNT(*), 0), 1)",
   cs_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description = 'called_strike') / NULLIF(COUNT(*), 0), 1)",
   fps_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE pitch_number = 1 AND (description = 'called_strike' OR description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE pitch_number = 1), 0), 1)",
   zone_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)",
   chase_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1)",
   // Batting
-  ba: "ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  slg: "ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  obp: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0), 3)",
+  ba: `ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric / NULLIF(${AB_COUNT}, 0), 3)`,
+  slg: `ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(${AB_COUNT}, 0), 3)`,
+  obp: `ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IN (${AB_EVENTS},'walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0), 3)`,
   // Expected
-  avg_xba: "ROUND(SUM(estimated_ba_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  avg_xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
-  // estimated_slg_using_speedangle is NULL on every non-batted-ball event, so AVG()
-  // silently computes xSLG per batted ball. Divide by at-bats, matching avg_xba.
-  avg_xslg: "ROUND(SUM(estimated_slg_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  avg_woba: 'ROUND(AVG(woba_value)::numeric, 3)',
+  avg_xba: `ROUND(SUM(estimated_ba_using_speedangle)::numeric / NULLIF(${AB_COUNT}, 0), 3)`,
+  avg_xwoba: XWOBA_SQL,
+  // estimated_slg_using_speedangle is NULL on every non-batted-ball event;
+  // divide the per-BBE sum by at-bats so strikeouts count as 0, matching avg_xba.
+  avg_xslg: `ROUND(SUM(estimated_slg_using_speedangle)::numeric / NULLIF(${AB_COUNT}, 0), 3)`,
+  avg_woba: WOBA_EVENT_SQL,
   total_re24: 'ROUND(SUM(delta_run_exp)::numeric, 1)',
   // GB/FB/LD
   gb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
@@ -53,15 +95,15 @@ export const METRICS: Record<string, string> = {
   doubles: "COUNT(*) FILTER (WHERE events = 'double')",
   triples: "COUNT(*) FILTER (WHERE events = 'triple')",
   hr_count: "COUNT(*) FILTER (WHERE events = 'home_run')",
-  bb_count: "COUNT(*) FILTER (WHERE events = 'walk')",
+  bb_count: "COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))",
   k_count: "COUNT(*) FILTER (WHERE events LIKE '%strikeout%')",
   hbp_count: "COUNT(*) FILTER (WHERE events = 'hit_by_pitch')",
   // Rate — additional
-  k_minus_bb: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) - 100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
+  k_minus_bb: `ROUND(100.0 * (COUNT(*) FILTER (WHERE events LIKE '%strikeout%') - COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))) / NULLIF(${PA_COUNT}, 0), 1)`,
   swstr_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'swinging_pitchout') / NULLIF(COUNT(*), 0), 1)",
   hard_hit_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
-  barrel_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6') / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0), 1)",
-  ops: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
+  barrel_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
+  ops: `ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IN (${AB_EVENTS},'walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0) + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(${AB_COUNT}, 0), 3)`,
   contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout','missed_bunt') OR description = 'swinging_pitchout'), 0), 1)",
   z_swing_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9), 0), 1)",
   o_contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout','missed_bunt') OR description = 'swinging_pitchout')), 0), 1)",

@@ -39,9 +39,9 @@ export async function POST(req: NextRequest) {
       q(`SELECT a.pitch_name as from_pitch, b.pitch_name as to_pitch,
           COUNT(*) as freq,
           ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY a.pitch_name), 0), 1) as transition_pct,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE b.description LIKE '%swinging_strike%' OR b.description = 'missed_bunt')
-            / NULLIF(COUNT(*) FILTER (WHERE b.description LIKE '%swinging_strike%' OR b.description LIKE '%foul%' OR b.description = 'hit_into_play' OR b.description = 'foul_tip' OR b.description = 'missed_bunt'), 0), 1) as whiff_pct,
-          ROUND(AVG(b.estimated_woba_using_speedangle)::numeric, 3) as xwoba
+          ROUND(100.0 * COUNT(*) FILTER (WHERE b.description LIKE '%swinging_strike%' OR b.description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip'))
+            / NULLIF(COUNT(*) FILTER (WHERE b.description LIKE '%swinging_strike%' OR b.description LIKE '%foul%' OR b.description LIKE 'hit_into_play%' OR b.description = 'missed_bunt' OR b.description = 'swinging_pitchout'), 0), 1) as whiff_pct,
+          ROUND(AVG(b.estimated_woba_using_speedangle) FILTER (WHERE b.bb_type IS NOT NULL)::numeric, 3) as xwoba
         FROM pitches a
         JOIN pitches b ON b.pitcher = ${safeId} ${!isNaN(safeSeason) ? `AND b.game_year = ${safeSeason}` : ''}
           AND a.game_pk = b.game_pk AND a.at_bat_number = b.at_bat_number
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           COUNT(*) as pitches,
           ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) as usage_pct,
           ROUND(AVG(release_speed)::numeric, 1) as avg_velo,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
+          ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip'))
             / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct
         FROM pitches
         WHERE pitcher = ${safeId} ${yearFilterSimple}
