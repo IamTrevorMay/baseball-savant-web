@@ -62,12 +62,19 @@ If a metric is deprecated, remove the row outright rather than leaving it with a
 
 All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). They run via the `run_query` RPC against the `pitches` table (or `milb_pitches`, with events normalized to lowercase). When used in a leaderboard, they accept an optional `secondaryMetric` / `tertiaryMetric` from the same set.
 
+**FanGraphs-standard conventions (adopted platform-wide 2026-09-11):**
+- **PA/TBF** excludes `truncated_pa` (the only non-PA value in the Statcast `events` column)
+- **BB** includes intentional walks (`intent_walk`) — everywhere except wOBA formulas, which use unintentional BB per the official wOBA definition
+- **AB** = PA − BB − HBP − SF (`sac_fly`, `sac_fly_double_play`) − SH (`sac_bunt`, `sac_bunt_double_play`) − `catcher_interf`
+- **FB%** folds popups in, so GB% + LD% + FB% = 100%; **IFFB%** (`iffb_pct`, replaces `pu_pct`) = popups ÷ all fly balls incl. popups
+The shared SQL fragments live at the top of `lib/reportMetrics.ts` (`PA_SQL`, `AB_SQL`, `BB_EVENTS_SQL`, `NON_AB_EVENTS_SQL`); the MVs, splits tabs, and the league-benchmark refresh functions restate the same logic.
+
 ### 1.1 Counting
 
 | Key | Label | Source / SQL | Notes |
 |---|---|---|---|
 | `pitches` | Pitch Count | `COUNT(*)` | Total pitches thrown / seen |
-| `pa` | PA | distinct `(game_pk, at_bat_number)` where `events IS NOT NULL` | Plate appearances |
+| `pa` | PA | distinct `(game_pk, at_bat_number)` where `events IS NOT NULL` and not `truncated_pa` | Plate appearances (FG TBF) |
 | `games` | Games | `COUNT(DISTINCT game_pk)` | Game appearances |
 | `ip` | IP | filtered `events` count / 3 (rounded 0.1) | Outs ÷ 3; not the full innings calculus |
 | `h` | Hits | `events IN (single, double, triple, home_run)` | |
@@ -75,7 +82,7 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 | `doubles` | Doubles | `events = 'double'` | |
 | `triples` | Triples | `events = 'triple'` | |
 | `hr_count` | Home Runs | `events = 'home_run'` | |
-| `bb_count` | Walks | `events = 'walk'` | |
+| `bb_count` | Walks | `events IN ('walk','intent_walk')` | Includes IBB (FG) |
 | `k_count` | Strikeouts | `events LIKE '%strikeout%'` | Includes `strikeout_double_play` |
 | `hbp_count` | HBP | `events = 'hit_by_pitch'` | |
 | `usage_pct` | Usage % | `100 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY player_name)` | Pitch-mix share |
@@ -96,8 +103,8 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 
 | Key | Label | Definition |
 |---|---|---|
-| `k_pct` | K % | K / PA |
-| `bb_pct` | BB % | BB / PA |
+| `k_pct` | K % | K / PA (PA excludes `truncated_pa`) |
+| `bb_pct` | BB % | (BB + IBB) / PA |
 | `k_minus_bb` | K-BB % | `k_pct − bb_pct` |
 | `whiff_pct` | Whiff % | swinging strikes ÷ swings |
 | `swstr_pct` | SwStr % | swinging strikes ÷ pitches |
@@ -114,8 +121,8 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 
 | Key | Label | Definition |
 |---|---|---|
-| `ba` | AVG | hits / at-bats (3-decimal) |
-| `obp` | OBP | reached / non-bunt PAs |
+| `ba` | AVG | hits / at-bats (FG AB definition, 3-decimal) |
+| `obp` | OBP | (H + BB + IBB + HBP) / (PA − SH − CI) |
 | `slg` | SLG | total bases / at-bats |
 | `ops` | OPS | `obp + slg` |
 | `wrc_plus` | wRC+ | Computed in JS: `(((wOBA - lgwOBA) / wOBA_scale + r_pa) / (parkFactor/100 * r_pa)) * 100`. Uses `SEASON_CONSTANTS` + `PARK_FACTORS`. In `COMPUTED_METRIC_KEYS`, not in `METRICS`. |
@@ -125,9 +132,9 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 | Key | Label | Source column |
 |---|---|---|
 | `avg_xba` | xBA | `estimated_ba_using_speedangle` |
-| `avg_xwoba` | xwOBA | `estimated_woba_using_speedangle` |
+| `avg_xwoba` | xwOBA | Savant-faithful blend (2026-09-11): batted-ball `estimated_woba_using_speedangle` + 0.7·(uBB + HBP), over the official wOBA denominator |
 | `avg_xslg` | xSLG | `estimated_slg_using_speedangle` |
-| `avg_woba` | wOBA | `woba_value` |
+| `avg_woba` | wOBA | `SUM(woba_value)` over official wOBA denominator (AB + uBB + SF + HBP; IBB and sac bunts excluded — was a plain AVG) |
 | `total_re24` | RE24 | `SUM(delta_run_exp)` |
 
 ### 1.6 Batted Ball
@@ -141,9 +148,9 @@ All keys below are aggregations defined in `METRICS` (lib/reportMetrics.ts). The
 | `hard_hit_pct` | Hard Hit % | `launch_speed >= 95` ÷ batted balls |
 | `barrel_pct` | Barrel % | `launch_speed_angle = 6` ÷ batted balls |
 | `gb_pct` | GB % | `bb_type = 'ground_ball'` |
-| `fb_pct` | FB % | `bb_type = 'fly_ball'` |
+| `fb_pct` | FB % | `bb_type IN ('fly_ball','popup')` — FG convention, popups folded in |
 | `ld_pct` | LD % | `bb_type = 'line_drive'` |
-| `pu_pct` | PU % | `bb_type = 'popup'` |
+| `iffb_pct` | IFFB % | popups ÷ all fly balls incl. popups (renamed from `pu_pct` 2026-09-11) |
 
 ### 1.7 Swing Tracking
 

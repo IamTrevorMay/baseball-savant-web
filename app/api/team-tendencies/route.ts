@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
           ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
             / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct,
           ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%')
-            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
+            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
           ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as avg_xwoba
         FROM pitches
         WHERE ${yearFilter} AND inning >= 6
@@ -340,18 +340,18 @@ export async function POST(req: NextRequest) {
       const { data, error } = await q(`
         SELECT ${teamExpr} as team, p_throws,
           COUNT(*) as pitches,
-          COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+          COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
           ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%')
-            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk')
-            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
+            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
           ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
             / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct,
           ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as avg_xwoba,
           ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
-            / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ba,
+            / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) as ba,
           ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric
-            / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as slg
+            / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) as slg
         FROM pitches
         WHERE ${yearFilter}
         GROUP BY 1, p_throws ORDER BY team, p_throws
@@ -369,14 +369,14 @@ export async function POST(req: NextRequest) {
     const metricsSQL = isPitching
       ? `COUNT(*) as pitches,
          COUNT(DISTINCT game_pk) as games,
-         COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+         COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
          ROUND(AVG(release_speed)::numeric, 1) as avg_velo,
          ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')
            / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1) as whiff_pct,
          ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%')
-           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
-         ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk')
-           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
+           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
+         ROUND(100.0 * COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))
+           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
          ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as avg_xwoba,
          ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'called_strike')
            / NULLIF(COUNT(*), 0), 1) as csw_pct,
@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
          ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'))
            / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1) as chase_pct,
          COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as era_k,
-         COUNT(*) FILTER (WHERE events = 'walk') as era_bb,
+         COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) as era_bb,
          COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as era_hbp,
          COUNT(*) FILTER (WHERE events = 'home_run') as era_hr,
          ROUND((COUNT(*) FILTER (WHERE events IN ('strikeout','field_out','force_out','fielders_choice','fielders_choice_out','sac_fly','sac_bunt'))
@@ -394,17 +394,17 @@ export async function POST(req: NextRequest) {
          AVG(estimated_woba_using_speedangle) as era_xwoba`
       : `COUNT(*) as pitches,
          COUNT(DISTINCT game_pk) as games,
-         COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+         COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
          SUM(COALESCE(post_bat_score, 0) - COALESCE(bat_score, 0)) FILTER (WHERE events IS NOT NULL) as runs,
          ROUND(AVG(launch_speed)::numeric, 1) as avg_ev,
          ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
-           / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ba,
+           / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) as ba,
          ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric
-           / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as slg,
+           / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) as slg,
          ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%')
-           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
-         ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk')
-           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
+           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as k_pct,
+         ROUND(100.0 * COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))
+           / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1) as bb_pct,
          ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3) as avg_xwoba,
          ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1) as hard_hit_pct,

@@ -18,12 +18,14 @@ export const TRITON_COL: Record<string, string> =
 
 export const IP_ESTIMATE_SQL = `(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN game_pk::bigint * 10000 + at_bat_number END) + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0`
 
+// FanGraphs conventions (2026-09-11): BB includes intentional walks (FIP's
+// BB term does too); PA excludes truncated_pa.
 export const ERA_COMPONENTS_SQL = `COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
-  COUNT(*) FILTER (WHERE events = 'walk') as bb,
+  COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) as bb,
   COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as hbp,
   COUNT(*) FILTER (WHERE events = 'home_run') as hr,
   ${IP_ESTIMATE_SQL} as ip,
-  COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+  COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
   AVG(estimated_woba_using_speedangle) as xwoba`
 
 export function computeFIP(

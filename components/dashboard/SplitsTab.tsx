@@ -18,21 +18,31 @@ function calcSplitStats(pitches: any[]) {
   const whiffs = pitches.filter(p => whiffDescs.some(s => (p.description || '').toLowerCase().includes(s))).length
   const calledStrikes = pitches.filter(p => (p.description || '').toLowerCase().includes('called_strike')).length
 
-  const pas = pitches.filter(p => p.events).length
-  const ks = pitches.filter(p => p.events?.includes('strikeout')).length
-  const bbs = pitches.filter(p => p.events?.includes('walk')).length
-  const hits = pitches.filter(p => ['single','double','triple','home_run'].includes(p.events)).length
-  const hrs = pitches.filter(p => p.events === 'home_run').length
+  // FanGraphs conventions (2026-09-11): PA excludes truncated_pa, BB includes
+  // intentional walks, BA = H/AB, FB% folds popups in (GB+LD+FB = 100%).
+  const NON_AB = new Set(['walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf'])
+  const paRows = pitches.filter(p => p.events && p.events !== 'truncated_pa')
+  const pas = paRows.length
+  const ks = paRows.filter(p => p.events.includes('strikeout')).length
+  const bbs = paRows.filter(p => p.events === 'walk' || p.events === 'intent_walk').length
+  const hits = paRows.filter(p => ['single','double','triple','home_run'].includes(p.events)).length
+  const hrs = paRows.filter(p => p.events === 'home_run').length
+  const abs = paRows.filter(p => !NON_AB.has(p.events)).length
 
   const battedBalls = pitches.filter(p => p.bb_type != null)
   const evs = battedBalls.map(p => p.launch_speed)
-  const xbaPA = pitches.filter(p => p.events)
-  const xbaSum = xbaPA.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
-  const xbaAB = xbaPA.filter((p: any) => { const e = (p.events || '').toLowerCase(); return !e.includes('walk') && !e.includes('hit_by_pitch') && !e.includes('sac_fly') && !e.includes('sac_bunt') && !e.includes('catcher_interf') }).length
-  const xwobas = pitches.map(p => p.estimated_woba_using_speedangle).filter((v: any) => v != null)
+  const xbaSum = paRows.reduce((s: number, d: any) => s + (d.estimated_ba_using_speedangle || 0), 0)
+  const xbaAB = abs
+  // Savant-faithful xwOBA: batted-ball xwOBA + 0.7·(uBB + HBP), over the
+  // official wOBA denominator (AB + uBB + SF + HBP; IBB excluded entirely)
+  const WOBA_DENOM = new Set(['single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play'])
+  const wobaDen = paRows.filter(p => WOBA_DENOM.has(p.events)).length
+  const xwobaNum = pitches.reduce((s: number, p: any) => s + ((p.description || '').startsWith('hit_into_play') ? (p.estimated_woba_using_speedangle || 0) : 0), 0)
+    + 0.7 * paRows.filter(p => p.events === 'walk' || p.events === 'hit_by_pitch').length
+  const xwoba = wobaDen > 0 ? xwobaNum / wobaDen : null
 
   const gbs = battedBalls.filter(p => p.bb_type === 'ground_ball').length
-  const fbs = battedBalls.filter(p => p.bb_type === 'fly_ball').length
+  const fbs = battedBalls.filter(p => p.bb_type === 'fly_ball' || p.bb_type === 'popup').length
   const lds = battedBalls.filter(p => p.bb_type === 'line_drive').length
   const bbT = battedBalls.length || 1
 
@@ -43,8 +53,8 @@ function calcSplitStats(pitches: any[]) {
   return {
     pitches: total, pa: pas, avgVelo: f(avg(velos)), avgSpin: f(avg(spins), 0),
     whiffPct: pct(whiffs, swings), csPct: pct(calledStrikes, total), swingPct: pct(swings, total),
-    kPct: pct(ks, pas), bbPct: pct(bbs, pas), hits, hrs, ba: pas > 0 ? f(hits / pas, 3) : '—',
-    avgEV: f(avg(evs)), xBA: f(xbaAB > 0 ? xbaSum / xbaAB : null, 3), xwOBA: f(avg(xwobas), 3),
+    kPct: pct(ks, pas), bbPct: pct(bbs, pas), hits, hrs, ba: abs > 0 ? f(hits / abs, 3) : '—',
+    avgEV: f(avg(evs)), xBA: f(xbaAB > 0 ? xbaSum / xbaAB : null, 3), xwOBA: f(xwoba, 3),
     gbPct: pct(gbs, bbT), fbPct: pct(fbs, bbT), ldPct: pct(lds, bbT),
   }
 }

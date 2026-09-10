@@ -181,7 +181,7 @@ export const METRIC_DEFAULT_FORMAT: Record<string, FormatType> = {
   hard_hit_pct: 'percent', barrel_pct: 'percent',
   fast_swing_rate: 'percent', squared_up_rate: 'percent',
   blast_rate: 'percent', ideal_attack_angle_rate: 'percent',
-  gb_pct: 'percent', fb_pct: 'percent', ld_pct: 'percent', pu_pct: 'percent',
+  gb_pct: 'percent', fb_pct: 'percent', ld_pct: 'percent', iffb_pct: 'percent',
   usage_pct: 'percent', close_pct: 'percent', waste_pct: 'percent',
   // Counting (integers)
   pitches: 'integer', pa: 'integer', games: 'integer',

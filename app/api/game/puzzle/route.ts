@@ -73,7 +73,7 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       AVG(CASE WHEN pitch_type IN ('FF','SI','FC') THEN ABS(pfx_x) * 12 END) AS fb_hb,
       100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS gb_pct,
       AVG(CASE WHEN arm_angle IS NOT NULL THEN arm_angle END) AS arm_angle,
-      SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf') THEN CONCAT(game_pk, at_bat_number) END), 0) AS xba_against,
+      SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf') THEN CONCAT(game_pk, at_bat_number) END), 0) AS xba_against,
       100.0 * COUNT(*) FILTER (WHERE pitch_number = 1 AND (zone BETWEEN 1 AND 9 OR description IN ('called_strike','swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt'))) / NULLIF(COUNT(*) FILTER (WHERE pitch_number = 1), 0) AS first_strike_pct,
       -- T2: fb_spin, fb_ivb, extension, zone_pct, breaking_spin, fb_usage_pct
       AVG(CASE WHEN pitch_type IN ('FF','SI') THEN release_spin_rate END) AS fb_spin,
@@ -87,7 +87,7 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0) AS chase_rate,
       AVG(CASE WHEN bb_type IS NOT NULL THEN launch_speed END) AS avg_ev_against,
       100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*), 0) AS swstr_pct,
-      100.0 * COUNT(DISTINCT CASE WHEN strikes = 2 AND events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN strikes = 2 AND events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END), 0) AS put_away_pct,
+      100.0 * COUNT(DISTINCT CASE WHEN strikes = 2 AND events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN strikes = 2 AND events IS NOT NULL AND events <> 'truncated_pa' THEN CONCAT(game_pk, at_bat_number) END), 0) AS put_away_pct,
       100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked','swinging_pitchout','foul_pitchout')), 0) AS contact_pct_against,
       -- T4: whiff_pct, barrel_pct_against, hard_hit_pct_against, fip(computed), xwoba_against, babip_against
       100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout')), 0) AS whiff_pct,
@@ -97,17 +97,17 @@ async function buildPitcherPuzzle(year: number, dateStr: string): Promise<Puzzle
       COUNT(DISTINCT CASE WHEN events IN ('single','double','triple') THEN CONCAT(game_pk, at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IN ('single','double','triple','field_out','grounded_into_double_play','force_out','fielders_choice','fielders_choice_out','sac_fly','field_error','double_play') THEN CONCAT(game_pk, at_bat_number) END), 0) AS babip_against,
       -- T5: fb_velo, k_pct, bb_pct, xera(computed), k_minus_bb(computed), avg_velo
       AVG(CASE WHEN pitch_type IN ('FF','SI') THEN release_speed END) AS fb_velo,
-      100.0 * COUNT(DISTINCT CASE WHEN events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END), 0) AS k_pct,
-      100.0 * COUNT(DISTINCT CASE WHEN events = 'walk' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END), 0) AS bb_pct,
+      100.0 * COUNT(DISTINCT CASE WHEN events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN CONCAT(game_pk, at_bat_number) END), 0) AS k_pct,
+      100.0 * COUNT(DISTINCT CASE WHEN events IN ('walk','intent_walk') THEN CONCAT(game_pk, at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN CONCAT(game_pk, at_bat_number) END), 0) AS bb_pct,
       AVG(release_speed) AS avg_velo,
       -- FIP/xERA components
       COUNT(DISTINCT CASE WHEN events = 'home_run' THEN CONCAT(game_pk, at_bat_number) END) AS hr,
       COUNT(DISTINCT CASE WHEN events IN ('walk','hit_by_pitch') THEN CONCAT(game_pk, at_bat_number) END) AS bb_hbp,
       COUNT(DISTINCT CASE WHEN events = 'strikeout' THEN CONCAT(game_pk, at_bat_number) END) AS k,
       COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','catcher_interf','sac_bunt','sac_fly') THEN CONCAT(game_pk, at_bat_number) END) / 3.0 AS ip_est,
-      COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN CONCAT(game_pk, at_bat_number) END) AS pa,
+      COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN CONCAT(game_pk, at_bat_number) END) AS pa,
       AVG(estimated_woba_using_speedangle) AS xwoba_val,
-      COUNT(DISTINCT CASE WHEN events = 'walk' THEN CONCAT(game_pk, at_bat_number) END) AS walks_count,
+      COUNT(DISTINCT CASE WHEN events IN ('walk','intent_walk') THEN CONCAT(game_pk, at_bat_number) END) AS walks_count,
       COUNT(DISTINCT CASE WHEN events IN ('single','double','triple','home_run') THEN CONCAT(game_pk, at_bat_number) END) AS hits_count
     FROM pitches
     WHERE game_year = ${year} AND pitch_type NOT IN ('PO','IN')
@@ -173,7 +173,7 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
       p.batter AS player_id, pl.name AS player_name,
       CASE WHEN COUNT(DISTINCT p.stand) > 1 THEN 'S' ELSE MODE() WITHIN GROUP (ORDER BY p.stand) END AS hand,
       MODE() WITHIN GROUP (ORDER BY CASE WHEN p.inning_topbot = 'Top' THEN p.away_team ELSE p.home_team END) AS team,
-      COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END) AS pa,
+      COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS pa,
       -- T1: gb_pct, fb_pct, pull_pct, oppo_pct, ld_pct, popup_pct
       100.0 * COUNT(*) FILTER (WHERE p.bb_type = 'ground_ball') / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0) AS gb_pct,
       100.0 * COUNT(*) FILTER (WHERE p.bb_type = 'fly_ball') / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0) AS fb_pct,
@@ -184,12 +184,12 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
       -- T2: sweet_spot_pct, zone_contact_pct, hr_fb_pct, contact_pct, z_swing_pct, pitch_per_pa
       100.0 * COUNT(*) FILTER (WHERE p.launch_angle BETWEEN 8 AND 32) / NULLIF(COUNT(*) FILTER (WHERE p.launch_angle IS NOT NULL), 0) AS sweet_spot_pct,
       100.0 * COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9 AND p.description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9 AND p.description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked','foul_bunt','swinging_pitchout')), 0) AS zone_contact_pct,
-      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(*) FILTER (WHERE p.bb_type = 'fly_ball'), 0) AS hr_fb_pct,
+      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IN ('fly_ball','popup')), 0) AS hr_fb_pct,
       100.0 * COUNT(*) FILTER (WHERE p.description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE p.description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked','swinging_pitchout','foul_pitchout')), 0) AS contact_pct,
       100.0 * COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9 AND p.description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9), 0) AS z_swing_pct,
-      COUNT(*)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS pitch_per_pa,
+      COUNT(*)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS pitch_per_pa,
       -- T3: xba, sprint_speed(joined), whiff_pct, chase_rate, o_swing_pct, babip
-      SUM(p.estimated_ba_using_speedangle) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf') THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS xba,
+      SUM(p.estimated_ba_using_speedangle) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf') THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS xba,
       100.0 * COUNT(*) FILTER (WHERE p.description IN ('swinging_strike','swinging_strike_blocked','foul_tip')) / NULLIF(COUNT(*) FILTER (WHERE p.description IN ('swinging_strike','swinging_strike_blocked','foul_tip','foul','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_pitchout','swinging_pitchout')), 0) AS whiff_pct,
       100.0 * COUNT(*) FILTER (WHERE p.zone > 9 AND p.description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score')) / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0) AS chase_rate,
       100.0 * COUNT(*) FILTER (WHERE p.zone > 9 AND p.description IN ('foul','foul_tip','foul_bunt','hit_into_play','hit_into_play_no_out','hit_into_play_score','swinging_strike','swinging_strike_blocked')) / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0) AS o_swing_pct,
@@ -202,12 +202,12 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
       AVG(p.estimated_woba_using_speedangle) AS woba,
       -- T5: avg_ev, k_pct, bb_pct, xwoba, k_minus_bb(computed), hr_per_pa
       AVG(CASE WHEN p.bb_type IS NOT NULL THEN p.launch_speed END) AS avg_ev,
-      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'strikeout' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS k_pct,
-      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'walk' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS bb_pct,
+      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'strikeout' THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS k_pct,
+      100.0 * COUNT(DISTINCT CASE WHEN p.events IN ('walk','intent_walk') THEN CONCAT(p.game_pk, p.at_bat_number) END) / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS bb_pct,
       AVG(p.estimated_woba_using_speedangle) AS xwoba,
       AVG(p.estimated_ba_using_speedangle) FILTER (WHERE p.bb_type IS NOT NULL) AS xba_for_iso,
       AVG(p.estimated_slg_using_speedangle) FILTER (WHERE p.bb_type IS NOT NULL) AS xslg_for_iso,
-      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS hr_per_pa,
+      100.0 * COUNT(DISTINCT CASE WHEN p.events = 'home_run' THEN CONCAT(p.game_pk, p.at_bat_number) END)::numeric / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END), 0) AS hr_per_pa,
       -- Traditional stat components
       COUNT(DISTINCT CASE WHEN p.events = 'single' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS singles,
       COUNT(DISTINCT CASE WHEN p.events = 'double' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS doubles,
@@ -216,12 +216,12 @@ async function buildHitterPuzzle(year: number, dateStr: string): Promise<PuzzleR
       COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_bunt','sac_fly','catcher_interf') THEN CONCAT(p.game_pk, p.at_bat_number) END) AS ab,
       COUNT(DISTINCT CASE WHEN p.events IN ('walk','hit_by_pitch') THEN CONCAT(p.game_pk, p.at_bat_number) END) AS bb_hbp_count,
       COUNT(DISTINCT CASE WHEN p.events = 'sac_fly' THEN CONCAT(p.game_pk, p.at_bat_number) END) AS sf,
-      SUM(CASE WHEN p.events IS NOT NULL THEN COALESCE(p.post_bat_score, 0) - COALESCE(p.bat_score, 0) ELSE 0 END) AS rbi_raw
+      SUM(CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN COALESCE(p.post_bat_score, 0) - COALESCE(p.bat_score, 0) ELSE 0 END) AS rbi_raw
     FROM pitches p
     JOIN players pl ON pl.id = p.batter
     WHERE p.game_year = ${year} AND p.pitch_type NOT IN ('PO','IN')
     GROUP BY p.batter, pl.name
-    HAVING COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END) >= 200
+    HAVING COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END) >= 200
   ) raw_q`
 
   const withSpeedSub = `(

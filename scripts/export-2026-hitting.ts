@@ -28,12 +28,12 @@ async function main() {
     SELECT
       p2.name as player,
       COUNT(DISTINCT p.game_pk) as g,
-      COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 100000 + p.at_bat_number END) as pa,
+      COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 100000 + p.at_bat_number END) as pa,
       COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run')) as h,
       COUNT(*) FILTER (WHERE p.events = 'double') as "2b",
       COUNT(*) FILTER (WHERE p.events = 'triple') as "3b",
       COUNT(*) FILTER (WHERE p.events = 'home_run') as hr,
-      COUNT(*) FILTER (WHERE p.events = 'walk') as bb,
+      COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk')) as bb,
       COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch') as hbp,
       COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%') as k,
       -- AB = PA - BB - HBP - sac_fly - sac_bunt - catcher_interf
@@ -51,7 +51,7 @@ async function main() {
       ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed_angle::text = '6')
         / NULLIF(COUNT(*) FILTER (WHERE p.launch_speed_angle IS NOT NULL), 0), 1) as brl_pct,
       -- Expected stats
-      ROUND((SUM(p.estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0))::numeric, 3) as xba,
+      ROUND((SUM(p.estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0))::numeric, 3) as xba,
       ROUND(AVG(p.estimated_woba_using_speedangle) FILTER (WHERE p.estimated_woba_using_speedangle IS NOT NULL)::numeric, 3) as xwoba,
       -- xSLG (using woba scale factor to approximate)
       ROUND(AVG(

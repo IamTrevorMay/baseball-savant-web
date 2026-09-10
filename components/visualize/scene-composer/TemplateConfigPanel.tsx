@@ -22,7 +22,7 @@ const BATTER_METRICS = new Set([
   // Expected
   'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'total_re24',
   // Batted Ball
-  'avg_ev', 'max_ev', 'avg_la', 'avg_dist', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct',
+  'avg_ev', 'max_ev', 'avg_la', 'avg_dist', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'iffb_pct',
   // Swing
   'avg_bat_speed', 'avg_swing_length',
   // Rates
@@ -40,7 +40,7 @@ const PITCHER_METRICS = new Set([
   // Expected
   'avg_xba', 'avg_xwoba', 'avg_xslg', 'avg_woba', 'total_re24',
   // Batted Ball
-  'avg_ev', 'max_ev', 'avg_la', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'pu_pct',
+  'avg_ev', 'max_ev', 'avg_la', 'hard_hit_pct', 'barrel_pct', 'gb_pct', 'fb_pct', 'ld_pct', 'iffb_pct',
   // Counting
   'pitches', 'pa', 'games', 'k_count', 'bb_count', 'hr_count', 'h', 'usage_pct',
   // Triton (Raw)

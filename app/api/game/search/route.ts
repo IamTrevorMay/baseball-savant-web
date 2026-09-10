@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         AND p.pitch_type NOT IN ('PO','IN')
         AND pl.name ILIKE '%${safeQ}%'
       GROUP BY p.batter, pl.name
-      HAVING COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN CONCAT(p.game_pk, p.at_bat_number) END) >= 200
+      HAVING COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN CONCAT(p.game_pk, p.at_bat_number) END) >= 200
       ORDER BY pl.name
       LIMIT 8
     `

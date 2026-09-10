@@ -85,12 +85,13 @@ export async function GET(req: NextRequest) {
       const canUseMV = !pitcherRole && !dateFrom && !dateTo && gameYear
       if (canUseMV) {
         const yr = parseInt(gameYear)
+        // Must match the DEPLOYED mv_team_pitching_stats columns exactly —
+        // this list had drifted to ~30 keys while the MV holds 12 usable
+        // metrics, so e.g. avg_ev requests errored on the fast path
+        // (trimmed 2026-09-11; verify with pg_attribute before adding keys)
         const mvPitchingCols: Record<string, boolean> = {
           avg_velo:true, whiff_pct:true, k_pct:true, bb_pct:true, avg_xwoba:true,
           csw_pct:true, zone_pct:true, chase_pct:true, pitches:true, games:true, pa:true, ip:true,
-          swstr_pct:true, contact_pct:true, z_swing_pct:true, o_contact_pct:true,
-          ba:true, slg:true, obp:true, avg_xba:true, avg_xslg:true, avg_woba:true,
-          avg_ev:true, max_ev:true, avg_la:true, hard_hit_pct:true, barrel_pct:true, gb_pct:true, fb_pct:true, ld_pct:true,
         }
         const mvBattingCols: Record<string, boolean> = {
           avg_ev:true, ba:true, slg:true, k_pct:true, bb_pct:true, avg_xwoba:true,
@@ -397,7 +398,7 @@ export async function GET(req: NextRequest) {
         const wrcSql = `
           SELECT (${battingTeamExpr}) as team,
             AVG(woba_value) as woba,
-            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa
           FROM pitches p
           WHERE ${where.join(' AND ')}
           GROUP BY (${battingTeamExpr})
@@ -778,13 +779,13 @@ export async function GET(req: NextRequest) {
          + COUNT(DISTINCT CASE WHEN events LIKE '%double_play%' THEN game_pk::bigint * 10000 + at_bat_number END)
          + 2 * COUNT(DISTINCT CASE WHEN events = 'triple_play' THEN game_pk::bigint * 10000 + at_bat_number END))::numeric / 3.0 as ip,
         COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as k,
-        COUNT(*) FILTER (WHERE events = 'walk') as bb,
+        COUNT(*) FILTER (WHERE events IN ('walk','intent_walk')) as bb,
         ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as baa,
-        ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric
-          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0)
+          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) as baa,
+        ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch')))::numeric
+          / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('truncated_pa','sac_bunt','sac_bunt_double_play','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0)
           + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric
-          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) as ops
+          / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) as ops
       FROM pitches p
       WHERE ${where}
       GROUP BY p.${col}, p.player_name`
@@ -1105,13 +1106,13 @@ export async function GET(req: NextRequest) {
         const wrcSql = `
           SELECT p.batter as player_id, pl.name as player_name,
             AVG(woba_value) as woba,
-            COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
+            COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
             MODE() WITHIN GROUP (ORDER BY CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END) as primary_team
           FROM pitches p
           JOIN players pl ON pl.id = p.batter
           WHERE ${where.join(' AND ')}
           GROUP BY p.batter, pl.name
-          HAVING COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) >= ${minSample}
+          HAVING COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END) >= ${minSample}
         `
         const { data, error } = await q(wrcSql)
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })

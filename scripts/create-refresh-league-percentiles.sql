@@ -1,20 +1,15 @@
--- refresh_league_percentiles(p_season)
--- Companion to refresh_league_averages. Populates league_percentiles for one
--- season across MLB and MiLB, for roles hitter / SP / RP.
---
--- Uses the same per-player aggregation CTEs and qualification logic as
--- refresh_league_averages, but instead of computing AVG/STDDEV, it:
---   1. Unpivots qualified player values into (metric, val, higher_better) rows
---   2. Collects values into sorted arrays: array_agg(val ORDER BY val)
---   3. Picks percentile positions via nearest-rank: vals[ceil(p * n / 100)]
---   4. INSERTs into league_percentiles
---
--- Idempotent: deletes and reinserts for p_season.
+-- ============================================================================
+-- SOURCE OF TRUTH: the DEPLOYED function (this file is a synced copy).
+-- Synced from production via pg_get_functiondef on 2026-09-11, after the
+-- FanGraphs-conventions + xFIP-popup migrations. Re-sync after any deployed
+-- change — hand-edited drift here has caused silent production bugs twice.
+-- ============================================================================
 
-CREATE OR REPLACE FUNCTION refresh_league_percentiles(p_season integer)
-RETURNS void
-LANGUAGE plpgsql
-AS $fn$
+CREATE OR REPLACE FUNCTION public.refresh_league_percentiles(p_season integer)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET statement_timeout TO '3600s'
+AS $function$
 DECLARE
   v_level text;
   v_table text;
@@ -58,7 +53,7 @@ BEGIN
       e_attack_angle := 'AVG(attack_angle)';
       e_attack_dir   := 'AVG(attack_direction)';
       e_swing_tilt   := 'AVG(swing_path_tilt)';
-      e_xslg         := 'AVG(estimated_slg_using_speedangle)';
+      e_xslg         := 'SUM(estimated_slg_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IN (''single'',''double'',''triple'',''home_run'',''field_out'',''strikeout'',''strikeout_double_play'',''grounded_into_double_play'',''force_out'',''double_play'',''field_error'',''fielders_choice'',''fielders_choice_out'',''triple_play'',''other_out'')), 0)';
       e_ideal_aa_rate := '100.0 * COUNT(*) FILTER (WHERE attack_angle BETWEEN 5 AND 20) '
                       || '/ NULLIF(COUNT(*) FILTER (WHERE attack_angle IS NOT NULL), 0)';
     ELSE
@@ -70,9 +65,7 @@ BEGIN
       e_ideal_aa_rate := 'NULL::numeric';
     END IF;
 
-    -- ═════════════════════════════════════════════════════════════════════
     -- HITTER BLOCK — group by batter, qualify on AB
-    -- ═════════════════════════════════════════════════════════════════════
     EXECUTE format($sql$
       WITH src AS (
         SELECT *,
@@ -102,6 +95,20 @@ BEGIN
             WHEN 'Triple'                 THEN 'triple'
             WHEN 'Home Run'               THEN 'home_run'
             WHEN 'Catcher Interference'   THEN 'catcher_interf'
+            WHEN 'Field Out'              THEN 'field_out'
+            WHEN 'Intent Walk'            THEN 'intent_walk'
+            -- Baserunning/no-PA rows: MLB leaves events NULL; MiLB names them.
+            WHEN 'Caught Stealing 2B'     THEN NULL
+            WHEN 'Caught Stealing 3B'     THEN NULL
+            WHEN 'Caught Stealing Home'   THEN NULL
+            WHEN 'Pickoff Caught Stealing Home' THEN NULL
+            WHEN 'Cs Double Play'         THEN NULL
+            WHEN 'Stolen Base 2B'         THEN NULL
+            WHEN 'Stolen Base 3B'         THEN NULL
+            WHEN 'Wild Pitch'             THEN NULL
+            WHEN 'Passed Ball'            THEN NULL
+            WHEN 'Runner Out'             THEN NULL
+            WHEN 'Batter Out'             THEN NULL
             ELSE events
           END AS events_n
         FROM %I
@@ -111,24 +118,24 @@ BEGIN
         SELECT batter AS pid,
           COUNT(*) FILTER (
             WHERE events_n IS NOT NULL
-              AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')
+              AND events_n NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')
           ) AS _ab,
           AVG(CASE WHEN bb_type IS NOT NULL THEN launch_speed END) AS avg_ev,
-          MAX(launch_speed)       AS max_ev,
-          AVG(launch_angle)       AS avg_la,
-          AVG(hit_distance_sc)    AS avg_dist,
+          MAX(launch_speed) FILTER (WHERE bb_type IS NOT NULL) AS max_ev,
+          AVG(CASE WHEN bb_type IS NOT NULL THEN launch_angle END)    AS avg_la,
+          AVG(CASE WHEN bb_type IS NOT NULL THEN hit_distance_sc END) AS avg_dist,
           AVG(bat_speed)          AS avg_bat_speed,
           AVG(swing_length)       AS avg_swing_length,
           %s                      AS avg_attack_angle,
           %s                      AS avg_attack_direction,
           %s                      AS avg_swing_path_tilt,
           100.0 * COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play'))
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_pct,
-          100.0 * COUNT(*) FILTER (WHERE events_n = 'walk')
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS bb_pct,
-          100.0 * (COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) - COUNT(*) FILTER (WHERE events_n = 'walk'))
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_minus_bb,
-          100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt'))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_pct,
+          100.0 * COUNT(*) FILTER (WHERE events_n IN ('walk','intent_walk'))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS bb_pct,
+          100.0 * (COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) - COUNT(*) FILTER (WHERE events_n IN ('walk','intent_walk')))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_minus_bb,
+          100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','foul_tip','bunt_foul_tip'))
             / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','hit_into_play','missed_bunt')), 0) AS whiff_pct,
           100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked'))
             / NULLIF(COUNT(*), 0) AS swstr_pct,
@@ -145,7 +152,7 @@ BEGIN
           100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS hard_hit_pct,
           100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6')
-            / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0) AS barrel_pct,
+            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS barrel_pct,
           100.0 * COUNT(*) FILTER (WHERE bat_speed >= 75)
             / NULLIF(COUNT(*) FILTER (WHERE bat_speed IS NOT NULL), 0) AS fast_swing_rate,
           100.0 * COUNT(*) FILTER (WHERE launch_speed >= 0.8 * (1.23 * bat_speed + 0.23 * release_speed) AND bat_speed IS NOT NULL AND bb_type IS NOT NULL)
@@ -155,22 +162,29 @@ BEGIN
           %s AS ideal_attack_angle_rate,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball')
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS gb_pct,
-          100.0 * COUNT(*) FILTER (WHERE bb_type = 'fly_ball')
+          100.0 * COUNT(*) FILTER (WHERE bb_type IN ('fly_ball','popup'))
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS fb_pct,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'line_drive')
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS ld_pct,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'popup')
-            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS pu_pct,
+            / NULLIF(COUNT(*) FILTER (WHERE bb_type IN ('fly_ball','popup')), 0) AS pu_pct,
           COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run'))::numeric
-            / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS ba,
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0) AS ba,
           (COUNT(*) FILTER (WHERE events_n = 'single') + 2 * COUNT(*) FILTER (WHERE events_n = 'double') + 3 * COUNT(*) FILTER (WHERE events_n = 'triple') + 4 * COUNT(*) FILTER (WHERE events_n = 'home_run'))::numeric
-            / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS slg,
-          COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','hit_by_pitch'))::numeric
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS obp,
-          SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS avg_xba,
-          AVG(estimated_woba_using_speedangle)  AS avg_xwoba,
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0) AS slg,
+          COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch'))::numeric
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0) AS obp,
+          SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0) AS avg_xba,
+          CASE WHEN COUNT(estimated_woba_using_speedangle) > 0 THEN
+            (COALESCE(SUM(estimated_woba_using_speedangle) FILTER (WHERE description LIKE 'hit_into_play%%'), 0)
+              + 0.7 * COUNT(*) FILTER (WHERE events_n = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch'))
+              / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0)
+          ELSE NULL END                         AS avg_xwoba,
           %s                                    AS avg_xslg,
-          AVG(woba_value)                       AS avg_woba
+          (0.7 * COUNT(*) FILTER (WHERE events_n = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch')
+            + 0.9 * COUNT(*) FILTER (WHERE events_n = 'single') + 1.25 * COUNT(*) FILTER (WHERE events_n = 'double')
+            + 1.6 * COUNT(*) FILTER (WHERE events_n = 'triple') + 2.0 * COUNT(*) FILTER (WHERE events_n = 'home_run'))
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0) AS avg_woba
         FROM src
         WHERE batter IS NOT NULL
         GROUP BY batter
@@ -214,7 +228,7 @@ BEGIN
           ('gb_pct',       q.gb_pct,       true),
           ('fb_pct',       q.fb_pct,       true),
           ('ld_pct',       q.ld_pct,       true),
-          ('pu_pct',       q.pu_pct,       false),
+          ('iffb_pct',       q.pu_pct,       false),
           ('ba',           q.ba,           true),
           ('obp',          q.obp,          true),
           ('slg',          q.slg,          true),
@@ -247,9 +261,7 @@ BEGIN
            e_attack_angle, e_attack_dir, e_swing_tilt, e_ideal_aa_rate, e_xslg,
            p_season, v_level);
 
-    -- ═════════════════════════════════════════════════════════════════════
     -- PITCHER BLOCK (SP + RP) — group by pitcher, qualify on IP per role
-    -- ═════════════════════════════════════════════════════════════════════
     EXECUTE format($sql$
       WITH src AS (
         SELECT *,
@@ -279,6 +291,20 @@ BEGIN
             WHEN 'Triple'                 THEN 'triple'
             WHEN 'Home Run'               THEN 'home_run'
             WHEN 'Catcher Interference'   THEN 'catcher_interf'
+            WHEN 'Field Out'              THEN 'field_out'
+            WHEN 'Intent Walk'            THEN 'intent_walk'
+            -- Baserunning/no-PA rows: MLB leaves events NULL; MiLB names them.
+            WHEN 'Caught Stealing 2B'     THEN NULL
+            WHEN 'Caught Stealing 3B'     THEN NULL
+            WHEN 'Caught Stealing Home'   THEN NULL
+            WHEN 'Pickoff Caught Stealing Home' THEN NULL
+            WHEN 'Cs Double Play'         THEN NULL
+            WHEN 'Stolen Base 2B'         THEN NULL
+            WHEN 'Stolen Base 3B'         THEN NULL
+            WHEN 'Wild Pitch'             THEN NULL
+            WHEN 'Passed Ball'            THEN NULL
+            WHEN 'Runner Out'             THEN NULL
+            WHEN 'Batter Out'             THEN NULL
             ELSE events
           END AS events_n
         FROM %I
@@ -298,7 +324,7 @@ BEGIN
       per_pitcher AS (
         SELECT s.pitcher AS pid,
           -- Outs, not out-events: a double play retires two runners and a triple play three.
-          -- Counting each as one understated IP by ~2.9%, and IP sets every qualification floor.
+          -- Counting each as one understated IP by ~2.9%%, and IP sets every qualification floor.
           (
             COUNT(*) FILTER (
               WHERE events_n IN ('strikeout','field_out','force_out','fielders_choice',
@@ -319,12 +345,12 @@ BEGIN
           AVG(pfx_x * 12)          AS avg_hbreak_in,
           AVG(pfx_z * 12)          AS avg_ivb_in,
           100.0 * COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play'))
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_pct,
-          100.0 * COUNT(*) FILTER (WHERE events_n = 'walk')
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS bb_pct,
-          100.0 * (COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) - COUNT(*) FILTER (WHERE events_n = 'walk'))
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_minus_bb,
-          100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt'))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_pct,
+          100.0 * COUNT(*) FILTER (WHERE events_n IN ('walk','intent_walk'))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS bb_pct,
+          100.0 * (COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) - COUNT(*) FILTER (WHERE events_n IN ('walk','intent_walk')))
+            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS k_minus_bb,
+          100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','foul_tip','bunt_foul_tip'))
             / NULLIF(COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','hit_into_play','missed_bunt')), 0) AS whiff_pct,
           100.0 * COUNT(*) FILTER (WHERE description IN ('swinging_strike','swinging_strike_blocked'))
             / NULLIF(COUNT(*), 0) AS swstr_pct,
@@ -343,26 +369,33 @@ BEGIN
           100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL)
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS hard_hit_pct,
           100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6')
-            / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0) AS barrel_pct,
+            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS barrel_pct,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball')
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS gb_pct,
-          100.0 * COUNT(*) FILTER (WHERE bb_type = 'fly_ball')
+          100.0 * COUNT(*) FILTER (WHERE bb_type IN ('fly_ball','popup'))
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS fb_pct,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'line_drive')
             / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS ld_pct,
           100.0 * COUNT(*) FILTER (WHERE bb_type = 'popup')
-            / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0) AS pu_pct,
+            / NULLIF(COUNT(*) FILTER (WHERE bb_type IN ('fly_ball','popup')), 0) AS pu_pct,
           COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run'))::numeric
-            / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS ba,
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0) AS ba,
           (COUNT(*) FILTER (WHERE events_n = 'single') + 2 * COUNT(*) FILTER (WHERE events_n = 'double') + 3 * COUNT(*) FILTER (WHERE events_n = 'triple') + 4 * COUNT(*) FILTER (WHERE events_n = 'home_run'))::numeric
-            / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS slg,
-          COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','hit_by_pitch'))::numeric
-            / NULLIF(COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) AS obp,
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0) AS slg,
+          COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch'))::numeric
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0) AS obp,
           AVG(CASE WHEN bb_type IS NOT NULL THEN launch_speed END) AS avg_ev,
-          SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IS NOT NULL AND events_n NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0) AS avg_xba,
-          AVG(estimated_woba_using_speedangle)  AS avg_xwoba,
+          SUM(estimated_ba_using_speedangle) / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')), 0) AS avg_xba,
+          CASE WHEN COUNT(estimated_woba_using_speedangle) > 0 THEN
+            (COALESCE(SUM(estimated_woba_using_speedangle) FILTER (WHERE description LIKE 'hit_into_play%%'), 0)
+              + 0.7 * COUNT(*) FILTER (WHERE events_n = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch'))
+              / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0)
+          ELSE NULL END                         AS avg_xwoba,
           %s                                    AS avg_xslg,
-          AVG(woba_value)                       AS avg_woba
+          (0.7 * COUNT(*) FILTER (WHERE events_n = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch')
+            + 0.9 * COUNT(*) FILTER (WHERE events_n = 'single') + 1.25 * COUNT(*) FILTER (WHERE events_n = 'double')
+            + 1.6 * COUNT(*) FILTER (WHERE events_n = 'triple') + 2.0 * COUNT(*) FILTER (WHERE events_n = 'home_run'))
+            / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0) AS avg_woba
         FROM src s
         JOIN roles r ON r.pitcher = s.pitcher
         WHERE s.pitcher IS NOT NULL
@@ -415,7 +448,7 @@ BEGIN
           ('gb_pct',       q.gb_pct,       true),
           ('fb_pct',       q.fb_pct,       true),
           ('ld_pct',       q.ld_pct,       false),
-          ('pu_pct',       q.pu_pct,       true),
+          ('iffb_pct',       q.pu_pct,       true),
           ('ba',           q.ba,           false),
           ('obp',          q.obp,          false),
           ('slg',          q.slg,          false),
@@ -448,9 +481,7 @@ BEGIN
            e_arm_angle, e_xslg,
            p_season, v_level);
 
-    -- ═════════════════════════════════════════════════════════════════════
     -- TRITON + DECEPTION BLOCK (MLB only, SP/RP)
-    -- ═════════════════════════════════════════════════════════════════════
     IF v_level = 'MLB' THEN
       EXECUTE format($sql$
         WITH season_pitches AS (
@@ -573,9 +604,7 @@ BEGIN
       $sql$, v_start, v_end, p_season, p_season, p_season, v_level);
     END IF;
 
-    -- ═════════════════════════════════════════════════════════════════════
     -- ERA ESTIMATORS BLOCK (MLB + MiLB, SP/RP) — FIP, xFIP, xERA, SIERA
-    -- ═════════════════════════════════════════════════════════════════════
     EXECUTE format($sql$
       WITH src AS (
         SELECT *,
@@ -605,6 +634,20 @@ BEGIN
             WHEN 'Triple'                 THEN 'triple'
             WHEN 'Home Run'               THEN 'home_run'
             WHEN 'Catcher Interference'   THEN 'catcher_interf'
+            WHEN 'Field Out'              THEN 'field_out'
+            WHEN 'Intent Walk'            THEN 'intent_walk'
+            -- Baserunning/no-PA rows: MLB leaves events NULL; MiLB names them.
+            WHEN 'Caught Stealing 2B'     THEN NULL
+            WHEN 'Caught Stealing 3B'     THEN NULL
+            WHEN 'Caught Stealing Home'   THEN NULL
+            WHEN 'Pickoff Caught Stealing Home' THEN NULL
+            WHEN 'Cs Double Play'         THEN NULL
+            WHEN 'Stolen Base 2B'         THEN NULL
+            WHEN 'Stolen Base 3B'         THEN NULL
+            WHEN 'Wild Pitch'             THEN NULL
+            WHEN 'Passed Ball'            THEN NULL
+            WHEN 'Runner Out'             THEN NULL
+            WHEN 'Batter Out'             THEN NULL
             ELSE events
           END AS events_n
         FROM %I
@@ -624,7 +667,7 @@ BEGIN
       per_pitcher AS (
         SELECT s.pitcher AS pid,
           -- Outs, not out-events: a double play retires two runners and a triple play three.
-          -- Counting each as one understated IP by ~2.9%, and IP sets every qualification floor.
+          -- Counting each as one understated IP by ~2.9%%, and IP sets every qualification floor.
           (
             COUNT(*) FILTER (
               WHERE events_n IN ('strikeout','field_out','force_out','fielders_choice',
@@ -638,14 +681,18 @@ BEGIN
           )::numeric / 3.0 AS _ip,
           r.role,
           COUNT(*) FILTER (WHERE events_n IN ('strikeout','strikeout_double_play')) AS _k,
-          COUNT(*) FILTER (WHERE events_n = 'walk')          AS _bb,
+          COUNT(*) FILTER (WHERE events_n IN ('walk','intent_walk'))          AS _bb,
           COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch')  AS _hbp,
           COUNT(*) FILTER (WHERE events_n = 'home_run')      AS _hr,
           COUNT(*) FILTER (WHERE bb_type = 'ground_ball')    AS _gb,
           COUNT(*) FILTER (WHERE bb_type = 'fly_ball')       AS _fb,
           COUNT(*) FILTER (WHERE bb_type = 'popup')          AS _pu,
-          COUNT(DISTINCT CASE WHEN events_n IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) AS _pa,
-          AVG(estimated_woba_using_speedangle) AS _xwoba
+          COUNT(DISTINCT CASE WHEN events_n IS NOT NULL AND events_n NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN game_pk::bigint * 10000 + at_bat_number END) AS _pa,
+          CASE WHEN COUNT(estimated_woba_using_speedangle) > 0 THEN
+            (COALESCE(SUM(estimated_woba_using_speedangle) FILTER (WHERE description LIKE 'hit_into_play%%'), 0)
+              + 0.7 * COUNT(*) FILTER (WHERE events_n = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events_n = 'hit_by_pitch'))
+              / NULLIF(COUNT(*) FILTER (WHERE events_n IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')), 0)
+          ELSE NULL END AS _xwoba
         FROM src s JOIN roles r ON r.pitcher = s.pitcher
         WHERE s.pitcher IS NOT NULL
         GROUP BY s.pitcher, r.role
@@ -665,8 +712,8 @@ BEGIN
           CASE WHEN p._ip > 0
                THEN ((13.0 * p._hr + 3.0 * (p._bb + p._hbp) - 2.0 * p._k) / p._ip) + %L::numeric
                ELSE NULL END AS fip,
-          CASE WHEN p._ip > 0 AND p._fb > 0
-               THEN ((13.0 * (p._fb::numeric * %L::numeric) + 3.0 * (p._bb + p._hbp) - 2.0 * p._k) / p._ip) + %L::numeric
+          CASE WHEN p._ip > 0 AND (p._fb + p._pu) > 0
+               THEN ((13.0 * ((p._fb + p._pu)::numeric * %L::numeric) + 3.0 * (p._bb + p._hbp) - 2.0 * p._k) / p._ip) + %L::numeric
                ELSE NULL END AS xfip,
           CASE WHEN p._ip > 0 AND p._pa > 0 AND p._xwoba IS NOT NULL
                THEN ((p._xwoba - %L::numeric) / %L::numeric) * (p._pa::numeric / p._ip) * 9.0 + %L::numeric
@@ -719,7 +766,5 @@ BEGIN
 
   END LOOP;
 END;
-$fn$;
-
-COMMENT ON FUNCTION refresh_league_percentiles(integer) IS
-  'Recomputes league_percentiles for one season across MLB + MiLB × hitter/SP/RP. Idempotent: deletes and reinserts rows for p_season. Produces 99 empirical breakpoints per metric from the actual qualified-player pool.';
+$function$
+;

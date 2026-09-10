@@ -145,7 +145,7 @@ export const HITTING_METRICS: Record<string, CompareMetric> = Object.fromEntries
     m('gb_pct', 'GB%', 'statcast', 'pct1', null),
     m('ld_pct', 'LD%', 'statcast', 'pct1', true),
     m('fb_pct', 'FB%', 'statcast', 'pct1', null),
-    m('pu_pct', 'PU%', 'statcast', 'pct1', false),
+    m('iffb_pct', 'IFFB%', 'statcast', 'pct1', false),
 
     // Plate discipline (Statcast)
     m('k_pct', 'K%', 'statcast', 'pct1', false),

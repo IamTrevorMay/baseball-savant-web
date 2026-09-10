@@ -27,7 +27,7 @@ SELECT
   -- Counting
   COUNT(*)::int AS pitches,
   COUNT(DISTINCT p.game_pk)::int AS games,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
+  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
   -- IP estimate (matches lib/sql.ts IP_ESTIMATE_SQL)
   ROUND((COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN p.game_pk::bigint * 10000 + p.at_bat_number END)
    + COUNT(DISTINCT CASE WHEN p.events LIKE '%double_play%' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)
@@ -44,9 +44,9 @@ SELECT
   ROUND(AVG(p.arm_angle)::numeric, 1) AS avg_arm_angle,
   -- K% / BB%
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events = 'walk')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
   -- Whiff% / CSW% / SwStr%
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'missed_bunt')
     / NULLIF(COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'foul_tip' OR p.description = 'missed_bunt'), 0), 1) AS whiff_pct,
@@ -68,15 +68,15 @@ SELECT
     / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9 AND (p.description LIKE '%swinging_strike%' OR p.description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip','missed_bunt'))), 0), 1) AS o_contact_pct,
   -- Batting against
   ROUND(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS ba,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS ba,
   ROUND((COUNT(*) FILTER (WHERE p.events = 'single') + 2 * COUNT(*) FILTER (WHERE p.events = 'double') + 3 * COUNT(*) FILTER (WHERE p.events = 'triple') + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS slg,
-  ROUND((COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('sac_bunt','catcher_interf') THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 3) AS obp,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS slg,
+  ROUND((COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch')))::numeric
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','sac_bunt','sac_bunt_double_play','catcher_interf') THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 3) AS obp,
   -- Expected
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
   ROUND(SUM(p.estimated_ba_using_speedangle)::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS avg_xba,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS avg_xba,
   ROUND(AVG(p.estimated_slg_using_speedangle)::numeric, 3) AS avg_xslg,
   ROUND(AVG(p.woba_value)::numeric, 3) AS avg_woba,
   -- Batted ball quality
@@ -90,13 +90,13 @@ SELECT
   -- GB/FB/LD
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.bb_type = 'ground_ball')
     / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0), 1) AS gb_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.bb_type = 'fly_ball')
+  ROUND(100.0 * COUNT(*) FILTER (WHERE p.bb_type IN ('fly_ball','popup'))
     / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0), 1) AS fb_pct,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.bb_type = 'line_drive')
     / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0), 1) AS ld_pct,
   -- ERA raw components (for FIP/xERA computation in JS)
   COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')::int AS strikeouts,
-  COUNT(*) FILTER (WHERE p.events = 'walk')::int AS walks,
+  COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))::int AS walks,
   COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch')::int AS hbp,
   COUNT(*) FILTER (WHERE p.events = 'home_run')::int AS home_runs,
   COUNT(p.estimated_woba_using_speedangle)::int AS xwoba_n,
@@ -126,27 +126,27 @@ SELECT
   -- Counting
   COUNT(*)::int AS pitches,
   COUNT(DISTINCT p.game_pk)::int AS games,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
+  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
   -- Rates
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events = 'walk')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'missed_bunt')
     / NULLIF(COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'foul_tip' OR p.description = 'missed_bunt'), 0), 1) AS whiff_pct,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.zone > 9 AND (p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'missed_bunt'))
     / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0), 1) AS chase_pct,
   -- Batting
   ROUND(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS ba,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS ba,
   ROUND((COUNT(*) FILTER (WHERE p.events = 'single') + 2 * COUNT(*) FILTER (WHERE p.events = 'double') + 3 * COUNT(*) FILTER (WHERE p.events = 'triple') + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS slg,
-  ROUND((COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('sac_bunt','catcher_interf') THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 3) AS obp,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS slg,
+  ROUND((COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch')))::numeric
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','sac_bunt','sac_bunt_double_play','catcher_interf') THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 3) AS obp,
   -- Expected
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
   ROUND(SUM(p.estimated_ba_using_speedangle)::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS avg_xba,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS avg_xba,
   ROUND(AVG(p.estimated_slg_using_speedangle)::numeric, 3) AS avg_xslg,
   ROUND(AVG(p.woba_value)::numeric, 3) AS avg_woba,
   AVG(p.woba_value) AS woba_raw,  -- unrounded for wRC+ precision
@@ -182,14 +182,14 @@ SELECT
   p.game_year,
   COUNT(*)::int AS pitches,
   COUNT(DISTINCT p.game_pk)::int AS games,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
+  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
   ROUND(AVG(p.release_speed)::numeric, 1) AS avg_velo,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'missed_bunt')
     / NULLIF(COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'foul_tip' OR p.description = 'missed_bunt'), 0), 1) AS whiff_pct,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events = 'walk')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'called_strike')
     / NULLIF(COUNT(*), 0), 1) AS csw_pct,
@@ -199,7 +199,7 @@ SELECT
     / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0), 1) AS chase_pct,
   -- ERA components
   COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')::int AS strikeouts,
-  COUNT(*) FILTER (WHERE p.events = 'walk')::int AS walks,
+  COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))::int AS walks,
   -- hbp_count, not hbp: matches the DEPLOYED view (this file had drifted to
   -- 'hbp', and scene-stats queries selecting it failed silently until
   -- 2026-09-10 — keep this name in sync with consumers)
@@ -228,17 +228,17 @@ SELECT
   p.game_year,
   COUNT(*)::int AS pitches,
   COUNT(DISTINCT p.game_pk)::int AS games,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
+  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
   SUM(COALESCE(p.post_bat_score, 0) - COALESCE(p.bat_score, 0)) FILTER (WHERE p.events IS NOT NULL) AS runs,
   ROUND(AVG(p.launch_speed)::numeric, 1) AS avg_ev,
   ROUND(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS ba,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS ba,
   ROUND((COUNT(*) FILTER (WHERE p.events = 'single') + 2 * COUNT(*) FILTER (WHERE p.events = 'double') + 3 * COUNT(*) FILTER (WHERE p.events = 'triple') + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS slg,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS slg,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events = 'walk')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed >= 95 AND p.bb_type IS NOT NULL)
     / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0), 1) AS hard_hit_pct,
@@ -269,7 +269,7 @@ SELECT
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'missed_bunt')
     / NULLIF(COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'foul_tip' OR p.description = 'missed_bunt'), 0), 1) AS whiff_pct,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba
 FROM pitches p
 WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R' AND p.inning >= 6
@@ -288,18 +288,18 @@ SELECT
   p.game_year,
   p.p_throws,
   COUNT(*)::int AS pitches,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
+  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events = 'walk')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
+  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
+    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
   ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'missed_bunt')
     / NULLIF(COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'foul_tip' OR p.description = 'missed_bunt'), 0), 1) AS whiff_pct,
   ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
   ROUND(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS ba,
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS ba,
   ROUND((COUNT(*) FILTER (WHERE p.events = 'single') + 2 * COUNT(*) FILTER (WHERE p.events = 'double') + 3 * COUNT(*) FILTER (WHERE p.events = 'triple') + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3) AS slg
+    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS slg
 FROM pitches p
 WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
 GROUP BY 1, p.game_year, p.p_throws;
@@ -334,48 +334,55 @@ CREATE INDEX ON mv_pitcher_pitch_stats (game_year);
 -- ============================================================================
 -- Refresh function — call nightly after pitch ingest
 -- ============================================================================
-CREATE OR REPLACE FUNCTION refresh_materialized_views()
-RETURNS void LANGUAGE plpgsql AS $$
+-- SOURCE OF TRUTH: deployed function; synced via pg_get_functiondef 2026-09-11
+-- after the FanGraphs-conventions migration. Re-sync after any deployed change.
+CREATE OR REPLACE FUNCTION public.refresh_materialized_views()
+ RETURNS void
+ LANGUAGE plpgsql
+ SET statement_timeout TO '3600s'
+AS $function$
 BEGIN
   -- Table-based refresh for pitcher_season_stats (too large for MV REFRESH timeout).
   -- Only refreshes recent seasons (current + previous) since historical data is static.
+  -- Savant-matched conventions (2026-09-09) — see docs/VARIABLES.md §1.0.
   DELETE FROM mv_pitcher_season_stats WHERE game_year >= EXTRACT(YEAR FROM CURRENT_DATE)::int - 1;
   INSERT INTO mv_pitcher_season_stats
   SELECT
     p.pitcher, p.game_year, p.p_throws,
     MODE() WITHIN GROUP (ORDER BY CASE WHEN p.inning_topbot = 'Top' THEN p.home_team ELSE p.away_team END),
     COUNT(*)::int, COUNT(DISTINCT p.game_pk)::int,
-    COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int,
-    ROUND((COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN p.game_pk::bigint * 10000 + p.at_bat_number END) + COUNT(DISTINCT CASE WHEN p.events LIKE '%double_play%' THEN p.game_pk::bigint * 10000 + p.at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN p.events = 'triple_play' THEN p.game_pk::bigint * 10000 + p.at_bat_number END))::numeric / 3.0, 1),
+    COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int,
+    ROUND((COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch','catcher_interf','field_error','truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN p.game_pk::bigint * 10000 + p.at_bat_number END) + COUNT(DISTINCT CASE WHEN p.events LIKE '%double_play%' THEN p.game_pk::bigint * 10000 + p.at_bat_number END) + 2 * COUNT(DISTINCT CASE WHEN p.events = 'triple_play' THEN p.game_pk::bigint * 10000 + p.at_bat_number END))::numeric / 3.0, 1),
     ROUND(AVG(p.release_speed)::numeric,1), ROUND(MAX(p.release_speed)::numeric,1), ROUND(AVG(p.release_spin_rate)::numeric,0), ROUND(AVG(p.release_extension)::numeric,2),
     ROUND(AVG(p.pfx_x*12)::numeric,1), ROUND(AVG(p.pfx_z*12)::numeric,1), ROUND(AVG(p.arm_angle)::numeric,1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.events LIKE '%strikeout%')/NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint*10000+p.at_bat_number END),0),1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.events='walk')/NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL THEN p.game_pk::bigint*10000+p.at_bat_number END),0),1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%' OR p.description='missed_bunt')/NULLIF(COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description='hit_into_play' OR p.description='foul_tip' OR p.description='missed_bunt'),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.events LIKE '%strikeout%')/NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN p.game_pk::bigint*10000+p.at_bat_number END),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.events IN ('walk','intent_walk'))/NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','game_advisory','ejection','wild_pitch','passed_ball','other_advance','runner_double_play','caught_stealing_2b','caught_stealing_3b','caught_stealing_home','pickoff_1b','pickoff_2b','pickoff_3b','pickoff_caught_stealing_2b','pickoff_caught_stealing_3b','pickoff_caught_stealing_home','stolen_base_2b','stolen_base_3b','stolen_base_home') THEN p.game_pk::bigint*10000+p.at_bat_number END),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%' OR p.description IN ('missed_bunt','swinging_pitchout','foul_tip','bunt_foul_tip'))/NULLIF(COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description LIKE 'hit_into_play%' OR p.description='missed_bunt' OR p.description='swinging_pitchout'),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%' OR p.description='called_strike')/NULLIF(COUNT(*),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%')/NULLIF(COUNT(*),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.zone BETWEEN 1 AND 9)/NULLIF(COUNT(*) FILTER(WHERE p.zone IS NOT NULL),0),1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.zone>9 AND (p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description='hit_into_play' OR p.description='missed_bunt'))/NULLIF(COUNT(*) FILTER(WHERE p.zone>9),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.zone>9 AND (p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description LIKE 'hit_into_play%' OR p.description='missed_bunt' OR p.description='swinging_pitchout'))/NULLIF(COUNT(*) FILTER(WHERE p.zone>9),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip'))/NULLIF(COUNT(*) FILTER(WHERE p.description LIKE '%swinging_strike%' OR p.description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip','missed_bunt')),0),1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.zone BETWEEN 1 AND 9 AND (p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description='hit_into_play' OR p.description='missed_bunt'))/NULLIF(COUNT(*) FILTER(WHERE p.zone BETWEEN 1 AND 9),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.zone BETWEEN 1 AND 9 AND (p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description LIKE 'hit_into_play%' OR p.description='missed_bunt' OR p.description='swinging_pitchout'))/NULLIF(COUNT(*) FILTER(WHERE p.zone BETWEEN 1 AND 9),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.zone>9 AND p.description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip'))/NULLIF(COUNT(*) FILTER(WHERE p.zone>9 AND (p.description LIKE '%swinging_strike%' OR p.description IN ('foul','foul_tip','hit_into_play','foul_bunt','bunt_foul_tip','missed_bunt'))),0),1),
-    ROUND(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run'))::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')),0),3),
-    ROUND((COUNT(*) FILTER(WHERE p.events='single')+2*COUNT(*) FILTER(WHERE p.events='double')+3*COUNT(*) FILTER(WHERE p.events='triple')+4*COUNT(*) FILTER(WHERE p.events='home_run'))::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')),0),3),
-    ROUND(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','walk','hit_by_pitch'))::numeric/NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('sac_bunt','catcher_interf') THEN p.game_pk::bigint*10000+p.at_bat_number END),0),3),
-    ROUND(AVG(p.estimated_woba_using_speedangle)::numeric,3),
-    ROUND(SUM(p.estimated_ba_using_speedangle)::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IS NOT NULL AND p.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')),0),3),
-    ROUND(AVG(p.estimated_slg_using_speedangle)::numeric,3), ROUND(AVG(p.woba_value)::numeric,3),
-    ROUND(AVG(p.launch_speed)::numeric,1), ROUND(MAX(p.launch_speed)::numeric,1), ROUND(AVG(p.launch_angle)::numeric,1),
+    ROUND(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run'))::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')),0),3),
+    ROUND((COUNT(*) FILTER(WHERE p.events='single')+2*COUNT(*) FILTER(WHERE p.events='double')+3*COUNT(*) FILTER(WHERE p.events='triple')+4*COUNT(*) FILTER(WHERE p.events='home_run'))::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')),0),3),
+    ROUND(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch'))::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play')),0),3),
+    ROUND(((COALESCE(SUM(p.estimated_woba_using_speedangle) FILTER(WHERE p.description LIKE 'hit_into_play%'),0) + 0.7*COUNT(*) FILTER(WHERE p.events='walk') + 0.7*COUNT(*) FILTER(WHERE p.events='hit_by_pitch'))/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')),0))::numeric,3),
+    ROUND(SUM(p.estimated_ba_using_speedangle)::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')),0),3),
+    ROUND(SUM(p.estimated_slg_using_speedangle)::numeric/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out')),0),3),
+    ROUND(((0.7*COUNT(*) FILTER(WHERE p.events='walk') + 0.7*COUNT(*) FILTER(WHERE p.events='hit_by_pitch') + 0.9*COUNT(*) FILTER(WHERE p.events='single') + 1.25*COUNT(*) FILTER(WHERE p.events='double') + 1.6*COUNT(*) FILTER(WHERE p.events='triple') + 2.0*COUNT(*) FILTER(WHERE p.events='home_run'))/NULLIF(COUNT(*) FILTER(WHERE p.events IN ('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')),0))::numeric,3),
+    ROUND(AVG(p.launch_speed) FILTER(WHERE p.bb_type IS NOT NULL)::numeric,1), ROUND(MAX(p.launch_speed) FILTER(WHERE p.bb_type IS NOT NULL)::numeric,1), ROUND(AVG(p.launch_angle) FILTER(WHERE p.bb_type IS NOT NULL)::numeric,1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.launch_speed>=95 AND p.bb_type IS NOT NULL)/NULLIF(COUNT(*) FILTER(WHERE p.bb_type IS NOT NULL),0),1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.launch_speed_angle::text='6')/NULLIF(COUNT(*) FILTER(WHERE p.launch_speed_angle IS NOT NULL),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.launch_speed_angle::text='6')/NULLIF(COUNT(*) FILTER(WHERE p.bb_type IS NOT NULL),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.bb_type='ground_ball')/NULLIF(COUNT(*) FILTER(WHERE p.bb_type IS NOT NULL),0),1),
-    ROUND(100.0*COUNT(*) FILTER(WHERE p.bb_type='fly_ball')/NULLIF(COUNT(*) FILTER(WHERE p.bb_type IS NOT NULL),0),1),
+    ROUND(100.0*COUNT(*) FILTER(WHERE p.bb_type IN ('fly_ball','popup'))/NULLIF(COUNT(*) FILTER(WHERE p.bb_type IS NOT NULL),0),1),
     ROUND(100.0*COUNT(*) FILTER(WHERE p.bb_type='line_drive')/NULLIF(COUNT(*) FILTER(WHERE p.bb_type IS NOT NULL),0),1),
-    COUNT(*) FILTER(WHERE p.events LIKE '%strikeout%')::int, COUNT(*) FILTER(WHERE p.events='walk')::int,
+    COUNT(*) FILTER(WHERE p.events LIKE '%strikeout%')::int, COUNT(*) FILTER(WHERE p.events IN ('walk','intent_walk'))::int,
     COUNT(*) FILTER(WHERE p.events='hit_by_pitch')::int, COUNT(*) FILTER(WHERE p.events='home_run')::int,
     COUNT(p.estimated_woba_using_speedangle)::int,
     ROUND(AVG(p.stuff_plus)::numeric,1), COUNT(p.stuff_plus)::int, ROUND(SUM(p.delta_run_exp)::numeric,1)
-  FROM pitches p WHERE p.pitch_type NOT IN ('PO','IN') AND p.game_type='R'
+  FROM pitches p WHERE COALESCE(p.pitch_type, '') NOT IN ('PO','IN') AND p.game_type='R'
     AND p.game_year >= EXTRACT(YEAR FROM CURRENT_DATE)::int - 1
   GROUP BY p.pitcher, p.game_year, p.p_throws;
 
@@ -387,4 +394,5 @@ BEGIN
   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_team_platoon_stats;
   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_pitcher_pitch_stats;
 END;
-$$;
+$function$
+;

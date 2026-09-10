@@ -28,16 +28,16 @@ export async function POST(req: NextRequest) {
         SELECT
           b.batter,
           p.name AS player_name,
-          COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) AS pa,
+          COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) AS pa,
           COUNT(CASE WHEN w.events IN ('single','double','triple','home_run') THEN 1 END) AS h,
           COUNT(CASE WHEN w.events = 'home_run' THEN 1 END) AS hr_count,
           CASE WHEN COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END) > 0
             THEN ROUND(COUNT(CASE WHEN w.events IN ('single','double','triple','home_run') THEN 1 END)::numeric
               / COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END), 3)
             ELSE 0 END AS ba,
-          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
-            THEN ROUND((COUNT(CASE WHEN w.events IN ('single','double','triple','home_run','walk','hit_by_pitch') THEN 1 END))::numeric
-              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 3)
+          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
+            THEN ROUND((COUNT(CASE WHEN w.events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch') THEN 1 END))::numeric
+              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 3)
             ELSE 0 END AS obp,
           CASE WHEN COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END) > 0
             THEN ROUND((
@@ -47,30 +47,30 @@ export async function POST(req: NextRequest) {
               + COUNT(CASE WHEN w.events = 'home_run' THEN 1 END) * 4
             )::numeric / COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END), 3)
             ELSE 0 END AS slg,
-          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
+          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
             THEN ROUND(
-              (COUNT(CASE WHEN w.events IN ('single','double','triple','home_run','walk','hit_by_pitch') THEN 1 END))::numeric
-                / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END)
+              (COUNT(CASE WHEN w.events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch') THEN 1 END))::numeric
+                / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END)
               + CASE WHEN COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END) > 0
                 THEN (COUNT(CASE WHEN w.events = 'single' THEN 1 END) + COUNT(CASE WHEN w.events = 'double' THEN 1 END) * 2 + COUNT(CASE WHEN w.events = 'triple' THEN 1 END) * 3 + COUNT(CASE WHEN w.events = 'home_run' THEN 1 END) * 4)::numeric
                   / COUNT(CASE WHEN w.events IS NOT NULL AND w.events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','sac_fly_double_play','catcher_interf') THEN 1 END)
                 ELSE 0 END
             , 3)
             ELSE 0 END AS ops,
-          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
+          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
             THEN ROUND(100.0 * COUNT(CASE WHEN w.events IN ('strikeout','strikeout_double_play') THEN 1 END)::numeric
-              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
+              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
             ELSE 0 END AS k_pct,
-          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
-            THEN ROUND(100.0 * COUNT(CASE WHEN w.events = 'walk' THEN 1 END)::numeric
-              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
+          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
+            THEN ROUND(100.0 * COUNT(CASE WHEN w.events IN ('walk','intent_walk') THEN 1 END)::numeric
+              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
             ELSE 0 END AS bb_pct,
           ROUND(AVG(w.launch_speed)::numeric, 1) AS avg_ev
         FROM (SELECT DISTINCT batter FROM wbc_pitches WHERE pitch_type NOT IN ('PO','IN') ${seasonFilter}) b
         JOIN wbc_pitches w ON w.batter = b.batter AND w.pitch_type NOT IN ('PO','IN') ${seasonFilter}
         LEFT JOIN players p ON p.id = b.batter
         GROUP BY b.batter, p.name
-        HAVING COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) >= 5
+        HAVING COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) >= 5
         ORDER BY ${safeSortBy} ${safeSortDir}
         LIMIT ${safeLimit}
       `
@@ -84,13 +84,13 @@ export async function POST(req: NextRequest) {
           w.pitcher,
           w.player_name,
           COUNT(*) AS pitches,
-          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
+          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
             THEN ROUND(100.0 * COUNT(CASE WHEN w.events IN ('strikeout','strikeout_double_play') THEN 1 END)::numeric
-              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
+              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
             ELSE 0 END AS k_pct,
-          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
-            THEN ROUND(100.0 * COUNT(CASE WHEN w.events = 'walk' THEN 1 END)::numeric
-              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
+          CASE WHEN COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END) > 0
+            THEN ROUND(100.0 * COUNT(CASE WHEN w.events IN ('walk','intent_walk') THEN 1 END)::numeric
+              / COUNT(DISTINCT CASE WHEN w.events IS NOT NULL AND w.events <> 'truncated_pa' THEN w.game_pk::bigint * 10000 + w.at_bat_number END), 1)
             ELSE 0 END AS bb_pct,
           ROUND(100.0 * COUNT(CASE WHEN w.description IN ('swinging_strike','swinging_strike_blocked','missed_bunt','swinging_pitchout') THEN 1 END)::numeric
             / NULLIF(COUNT(CASE WHEN w.description IN ('swinging_strike','swinging_strike_blocked','foul','foul_tip','foul_bunt','bunt_foul_tip','foul_pitchout','hit_into_play','hit_into_play_no_out','hit_into_play_score','missed_bunt','swinging_pitchout') THEN 1 END), 0), 1) AS whiff_pct,

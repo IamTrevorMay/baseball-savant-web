@@ -2,10 +2,41 @@
  * Shared SQL metric definitions used by /api/report and /api/scene-stats.
  */
 
+// ── FanGraphs-standard building blocks (adopted 2026-09-11) ──────────────
+// Industry-standard (FanGraphs) conventions for the rate-stat plumbing:
+//  - PA/TBF excludes `truncated_pa` (the only non-PA value that appears in
+//    the Statcast events column — running events never do)
+//  - BB includes intentional walks
+//  - AB = PA − BB − HBP − SF − SH − catcher's interference
+//  - FB% folds popups in (GB% + LD% + FB% = 100%); IFFB% = popups ÷ all
+//    fly balls (incl. popups)
+// The MV scripts (scripts/create-materialized-views.sql,
+// create-team-monthly-views.sql) restate these verbatim with a `p.` prefix —
+// change them together.
+export const PA_KEY_CASE =
+  "CASE WHEN events IS NOT NULL AND events <> 'truncated_pa' THEN game_pk::bigint * 10000 + at_bat_number END"
+export const PA_SQL = `COUNT(DISTINCT ${PA_KEY_CASE})`
+export const BB_EVENTS_SQL = "('walk','intent_walk')"
+export const NON_AB_EVENTS_SQL =
+  "('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')"
+export const AB_SQL = `COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ${NON_AB_EVENTS_SQL})`
+// OBP: (H + BB + HBP) / (PA − SH − CI)
+const OBP_NUM_SQL =
+  "COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','intent_walk','hit_by_pitch'))"
+const OBP_DEN_SQL =
+  "COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('truncated_pa','sac_bunt','sac_bunt_double_play','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END)"
+const TB_SQL =
+  "(COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))"
+// Official wOBA denominator: AB + uBB + SF + HBP. Intentional walks are
+// excluded ENTIRELY from wOBA (numerator and denominator) — the one place
+// the BB-includes-IBB convention does not apply.
+export const WOBA_DENOM_EVENTS_SQL =
+  "('single','double','triple','home_run','field_out','strikeout','strikeout_double_play','grounded_into_double_play','force_out','double_play','field_error','fielders_choice','fielders_choice_out','triple_play','other_out','walk','hit_by_pitch','sac_fly','sac_fly_double_play')"
+
 export const METRICS: Record<string, string> = {
   // Counting
   pitches: 'COUNT(*)',
-  pa: "COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END)",
+  pa: PA_SQL,
   games: 'COUNT(DISTINCT game_pk)',
   ip: "ROUND((COUNT(*) FILTER (WHERE events IN ('strikeout','field_out','force_out','fielders_choice','fielders_choice_out','sac_fly','sac_bunt')) + 2 * COUNT(*) FILTER (WHERE events IN ('strikeout_double_play','double_play','grounded_into_double_play','sac_fly_double_play')) + 3 * COUNT(*) FILTER (WHERE events = 'triple_play'))::numeric / 3, 1)",
   // Averages
@@ -22,8 +53,8 @@ export const METRICS: Record<string, string> = {
   avg_la: 'ROUND(AVG(launch_angle)::numeric, 1)',
   avg_dist: 'ROUND(AVG(hit_distance_sc)::numeric, 0)',
   // Rates
-  k_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
-  bb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
+  k_pct: `ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(${PA_SQL}, 0), 1)`,
+  bb_pct: `ROUND(100.0 * COUNT(*) FILTER (WHERE events IN ${BB_EVENTS_SQL}) / NULLIF(${PA_SQL}, 0), 1)`,
   whiff_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'missed_bunt' OR description = 'swinging_pitchout') / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'), 0), 1)",
   csw_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'called_strike' OR description = 'swinging_pitchout') / NULLIF(COUNT(*), 0), 1)",
   cs_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description = 'called_strike') / NULLIF(COUNT(*), 0), 1)",
@@ -31,37 +62,43 @@ export const METRICS: Record<string, string> = {
   zone_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9) / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1)",
   chase_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1)",
   // Batting
-  ba: "ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  slg: "ROUND((COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  obp: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0), 3)",
+  ba: `ROUND(COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::numeric / NULLIF(${AB_SQL}, 0), 3)`,
+  slg: `ROUND(${TB_SQL}::numeric / NULLIF(${AB_SQL}, 0), 3)`,
+  obp: `ROUND(${OBP_NUM_SQL}::numeric / NULLIF(${OBP_DEN_SQL}, 0), 3)`,
   // Expected
-  avg_xba: "ROUND(SUM(estimated_ba_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  avg_xwoba: 'ROUND(AVG(estimated_woba_using_speedangle)::numeric, 3)',
+  avg_xba: `ROUND(SUM(estimated_ba_using_speedangle)::numeric / NULLIF(${AB_SQL}, 0), 3)`,
+  // Savant-faithful xwOBA (2026-09-11): blended — batted-ball xwOBA plus the
+  // real walk/HBP terms over the official wOBA denominator. The old
+  // AVG(estimated_woba_using_speedangle) was batted balls only, which
+  // flattered high-strikeout pitchers and was not Savant's xwOBA.
+  avg_xwoba: `ROUND(((COALESCE(SUM(estimated_woba_using_speedangle) FILTER (WHERE description LIKE 'hit_into_play%'), 0) + 0.7 * COUNT(*) FILTER (WHERE events = 'walk') + 0.7 * COUNT(*) FILTER (WHERE events = 'hit_by_pitch')) / NULLIF(COUNT(*) FILTER (WHERE events IN ${WOBA_DENOM_EVENTS_SQL}), 0))::numeric, 3)`,
   // estimated_slg_using_speedangle is NULL on every non-batted-ball event, so AVG()
   // silently computes xSLG per batted ball. Divide by at-bats, matching avg_xba.
-  avg_xslg: "ROUND(SUM(estimated_slg_using_speedangle)::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
-  avg_woba: 'ROUND(AVG(woba_value)::numeric, 3)',
+  avg_xslg: `ROUND(SUM(estimated_slg_using_speedangle)::numeric / NULLIF(${AB_SQL}, 0), 3)`,
+  // Official-denominator wOBA: SUM of Savant's per-PA weights over
+  // AB + uBB + SF + HBP (the plain AVG included IBB and sac-bunt rows)
+  avg_woba: `ROUND((SUM(woba_value) FILTER (WHERE events IN ${WOBA_DENOM_EVENTS_SQL}) / NULLIF(COUNT(*) FILTER (WHERE events IN ${WOBA_DENOM_EVENTS_SQL}), 0))::numeric, 3)`,
   total_re24: 'ROUND(SUM(delta_run_exp)::numeric, 1)',
   // GB/FB/LD
   gb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type = 'ground_ball') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
-  fb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type = 'fly_ball') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
+  fb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type IN ('fly_ball','popup')) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
   ld_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type = 'line_drive') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
-  pu_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type = 'popup') / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
+  iffb_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE bb_type = 'popup') / NULLIF(COUNT(*) FILTER (WHERE bb_type IN ('fly_ball','popup')), 0), 1)",
   // Counting — hit outcomes
   h: "COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))",
   singles: "COUNT(*) FILTER (WHERE events = 'single')",
   doubles: "COUNT(*) FILTER (WHERE events = 'double')",
   triples: "COUNT(*) FILTER (WHERE events = 'triple')",
   hr_count: "COUNT(*) FILTER (WHERE events = 'home_run')",
-  bb_count: "COUNT(*) FILTER (WHERE events = 'walk')",
+  bb_count: `COUNT(*) FILTER (WHERE events IN ${BB_EVENTS_SQL})`,
   k_count: "COUNT(*) FILTER (WHERE events LIKE '%strikeout%')",
   hbp_count: "COUNT(*) FILTER (WHERE events = 'hit_by_pitch')",
   // Rate — additional
-  k_minus_bb: "ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0) - 100.0 * COUNT(*) FILTER (WHERE events = 'walk') / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END), 0), 1)",
+  k_minus_bb: `ROUND(100.0 * COUNT(*) FILTER (WHERE events LIKE '%strikeout%') / NULLIF(${PA_SQL}, 0) - 100.0 * COUNT(*) FILTER (WHERE events IN ${BB_EVENTS_SQL}) / NULLIF(${PA_SQL}, 0), 1)`,
   swstr_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description = 'swinging_pitchout') / NULLIF(COUNT(*), 0), 1)",
   hard_hit_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed >= 95 AND bb_type IS NOT NULL) / NULLIF(COUNT(*) FILTER (WHERE bb_type IS NOT NULL), 0), 1)",
   barrel_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE launch_speed_angle::text = '6') / NULLIF(COUNT(*) FILTER (WHERE launch_speed_angle IS NOT NULL), 0), 1)",
-  ops: "ROUND((COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','walk','hit_by_pitch')))::numeric / NULLIF(COUNT(DISTINCT CASE WHEN events IS NOT NULL AND events NOT IN ('sac_bunt','catcher_interf') THEN game_pk::bigint * 10000 + at_bat_number END), 0) + (COUNT(*) FILTER (WHERE events = 'single') + 2 * COUNT(*) FILTER (WHERE events = 'double') + 3 * COUNT(*) FILTER (WHERE events = 'triple') + 4 * COUNT(*) FILTER (WHERE events = 'home_run'))::numeric / NULLIF(COUNT(*) FILTER (WHERE events IS NOT NULL AND events NOT IN ('walk','hit_by_pitch','sac_fly','sac_bunt','catcher_interf')), 0), 3)",
+  ops: `ROUND(${OBP_NUM_SQL}::numeric / NULLIF(${OBP_DEN_SQL}, 0) + ${TB_SQL}::numeric / NULLIF(${AB_SQL}, 0), 3)`,
   contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout','missed_bunt') OR description = 'swinging_pitchout'), 0), 1)",
   z_swing_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9), 0), 1)",
   o_contact_pct: "ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout')) / NULLIF(COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description IN ('foul','foul_tip','hit_into_play','hit_into_play_no_out','hit_into_play_score','foul_bunt','bunt_foul_tip','foul_pitchout','missed_bunt') OR description = 'swinging_pitchout')), 0), 1)",
@@ -173,7 +210,7 @@ export const SCENE_METRICS: { value: string; label: string; group?: string }[] =
   { value: 'gb_pct', label: 'GB %', group: 'Batted Ball' },
   { value: 'fb_pct', label: 'FB %', group: 'Batted Ball' },
   { value: 'ld_pct', label: 'LD %', group: 'Batted Ball' },
-  { value: 'pu_pct', label: 'PU %', group: 'Batted Ball' },
+  { value: 'iffb_pct', label: 'IFFB %', group: 'Batted Ball' },
   // Swing
   { value: 'avg_bat_speed', label: 'Bat Speed', group: 'Swing' },
   { value: 'avg_swing_length', label: 'Swing Length', group: 'Swing' },

@@ -77,7 +77,7 @@ SELECT
   COUNT(*) FILTER (WHERE events IS NOT NULL)::int AS pa,
   COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run','strikeout','strikeout_double_play','field_out','force_out','grounded_into_double_play','fielders_choice','fielders_choice_out','double_play','triple_play','sac_fly_double_play'))::int AS ab,
   COUNT(*) FILTER (WHERE events IN ('single','double','triple','home_run'))::int AS hits,
-  COUNT(*) FILTER (WHERE events = 'walk')::int AS bb,
+  COUNT(*) FILTER (WHERE events IN ('walk','intent_walk'))::int AS bb,
   COUNT(*) FILTER (WHERE events = 'hit_by_pitch')::int AS hbp,
   COUNT(*) FILTER (WHERE events IN ('strikeout','strikeout_double_play'))::int AS so,
   COALESCE(SUM(CASE events WHEN 'single' THEN 1 WHEN 'double' THEN 2 WHEN 'triple' THEN 3 WHEN 'home_run' THEN 4 ELSE 0 END), 0)::int AS tb,
