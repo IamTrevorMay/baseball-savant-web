@@ -146,7 +146,13 @@ export async function GET(req: NextRequest) {
       } else {
         try {
           const { error } = await supabaseAdmin.rpc('refresh_materialized_views')
-          materializedViewsResult = error ? { error: error.message } : { ok: true }
+          // Team monthly MVs (Trends Visualizer team mode) — separate RPC so
+          // this migration didn't have to restate the big function's body.
+          // A failure surfaces in the result rather than dying in a log.
+          const { error: teamMonthlyError } = await supabaseAdmin.rpc('refresh_team_monthly_views')
+          materializedViewsResult = error ? { error: error.message }
+            : teamMonthlyError ? { error: `main MVs ok; team monthly MVs failed: ${teamMonthlyError.message}` }
+            : { ok: true }
           if (!error) {
             await supabaseAdmin
               .from('system_metadata')

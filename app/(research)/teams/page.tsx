@@ -28,6 +28,11 @@ const PITCHING_COLS = [
   { key: 'whiff_pct', label: 'Whiff%', fmt: (v: number) => v?.toFixed(1) + '%' },
   { key: 'k_pct', label: 'K%', fmt: (v: number) => v?.toFixed(1) + '%' },
   { key: 'bb_pct', label: 'BB%', fmt: (v: number) => v?.toFixed(1) + '%' },
+  // Real ERA (MLB API, regular-season only — '—' on spring/postseason/date
+  // filters); FIP/xERA are Statcast-computed estimators.
+  { key: 'era', label: 'ERA', fmt: (v: number) => v?.toFixed(2) },
+  { key: 'fip', label: 'FIP', fmt: (v: number) => v?.toFixed(2) },
+  { key: 'xera', label: 'xERA', fmt: (v: number) => v?.toFixed(2) },
   { key: 'avg_xwoba', label: 'xwOBA', fmt: (v: number) => v?.toFixed(3) },
   { key: 'csw_pct', label: 'CSW%', fmt: (v: number) => v?.toFixed(1) + '%' },
   { key: 'zone_pct', label: 'Zone%', fmt: (v: number) => v?.toFixed(1) + '%' },

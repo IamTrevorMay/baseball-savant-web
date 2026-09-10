@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdminLong as supabase } from '@/lib/supabase-admin'
+import { computeFIP, computeXERA } from '@/lib/sql'
+import { SEASON_CONSTANTS, LATEST_SEASON_YEAR } from '@/lib/constants-data'
+import { fetchRealTeamERA } from '@/lib/teamEra'
 
 // The momentum/leverage tab scans a full season: 8.3s.
 // Needs run_query_long (8s -> 120s statement_timeout) and room past the
@@ -75,16 +78,34 @@ export async function POST(req: NextRequest) {
 
     const yearFilter = `game_year = ${safeSeason} AND pitch_type NOT IN ('PO', 'IN') ${gtFilter}${dateFilter}`
 
-    // Use materialized views for regular-season full-season queries (no date filters)
-    const canUseMV = (gameType === 'regular' || gameType === 'all') && !safeStart && !safeEnd
+    // Use materialized views for regular-season full-season queries (no date
+    // filters). 'all' no longer qualifies — the MVs are game_type='R' only,
+    // so serving them under an "All" label quietly dropped spring/postseason
+    // (fixed 2026-09-10; the page default is now 'regular').
+    const canUseMV = gameType === 'regular' && !safeStart && !safeEnd
 
     if (canUseMV && tab === 'pitching') {
-      const { data, error } = await q(`
-        SELECT team, pitches, games, pa, avg_velo, whiff_pct, k_pct, bb_pct, avg_xwoba, csw_pct, zone_pct, chase_pct
-        FROM mv_team_pitching_stats WHERE game_year = ${safeSeason} ORDER BY avg_xwoba ASC
-      `)
+      const [{ data, error }, eraMap] = await Promise.all([
+        q(`
+          SELECT team, pitches, games, pa, avg_velo, whiff_pct, k_pct, bb_pct, avg_xwoba, csw_pct, zone_pct, chase_pct,
+                 strikeouts, walks, hbp_count, home_runs, ip, xwoba_raw
+          FROM mv_team_pitching_stats WHERE game_year = ${safeSeason} ORDER BY avg_xwoba ASC
+        `),
+        fetchRealTeamERA(safeSeason),
+      ])
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ rows: data || [] })
+      const constants = SEASON_CONSTANTS[safeSeason] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+      const rows = (data || []).map((r: any) => {
+        const comps = { k: r.strikeouts, bb: r.walks, hbp: r.hbp_count, hr: r.home_runs, ip: r.ip, pa: r.pa, xwoba: r.xwoba_raw }
+        const { strikeouts, walks, hbp_count, home_runs, ip, xwoba_raw, ...rest } = r
+        return {
+          ...rest,
+          era: eraMap.get(r.team) ?? null,
+          fip: computeFIP(comps, constants),
+          xera: computeXERA(comps, constants),
+        }
+      })
+      return NextResponse.json({ rows })
     }
 
     if (canUseMV && tab === 'hitting') {
@@ -362,7 +383,15 @@ export async function POST(req: NextRequest) {
          ROUND(100.0 * COUNT(*) FILTER (WHERE zone BETWEEN 1 AND 9)
            / NULLIF(COUNT(*) FILTER (WHERE zone IS NOT NULL), 0), 1) as zone_pct,
          ROUND(100.0 * COUNT(*) FILTER (WHERE zone > 9 AND (description LIKE '%swinging_strike%' OR description LIKE '%foul%' OR description LIKE 'hit_into_play%' OR description = 'missed_bunt' OR description = 'swinging_pitchout'))
-           / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1) as chase_pct`
+           / NULLIF(COUNT(*) FILTER (WHERE zone > 9), 0), 1) as chase_pct,
+         COUNT(*) FILTER (WHERE events LIKE '%strikeout%') as era_k,
+         COUNT(*) FILTER (WHERE events = 'walk') as era_bb,
+         COUNT(*) FILTER (WHERE events = 'hit_by_pitch') as era_hbp,
+         COUNT(*) FILTER (WHERE events = 'home_run') as era_hr,
+         ROUND((COUNT(*) FILTER (WHERE events IN ('strikeout','field_out','force_out','fielders_choice','fielders_choice_out','sac_fly','sac_bunt'))
+           + 2 * COUNT(*) FILTER (WHERE events IN ('strikeout_double_play','double_play','grounded_into_double_play','sac_fly_double_play'))
+           + 3 * COUNT(*) FILTER (WHERE events = 'triple_play'))::numeric / 3, 1) as era_ip,
+         AVG(estimated_woba_using_speedangle) as era_xwoba`
       : `COUNT(*) as pitches,
          COUNT(DISTINCT game_pk) as games,
          COUNT(DISTINCT CASE WHEN events IS NOT NULL THEN game_pk::bigint * 10000 + at_bat_number END) as pa,
@@ -385,13 +414,31 @@ export async function POST(req: NextRequest) {
     const sortCol = isPitching ? 'avg_xwoba' : 'avg_xwoba'
     const sortDir = isPitching ? 'ASC' : 'DESC'
 
-    const { data, error } = await q(`
-      SELECT ${teamExpr} as team, ${metricsSQL}
-      FROM pitches WHERE ${yearFilter}
-      GROUP BY 1 ORDER BY ${sortCol} ${sortDir}
-    `)
+    // Real ERA is a regular-season, full-season number; other filters get null.
+    const canUseRealEra = isPitching && gameType === 'regular' && !safeStart && !safeEnd
+    const [{ data, error }, eraMap] = await Promise.all([
+      q(`
+        SELECT ${teamExpr} as team, ${metricsSQL}
+        FROM pitches WHERE ${yearFilter}
+        GROUP BY 1 ORDER BY ${sortCol} ${sortDir}
+      `),
+      canUseRealEra ? fetchRealTeamERA(safeSeason) : Promise.resolve(new Map<string, number>()),
+    ])
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ rows: data || [] })
+    if (!isPitching) return NextResponse.json({ rows: data || [] })
+
+    const constants = SEASON_CONSTANTS[safeSeason] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
+    const rows = (data || []).map((r: any) => {
+      const comps = { k: r.era_k, bb: r.era_bb, hbp: r.era_hbp, hr: r.era_hr, ip: r.era_ip, pa: r.pa, xwoba: r.era_xwoba }
+      const { era_k, era_bb, era_hbp, era_hr, era_ip, era_xwoba, ...rest } = r
+      return {
+        ...rest,
+        era: eraMap.get(r.team) ?? null,
+        fip: computeFIP(comps, constants),
+        xera: computeXERA(comps, constants),
+      }
+    })
+    return NextResponse.json({ rows })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

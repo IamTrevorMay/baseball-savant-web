@@ -2178,3 +2178,29 @@ GROUP BY 1, 2 ORDER BY 1, 2;
 Result: (1) six pitch-type lines per month, usage sums to ~100% per bucket (e.g. 2026-06: FF
 35.7 / SW 16.8 / SI 14.2 / FS 14.2 / FC 11.6 / CU 7.4). (2) 8 appearances with velo/whiff/Stuff+
 per start. Injection probe (`playerId: "554430; DROP TABLE x"`) correctly rejected with 400.
+
+### Team monthly MVs + ERA reconciliation (migrations + verification)
+```sql
+-- Migrations (Supabase MCP): create_team_monthly_views (WITH NO DATA + indexes +
+-- refresh_team_monthly_views()), team_monthly_refresh_handles_unpopulated (plain
+-- REFRESH fallback when unpopulated), team_monthly_refresh_timeout
+-- (ALTER FUNCTION ... SET statement_timeout='3600s' — without it the RPC died at
+-- the caller's 8s default; refresh_materialized_views has the same setting).
+-- First population via service-role RPC refresh_team_monthly_views(); the HTTP
+-- gateway 504s at ~125s but the statement completes server-side.
+SELECT matviewname, ispopulated FROM pg_matviews WHERE matviewname LIKE 'mv_team_monthly%';
+-- Introspection that surfaced two latent bugs:
+SELECT string_agg(a.attname, ',' ORDER BY a.attnum) FROM pg_attribute a
+JOIN pg_class c ON c.oid=a.attrelid WHERE c.relname='mv_team_pitching_stats' AND a.attnum>0;
+SELECT string_agg(DISTINCT team, ',' ORDER BY team) FROM mv_team_monthly_pitching_stats;
+```
+Result: both MVs populated (pitching: 81 months/team since 2015-04; SEA career query
+instant). **Bug 1:** deployed `mv_team_pitching_stats` has `hbp_count`, not the `hbp` the
+script and scene-stats expected — the MV-path team FIP/xERA/ERA query has been failing
+silently (error swallowed) the whole time; fixed by querying `hbp_count as hbp` and
+correcting the script. **Bug 2:** pitches/MV team codes are `AZ`/`ATH` (all seasons), but
+the Team Stats widget and trendsViz listed `ARI`/`OAK` — those two teams matched zero rows;
+fixed lists + legacy remap in widget normalizeFilters. Smoke tests: NYY 2026 → era 3.21
+(real, matches MLB API), fip 3.73, xera 3.44, era rank 1/30; date-filtered and gameType=all
+requests correctly return era null; MLB API team/league byMonth endpoints verified dead
+(person-level works but loses team attribution after trades) → no monthly team ERA anywhere.

@@ -15,7 +15,10 @@ import type { Widget, SizePreset, FilterOption } from '@/lib/imagine/types'
 interface TeamEntry { abbrev: string; name: string; id: number }
 
 const MLB_TEAMS: TeamEntry[] = [
-  { abbrev: 'ARI', name: 'Arizona Diamondbacks', id: 109 },
+  // Abbrevs must match the pitches table / team MVs (Statcast current-era
+  // codes): AZ not ARI, ATH not OAK — the old codes matched zero rows and
+  // returned empty team stats for those two teams until 2026-09-10.
+  { abbrev: 'AZ', name: 'Arizona Diamondbacks', id: 109 },
   { abbrev: 'ATL', name: 'Atlanta Braves', id: 144 },
   { abbrev: 'BAL', name: 'Baltimore Orioles', id: 110 },
   { abbrev: 'BOS', name: 'Boston Red Sox', id: 111 },
@@ -34,7 +37,7 @@ const MLB_TEAMS: TeamEntry[] = [
   { abbrev: 'MIN', name: 'Minnesota Twins', id: 142 },
   { abbrev: 'NYM', name: 'New York Mets', id: 121 },
   { abbrev: 'NYY', name: 'New York Yankees', id: 147 },
-  { abbrev: 'OAK', name: 'Oakland Athletics', id: 133 },
+  { abbrev: 'ATH', name: 'Athletics', id: 133 },
   { abbrev: 'PHI', name: 'Philadelphia Phillies', id: 143 },
   { abbrev: 'PIT', name: 'Pittsburgh Pirates', id: 134 },
   { abbrev: 'SD', name: 'San Diego Padres', id: 135 },
@@ -517,6 +520,10 @@ const teamStats: Widget<TeamStatsFilters> = {
 
   normalizeFilters(next, prev) {
     const out: TeamStatsFilters = { ...next }
+
+    // Saved configs from before 2026-09-10 may carry the old codes
+    if (out.team === 'ARI') out.team = 'AZ'
+    if (out.team === 'OAK') out.team = 'ATH'
 
     // Custom mode skips all dynamic-mode normalization
     if (next.customMode === 'custom') return out

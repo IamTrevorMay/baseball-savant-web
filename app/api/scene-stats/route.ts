@@ -4,6 +4,7 @@ import { METRICS, TRITON_PLUS_METRIC_KEYS, DECEPTION_METRIC_KEYS, ERA_METRIC_KEY
 import { parseSceneStatsRows } from '@/lib/schemas/sceneStats'
 import { SEASON_CONSTANTS, LATEST_SEASON_YEAR, PARK_FACTORS } from '@/lib/constants-data'
 import { computeXDeceptionScore, isFastball } from '@/lib/leagueStats'
+import { fetchRealTeamERA } from '@/lib/teamEra'
 import {
   TRITON_COLUMNS, TRITON_COL,
   ERA_COMPONENTS_SQL,
@@ -13,6 +14,10 @@ import {
 } from '@/lib/sql'
 
 const q = (sql: string) => supabase.rpc('run_query', { query_text: sql.trim() })
+
+// Team-level 'era' is real (MLB Stats API via lib/teamEra) or null — never
+// FIP under the wrong name (which is what this endpoint silently returned
+// before 2026-09-10). FIP/xERA remain Statcast-computed.
 
 /**
  * GET /api/scene-stats?playerId=543037&metrics=avg_velo,whiff_pct&gameYear=2024&pitchType=FF
@@ -103,18 +108,22 @@ export async function GET(req: NextRequest) {
           if (mvErr) return NextResponse.json({ error: mvErr.message }, { status: 500 })
           let allTeams: Record<string, any>[] = (mvRows || []) as Record<string, any>[]
 
-          // ERA metrics from MV ERA components
+          // ERA metrics: FIP/xERA from MV components, era from the MLB API
           if (eraMetrics.length > 0 && statScope !== 'hitting') {
-            const { data: eraRows, error: eraErr } = await q(
-              `SELECT team, strikeouts as k, walks as bb, hbp, home_runs as hr, ip, pa, xwoba_raw as xwoba FROM mv_team_pitching_stats WHERE game_year = ${yr}`
-            )
+            const [eraRes, realEraMap] = await Promise.all([
+              // NB: the deployed MV column is hbp_count (scripts drifted to
+              // 'hbp' at some point — selecting that failed silently here)
+              q(`SELECT team, strikeouts as k, walks as bb, hbp_count as hbp, home_runs as hr, ip, pa, xwoba_raw as xwoba FROM mv_team_pitching_stats WHERE game_year = ${yr}`),
+              eraMetrics.includes('era') ? fetchRealTeamERA(yr) : Promise.resolve(new Map<string, number>()),
+            ])
+            const { data: eraRows, error: eraErr } = eraRes
             if (!eraErr) {
               const constants = SEASON_CONSTANTS[yr] || SEASON_CONSTANTS[LATEST_SEASON_YEAR]
               const eraByTeam = new Map<string, Record<string, any>>()
               for (const row of (eraRows || []) as any[]) {
                 const fip = computeFIP(row, constants)
                 const xera = computeXERA(row, constants)
-                eraByTeam.set(row.team, { era: fip, fip, xera })
+                eraByTeam.set(row.team, { era: realEraMap.get(row.team) ?? null, fip, xera })
               }
               for (const row of allTeams) {
                 const eraVals = eraByTeam.get(row.team)
@@ -256,8 +265,15 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // 2. ERA/FIP/xERA: compute from components per team
+      // 2. ERA/FIP/xERA: FIP/xERA from Statcast components; real ERA from the
+      // MLB API only when the request covers a full season (no dates, no
+      // SP/RP split) — otherwise era stays null.
       const eraByTeam = new Map<string, Record<string, any>>()
+      const wantsRealEra = eraMetrics.includes('era')
+      const canUseRealEra = wantsRealEra && !pitcherRole && !dateFrom && !dateTo
+      const realEraPromise = canUseRealEra
+        ? fetchRealTeamERA(parseInt(gameYear || String(new Date().getFullYear())))
+        : null
       if (eraMetrics.length > 0) {
         if (starterIds) {
           // Per-pitcher ERA components → JS filter + sum components by team
@@ -295,7 +311,7 @@ export async function GET(req: NextRequest) {
               const comps = { k: c.k, bb: c.bb, hbp: c.hbp, hr: c.hr, ip: c.ip, pa: c.pa, xwoba }
               const fip = computeFIP(comps, constants)
               const xera = computeXERA(comps, constants)
-              eraByTeam.set(t, { era: fip, fip, xera })
+              eraByTeam.set(t, { era: null, fip, xera })
             }
           })())
         } else {
@@ -314,7 +330,7 @@ export async function GET(req: NextRequest) {
             for (const row of (data || []) as Record<string, any>[]) {
               const fip = computeFIP(row as any, constants)
               const xera = computeXERA(row as any, constants)
-              eraByTeam.set(row.team, { era: fip, fip, xera })
+              eraByTeam.set(row.team, { era: null, fip, xera })
             }
           })())
         }
@@ -427,6 +443,12 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Overlay real ERA (full-season requests only; otherwise stays null)
+      if (wantsRealEra && realEraPromise) {
+        const realEraMap = await realEraPromise
+        for (const row of allTeams) row.era = realEraMap.get(row.team) ?? null
+      }
+
       // Merge wRC+ values into allTeams
       if (wrcByTeam.size > 0) {
         if (allTeams.length === 0) {
@@ -511,12 +533,13 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Keys are pitches-table codes (AZ/ATH); ARI/OAK kept for legacy callers
       const TEAM_NAMES: Record<string, string> = {
-        ARI:'Arizona Diamondbacks',ATL:'Atlanta Braves',BAL:'Baltimore Orioles',BOS:'Boston Red Sox',
+        AZ:'Arizona Diamondbacks',ARI:'Arizona Diamondbacks',ATL:'Atlanta Braves',BAL:'Baltimore Orioles',BOS:'Boston Red Sox',
         CHC:'Chicago Cubs',CWS:'Chicago White Sox',CIN:'Cincinnati Reds',CLE:'Cleveland Guardians',
         COL:'Colorado Rockies',DET:'Detroit Tigers',HOU:'Houston Astros',KC:'Kansas City Royals',
         LAA:'Los Angeles Angels',LAD:'Los Angeles Dodgers',MIA:'Miami Marlins',MIL:'Milwaukee Brewers',
-        MIN:'Minnesota Twins',NYM:'New York Mets',NYY:'New York Yankees',OAK:'Oakland Athletics',
+        MIN:'Minnesota Twins',NYM:'New York Mets',NYY:'New York Yankees',ATH:'Athletics',OAK:'Athletics',
         PHI:'Philadelphia Phillies',PIT:'Pittsburgh Pirates',SD:'San Diego Padres',SF:'San Francisco Giants',
         SEA:'Seattle Mariners',STL:'St. Louis Cardinals',TB:'Tampa Bay Rays',TEX:'Texas Rangers',
         TOR:'Toronto Blue Jays',WSH:'Washington Nationals',

@@ -2,6 +2,22 @@
 
 ## Recently Completed
 
+### Team Trends + real team ERA (2026-09-10)
+
+Trends Visualizer gains a Pitcher/Team toggle (pitching perspective): staff pitch mix and
+metric trends per month or per game. Month buckets read two new nightly MVs
+(`mv_team_monthly_pitching_stats`, `mv_team_monthly_pitch_mix` — `refresh_team_monthly_views()`
+called by `/api/cron/refresh` after the main MV refresh); game buckets run live, bounded to
+2 seasons / 740 days since the derived-team CASE can't use an index. ERA-vs-FIP reconciled
+platform-wide: team `era` is now the real MLB-API season number (`lib/teamEra.ts`) or `null`
+when filters make it undefined (dates, SP/RP, spring/postseason) — never FIP relabeled, which
+is what scene-stats silently returned before. Trends deliberately has no team ERA line (MLB
+API monthly team splits are dead; person byMonth loses team attribution after trades) — FIP/
+xERA, labeled as themselves, carry that story. Teams page pitching tab gains ERA/FIP/xERA
+columns, and its "All"
+game-type now truly means all game types (live query) instead of quietly serving
+regular-season MVs. Team hitting perspective deferred.
+
 ### Trends Visualizer — Media group (2026-09-09)
 
 New Research → Media page at `/trends-visualizer`: line charts of how a pitcher's usage,

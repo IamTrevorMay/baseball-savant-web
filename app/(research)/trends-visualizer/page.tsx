@@ -1,19 +1,24 @@
 'use client'
 
-// Trends Visualizer — line charts of how a pitcher's stuff, usage, and
-// results move over time. Media-group cousin of Trend Alerts: that page
-// surfaces who changed recently; this one lets you draw the change for a
-// chosen player, over any window, as a presentable chart.
+// Trends Visualizer — line charts of how a pitcher's (or a team's staff)
+// usage, stuff, and results move over time. Media-group cousin of Trend
+// Alerts: that page surfaces who changed recently; this one lets you draw
+// the change for a chosen player or team, over any window, as a presentable
+// chart.
 //
 // Two series modes: "By Pitch Type" plots one metric with a color-coded line
 // per pitch (the pitch-usage story), "By Metric" plots several metrics as
-// player-level lines, with a second Y axis when their units differ. Buckets
-// are calendar months or individual appearances; appearance-level noise can
-// be tamed with a trailing rolling average drawn over the faded raw line.
+// entity-level lines, with a second Y axis when their units differ. Buckets
+// are calendar months or individual appearances (games, for a team);
+// appearance-level noise can be tamed with a trailing rolling average drawn
+// over the faded raw line.
 //
-// Data comes from /api/trends-viz (server-side SQL over `pitches`,
-// regular-season only). Hitters are planned as a follow-up once this shell
-// is proven.
+// Data comes from /api/trends-viz (regular season only). Pitchers run live
+// SQL over `pitches`; teams read the mv_team_monthly_* views for month
+// buckets and are bounded to ≤2 seasons / ≤740 days for live game buckets,
+// because the derived-team predicate can't use an index. Run prevention is
+// FIP/xERA only — real monthly team ERA can't be assembled honestly (see
+// lib/teamEra.ts). Team hitting perspective is a planned follow-up.
 
 import { useState, useEffect, useMemo } from 'react'
 import ResearchNav from '@/components/ResearchNav'
@@ -22,7 +27,8 @@ import Plot from '@/components/PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '@/components/chartConfig'
 import {
   TREND_METRICS, TREND_METRIC_GROUPS, MAX_TREND_METRICS, MIN_PITCHES_PER_LINE,
-  type TrendsMode, type TrendsRow, type TrendsScope, type TrendsXUnit,
+  MLB_TEAMS, TEAM_GAME_MAX_SEASONS, TEAM_GAME_MAX_DAYS, metricsForEntity,
+  type TrendsEntity, type TrendsMode, type TrendsRow, type TrendsScope, type TrendsXUnit,
 } from '@/lib/trendsViz'
 import type { PlayerResult } from '@/lib/types'
 
@@ -53,9 +59,11 @@ const num = (v: unknown): number | null => {
 /** Month buckets plot mid-month so points sit inside their month band. */
 const bucketDate = (x: string) => (x.length === 7 ? `${x}-15` : x)
 
-const chip = (on: boolean) =>
+const chip = (on: boolean, disabled = false) =>
   `px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-    on ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+    on ? 'bg-emerald-600 text-white'
+    : disabled ? 'bg-zinc-800/50 text-zinc-600 cursor-not-allowed'
+    : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
   }`
 
 const smallChip = (on: boolean, disabled = false) =>
@@ -66,7 +74,9 @@ const smallChip = (on: boolean, disabled = false) =>
   }`
 
 export default function TrendsVisualizerPage() {
+  const [entityType, setEntityType] = useState<TrendsEntity>('pitcher')
   const [player, setPlayer] = useState<PlayerResult | null>(null)
+  const [team, setTeam] = useState<string>('')
   const [scope, setScope] = useState<TrendsScope>('seasons')
   const [seasons, setSeasons] = useState<number[]>([CURRENT_SEASON])
   const [startDate, setStartDate] = useState(`${CURRENT_SEASON}-04-01`)
@@ -82,11 +92,32 @@ export default function TrendsVisualizerPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const isTeam = entityType === 'team'
   const playerId = player?.pitcher ?? null
+  const hasEntity = isTeam ? !!team : !!playerId
   const activeMetrics = mode === 'pitch' ? [pitchMetric] : metricKeys
 
+  /** Metric keys hidden for the current entity or blocked by bucket/scope. */
+  const entityMetricKeys = useMemo(() => metricsForEntity(entityType), [entityType])
+  const metricDisabled = (k: string): boolean => {
+    const d = TREND_METRICS[k]
+    if (!d) return true
+    return !!d.monthOnly && (xUnit === 'appearance' || scope === 'custom')
+  }
+
+  // Entity/bucket/scope switches can strand selections — sanitize instead of
+  // sending requests the route will reject.
   useEffect(() => {
-    if (!playerId || !activeMetrics.length) { setRows([]); return }
+    setMetricKeys(prev => {
+      const next = prev.filter(k => entityMetricKeys.includes(k) && !metricDisabled(k))
+      return next.length ? next : [entityMetricKeys.includes('avg_velo') ? 'avg_velo' : entityMetricKeys[0]]
+    })
+    if (isTeam && scope === 'career' && xUnit === 'appearance') setXUnit('month')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityType, xUnit, scope])
+
+  useEffect(() => {
+    if (!hasEntity || !activeMetrics.length) { setRows([]); return }
     if (scope === 'seasons' && !seasons.length) return
     if (scope === 'custom' && (!startDate || !endDate)) return
 
@@ -100,7 +131,7 @@ export default function TrendsVisualizerPage() {
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            playerId, scope, seasons, startDate, endDate, xUnit, mode,
+            entityType, playerId, team, scope, seasons, startDate, endDate, xUnit, mode,
             metrics: activeMetrics,
           }),
         })
@@ -115,13 +146,13 @@ export default function TrendsVisualizerPage() {
     }, 250)
     return () => { clearTimeout(t); controller.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerId, scope, seasons.join(','), startDate, endDate, xUnit, mode, activeMetrics.join(',')])
+  }, [entityType, playerId, team, scope, seasons.join(','), startDate, endDate, xUnit, mode, activeMetrics.join(',')])
 
   const { traces, needY2, leftUnit, rightUnit } = useMemo(() => {
     const empty = { traces: [] as any[], needY2: false, leftUnit: '', rightUnit: '' }
     if (!rows.length) return empty
 
-    // Bucket key includes game_pk so doubleheader appearances stay distinct.
+    // Bucket key includes game_pk so doubleheader games stay distinct.
     const bucketKey = (r: TrendsRow) => (r.game_pk != null ? `${r.x}|${r.game_pk}` : r.x)
     const buckets: { key: string; x: string }[] = []
     const seen = new Set<string>()
@@ -226,10 +257,13 @@ export default function TrendsVisualizerPage() {
     legend: { ...BASE_LAYOUT.legend, orientation: 'h', y: 1.1 },
   }), [needY2, leftUnit, rightUnit, xUnit, mode, pitchMetric])
 
+  const seasonCapped = isTeam && xUnit === 'appearance'
   const toggleSeason = (y: number) =>
-    setSeasons(prev => prev.includes(y)
-      ? (prev.length > 1 ? prev.filter(s => s !== y) : prev)
-      : [...prev, y].sort())
+    setSeasons(prev => {
+      if (prev.includes(y)) return prev.length > 1 ? prev.filter(s => s !== y) : prev
+      if (seasonCapped && prev.length >= TEAM_GAME_MAX_SEASONS) return prev
+      return [...prev, y].sort()
+    })
 
   const toggleMetric = (k: string) =>
     setMetricKeys(prev => prev.includes(k)
@@ -237,27 +271,55 @@ export default function TrendsVisualizerPage() {
       : prev.length < MAX_TREND_METRICS ? [...prev, k] : prev)
 
   const metricModeGroups = TREND_METRIC_GROUPS
-    .map(g => ({ g, keys: Object.keys(TREND_METRICS).filter(k => TREND_METRICS[k].group === g && !TREND_METRICS[k].pitchModeOnly) }))
+    .map(g => ({ g, keys: entityMetricKeys.filter(k => TREND_METRICS[k].group === g) }))
     .filter(({ keys }) => keys.length)
+
+  const pitchModeKeys = Object.keys(TREND_METRICS)
+    .filter(k => {
+      const d = TREND_METRICS[k]
+      if (d.teamOnly || (isTeam && d.pitcherOnly)) return false
+      return d.group !== 'Run Prevention'
+    })
+
+  const gameLabel = isTeam ? 'Games' : 'Appearances'
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 flex flex-col">
       <ResearchNav active="/trends-visualizer" />
       <div className="max-w-6xl mx-auto w-full px-4 md:px-6 py-6">
         <h1 className="text-lg font-semibold text-white mb-1">Trends Visualizer</h1>
-        <p className="text-xs text-zinc-500 mb-4">Chart how a pitcher&apos;s usage, stuff, and results change over time · regular season</p>
+        <p className="text-xs text-zinc-500 mb-4">Chart how a pitcher&apos;s or a team&apos;s staff usage, stuff, and results change over time · regular season</p>
 
         {/* Controls */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-4 space-y-3">
           <div className="flex flex-wrap items-end gap-3">
-            <PlayerSearchInput
-              type="pitcher"
-              value={player}
-              onSelect={setPlayer}
-              onClear={() => setPlayer(null)}
-              label="Pitcher"
-              placeholder="Search pitchers…"
-            />
+            <div>
+              <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Subject</div>
+              <div className="flex gap-1">
+                {([['pitcher', 'Pitcher'], ['team', 'Team']] as const).map(([key, label]) => (
+                  <button key={key} onClick={() => setEntityType(key)} className={chip(entityType === key)}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {isTeam ? (
+              <div className="flex-1 min-w-[200px]">
+                <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Team</div>
+                <select value={team} onChange={e => setTeam(e.target.value)}
+                  className="w-full h-9 bg-zinc-800 border border-zinc-700 rounded px-2 text-sm text-zinc-200">
+                  <option value="">Select a team…</option>
+                  {MLB_TEAMS.map(t => <option key={t.abbrev} value={t.abbrev}>{t.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <PlayerSearchInput
+                type="pitcher"
+                value={player}
+                onSelect={setPlayer}
+                onClear={() => setPlayer(null)}
+                label="Pitcher"
+                placeholder="Search pitchers…"
+              />
+            )}
             <div>
               <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Time Range</div>
               <div className="flex gap-1">
@@ -269,9 +331,14 @@ export default function TrendsVisualizerPage() {
             <div>
               <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">X Axis</div>
               <div className="flex gap-1">
-                {([['month', 'Months'], ['appearance', 'Appearances']] as const).map(([key, label]) => (
-                  <button key={key} onClick={() => setXUnit(key)} className={chip(xUnit === key)}>{label}</button>
-                ))}
+                <button onClick={() => setXUnit('month')} className={chip(xUnit === 'month')}>Months</button>
+                <button
+                  onClick={() => { if (!(isTeam && scope === 'career')) setXUnit('appearance') }}
+                  disabled={isTeam && scope === 'career'}
+                  title={isTeam && scope === 'career' ? 'Per-game team trends need a Seasons or Custom range' : undefined}
+                  className={chip(xUnit === 'appearance', isTeam && scope === 'career')}>
+                  {gameLabel}
+                </button>
               </div>
             </div>
             <div>
@@ -285,10 +352,14 @@ export default function TrendsVisualizerPage() {
           </div>
 
           {scope === 'seasons' && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {SEASONS.map(y => (
-                <button key={y} onClick={() => toggleSeason(y)} className={smallChip(seasons.includes(y))}>{y}</button>
+                <button key={y} onClick={() => toggleSeason(y)}
+                  className={smallChip(seasons.includes(y), !seasons.includes(y) && seasonCapped && seasons.length >= TEAM_GAME_MAX_SEASONS)}>
+                  {y}
+                </button>
               ))}
+              {seasonCapped && <span className="text-[10px] text-zinc-600 ml-1">per-game team trends: max {TEAM_GAME_MAX_SEASONS} seasons</span>}
             </div>
           )}
           {scope === 'custom' && (
@@ -298,6 +369,7 @@ export default function TrendsVisualizerPage() {
               <span className="text-xs text-zinc-500">to</span>
               <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                 className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 [color-scheme:dark]" />
+              {isTeam && <span className="text-[10px] text-zinc-600">custom team ranges: max {TEAM_GAME_MAX_DAYS} days</span>}
             </div>
           )}
 
@@ -307,13 +379,15 @@ export default function TrendsVisualizerPage() {
                 <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 mt-2">Metric</div>
                 <select value={pitchMetric} onChange={e => setPitchMetric(e.target.value)}
                   className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200">
-                  {TREND_METRIC_GROUPS.map(g => (
-                    <optgroup key={g} label={g}>
-                      {Object.keys(TREND_METRICS).filter(k => TREND_METRICS[k].group === g).map(k => (
-                        <option key={k} value={k}>{TREND_METRICS[k].label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
+                  {TREND_METRIC_GROUPS.map(g => {
+                    const keys = pitchModeKeys.filter(k => TREND_METRICS[k].group === g)
+                    if (!keys.length) return null
+                    return (
+                      <optgroup key={g} label={g}>
+                        {keys.map(k => <option key={k} value={k}>{TREND_METRICS[k].label}</option>)}
+                      </optgroup>
+                    )
+                  })}
                 </select>
               </div>
             ) : (
@@ -325,12 +399,17 @@ export default function TrendsVisualizerPage() {
                   {metricModeGroups.map(({ g, keys }) => (
                     <div key={g} className="flex flex-wrap items-center gap-1">
                       <span className="text-[10px] text-zinc-600 w-24">{g}</span>
-                      {keys.map(k => (
-                        <button key={k} onClick={() => toggleMetric(k)}
-                          className={smallChip(metricKeys.includes(k), !metricKeys.includes(k) && metricKeys.length >= MAX_TREND_METRICS)}>
-                          {TREND_METRICS[k].label}
-                        </button>
-                      ))}
+                      {keys.map(k => {
+                        const blocked = metricDisabled(k)
+                        const atCap = !metricKeys.includes(k) && metricKeys.length >= MAX_TREND_METRICS
+                        return (
+                          <button key={k} onClick={() => !blocked && toggleMetric(k)}
+                            title={blocked ? 'Needs month buckets on a Career or Seasons range' : undefined}
+                            className={smallChip(metricKeys.includes(k), blocked || atCap)}>
+                            {TREND_METRICS[k].label}
+                          </button>
+                        )
+                      })}
                     </div>
                   ))}
                 </div>
@@ -350,9 +429,9 @@ export default function TrendsVisualizerPage() {
         </div>
 
         {/* Chart */}
-        {!player ? (
+        {!hasEntity ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-12 text-center text-sm text-zinc-500">
-            Search for a pitcher above to start charting trends.
+            {isTeam ? 'Pick a team above to start charting staff trends.' : 'Search for a pitcher above to start charting trends.'}
           </div>
         ) : (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 relative">

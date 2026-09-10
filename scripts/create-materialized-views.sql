@@ -200,7 +200,10 @@ SELECT
   -- ERA components
   COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')::int AS strikeouts,
   COUNT(*) FILTER (WHERE p.events = 'walk')::int AS walks,
-  COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch')::int AS hbp,
+  -- hbp_count, not hbp: matches the DEPLOYED view (this file had drifted to
+  -- 'hbp', and scene-stats queries selecting it failed silently until
+  -- 2026-09-10 — keep this name in sync with consumers)
+  COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch')::int AS hbp_count,
   COUNT(*) FILTER (WHERE p.events = 'home_run')::int AS home_runs,
   ROUND((COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN p.game_pk::bigint * 10000 + p.at_bat_number END)
    + COUNT(DISTINCT CASE WHEN p.events LIKE '%double_play%' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)

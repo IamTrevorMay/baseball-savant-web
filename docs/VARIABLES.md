@@ -299,21 +299,30 @@ These are the URL parameters the route reads off `req.nextUrl.searchParams`. Mos
 
 ### 6.4 `/api/trends-viz` (POST body — Trends Visualizer)
 
-Time-bucketed metric series for the Media → Trends Visualizer page. Types and the metric catalog live in `lib/trendsViz.ts`; metric SQL resolves through `METRICS` (§1) except the two route-local expressions noted below. Regular-season pitches only (`game_type = 'R'`).
+Time-bucketed metric series for the Media → Trends Visualizer page. Types and the metric catalog live in `lib/trendsViz.ts`; metric SQL resolves through `METRICS` (§1) except the route-local expressions noted below. Regular-season pitches only (`game_type = 'R'`).
 
 | Param | Type / Values | Notes |
 |---|---|---|
-| `playerId` | int (MLBAM pitcher id) | required |
+| `entityType` | `pitcher` (default) \| `team` | team = pitching perspective (staff) |
+| `playerId` | int (MLBAM pitcher id) | entityType=pitcher |
+| `team` | abbrev from `MLB_TEAMS` (lib/trendsViz.ts) | entityType=team |
 | `scope` | `career` \| `seasons` \| `custom` | career = no date filter |
 | `seasons` | int[] (2015+) | scope=seasons |
 | `startDate`, `endDate` | `YYYY-MM-DD` | scope=custom |
-| `xUnit` | `month` \| `appearance` | bucket = `to_char(game_date,'YYYY-MM')` or (`game_date`, `game_pk`) |
+| `xUnit` | `month` \| `appearance` | bucket = `to_char(game_date,'YYYY-MM')` or (`game_date`, `game_pk`); for teams, `appearance` = per game |
 | `mode` | `pitch` \| `metric` | pitch mode groups by `pitch_name` and excludes `pitch_type IN ('PO','IN')` |
 | `metrics` | metric keys from `TREND_METRICS` | pitch mode: exactly 1; metric mode: up to 6 |
+
+Data paths: pitchers always run live SQL over `pitches` (pitcher index). Teams read `mv_team_monthly_pitching_stats` / `mv_team_monthly_pitch_mix` (§9) for month buckets on career/seasons scopes; game buckets and custom ranges run live with the derived-team CASE and are bounded (`TEAM_GAME_MAX_SEASONS` = 2, `TEAM_GAME_MAX_DAYS` = 740).
 
 Route-local metric expressions (not in §1 `METRICS`):
 - `usage_pct` — share of the **time bucket** (`PARTITION BY` bucket expr), not `PARTITION BY player_name` like the §1 version; pitch mode only
 - `avg_stuff_plus` — `ROUND(AVG(stuff_plus)::numeric, 0)`
+- `fip`, `xera` (team only) — computed from MV component columns via `computeFIP`/`computeXERA` (§4); month buckets on career/seasons scopes only
+
+There is deliberately **no `era` key in trends**: real monthly team ERA cannot be assembled (MLB API team/league byMonth endpoints are dead, person-level byMonth loses team attribution after trades — verified 2026-09-10; see `lib/teamEra.ts`).
+
+**Team-level ERA contract (2026-09-10):** anywhere the platform reports team `era` — `/api/scene-stats?teamStats=true`, `/api/team-tendencies` — the value is the real MLB-API **season** number (`lib/teamEra.ts` `fetchRealTeamERA`) or `null` (date-filtered, SP/RP-filtered, or spring/postseason requests). It is **never FIP under the wrong name** (which `scene-stats` silently returned before this date). `fip`/`xera` remain Statcast-computed and labeled as themselves.
 
 ---
 
@@ -531,6 +540,8 @@ from the browser (callers ignored `error`, so cells just showed "—").
 | `pitcher_season_deception` | pitcher × pitch_type × year | 2017+ | `deception_score`, `unique_score` |
 | `league_averages` | (season, level, role, metric) | — | 50th-percentile benchmarks for qualified players |
 | `player_season_stats` | player × season × stat_group | 2015+ | ERA, W, L, SV, HLD, IP, ER, R, RBI, SB, IR, IRS (`inherited_runners`, `inherited_runners_scored`) from MLB Stats API. Populated by `/api/cron/player-stats` nightly. |
+| `mv_team_monthly_pitching_stats` | team × month (`'YYYY-MM'`) | 2015+ | Pitching-perspective trend buckets + FIP/xERA components; regular season only; refreshed nightly by `refresh_team_monthly_views()` |
+| `mv_team_monthly_pitch_mix` | team × month × pitch_name | 2015+ | Staff pitch mix (`usage_pct` = share of team-month) + per-pitch traits; same refresh |
 | `glossary` | metric definitions | — | UI tooltips |
 | `filter_templates` | saved filter configs | — | |
 | `bat_tracking_swing_miss` | snapshot × player_type × player × season × pitch_type | 2023+ | Daily snapshots of Savant swing-timing/miss-distance board. `_latest` view = most-recent per player. See §8.7. |
