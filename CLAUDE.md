@@ -57,6 +57,9 @@ so `/player/123` is served by `app/(research)/player/[id]/page.tsx`.
 - `components/FilterEngine.tsx` — Reusable 50+ field filter system
 - `components/reports/TileViz.tsx` — Tile visualization components (heatmap, scatter, bar, strike zone, table)
 - `components/reports/ReportTile.tsx` — Configurable report tile wrapper
+- `components/reports/ScoutingReportBuilder.tsx` — Reports Builder **Default mode** (MLB + MiLB): player or team-roster scouting reports; player + period fetched, then global → tile filters. Versus mode stays in the page files.
+- `lib/reports/periodFilter.ts` — validated `years` / `startDate` / `endDate` → SQL for the player-data routes
+- `app/api/milb/teams/route.ts`, `app/api/milb/roster/route.ts` — Triple-A clubs + active rosters for MiLB team reports
 - `app/api/player-data/route.ts` — Server-side player data fetch (uses the `run_query_long` RPC, which carries a function-level `statement_timeout=120s`; plain `run_query` is capped at 8s by the `authenticator` role)
 - `app/api/report/route.ts` — Server-side SQL aggregation for reports
 - `app/api/roster/route.ts` — MLB roster API proxy

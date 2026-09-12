@@ -2,6 +2,30 @@
 
 ## Recently Completed
 
+### Reports Builder Default Mode — Player + Team Scouting Reports (2026-09-12)
+
+Default mode was a stub (hid the subject pickers, loaded no data). It is now
+`components/reports/ScoutingReportBuilder.tsx`, shared by the Research and MiLB Reports pages.
+Scoping, outermost first: player + time period (seasons multi-select + optional date range,
+fetched server-side via new `years`/`startDate`/`endDate` params on `/api/player-data` and
+`/api/milb/player-data`) → global filters → tile filters. **Run for team** loads a club's
+active roster (role-matched, two-way players in both, checkboxes to drop anyone) and renders
+the same tiles per player with ←/→ paging; PDF exports one page per player. Per-player rows are
+cached by (player, role, period) and the next player is prefetched. Templates save tiles,
+filters, and grid but not the period. MiLB team runs offer Triple-A clubs only (new
+`/api/milb/teams` + `/api/milb/roster`) because `milb_pitches` is AAA-only. Push to Compete
+sends the period as `game_year`/`game_date` filters so Compete's full-history fetch reproduces
+the same data. The builder stays mounted while Versus is shown, so a report survives the
+toggle. Also: Push to Compete modal extracted (`PushToCompeteModal`), filter-chip options
+shared (`lib/reports/reportOptions.ts`; season chips no longer stop at 2025).
+Reports PDFs (Default and Versus, MLB and MiLB) now export on **US Letter, portrait by default**,
+with a Portrait/Landscape toggle beside the PDF button (`PdfOrientationToggle`); the on-screen
+grid is captured as-is and fit to the page width.
+**Fixed along the way:** `/api/milb/player-data` had been returning 500 for every request — it
+selected `estimated_slg_using_speedangle` and `n_thruorder_pitcher`, which exist in neither
+`milb_pitches` nor the normalized view — so the MiLB player/hitter pages and MiLB Reports loaded
+no data. Both columns dropped from the select.
+
 ### Compete Progress (stub) + Trends Correlation Tool (2026-09-11)
 
 Two new athlete pages. Progress is a ComingSoon stub. Trends

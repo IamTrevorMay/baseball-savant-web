@@ -574,6 +574,22 @@ from the browser (callers ignored `error`, so cells just showed "—").
 
 ---
 
+## 8.12 Player Pitch Rows + MiLB Rosters — `/api/player-data`, `/api/milb/player-data`, `/api/milb/teams`, `/api/milb/roster`
+
+Raw per-pitch rows for one player (client-side filtering/aggregation), plus the MiLB roster
+lookups behind Reports Builder team runs. Period params are validated in
+`lib/reports/periodFilter.ts` before they reach SQL; an empty period is the full history
+(capped at 50,000 rows, newest first).
+
+| Route | Params | Returns |
+|---|---|---|
+| `/api/player-data` | `id` (req), `col` = `pitcher`\|`batter` (default `pitcher`), `years` csv of 4-digit seasons, `year` (legacy single season, merged into `years`), `startDate` / `endDate` (`YYYY-MM-DD`, inclusive, on `game_date`) | `{ rows, count }` from `pitches` (+ deployed model columns, + opposite-side `<col>_name`) |
+| `/api/milb/player-data` | same as above | `{ rows, count }` from `milb_pitches_normalized` (AAA only, 2023+). No `estimated_slg_using_speedangle` or `n_thruorder_pitcher` — MiLB feeds don't carry them |
+| `/api/milb/teams` | — | `{ teams: [{ id, abbreviation, name, parentOrg }] }` — Triple-A clubs (MLB Stats API `sportIds=11`), cached 24h |
+| `/api/milb/roster` | `teamId` (req, from `/api/milb/teams`) | `{ roster: [{ id, name, position, jerseyNumber }] }` — active roster, same shape as `/api/roster` |
+
+---
+
 ## 9. Source Tables — One-Liners
 
 | Table | Grain | Years | Notes |

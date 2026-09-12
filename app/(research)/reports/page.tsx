@@ -8,22 +8,14 @@ import ReportTile, { TileConfig, defaultTile } from '@/components/reports/Report
 import { computeStuffProfile, generateSimilarStuffFilters, applyOverlayRules, type StuffProfile, type OverlayRule } from '@/lib/overlayEngine'
 import { enrichData } from '@/lib/enrichData'
 import OverlayTemplateBuilder from '@/components/reports/OverlayTemplateBuilder'
+import ScoutingReportBuilder from '@/components/reports/ScoutingReportBuilder'
+import PdfOrientationToggle, { type PdfOrientation } from '@/components/reports/PdfOrientationToggle'
+import PushToCompeteModal from '@/components/reports/PushToCompeteModal'
+import { STATIC_OPTIONS, buildOptionsCache } from '@/lib/reports/reportOptions'
 
 interface RosterPlayer { id: number; name: string; position: string }
 
 const TEAMS = ['AZ','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL','DET','HOU','KC','LAA','LAD','MIA','MIL','MIN','NYM','NYY','OAK','PHI','PIT','SD','SF','SEA','STL','TB','TEX','TOR','WSH']
-
-const STATIC_OPTIONS: Record<string, string[]> = {
-  game_year: ['2025','2024','2023','2022','2021','2020','2019','2018','2017','2016','2015'],
-  pitch_name: ['4-Seam Fastball','Sinker','Cutter','Changeup','Slider','Sweeper','Curveball','Knuckle Curve','Split-Finger','Slurve','Knuckeball','Eephus','Slow Curve'],
-  pitch_type: ['FF','SI','FC','CH','SL','ST','CU','KC','FS','SV','KN','EP','CS'],
-  stand: ['L','R'], p_throws: ['L','R'],
-  balls: ['0','1','2','3'], strikes: ['0','1','2'],
-  outs_when_up: ['0','1','2'], inning: Array.from({ length: 18 }, (_, i) => String(i + 1)),
-  bb_type: ['ground_ball','fly_ball','line_drive','popup'],
-  home_team: TEAMS, away_team: TEAMS, vs_team: TEAMS,
-  zone: Array.from({ length: 14 }, (_, i) => String(i + 1)),
-}
 
 type Scope = 'team' | 'player'
 type SubjectType = 'hitting' | 'pitching'
@@ -71,6 +63,7 @@ function ReportsPageInner() {
   const [optionsCache, setOptionsCache] = useState<Record<string, string[]>>(STATIC_OPTIONS)
   const [columns, setColumns] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 1 : 4)
   const [exporting, setExporting] = useState(false)
+  const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>('portrait')
   const gridRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
   const subjectSearchRef = useRef<HTMLDivElement>(null)
@@ -94,14 +87,8 @@ function ReportsPageInner() {
   const [activeOverlayId, setActiveOverlayId] = useState<string | null>(null)
   const [showOverlayBuilder, setShowOverlayBuilder] = useState(false)
 
-  // Push to Compete state
+  // Push to Compete
   const [showPushModal, setShowPushModal] = useState(false)
-  const [competeAthletes, setCompeteAthletes] = useState<any[]>([])
-  const [pushTarget, setPushTarget] = useState('')
-  const [pushTitle, setPushTitle] = useState('')
-  const [pushDesc, setPushDesc] = useState('')
-  const [pushing, setPushing] = useState(false)
-  const [pushError, setPushError] = useState('')
 
   // --- Toggle handlers ---
   function handleSubjectTypeChange(newType: SubjectType) {
@@ -262,16 +249,7 @@ function ReportsPageInner() {
   }
 
   function buildOptions(rows: any[]) {
-    const bo = (col: string) => [...new Set(rows.map((r: any) => r[col]).filter(Boolean))].map(String).sort()
-    setOptionsCache({
-      ...STATIC_OPTIONS,
-      game_year: bo('game_year').sort().reverse(), pitch_name: bo('pitch_name'), pitch_type: bo('pitch_type'),
-      stand: bo('stand'), p_throws: bo('p_throws'), balls: ['0', '1', '2', '3'], strikes: ['0', '1', '2'],
-      outs_when_up: ['0', '1', '2'], inning: Array.from({ length: 18 }, (_, i) => String(i + 1)),
-      type: bo('type'), events: bo('events'), description: bo('description'), bb_type: bo('bb_type'),
-      home_team: bo('home_team'), away_team: bo('away_team'), vs_team: bo('vs_team'),
-      zone: Array.from({ length: 14 }, (_, i) => String(i + 1)),
-    })
+    setOptionsCache(buildOptionsCache(rows))
   }
 
   // Navigate roster
@@ -342,7 +320,7 @@ function ReportsPageInner() {
       const { jsPDF } = await import('jspdf')
       const canvas = await html2canvas(gridRef.current, { backgroundColor: '#09090b', scale: 2 })
       const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+      const pdf = new jsPDF({ orientation: pdfOrientation, unit: 'mm', format: 'letter' })
       const pageW = pdf.internal.pageSize.getWidth()
       const pageH = pdf.internal.pageSize.getHeight()
       pdf.setFontSize(14)
@@ -403,49 +381,6 @@ function ReportsPageInner() {
       setGlobalFilters(data.global_filters || [])
       setColumns(data.columns || 4)
     }
-  }
-
-  // Push to Compete
-  async function openPushModal() {
-    setShowPushModal(true)
-    setPushTitle(currentPlayerName ? `${currentPlayerName} Report` : 'Scouting Report')
-    setPushDesc('')
-    setPushTarget('')
-    setPushError('')
-    try {
-      const res = await fetch('/api/compete/athletes')
-      const data = await res.json()
-      setCompeteAthletes(data.athletes || [])
-    } catch { setCompeteAthletes([]) }
-  }
-
-  async function pushToCompete() {
-    if (!pushTarget || !pushTitle.trim()) return
-    setPushing(true)
-    setPushError('')
-    try {
-      const res = await fetch('/api/compete/reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          athlete_id: pushTarget,
-          title: pushTitle.trim(),
-          description: pushDesc.trim() || null,
-          player_name: currentPlayerName || null,
-          subject_type: subjectType,
-          metadata: {
-            tiles,
-            filters: globalFilters,
-            player_id: selectedPlayer?.id || null,
-            columns,
-          },
-        }),
-      })
-      const data = await res.json()
-      if (data.error) { setPushError(data.error); setPushing(false); return }
-      setShowPushModal(false)
-    } catch { setPushError('Failed to push report') }
-    setPushing(false)
   }
 
   // Handle query params for "Generate Report" from player page
@@ -569,9 +504,30 @@ function ReportsPageInner() {
 
   const hasSubject = scope === 'team' ? activeRoster.length > 0 : !!selectedPlayer
 
+  // Versus / Default mode toggle — rendered by both modes
+  const modeToggle = (
+    <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+      <button onClick={() => setBuilderMode('versus')}
+        className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${builderMode === 'versus' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+        Versus
+      </button>
+      <button onClick={() => setBuilderMode('default')}
+        className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${builderMode === 'default' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+        Default
+      </button>
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200">
       <ResearchNav active="/reports" />
+
+      {/* Default mode — player / team scouting reports. Kept mounted so its report survives a trip to Versus. */}
+      <div hidden={builderMode !== 'default'}>
+        <ScoutingReportBuilder level="MLB" modeToggle={modeToggle} active={builderMode === 'default'} />
+      </div>
+
+      {builderMode === 'versus' && <>
 
       {/* ── Header Bar ────────────────────────────────────────────────── */}
       <div className="bg-zinc-900 border-b border-zinc-800 px-3 md:px-6 py-2">
@@ -579,19 +535,8 @@ function ReportsPageInner() {
 
           {/* Row 1: Toggles + Subject */}
           <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-            {/* Versus / Default mode toggle */}
-            <div className="flex rounded-lg overflow-hidden border border-zinc-700">
-              <button onClick={() => setBuilderMode('versus')}
-                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${builderMode === 'versus' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-                Versus
-              </button>
-              <button onClick={() => setBuilderMode('default')}
-                className={`px-3 py-1.5 md:py-1 text-xs md:text-[11px] font-medium transition ${builderMode === 'default' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
-                Default
-              </button>
-            </div>
+            {modeToggle}
 
-            {builderMode === 'versus' && <>
             {/* Pitchers / Hitters toggle */}
             <div className="flex rounded-lg overflow-hidden border border-zinc-700">
               <button onClick={() => handleSubjectTypeChange('pitching')}
@@ -664,7 +609,6 @@ function ReportsPageInner() {
 
             {loading && <div className="w-4 h-4 border-2 border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />}
             <span className="text-[11px] text-zinc-600 ml-auto md:ml-0">{displayedPitchCount.toLocaleString()} pitches</span>
-            </>}
           </div>
 
           {/* Row 2: Templates, Modifier, Grid, Actions */}
@@ -682,7 +626,6 @@ function ReportsPageInner() {
               {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
 
-            {builderMode === 'versus' && <>
             <div className="w-px h-5 bg-zinc-800 hidden md:block" />
 
             {/* Modifier dropdown */}
@@ -760,7 +703,6 @@ function ReportsPageInner() {
                 {reportMode === 'vs_similar_stuff' ? 'vs. Stuff' : overlayTemplates.find(t => t.id === activeOverlayId)?.name || 'Modifier'}
               </span>
             )}
-            </>}
 
             {/* Grid columns */}
             <div className="flex items-center gap-1.5 ml-auto">
@@ -782,11 +724,12 @@ function ReportsPageInner() {
                   {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               )}
+              <PdfOrientationToggle value={pdfOrientation} onChange={setPdfOrientation} disabled={exporting} />
               <button onClick={exportPDF} disabled={exporting}
                 className="px-2.5 py-1.5 md:px-2 md:py-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded text-xs md:text-[11px] text-white font-medium transition disabled:opacity-50">
                 {exporting ? '...' : 'PDF'}
               </button>
-              <button onClick={openPushModal}
+              <button onClick={() => setShowPushModal(true)}
                 className="px-2.5 py-1.5 md:px-2 md:py-1 bg-amber-700 hover:bg-amber-600 border border-amber-600 rounded text-xs md:text-[11px] text-white font-medium transition hidden sm:inline-flex">
                 Push
               </button>
@@ -796,7 +739,7 @@ function ReportsPageInner() {
       </div>
 
       {/* Global Filters */}
-      {(hasSubject || builderMode === 'default') && <FilterEngine activeFilters={globalFilters} onFiltersChange={setGlobalFilters} optionsCache={optionsCache} />}
+      {hasSubject && <FilterEngine activeFilters={globalFilters} onFiltersChange={setGlobalFilters} optionsCache={optionsCache} />}
 
       {/* Save Template Modal */}
       {showSaveModal && (
@@ -821,45 +764,15 @@ function ReportsPageInner() {
 
       {/* Push to Compete Modal */}
       {showPushModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setShowPushModal(false)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 md:p-6 w-[90vw] max-w-96 mx-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-white mb-3">Push to Compete</h3>
-            <p className="text-[11px] text-zinc-500 mb-4">Share this report with an athlete on Compete.</p>
-            {pushError && <p className="text-[11px] text-red-400 mb-3">{pushError}</p>}
-            <div className="space-y-3">
-              <div>
-                <label className="text-[11px] text-zinc-500 mb-1 block">Athlete</label>
-                <select value={pushTarget} onChange={e => setPushTarget(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white focus:border-amber-500 focus:outline-none">
-                  <option value="">Select athlete...</option>
-                  {competeAthletes.map((a: any) => (
-                    <option key={a.id} value={a.id}>
-                      {a.profiles?.full_name || a.profiles?.email || 'Unknown'} {a.position ? `(${a.position})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] text-zinc-500 mb-1 block">Title</label>
-                <input value={pushTitle} onChange={e => setPushTitle(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none" />
-              </div>
-              <div>
-                <label className="text-[11px] text-zinc-500 mb-1 block">Description (optional)</label>
-                <textarea value={pushDesc} onChange={e => setPushDesc(e.target.value)} rows={2}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none resize-none" />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowPushModal(false)}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-400 rounded text-xs hover:text-white transition">Cancel</button>
-              <button onClick={pushToCompete} disabled={!pushTarget || !pushTitle.trim() || pushing}
-                className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs hover:bg-amber-500 transition disabled:opacity-50">
-                {pushing ? 'Pushing...' : 'Push Report'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <PushToCompeteModal
+          playerName={currentPlayerName}
+          playerId={selectedPlayer?.id || null}
+          subjectType={subjectType}
+          tiles={tiles}
+          filters={globalFilters}
+          columns={columns}
+          onClose={() => setShowPushModal(false)}
+        />
       )}
 
       {/* Modifier Template Builder */}
@@ -875,7 +788,7 @@ function ReportsPageInner() {
       )}
 
       {/* ── Empty State / Tile Grid ───────────────────────────────────── */}
-      {!hasSubject && !loading && builderMode !== 'default' ? (
+      {!hasSubject && !loading ? (
         <div className="flex flex-col items-center justify-center py-20 md:py-32 text-center px-6">
           <div className="text-4xl mb-4 opacity-30">&#9776;</div>
           <h2 className="text-lg font-semibold text-zinc-500 mb-2">Reports Builder</h2>
@@ -921,6 +834,7 @@ function ReportsPageInner() {
           )}
         </div>
       )}
+      </>}
     </div>
   )
 }
