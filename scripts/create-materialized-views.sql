@@ -172,85 +172,16 @@ CREATE INDEX ON mv_batter_season_stats (game_year);
 CREATE INDEX ON mv_batter_season_stats (game_year, team);
 
 -- ============================================================================
--- 3. mv_team_pitching_stats — per team × game_year (pitching perspective)
---    Covers: team-tendencies pitching, scene-stats teamStats pitching
+-- 3./4. mv_team_pitching_stats + mv_team_batting_stats — per team × game_year
+--    Covers: team-tendencies pitching/hitting, scene-stats teamStats
+--
+--    MOVED (2026-09-16): both views are now generated and rebuilt by
+--    scripts/create-team-stats-mvs.sql (rebuild_team_stats_mvs(), produced by
+--    scripts/gen-team-stats-mvs.ts from lib/reportMetrics.METRICS). The copies
+--    that used to live here had drifted from the deployed views (e.g. hbp vs
+--    hbp_count) and carried only 12 / 11 metrics. They are still REFRESHed
+--    CONCURRENTLY by refresh_materialized_views() below.
 -- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS mv_team_pitching_stats CASCADE;
-CREATE MATERIALIZED VIEW mv_team_pitching_stats AS
-SELECT
-  CASE WHEN p.inning_topbot = 'Top' THEN p.home_team ELSE p.away_team END AS team,
-  p.game_year,
-  COUNT(*)::int AS pitches,
-  COUNT(DISTINCT p.game_pk)::int AS games,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
-  ROUND(AVG(p.release_speed)::numeric, 1) AS avg_velo,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'missed_bunt')
-    / NULLIF(COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'foul_tip' OR p.description = 'missed_bunt'), 0), 1) AS whiff_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
-  ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.description LIKE '%swinging_strike%' OR p.description = 'called_strike')
-    / NULLIF(COUNT(*), 0), 1) AS csw_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.zone BETWEEN 1 AND 9)
-    / NULLIF(COUNT(*) FILTER (WHERE p.zone IS NOT NULL), 0), 1) AS zone_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.zone > 9 AND (p.description LIKE '%swinging_strike%' OR p.description LIKE '%foul%' OR p.description = 'hit_into_play' OR p.description = 'missed_bunt'))
-    / NULLIF(COUNT(*) FILTER (WHERE p.zone > 9), 0), 1) AS chase_pct,
-  -- ERA components
-  COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')::int AS strikeouts,
-  COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))::int AS walks,
-  -- hbp_count, not hbp: matches the DEPLOYED view (this file had drifted to
-  -- 'hbp', and scene-stats queries selecting it failed silently until
-  -- 2026-09-10 — keep this name in sync with consumers)
-  COUNT(*) FILTER (WHERE p.events = 'hit_by_pitch')::int AS hbp_count,
-  COUNT(*) FILTER (WHERE p.events = 'home_run')::int AS home_runs,
-  ROUND((COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events NOT IN ('single','double','triple','home_run','walk','hit_by_pitch','catcher_interf','field_error') THEN p.game_pk::bigint * 10000 + p.at_bat_number END)
-   + COUNT(DISTINCT CASE WHEN p.events LIKE '%double_play%' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)
-   + 2 * COUNT(DISTINCT CASE WHEN p.events = 'triple_play' THEN p.game_pk::bigint * 10000 + p.at_bat_number END))::numeric / 3.0, 1) AS ip,
-  AVG(p.estimated_woba_using_speedangle) AS xwoba_raw,
-  -- wOBA for wRC+ (batting perspective — stored here for convenience)
-  AVG(p.woba_value) AS woba_raw
-FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
-GROUP BY 1, p.game_year;
-
-CREATE UNIQUE INDEX ON mv_team_pitching_stats (team, game_year);
-
--- ============================================================================
--- 4. mv_team_batting_stats — per team × game_year (batting perspective)
---    Covers: team-tendencies hitting, scene-stats teamStats hitting
--- ============================================================================
-DROP MATERIALIZED VIEW IF EXISTS mv_team_batting_stats CASCADE;
-CREATE MATERIALIZED VIEW mv_team_batting_stats AS
-SELECT
-  CASE WHEN p.inning_topbot = 'Top' THEN p.away_team ELSE p.home_team END AS team,
-  p.game_year,
-  COUNT(*)::int AS pitches,
-  COUNT(DISTINCT p.game_pk)::int AS games,
-  COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END)::int AS pa,
-  SUM(COALESCE(p.post_bat_score, 0) - COALESCE(p.bat_score, 0)) FILTER (WHERE p.events IS NOT NULL) AS runs,
-  ROUND(AVG(p.launch_speed)::numeric, 1) AS avg_ev,
-  ROUND(COUNT(*) FILTER (WHERE p.events IN ('single','double','triple','home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS ba,
-  ROUND((COUNT(*) FILTER (WHERE p.events = 'single') + 2 * COUNT(*) FILTER (WHERE p.events = 'double') + 3 * COUNT(*) FILTER (WHERE p.events = 'triple') + 4 * COUNT(*) FILTER (WHERE p.events = 'home_run'))::numeric
-    / NULLIF(COUNT(*) FILTER (WHERE p.events IS NOT NULL AND p.events NOT IN ('truncated_pa','walk','intent_walk','hit_by_pitch','sac_fly','sac_fly_double_play','sac_bunt','sac_bunt_double_play','catcher_interf')), 0), 3) AS slg,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events LIKE '%strikeout%')
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS k_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.events IN ('walk','intent_walk'))
-    / NULLIF(COUNT(DISTINCT CASE WHEN p.events IS NOT NULL AND p.events <> 'truncated_pa' THEN p.game_pk::bigint * 10000 + p.at_bat_number END), 0), 1) AS bb_pct,
-  ROUND(AVG(p.estimated_woba_using_speedangle)::numeric, 3) AS avg_xwoba,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed >= 95 AND p.bb_type IS NOT NULL)
-    / NULLIF(COUNT(*) FILTER (WHERE p.bb_type IS NOT NULL), 0), 1) AS hard_hit_pct,
-  ROUND(100.0 * COUNT(*) FILTER (WHERE p.launch_speed_angle::text = '6')
-    / NULLIF(COUNT(*) FILTER (WHERE p.launch_speed_angle IS NOT NULL), 0), 1) AS barrel_pct,
-  -- wOBA for wRC+
-  AVG(p.woba_value) AS woba_raw
-FROM pitches p
-WHERE p.pitch_type NOT IN ('PO', 'IN') AND p.game_type = 'R'
-GROUP BY 1, p.game_year;
-
-CREATE UNIQUE INDEX ON mv_team_batting_stats (team, game_year);
 
 -- ============================================================================
 -- 5. mv_team_bullpen_stats — per team × game_year (inning >= 6)
