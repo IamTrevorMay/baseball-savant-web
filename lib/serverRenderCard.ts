@@ -3,7 +3,9 @@
  * Handles the element types used in the Test Starter Card template:
  *   player-image, rc-table, rc-stat-box, rc-bar-chart, rc-donut-chart, rc-movement-plot
  */
+import path from 'path'
 import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D, type Canvas, type Image } from '@napi-rs/canvas'
+import { detectStand, drawBatterStandLabel, silhouetteGeometry, SILHOUETTE_OPACITY } from '@/lib/batterSilhouette'
 import { getPitchColor } from '@/components/chartConfig'
 import { isAtBat, isWhiff, isSwing, isWobaDenomEvent, WOBA_WEIGHTS } from '@/lib/pitcherStats'
 
@@ -107,6 +109,18 @@ async function fetchImage(url: string): Promise<Image | null> {
   } catch {
     return null
   }
+}
+
+const _silhouettes = new Map<string, Promise<Image | null>>()
+
+/** Loads a batter-silhouette PNG from /public, cached per process. */
+function loadSilhouette(src: string): Promise<Image | null> {
+  let p = _silhouettes.get(src)
+  if (!p) {
+    p = loadImage(path.join(process.cwd(), 'public', src)).catch(() => null)
+    _silhouettes.set(src, p)
+  }
+  return p
 }
 
 // ── Pitch type colors (canonical source: components/chartConfig.ts) ──────
@@ -1020,6 +1034,9 @@ function drawRCHeatmap(ctx: SKRSContext2D, el: SceneElement) {
     ctx.stroke()
   }
 
+  // Raw plate_x → catcher's view.
+  drawBatterStandLabel(ctx, detectStand(locations), { x: plotX, y: plotY, w: plotW, h: plotH }, { orientation: 'catcher' })
+
   if (showLegend) {
     // Legend width matches the colored plot width — never wider than the
     // heatmap itself, so it sits flush under it instead of stretching to
@@ -1093,9 +1110,11 @@ function drawRCHeatmapLegacy(
     ctx.lineWidth = 2
     ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
   }
+  // Raw plate_x → catcher's view.
+  drawBatterStandLabel(ctx, detectStand(locations), { x: ex + pad, y: ey + pad + titleOffset, w: plotW, h: plotH }, { orientation: 'catcher' })
 }
 
-function drawRCZonePlot(ctx: SKRSContext2D, el: SceneElement) {
+async function drawRCZonePlot(ctx: SKRSContext2D, el: SceneElement) {
   const p = el.props
   const { x: ex, y: ey, width: w, height: h } = el
   const pitches: { plate_x: number; plate_z: number; pitch_name: string }[] = p.pitches || []
@@ -1134,6 +1153,19 @@ function drawRCZonePlot(ctx: SKRSContext2D, el: SceneElement) {
     ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
   }
 
+  // Batter side — raw plate_x → catcher's view. Silhouette under the dots.
+  const stand = detectStand(pitches)
+  if (stand) {
+    const g = silhouetteGeometry(stand, 'catcher')
+    const img = await loadSilhouette(g.src)
+    if (img) {
+      ctx.save()
+      ctx.globalAlpha = SILHOUETTE_OPACITY
+      ctx.drawImage(img, toX(g.x0), toY(g.yTop), toX(g.x1) - toX(g.x0), toY(g.yBottom) - toY(g.yTop))
+      ctx.restore()
+    }
+  }
+
   // Dots
   for (const pitch of pitches) {
     const cx = toX(pitch.plate_x)
@@ -1146,6 +1178,8 @@ function drawRCZonePlot(ctx: SKRSContext2D, el: SceneElement) {
     ctx.fill()
   }
   ctx.globalAlpha = 1
+
+  drawBatterStandLabel(ctx, stand, { x: ex + pad, y: ey + pad + titleOffset, w: plotW, h: plotH }, { orientation: 'catcher' })
 
   ctx.restore()
 }
@@ -1247,7 +1281,7 @@ export async function renderCardToPNG(scene: Scene): Promise<Buffer> {
         drawRCHeatmap(ctx, el)
         break
       case 'rc-zone-plot':
-        drawRCZonePlot(ctx, el)
+        await drawRCZonePlot(ctx, el)
         break
       case 'shape':
         drawUniversalBg(ctx, el)

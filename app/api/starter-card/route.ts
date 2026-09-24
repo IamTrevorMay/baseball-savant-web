@@ -447,11 +447,11 @@ export async function GET(req: NextRequest) {
     // ── Locations split by stand ─────────────────────────────────────────
     const locationsLhb = pitches
       .filter((p: any) => p.stand === 'L' && p.plate_x != null && p.plate_z != null)
-      .map((p: any) => ({ plate_x: p.plate_x, plate_z: p.plate_z, pitch_name: p.pitch_name }))
+      .map((p: any) => ({ plate_x: p.plate_x, plate_z: p.plate_z, pitch_name: p.pitch_name, stand: p.stand }))
 
     const locationsRhb = pitches
       .filter((p: any) => p.stand === 'R' && p.plate_x != null && p.plate_z != null)
-      .map((p: any) => ({ plate_x: p.plate_x, plate_z: p.plate_z, pitch_name: p.pitch_name }))
+      .map((p: any) => ({ plate_x: p.plate_x, plate_z: p.plate_z, pitch_name: p.pitch_name, stand: p.stand }))
 
     const data = {
       pitcher_id: Number(pitcherId),

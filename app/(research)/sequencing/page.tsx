@@ -297,6 +297,7 @@ export default function SequencingPage() {
                 <SequenceReplayCanvas
                   ref={replayRef}
                   pitches={replayPitches}
+                  stand={selectedAtBat?.stand === 'L' || selectedAtBat?.stand === 'R' ? selectedAtBat.stand : null}
                   width={540}
                   height={480}
                 />

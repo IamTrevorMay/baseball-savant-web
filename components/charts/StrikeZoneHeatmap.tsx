@@ -2,7 +2,7 @@
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS } from '../chartConfig'
 import { toPitcherX, PITCH_LOC_X_TITLE } from '@/lib/pitcherPerspective'
-import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { detectStand, batterStandLayout } from '@/lib/batterSilhouette'
 
 export default function StrikeZoneHeatmap({ data }: { data: any[] }) {
   const f = data.filter(d => d.plate_x != null && d.plate_z != null)
@@ -33,7 +33,7 @@ export default function StrikeZoneHeatmap({ data }: { data: any[] }) {
       { type: 'line', x0: -0.708, x1: 0.708, y0: 2.833, y1: 2.833, line: { color: 'rgba(255,255,255,0.15)', width: 1 } },
       { type: 'path', path: 'M -0.708 0.15 L 0 0 L 0.708 0.15', line: { color: 'rgba(255,255,255,0.3)', width: 2 } },
     ],
-    images: batterSilhouetteImages(stand),
+    ...batterStandLayout(stand),
     height: 500, width: 450,
   }
 

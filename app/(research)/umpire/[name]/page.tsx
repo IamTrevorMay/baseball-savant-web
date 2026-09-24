@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import ResearchNav from '@/components/ResearchNav'
 import dynamic from 'next/dynamic'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { batterStandLayout } from '@/lib/batterSilhouette'
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false })
 
@@ -393,7 +393,7 @@ export default function UmpireScorecardPage() {
                     // Shadow zone (1" buffer)
                     { type: 'rect', x0: -0.913, x1: 0.913, y0: szBot - 0.083, y1: szTop + 0.083, line: { color: '#3f3f46', width: 1, dash: 'dot' } },
                   ],
-                  images: batterSilhouetteImages(batterSide === 'R' ? 'R' : batterSide === 'L' ? 'L' : null),
+                  ...batterStandLayout(batterSide === 'R' ? 'R' : batterSide === 'L' ? 'L' : null),
                 }}
                 config={{ displayModeBar: false }}
               />

@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getPitchColor } from '@/components/chartConfig'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { detectStand, drawBatterSilhouette } from '@/lib/batterSilhouette'
+import { detectStand, drawBatterSilhouette, drawBatterStandLabel, preloadBatterSilhouette } from '@/lib/batterSilhouette'
 
 interface PitchLocation {
   plate_x: number
@@ -31,6 +31,8 @@ const VIEW_Z_MAX = 5
 
 export default function ZonePlotRenderer({ props: p, width, height }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Bumped when the silhouette PNGs finish loading so the first paint gets redrawn.
+  const [imgTick, setImgTick] = useState(0)
   const pitches: PitchLocation[] = p.pitches || []
   const showZone = p.showZone !== false
   const dotSize = p.dotSize || 8
@@ -137,8 +139,9 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
       ctx.globalAlpha = 1
     }
 
-    // Batter silhouette (below pitch dots)
+    // Batter side — silhouette below the dots, badge drawn last (on top)
     const stand = detectStand(pitches)
+    if (stand) preloadBatterSilhouette(() => setImgTick(t => t + 1))
     drawBatterSilhouette(ctx, stand, toCanvasX, toCanvasY)
 
     // Pitch dots
@@ -188,7 +191,9 @@ export default function ZonePlotRenderer({ props: p, width, height }: Props) {
         ctx.fillText(type, ex + 15, ey)
       }
     }
-  }, [pitches, width, height, showZone, dotSize, dotOpacity, bgColor, showKey, zoneColor, zoneLineWidth, title, fontSize])
+
+    drawBatterStandLabel(ctx, stand, { x: padX, y: padY, w: plotW, h: plotArea }, { fontPx: Math.max(9, effectiveFont - 1) })
+  }, [pitches, width, height, showZone, dotSize, dotOpacity, bgColor, showKey, zoneColor, zoneLineWidth, title, fontSize, imgTick])
 
   return (
     <canvas

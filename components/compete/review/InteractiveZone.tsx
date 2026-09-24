@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { getPitchColor } from '@/components/chartConfig'
+import { drawBatterSilhouette, drawBatterStandLabel, preloadBatterSilhouette, type Stand } from '@/lib/batterSilhouette'
 
 const ZONE_LEFT = -17 / 24
 const ZONE_RIGHT = 17 / 24
@@ -27,6 +28,8 @@ interface InteractiveZoneProps {
   edgeDistance?: number
   allPitches?: Array<{ plate_x: number; plate_z: number; pitch_name: string; score: number }>
   allTargets?: Array<{ x: number; z: number }>
+  /** Batter side when every pitch shares one; null = no indicator. */
+  stand?: Stand | null
 }
 
 function toCanvasX(plateX: number, padX: number, plotW: number): number {
@@ -53,9 +56,11 @@ function inchesToCanvas(inches: number, plotW: number): number {
 }
 
 export default function InteractiveZone({
-  mode, width, height, target, onTargetSet, actualPitch, edgeDistance, allPitches, allTargets
+  mode, width, height, target, onTargetSet, actualPitch, edgeDistance, allPitches, allTargets, stand = null,
 }: InteractiveZoneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Bumped when the silhouette PNGs finish loading so the first paint gets redrawn.
+  const [imgTick, setImgTick] = useState(0)
 
   const padX = 30
   const padY = 20
@@ -136,6 +141,10 @@ export default function InteractiveZone({
     ctx.closePath()
     ctx.fill()
     ctx.globalAlpha = 1
+
+    // Batter side — this canvas is catcher's view (raw plate_x)
+    if (stand) preloadBatterSilhouette(() => setImgTick(t => t + 1))
+    drawBatterSilhouette(ctx, stand, cx, cy, { orientation: 'catcher' })
 
     // ── Mode: target ──
     if (mode === 'target' && target) {
@@ -260,7 +269,9 @@ export default function InteractiveZone({
         }
       }
     }
-  }, [mode, width, height, target, actualPitch, edgeDistance, allPitches, allTargets, padX, padY, plotW, plotArea, plotH, keyHeight])
+
+    drawBatterStandLabel(ctx, stand, { x: padX, y: padY, w: plotW, h: plotArea }, { orientation: 'catcher' })
+  }, [mode, width, height, target, actualPitch, edgeDistance, allPitches, allTargets, stand, imgTick, padX, padY, plotW, plotArea, plotH, keyHeight])
 
   useEffect(() => { draw() }, [draw])
 

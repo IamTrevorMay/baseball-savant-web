@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import PlayerPicker from '@/components/visualize/PlayerPicker'
 import InteractiveZone from '@/components/compete/review/InteractiveZone'
+import { detectStand } from '@/lib/batterSilhouette'
 import { scorePitch, scorePitchBase10, computeCQR, computeBase10CQR, CQRPitchResult, ScoringConfig, DEFAULT_CONFIG } from '@/lib/compete/cqrScoring'
 import { getPitchColor } from '@/components/chartConfig'
 
@@ -16,6 +17,7 @@ interface CQRPitch {
   strikes: number
   zone: number
   batter_name: string
+  stand: 'L' | 'R' | null
   at_bat_number: number
   pitch_number: number
   description: string
@@ -273,6 +275,7 @@ export default function CQRReviewPage() {
                 score: results[i]?.score ?? 0,
               }))}
               allTargets={targets.filter((t): t is { x: number; z: number } => t !== null)}
+              stand={detectStand(pitches)}
             />
           </div>
 
@@ -407,6 +410,7 @@ export default function CQRReviewPage() {
               onTargetSet={handleTargetSet}
               actualPitch={currentResult ? currentPitch : undefined}
               edgeDistance={currentResult?.edgeDistanceInches}
+              stand={currentPitch?.stand ?? null}
             />
           </div>
 

@@ -2,7 +2,7 @@
 import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor } from '../chartConfig'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { detectStand, batterStandLayout } from '@/lib/batterSilhouette'
 
 interface Props {
   data: any[]
@@ -84,7 +84,7 @@ export default function PitchLocationCards({ data, playerName }: Props) {
               showticklabels: false, fixedrange: true,
             },
             shapes: zoneShapes,
-            images: batterSilhouetteImages(stand),
+            ...batterStandLayout(stand, { labelSize: 9 }),
             height: 220,
             autosize: true,
           }

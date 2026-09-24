@@ -6,6 +6,7 @@ import {
 import {
   computeTrajectory, projectToScreen, type PitchKinematics, type Camera, type TrajectoryPoint,
 } from '@/lib/trajectoryPhysics'
+import { standLabel, type Stand } from '@/lib/batterSilhouette'
 import { PITCH_COLORS } from '@/components/chartConfig'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -35,6 +36,8 @@ interface Props {
   pitches: ReplayPitch[]
   width?: number
   height?: number
+  /** Batter side for this at-bat; null = no indicator. */
+  stand?: Stand | null
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -89,7 +92,7 @@ function resultText(desc: string, events: string | null): string {
 // ── Component ──────────────────────────────────────────────────────────────
 
 const SequenceReplayCanvas = forwardRef<SequenceReplayHandle, Props>(
-  function SequenceReplayCanvas({ pitches, width = 540, height = 480 }, ref) {
+  function SequenceReplayCanvas({ pitches, width = 540, height = 480, stand = null }, ref) {
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const animRef = useRef<number>(0)
@@ -282,6 +285,13 @@ const SequenceReplayCanvas = forwardRef<SequenceReplayHandle, Props>(
       ctx.textAlign = 'right'
       ctx.fillText(`Pitch ${activePitchIdx + 1} of ${pitches.length}`, w - 16, 16)
 
+      // Batter side (camera sits behind the plate — catcher's view)
+      if (stand) {
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'
+        ctx.font = 'bold 12px -apple-system, system-ui, sans-serif'
+        ctx.fillText(standLabel(stand), w - 16, 34)
+      }
+
       // Result (after final pitch lands)
       if (showResult) {
         const result = resultText(activePitch.description, activePitch.events)
@@ -313,7 +323,7 @@ const SequenceReplayCanvas = forwardRef<SequenceReplayHandle, Props>(
         legendX += ctx.measureText(shortName(p.pitch_name)).width + 22
       }
 
-    }, [pitches, trajectories, totalDuration])
+    }, [pitches, trajectories, totalDuration, stand])
 
     // ── Animation loop ─────────────────────────────────────────────────
 

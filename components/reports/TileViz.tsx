@@ -8,7 +8,7 @@ import {
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
 import { isAtBat, isWhiff, isSwing, isWobaDenomEvent, WOBA_WEIGHTS } from '@/lib/pitcherStats'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { batterStandLayout } from '@/lib/batterSilhouette'
 
 // Shared zone shapes for strike zone
 const ZONE_SHAPES = [
@@ -82,25 +82,6 @@ function fmtMetric(v:number|null,m:MetricKey):string {
   return v.toFixed(2)
 }
 
-// Bat annotation shapes for batter side
-function batShapes(stand: 'L'|'R'|null): any[] {
-  if (!stand) return []
-  // Bat on the side the hitter stands — angled toward the plate
-  const x = stand === 'R' ? -1.2 : 1.2
-  const dx = stand === 'R' ? 0.35 : -0.35
-  return [{
-    type: 'line' as const,
-    x0: x, x1: x + dx,
-    y0: 1.0, y1: 2.8,
-    line: { color: 'rgba(180,140,80,0.4)', width: 4 },
-  }, {
-    type: 'line' as const,
-    x0: x + dx, x1: x + dx * 1.15,
-    y0: 2.8, y1: 3.2,
-    line: { color: 'rgba(180,140,80,0.25)', width: 3 },
-  }]
-}
-
 // ── HEATMAP ──────────────────────────────────────────────────────────────────
 export function TileHeatmap({
   data, metric='frequency', stand=null,
@@ -153,7 +134,7 @@ export function TileHeatmap({
   const fmtZ = (v:number) => metric==="frequency" ? String(Math.round(v)) : ["ba","slg","woba","xba","xwoba","xslg"].includes(metric) ? v.toFixed(3) : v.toFixed(1)
   return (
     <div className="relative w-full h-full">
-      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...(metric==='chase_pct'?[{type:'rect' as const,x0:-0.708,x1:0.708,y0:1.5,y1:3.5,fillcolor:'#09090b',line:{color:'#fff',width:2},layer:'above' as const},...ZONE_SHAPES.slice(1)]:[...ZONE_SHAPES])],images:batterSilhouetteImages(stand),autosize:true}} style={{width:"100%",height:"100%"}} />
+      <Plot data={[trace]} layout={{paper_bgcolor:"transparent",plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:"x",fixedrange:true},shapes:[...(metric==='chase_pct'?[{type:'rect' as const,x0:-0.708,x1:0.708,y0:1.5,y1:3.5,fillcolor:'#09090b',line:{color:'#fff',width:2},layer:'above' as const},...ZONE_SHAPES.slice(1)]:[...ZONE_SHAPES])],...batterStandLayout(stand),autosize:true}} style={{width:"100%",height:"100%"}} />
       {zVals && zVals.length > 0 && (
         <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-zinc-900/80 rounded px-1 py-0.5">
           <span className="text-[8px] text-zinc-400 font-mono">{fmtZ(zMin)}</span>
@@ -197,7 +178,7 @@ export function TileScatter({data,mode='location',stand=null}:{data:any[];mode?:
   const shapes = mode==='location'?ZONE_SHAPES:[]
   const xRange = mode==='location'?[-1.76,1.76]:undefined
   const yRange = mode==='location'?[0.24,4.06]:undefined
-  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:10,r:10,b:mode==='location'?5:30,l:mode==='location'?5:35},xaxis:{title:xTitle,range:xRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',fixedrange:true,tickfont:{size:8}},yaxis:{title:yTitle,range:yRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',scaleanchor:mode==='location'?'x':undefined,fixedrange:true,tickfont:{size:8}},shapes,images:mode==='location'?batterSilhouetteImages(stand):[],showlegend:false,autosize:true}} style={{width:'100%',height:'100%'}} />
+  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:10,r:10,b:mode==='location'?5:30,l:mode==='location'?5:35},xaxis:{title:xTitle,range:xRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',fixedrange:true,tickfont:{size:8}},yaxis:{title:yTitle,range:yRange,showticklabels:mode!=='location',showgrid:mode!=='location',gridcolor:COLORS.grid,zeroline:mode==='movement',zerolinecolor:'#52525b',scaleanchor:mode==='location'?'x':undefined,fixedrange:true,tickfont:{size:8}},shapes,...(mode==='location'?batterStandLayout(stand):{}),showlegend:false,autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
 // ── BAR CHART ─────────────────────────────────────────────────────────────────
@@ -237,7 +218,7 @@ export function TileStrikeZone({data,stand=null}:{data:any[];stand?:'L'|'R'|null
     marker:{size:5,color:getPitchColor(name),opacity:.7,line:{width:.5,color:'rgba(0,0,0,0.3)'}},
     name,customdata:pts.map(d=>[d.player_name||"",d.release_speed?d.release_speed.toFixed(1):""]),hovertemplate:`${name}<br>%{customdata[0]}<br>Velo: %{customdata[1]} mph<br>X: %{x:.1f}\"<br>Z: %{y:.1f}\"<extra></extra>`,
   }))
-  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,images:batterSilhouetteImages(stand),showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
+  return <Plot data={traces} layout={{paper_bgcolor:'transparent',plot_bgcolor:COLORS.bg,font:{color:COLORS.text,size:9},margin:{t:5,r:5,b:5,l:5},xaxis:{range:[-1.76,1.76],showticklabels:false,showgrid:false,zeroline:false,fixedrange:true},yaxis:{range:[0.24,4.06],showticklabels:false,showgrid:false,zeroline:false,scaleanchor:'x',fixedrange:true},shapes:ZONE_SHAPES,...batterStandLayout(stand),showlegend:true,legend:{font:{size:8,color:COLORS.textLight},bgcolor:'rgba(0,0,0,0)',x:1,y:1,xanchor:'right'},autosize:true}} style={{width:'100%',height:'100%'}} />
 }
 
 // ── CUSTOM COLUMN DEFINITIONS ────────────────────────────────────────────────

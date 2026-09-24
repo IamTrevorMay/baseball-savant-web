@@ -4,7 +4,7 @@ import Plot from '../PlotWrapper'
 import { BASE_LAYOUT, COLORS, getPitchColor, ZONE_SHAPES } from '../chartConfig'
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { detectStand, batterStandLayout } from '@/lib/batterSilhouette'
 
 interface Props {
   data: any[]
@@ -224,7 +224,7 @@ function MiniHeatmap({
           xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
           yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
           shapes: ZONE_SHAPES,
-          images: batterSilhouetteImages(detectStand(data)),
+          ...batterStandLayout(detectStand(data)),
           width: size, height: size,
         }}
         style={{ width: size, height: size, minHeight: size }}
@@ -267,7 +267,7 @@ function MiniScatter({ data, title, size = 220 }: { data: any[]; title: string; 
           margin: { t: 5, r: 5, b: 5, l: 5 },
           xaxis: { range: [-1.96, 1.96], showticklabels: false, showgrid: false, zeroline: false, fixedrange: true },
           yaxis: { range: [0.25, 4.75], showticklabels: false, showgrid: false, zeroline: false, scaleanchor: 'x', fixedrange: true },
-          shapes: ZONE_SHAPES, images: batterSilhouetteImages(detectStand(data)), showlegend: false,
+          shapes: ZONE_SHAPES, ...batterStandLayout(detectStand(data)), showlegend: false,
           width: size, height: size,
         }}
         style={{ width: size, height: size, minHeight: size }}

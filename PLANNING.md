@@ -2,6 +2,29 @@
 
 ## Recently Completed
 
+### Batter-side indicator on every strike-zone visual (2026-09-23)
+
+Every plate-location chart now shows a "vs LHH" / "vs RHH" badge plus a stronger
+batter silhouette (opacity 0.18 → 0.32) whenever the visible data is one
+handedness — either from an explicit stand filter or because the dataset only
+contains one side. Mixed data shows nothing. Shared helper: `lib/batterSilhouette.ts`
+(`batterStandLayout` for Plotly, `drawBatterSilhouette` + `drawBatterStandLabel`
+for canvas, `silhouetteGeometry` for the server renderer).
+
+Fixed along the way: the silhouette was placed for catcher's view (RHB left) on
+charts that negate x via `toPitcherX()` — pitcher's view, where the 3B side and the
+RHB are on the RIGHT — so every pitcher-view chart had the batter on the wrong side.
+The helper now takes `orientation: 'pitcher' | 'catcher'`; catcher-view canvases
+(Compete `InteractiveZone`, report-card server renderers, `SequenceReplayCanvas`)
+pass `'catcher'`. `StrikeZoneHeatmapViz`'s "← 3B / 1B →" axis labels were mirrored
+for the same reason and now read "← 1B / 3B →".
+
+Known, not fixed here: `rc-zone-plot` / `rc-heatmap` render in pitcher view on the
+client preview (`ZonePlotRenderer`, `exportScene`) but catcher view in the server
+PNG (`lib/serverRenderCard.ts` uses raw `plate_x`) — the preview and the export are
+mirror images of each other. Each now labels the batter side correctly for its own
+orientation, but the underlying mismatch predates this change.
+
 ### Team Stats MVs widened + scene-stats team fast path (2026-09-16)
 
 The Graphics → Team Stats template 500'd on its own defaults: `avg_spin` was not in

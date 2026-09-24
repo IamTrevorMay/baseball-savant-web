@@ -5,7 +5,7 @@ import ResearchNav from '@/components/ResearchNav'
 import PlayerSearchInput from '@/components/PlayerSearchInput'
 import { PITCH_COLORS } from '@/components/chartConfig'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { detectStand, batterStandLayout } from '@/lib/batterSilhouette'
 
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false })
 
@@ -188,7 +188,7 @@ export default function MatchupsPage() {
                     xaxis: { range: [-2.5, 2.5], zeroline: false, showgrid: false, color: '#71717a', title: { text: 'Plate X (ft)', font: { size: 10, color: '#71717a' } } },
                     yaxis: { range: [0, 5], zeroline: false, showgrid: false, color: '#71717a', title: { text: 'Plate Z (ft)', font: { size: 10, color: '#71717a' } } },
                     shapes: zoneShapes,
-                    images: batterSilhouetteImages(detectStand(locations)),
+                    ...batterStandLayout(detectStand(locations)),
                     margin: { l: 50, r: 20, t: 20, b: 50 },
                     legend: { font: { size: 10, color: '#a1a1aa' }, bgcolor: 'transparent' },
                     showlegend: true,

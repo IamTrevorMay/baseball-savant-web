@@ -5,7 +5,7 @@ import { BASE_LAYOUT, COLORS } from '@/components/chartConfig'
 import { QualityPreset } from '@/lib/qualityPresets'
 import { useLeagueBaseline } from '@/lib/useLeagueBaseline'
 import { toPitcherX, PITCH_LOC_X_TITLE } from '@/lib/pitcherPerspective'
-import { detectStand, batterSilhouetteImages } from '@/lib/batterSilhouette'
+import { detectStand, batterSilhouetteImages, batterStandAnnotation } from '@/lib/batterSilhouette'
 
 interface TemplateProps {
   data: any[]
@@ -253,6 +253,8 @@ export default function StrikeZoneHeatmapViz({
     )
   }
 
+  const stand = detectStand(filtered)
+
   const layout = {
     ...BASE_LAYOUT,
     title: {
@@ -275,11 +277,13 @@ export default function StrikeZoneHeatmapViz({
       zeroline: false,
     },
     shapes: ZONE_SHAPES,
-    images: batterSilhouetteImages(detectStand(filtered)),
+    images: batterSilhouetteImages(stand),
     margin: { t: 45, r: 70, b: 55, l: 55 },
     annotations: [
-      { x: X_RANGE[0] + 0.3, y: -0.05, text: '← 3B', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },
-      { x: X_RANGE[1] - 0.3, y: -0.05, text: '1B →', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },
+      // Pitcher's view (x negated via toPitcherX): 1B on the left, 3B on the right.
+      { x: X_RANGE[0] + 0.3, y: -0.05, text: '← 1B', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },
+      { x: X_RANGE[1] - 0.3, y: -0.05, text: '3B →', showarrow: false, font: { size: 9, color: 'rgba(161,161,170,0.5)' }, xref: 'x' as const, yref: 'y' as const },
+      ...batterStandAnnotation(stand),
     ],
   }
 

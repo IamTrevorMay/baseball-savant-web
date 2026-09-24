@@ -17,6 +17,7 @@
  * Heat Maps widget's coloring exactly.
  */
 import { useEffect, useRef } from 'react'
+import { detectStand, drawBatterStandLabel } from '@/lib/batterSilhouette'
 
 interface Props {
   props: Record<string, any>
@@ -247,6 +248,8 @@ function drawLegacy(
     ctx.lineWidth = 2
     ctx.strokeRect(toX(ZONE_LEFT), toY(ZONE_TOP), toX(ZONE_RIGHT) - toX(ZONE_LEFT), toY(ZONE_BOT) - toY(ZONE_TOP))
   }
+  // Raw plate_x → catcher's view.
+  drawBatterStandLabel(ctx, detectStand(locations), { x: pad, y: pad + titleOffset, w: plotW, h: plotH }, { orientation: 'catcher', fontPx: Math.max(9, fontSize - 1) })
 }
 
 /* ── Spectrum mode — matches drawRCHeatmap server renderer ─────────────── */
@@ -374,6 +377,9 @@ function drawSpectrum(
     ctx.lineTo(toX(0.708), toY(0.15))
     ctx.stroke()
   }
+
+  // Raw plate_x → catcher's view.
+  drawBatterStandLabel(ctx, detectStand(locations), { x: plotX, y: plotY, w: plotW, h: plotH }, { orientation: 'catcher', fontPx: Math.max(9, (p.fontSize || 12) - 1) })
 
   if (showLegend) {
     drawLegend(ctx, plotX, height - legendH - 2, plotW, legendH, zMin, zMax, metric, colorMode)

@@ -4,7 +4,7 @@ import { drawPitchFlightStatic } from './PitchFlightRenderer'
 import { drawStadiumStatic } from './StadiumRenderer'
 import { getPitchColor } from '@/components/chartConfig'
 import { toPitcherX } from '@/lib/pitcherPerspective'
-import { detectStand, drawBatterSilhouette } from '@/lib/batterSilhouette'
+import { detectStand, drawBatterSilhouette, drawBatterStandLabel } from '@/lib/batterSilhouette'
 
 // ── Canvas helpers ───────────────────────────────────────────────────────────
 
@@ -1025,6 +1025,8 @@ function drawRCHeatmap(ctx: CanvasRenderingContext2D, el: SceneElement) {
     ctx.strokeRect(toX(-17 / 24), toY(3.5), toX(17 / 24) - toX(-17 / 24), toY(1.5) - toY(3.5))
   }
 
+  drawBatterStandLabel(ctx, detectStand(locations), { x: ex + pad, y: ey + pad + titleOffset, w: plotW, h: plotH })
+
   ctx.restore()
 }
 
@@ -1332,9 +1334,10 @@ function drawRCZonePlot(ctx: CanvasRenderingContext2D, el: SceneElement) {
     ctx.globalAlpha = 1
   }
 
-  // Batter silhouette (below pitch dots)
+  // Batter side — silhouette below the dots, badge in the top corner
   const rcStand = detectStand(pitches)
   drawBatterSilhouette(ctx, rcStand, toCanvasX, toCanvasY)
+  drawBatterStandLabel(ctx, rcStand, { x: ex + padX, y: ey + padY, w: plotW, h: plotArea }, { fontPx: Math.max(9, effectiveFont - 1) })
 
   // Pitch dots
   for (const pitch of pitches) {

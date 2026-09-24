@@ -261,7 +261,7 @@ export interface OutingData {
   opponent: string
   game_line: { ip: string; h: number; r: number; er: number; bb: number; k: number; pitches: number }
   arsenal: { pitch_name: string; count: number; avg_velo: number; avg_ivb: number; avg_hbreak: number; avg_arm_angle: number; avg_ext: number; whiffs: number; stuff_plus: number | null; unique_score: number | null; deception_score: number | null; cmd_plus: number | null }[]
-  locations: { plate_x: number; plate_z: number; pitch_name: string }[]
+  locations: { plate_x: number; plate_z: number; pitch_name: string; stand?: 'L' | 'R' }[]
   command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null }
 }
 
@@ -279,8 +279,8 @@ export interface StarterCardData {
   usage: { pitch_name: string; outing_pct: number; vs_lhb_pct: number; vs_rhb_pct: number; season_pct: number }[]
   movement: { hb: number; ivb: number; pitch_name: string }[]
   season_movement: { pitch_name: string; avg_hb: number; avg_ivb: number; std_hb: number; std_ivb: number }[]
-  locations_lhb: { plate_x: number; plate_z: number; pitch_name: string }[]
-  locations_rhb: { plate_x: number; plate_z: number; pitch_name: string }[]
+  locations_lhb: { plate_x: number; plate_z: number; pitch_name: string; stand?: 'L' | 'R' }[]
+  locations_rhb: { plate_x: number; plate_z: number; pitch_name: string; stand?: 'L' | 'R' }[]
   pitch_metrics: { pitch_name: string; count: number; avg_velo: number; velo_diff: number; avg_ivb: number; avg_hb: number; avg_ext: number; str_pct: number; swstr_pct: number; csw_pct: number; xslgcon: number; stuff_plus: number | null; whiffs: number; unique_score: number | null; deception_score: number | null; cmd_plus: number | null; avg_missfire: number | null; avg_cluster: number | null; avg_brink: number | null; triton_plus: number | null }[]
   command: { waste_pct: number | null; avg_cluster: number | null; avg_brink: number | null; cmd_plus: number | null; avg_missfire: number | null }
 }

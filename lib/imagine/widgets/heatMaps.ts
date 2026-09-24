@@ -428,7 +428,7 @@ function buildSceneInternal(
     const mapH = tileH - captionH
     elements.push(makeEl(z, 'rc-heatmap', tileX, mapTop, tileW, mapH, {
       locations: ready ? r.pitches.map((p: any) => ({
-        plate_x: p.plate_x, plate_z: p.plate_z,
+        plate_x: p.plate_x, plate_z: p.plate_z, stand: p.stand,
         // metric calc fields (used by the extended drawRCHeatmap)
         events: p.events, description: p.description, type: p.type, zone: p.zone,
         launch_speed: p.launch_speed,

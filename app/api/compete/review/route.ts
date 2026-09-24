@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
       SELECT
         p.plate_x, p.plate_z, p.pitch_name, p.pitch_type,
         p.balls, p.strikes, p.zone, p.at_bat_number, p.pitch_number,
-        p.description, pl.name AS batter_name
+        p.description, p.stand, pl.name AS batter_name
       FROM pitches p
       LEFT JOIN players pl ON pl.id = p.batter
       WHERE p.pitcher = ${pitcherId} AND p.game_pk = ${gamePk}
@@ -109,6 +109,7 @@ export async function GET(req: NextRequest) {
       strikes: Number(r.strikes ?? 0),
       zone: Number(r.zone ?? 0),
       batter_name: r.batter_name || 'Unknown',
+      stand: r.stand === 'L' || r.stand === 'R' ? r.stand : null,
       at_bat_number: Number(r.at_bat_number ?? 0),
       pitch_number: Number(r.pitch_number ?? 0),
       description: r.description || '',
